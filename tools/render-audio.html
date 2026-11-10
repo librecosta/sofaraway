@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ELSEWHERE — soundtrack render</title>
+<title>SoFaraway — soundtrack render</title>
 <style>
   @font-face{ font-family:"Rajdhani"; font-weight:300; font-display:swap;
     src:url("../css/fonts/rajdhani-300.woff2") format("woff2"); }
@@ -29,7 +29,7 @@
 <div class="wrap">
   <h1>SOUNDTRACK RENDER</h1>
   <p>
-    ELSEWHERE ships no audio files. The score is synthesised live by the Web Audio
+    SoFaraway ships no audio files. The score is synthesised live by the Web Audio
     engine in <code>js/audio.js</code>. This page runs that same engine against an
     <code>OfflineAudioContext</code> and writes the whole 3:30 to a WAV you can keep.
   </p>
@@ -105,7 +105,7 @@ async function render(){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'elsewhere-vol1.wav';
+    a.download = 'sofaraway-vol1.wav';
     document.body.appendChild(a);
     if (location.search.indexOf('nodownload=1') < 0) { a.click(); }
     a.remove();

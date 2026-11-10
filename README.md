@@ -1,29 +1,35 @@
-# ELSEWHERE
+# SoFaraway
 
 > **A hypnotic browser rhythm runner. Thread the gates, ride the beat.**
 
-Vol. I · zero assets · zero build step · WebGL2
+Vol. I–IV · zero assets · zero build step · WebGL2
 
 ![Menu](shots/menu.png)
-
-![Gameplay](shots/gate-closeup.png)
 
 ---
 
 ## What it is
 
-You fall forward down a corridor at 128 BPM. Bulkheads rush at you — each one a
-three-by-three assembly of bolted plates with a single cell missing. The centre plate
-never opens. Be in the missing cell when it reaches you.
+You fly down a corridor at the tempo of a soundtrack that is being synthesised
+while you play. Bulkheads rush at you. Each one has exactly one opening. Be in it
+when it arrives.
 
-The world is built from the soundtrack: gates arrive on beat boundaries, the tunnel
-pulses on the kick, and the palette shifts every eight bars.
+Four volumes. Each is a different corridor, a different kind of glass, and a
+different arrangement — but the same engine underneath.
+
+| | World | Glass | Music | Length | Gates |
+|---|---|---|---|---|---|
+| **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing | techno · 128 | 3:30 | 144 |
+| **II · DRIFT** | open canal, sky above | **shutter** — one of three slats missing, horizontal or vertical | downtempo · 96 | 2:20 | 40 |
+| **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 4:10 | 158 |
+| **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:00 | 91 |
+
+The palette, the pulse and the gates are all driven by the same beat clock, so
+the world moves to the music rather than alongside it.
 
 ## Play
 
-**Online** → <https://elsewhere.librecosta.com>
-
-**Locally** — it's a static site. Any file server works:
+**Local** — it is a static site. Any file server works:
 
 ```bash
 python -m http.server 8080
@@ -41,87 +47,91 @@ else is hand-written ES modules.
 
 | Input | Action |
 | --- | --- |
-| Mouse / touch drag | Steer |
+| Mouse / touch drag | Steer — the reticle follows your hand across the whole window |
 | Arrow keys / WASD | Steer |
+| Hold left button / `Shift` | Boost |
 | `Space` | Start · retry |
 | `M` | Mute |
 | `Esc` | Back to menu |
+| `R` | Flight recorder overlay · `Shift+R` downloads the log |
 
-## How it works
+## How it is built
 
-**The camera never moves.** The tunnel geometry repeats every 3 units, so the whole
-group is simply offset by `distance % 3` each frame. Visually indistinguishable from
-real forward travel, but the geometry is never rebuilt and nothing is ever recycled.
+**Everything is configuration.** `js/volumes.js` holds one record per map: tempo,
+length, the section table, corridor topology, glass style, palette, lives. The
+chart and the arrangement both read the *same* section table, so gate density and
+instrumentation can never drift apart.
 
-**Gates are indexed in beats, not metres.** Each gate stores how many beats remain
-(`dBeats`) and decrements by `dt × BPM / 60`. The world position is only computed at
-render time. That means a gate always arrives exactly on a beat, no matter how the
-speed ramps.
+**The corridor is a curve.** `js/path.js` integrates frames along a centreline of
+straights joined by quarter turns — left, right, up or down. The camera, the
+geometry and every bulkhead sample the same curve.
 
-**One cell grid, two implementations.** The wall draws its 3x3 plate grid from `uv`;
-the collision runs the same index arithmetic over the player's world position. The
-shader and the judgement cannot disagree about which cell the gap is in.
+**Geometry streams.** `js/tunnel.js` builds 210-unit chunks that grow ahead *and*
+behind the camera, so a turn is fully built long before you can see it, and a
+knockback never walks off the edge of the world.
 
-**The wireframe menu is not a triangle wireframe.** Drawing the scene with
-`wireframe: true` gives you every quad diagonal, which reads as noise. The title
-screen instead uses a dedicated `LineSegments` layer: ring pairs on a half-module
-grid, radial panel ticks, and eight longitudinal seams — nothing crosses a face
-diagonally, so every line is parallel or concentric.
+**Glass is a lane abstraction.** `laneOf` / `lanePoint` / `laneCount` hide the fact
+that an iris counts eight angles, a shutter counts three heights, a lattice counts
+nine cells and an aperture counts... one round hole. Judgement, scoring, the
+auto-align bot and the reticle lock all go through those three functions.
 
-**The in-game cursor is not a fixed reticle.** The camera sits at 42% of the way to
-the vessel, so the marker lands off-centre and slides across the screen as you
-steer. It is projected every frame with `Vector3.project()`, which means what you
-aim with is exactly what collides.
-
-**No post-processing library.** A hand-rolled chain: a half-res depth pass (linear
-view-space distance straight into R) → depth-of-field gather with a 14-tap golden-angle
+**No post-processing library.** A hand-rolled chain: half-res depth pass (linear
+view-space distance straight into R) → depth-of-field gather with a golden-angle
 kernel → bright-pass at quarter resolution → separable Gaussian ×2 → composite with
 bloom, radial chromatic aberration, vignette, grain, scanlines, flash and an ACES
-shoulder. Focus rides the gate you are about to thread.
+shoulder.
 
-**The music is synthesized, not loaded.** Drums, bass, pad and arp are scheduled with
-a 120 ms lookahead against `AudioContext.currentTime`, and the game clock reads back
-from the audio clock so visuals cannot drift.
+**The music is synthesized, not loaded.** Drums, bass, pad and arp are scheduled
+with a 120 ms lookahead against `AudioContext.currentTime`, and the game clock reads
+back from the audio clock so visuals cannot drift. Section changes fire risers and
+impacts; the last two bars drop the drums and let the piece ring out as the screen
+washes to white.
 
 ## Project layout
 
 ```
 .
-├── index.html            entry point + import map
-├── css/style.css         menu / HUD / game-over UI
+├── index.html              entry point + import map
+├── css/style.css           menu / HUD / game-over UI
 ├── vendor/
-│   ├── three.module.js   three.js r187
+│   ├── three.module.js     three.js r187
 │   └── three.core.js
+├── tools/render-audio.html offline render → WAV
 └── js/
-    ├── main.js           state machine, loop, input, camera, collision
-    ├── tunnel.js         octagonal corridor: shell, ribs, light strips, rig
-    ├── gates.js          holographic gates: hex SDF, scanline shader, drift
-    ├── audio.js          procedural soundtrack (Web Audio)
-    ├── post.js           blood, sweat and bloom
-    └── textures.js       procedural canvas textures: hull, normal, grating
+    ├── main.js             state machine, loop, input, camera, collision
+    ├── volumes.js          the four volumes, as data
+    ├── path.js             centreline, frames, straights and quarter turns
+    ├── tunnel.js           chunked corridor: shell, ribs, light strips, rig
+    ├── gates.js            bulkheads: iris / shutter / lattice / aperture
+    ├── chart.js            gate chart from the section table
+    ├── audio.js            procedural soundtrack (Web Audio)
+    ├── post.js             depth, bloom, chromatic aberration, grain
+    ├── textures.js         procedural canvas textures
+    └── recorder.js         camera flight recorder + live trace overlay
 ```
 
 ## Debug parameters
 
-Useful for screenshots and for poking at the renderer.
-
 | Param | Effect |
 | --- | --- |
+| `?vol=drift` | Load a volume (`elsewhere` · `drift` · `descent` · `orbit`) |
 | `?t=24.4` | Deterministic — simulate to 24.4 s, then render one frame |
-| `?align=1` | Auto-align to the nearest gate opening |
 | `?god=1` | Disable collision |
 | `?q=low` | Lock pixel ratio to 1 |
-| `?post=0` | Bypass post-processing |
+| `?rec=1` | Open the flight recorder |
 | `?ui=0` | Hide the UI |
-| `?dbg=1` | Draw-call / triangle / state readout |
+| `?dbg=1` | Draw-call / triangle readout |
 
-## Roadmap
+## Status
 
-- [ ] Vol. II — a second world and a second soundtrack
-- [ ] WebGPU path via `three.js` `WebGPURenderer` + TSL
-- [ ] Music that builds: intro / drop / breakdown sections per volume
+Four volumes are playable. What is left is not more content:
+
+- [ ] Art pass 1 — geometry density: closer ribs, panel recesses, bolts
+- [ ] Art pass 2 — baked lighting: UV atlas, AO and irradiance maps
+- [ ] Art pass 3 — WebGPU global illumination
+- [ ] Settle what boost changes (speed / score / field of view)
+- [ ] A second verb, if the game needs one
 - [ ] Mobile touch tuning
-- [ ] Replay ghosts driven by the same beat clock
 
 ## Credits
 
@@ -133,7 +143,7 @@ audio files.
 
 **Inspiration.** The mechanic is inspired by **HelloRun** (HelloEnjoy, 2013), a
 browser game that proved WebGL could be this hypnotic. No code, assets or audio from
-it are used here. ELSEWHERE is an independent work that borrows a design idea and
+it are used here. SoFaraway is an independent work that borrows a design idea and
 takes it somewhere else.
 
 ## License

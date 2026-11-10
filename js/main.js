@@ -188,7 +188,7 @@ const SEC_PER_BEAT = 60 / BPM;
 const State = { MENU: 'menu', PLAY: 'play', CRASH: 'crash', OVER: 'over' };
 
 const DIFF_KEYS = ['easy', 'normal', 'hard'];
-let difficulty = localStorage.getItem('elsewhere.difficulty') || 'normal';
+let difficulty = localStorage.getItem('sofaraway.difficulty') || 'normal';
 if (!DIFFICULTY[difficulty]) difficulty = 'normal';
 
 const G = {
@@ -199,7 +199,7 @@ const G = {
   distance: 0,
   speed: 24,
   score: 0,
-  best: parseInt(localStorage.getItem('elsewhere.best') || '0', 10),
+  best: parseInt(localStorage.getItem('sofaraway.best') || '0', 10),
   combo: 0,
   maxCombo: 0,
   gatesPassed: 0,
@@ -498,7 +498,7 @@ function endRun(title) {
 
     if (G.score > G.best) {
       G.best = Math.floor(G.score);
-      localStorage.setItem('elsewhere.best', String(G.best));
+      localStorage.setItem('sofaraway.best', String(G.best));
     }
   }, 700);
 }
@@ -824,7 +824,7 @@ document.getElementById('ui').addEventListener('click', (e) => {
   const diffBtn = e.target.closest('[data-diff]');
   if (diffBtn) {
     difficulty = diffBtn.dataset.diff;
-    localStorage.setItem('elsewhere.difficulty', difficulty);
+    localStorage.setItem('sofaraway.difficulty', difficulty);
     syncDifficulty();
     return;
   }
@@ -838,7 +838,7 @@ document.getElementById('ui').addEventListener('click', (e) => {
     else document.exitFullscreen?.();
   }
   if (act === 'credits') openPanel('CREDITS', `
-    <b>ELSEWHERE</b> — a browser rhythm runner.<br>
+    <b>SoFaraway</b> — a browser rhythm runner.<br>
     Thread the gates, ride the beat.<br><br>
     Made by <b>librecosta</b>.<br>
     Built with three.js r187 on WebGL2.<br>
