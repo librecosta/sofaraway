@@ -58,8 +58,9 @@ function midiToFreq(m) {
 }
 
 export class AudioEngine {
-  constructor(bpm = BPM) {
+  constructor(bpm = BPM, ctxFactory = null) {
     this.bpm = bpm;
+    this.ctxFactory = ctxFactory;
     this.ctx = null;
     this.running = false;
     this.muted = false;
@@ -75,11 +76,12 @@ export class AudioEngine {
   async init() {
     if (this.ctx) return this.ok;
     const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return false;
+    if (!Ctx && !this.ctxFactory) return false;
 
     try {
-      this.ctx = new Ctx({ latencyHint: 'interactive' });
+      this.ctx = this.ctxFactory ? this.ctxFactory() : new Ctx({ latencyHint: 'interactive' });
     } catch (e) {
+      this.lastError = e;
       return false;
     }
     const c = this.ctx;

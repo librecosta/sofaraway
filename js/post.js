@@ -130,6 +130,7 @@ uniform float uFlash;
 uniform vec3  uFlashColor;
 uniform float uExposure;
 uniform float uInvert;
+uniform float uBoost;
 
 vec3 aces(vec3 x){
   const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -148,6 +149,17 @@ void main(){
   col.b = texture2D(tScene, uv - off).b;
 
   col += texture2D(tBloom, uv).rgb * uBloom;
+
+  // boost: radial streak toward the vanishing point, plus a hot rim
+  if (uBoost > 0.01) {
+    vec3 acc = col;
+    for (int i = 1; i <= 4; i++) {
+      vec2 o = d * (float(i) * 0.011 * uBoost);
+      acc += texture2D(tScene, uv - o).rgb;
+    }
+    col = acc / 5.0;
+    col += col * uBoost * 0.18 * smoothstep(0.02, 0.55, r2 * 2.0);
+  }
 
   col *= uExposure;
 
@@ -261,6 +273,7 @@ export class PostFX {
         uFlashColor: { value: new THREE.Color(1, 1, 1) },
         uExposure: { value: 1.0 },
         uInvert: { value: 0 },
+        uBoost: { value: 0 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -289,6 +302,12 @@ export class PostFX {
   setFocus(dist) {
     const u = this.dofMat.uniforms;
     u.uFocus.value += (dist - u.uFocus.value) * 0.12;
+  }
+
+  /** 0 = cruising, 1 = boosting. Eased so it does not snap. */
+  setBoost(amount) {
+    const u = this.compMat.uniforms.uBoost;
+    u.value += (amount - u.value) * 0.14;
   }
 
   _pass(mat, target) {

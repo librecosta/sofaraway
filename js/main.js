@@ -543,7 +543,7 @@ function step(dt) {
   fog.color.setHSL((currentHue + 1) % 1, 0.75, 0.030);
 
   // fov kick ------------------------------------------------------
-  const boostFov = (G.boosting && G.state === State.PLAY) ? -4.5 : 0;
+  const boostFov = (G.boosting && G.state === State.PLAY) ? 7.0 : 0;
   camera.fov = 76 + pulse * 3.4 + boostFov + (G.state === State.PLAY ? Math.min(G.speed, 56) * 0.045 : 0);
   camera.updateProjectionMatrix();
 
@@ -602,6 +602,7 @@ function step(dt) {
     if (g.d > 1 && g.d < focus) focus = g.d;
   }
   post.setFocus(THREE.MathUtils.clamp(focus * 1.05, 26, 130));
+  post.setBoost(G.boosting && G.state === State.PLAY ? 1 : 0);
 
   // score from distance ------------------------------------------
   if (G.state === State.PLAY) G.score += G.speed * sdt * 0.35;
@@ -775,6 +776,7 @@ if (FIXED_T !== null) {
   if (params.get('god') !== '1') GOD = true;   // captures should reach the end
   gates.clear();
   resetRun();
+  if (params.get('boost') === '1') G.boosting = true;
   setState(State.PLAY);
   const FIXED_DT = 1 / 60;
   let acc = 0;

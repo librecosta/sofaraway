@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ELSEWHERE — soundtrack render</title>
+<style>
+  @font-face{ font-family:"Rajdhani"; font-weight:300; font-display:swap;
+    src:url("../css/fonts/rajdhani-300.woff2") format("woff2"); }
+  @font-face{ font-family:"Rajdhani"; font-weight:700; font-display:swap;
+    src:url("../css/fonts/rajdhani-700.woff2") format("woff2"); }
+  @font-face{ font-family:"Chakra Petch"; font-weight:700; font-display:swap;
+    src:url("../css/fonts/chakra-700.woff2") format("woff2"); }
+  html,body{ margin:0; height:100%; background:#05080a; color:#dceef8;
+    font-family:"Rajdhani", system-ui, sans-serif; }
+  .wrap{ max-width:720px; margin:0 auto; padding:8vh 24px; }
+  h1{ font-family:"Chakra Petch"; font-weight:700; letter-spacing:.12em;
+    font-size:clamp(22px,4vw,40px); margin:0 0 .2em; }
+  p{ font-weight:300; letter-spacing:.06em; line-height:1.8; opacity:.72; }
+  button{ appearance:none; background:none; border:1px solid #74ffdc; color:#74ffdc;
+    font-family:inherit; font-weight:700; letter-spacing:.34em; font-size:12px;
+    padding:1em 1.6em; cursor:pointer; margin-top:1.6em; }
+  button:disabled{ opacity:.35; cursor:default; }
+  #log{ margin-top:2em; font-size:13px; letter-spacing:.08em; opacity:.65;
+    white-space:pre-wrap; font-variant-numeric:tabular-nums; }
+  a{ color:#74ffdc; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SOUNDTRACK RENDER</h1>
+  <p>
+    ELSEWHERE ships no audio files. The score is synthesised live by the Web Audio
+    engine in <code>js/audio.js</code>. This page runs that same engine against an
+    <code>OfflineAudioContext</code> and writes the whole 3:30 to a WAV you can keep.
+  </p>
+  <button id="go">RENDER 3:30 TO WAV</button>
+  <div id="log">idle</div>
+</div>
+
+<script type="module">
+import { AudioEngine } from '../js/audio.js';
+import { SONG_BEATS, BPM } from '../js/chart.js';
+
+const log = (s) => { document.getElementById('log').textContent = s; };
+
+function encodeWAV(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const len = buffer.length;
+  const bytes = 44 + len * numCh * 2;
+  const ab = new ArrayBuffer(bytes);
+  const view = new DataView(ab);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+
+  w(0, 'RIFF'); view.setUint32(4, bytes - 8, true); w(8, 'WAVE');
+  w(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+  view.setUint16(22, numCh, true); view.setUint32(24, buffer.sampleRate, true);
+  view.setUint32(28, buffer.sampleRate * numCh * 2, true);
+  view.setUint16(32, numCh * 2, true); view.setUint16(34, 16, true);
+  w(36, 'data'); view.setUint32(40, len * numCh * 2, true);
+
+  const chans = [];
+  for (let c = 0; c < numCh; c++) chans.push(buffer.getChannelData(c));
+
+  let o = 44;
+  for (let i = 0; i < len; i++) {
+    for (let c = 0; c < numCh; c++) {
+      let s = Math.max(-1, Math.min(1, chans[c][i]));
+      view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      o += 2;
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+async function render(){
+  const btn = document.getElementById('go');
+  btn.disabled = true;
+  try {
+    const sr = 44100;
+    const qs = new URLSearchParams(location.search);
+    const clip = Number(qs.get('secs') || 0);
+    const dur = clip > 0 ? clip + 2 : (SONG_BEATS * 60) / BPM + 4;
+    log(`building offline context · ${sr} Hz · ${dur.toFixed(1)} s stereo`);
+
+    const ctx = new OfflineAudioContext(2, Math.ceil(sr * dur), sr);
+    const eng = new AudioEngine(BPM, () => ctx);
+    const ok = await eng.init();
+    if (!ok) throw new Error('engine init failed: ' + (eng.lastError && (eng.lastError.stack || eng.lastError.message) || 'unknown'));
+
+    const totalSteps = clip > 0 ? Math.ceil(clip * BPM / 60 * 4) : Math.ceil(SONG_BEATS * 4);
+    const stepSec = (60 / BPM) / 4;
+    log(`scheduling ${totalSteps} sixteenths`);
+
+    eng.running = true;
+    for (let i = 0; i < totalSteps; i++) {
+      eng.step = i;
+      eng._playStep(i % 16, Math.floor(i / 16) % 8, 0.12 + i * stepSec);
+    }
+
+    log('rendering…');
+    const buf = await ctx.startRendering();
+
+    log('encoding wav…');
+    const blob = encodeWAV(buf);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'elsewhere-vol1.wav';
+    document.body.appendChild(a);
+    if (location.search.indexOf('nodownload=1') < 0) { a.click(); }
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+    log(`done · ${(blob.size / 1048576).toFixed(1)} MB · ${buf.duration.toFixed(1)} s`);
+    btn.disabled = false;
+    btn.textContent = 'RENDER AGAIN';
+  } catch (err) {
+    log('FAILED: ' + (err && err.message ? err.message : err));
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('go').addEventListener('click', render);
+if (location.search.indexOf('auto=1') >= 0) render();
+</script>
+</body>
+</html>

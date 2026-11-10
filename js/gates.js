@@ -69,7 +69,7 @@ const float STEP = 0.78539816;   // PI / 4
 float hash(float x){ return fract(sin(x * 127.1) * 43758.5453); }
 
 void main(){
-  if (vDepth < 4.0) discard;
+  if (vDepth < 0.5) discard;
 
   vec2 p = (vUv - 0.5) * uSize;
 
@@ -205,7 +205,8 @@ export class Gate {
     u.uTime.value = time;
     u.uHit.value = this.hit * 0.8;
     u.uColor.value.setHSL((hue + 1) % 1, 0.72, 0.55);
-    u.uFade.value = THREE.MathUtils.clamp((this.d - 3.0) / 9.0, 0, 1);
+    // stays fully opaque right up to the moment it passes the lens, then fades out behind you
+    u.uFade.value = THREE.MathUtils.clamp((this.d + 2.5) / 3.0, 0, 1);
   }
 
   dispose() {
