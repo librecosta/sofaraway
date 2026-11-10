@@ -88,7 +88,8 @@ const tex = buildTextures();
 
 /* the corridor is a curve: straights joined by quarter turns */
 const UNITS_PER_BEAT = 20 * (60 / 128);
-const CORRIDOR_LEN = 200 + 448 * UNITS_PER_BEAT + 200;
+/* long enough to still have corridor under you at full boost for the whole song */
+const CORRIDOR_LEN = 7000;
 const path = buildPath(CORRIDOR_LEN);
 const tunnel = new Tunnel(tex, path);
 scene.add(tunnel.group);
@@ -168,6 +169,9 @@ const G = {
   runOver: false,
   chart: [],
   chartIndex: 0,
+  menuT: 0,
+  escape: 0,
+  recoil: 0,
   timeScale: 1,
   shake: 0,
   hitFlash: 0,
@@ -398,6 +402,7 @@ function takeHit(gate) {
 
   flash(0.9, 380, '#ff5a5a');
   shakeDom(1);
+  G.recoil = 0.16;
 
   if (G.lives <= 0) endRun('TERMINATED');
 }
@@ -407,6 +412,7 @@ function endRun(title) {
   G.runOver = true;
   G.state = State.CRASH;
   G.timeScale = 1;
+  G.recoil = title === 'ESCAPED' ? 0 : 0.85;
   audio.stop();
 
   const total = G.gatesPassed + G.hits;
@@ -425,6 +431,11 @@ function endRun(title) {
     G.state = State.OVER;
     show(elHud, false);
     show(elOver, true);
+
+    // let the white-out burn off so the results sit on the corridor again
+    elFlash.style.transition = 'opacity 900ms ease-out';
+    elFlash.style.opacity = '0';
+
     $('over-title').textContent = title || 'RUN COMPLETE';
     elOverScore.textContent = String(Math.floor(G.score));
     $('over-rank').textContent = rank;
@@ -474,12 +485,34 @@ function updateHud(force) {
 /* ------------------------------------------------------------------ *
  *  Simulation
  * ------------------------------------------------------------------ */
+function placeCamera() {
+  path.sample(G.distance, _camF);
+  camera.position.copy(_camF.p)
+    .addScaledVector(_camF.r, CAM.x * CAM_OFFSET)
+    .addScaledVector(_camF.u, CAM.y * CAM_OFFSET);
+  camera.up.copy(_camF.u);
+  _camTgt.copy(camera.position).add(_camF.f);
+  camera.lookAt(_camTgt);
+  camera.rotateZ(CAM.roll);
+  camera.updateMatrixWorld();
+}
+
 function step(dt) {
   G.time += dt;
 
   if (G.state === State.MENU) {
-    G.distance += 9 * dt;
+    // drift forward and back for ever; the camera leans with the pointer
+    G.menuT += dt;
+    G.distance = 150 + 105 * Math.sin(G.menuT * 0.085);
     G.beatLocal += dt * BPM / 60;
+
+    const dampM = 1 - Math.exp(-dt * 4.5);
+    const prevMX = CAM.x;
+    CAM.x += (CAM.tx * 0.55 - CAM.x) * dampM;
+    CAM.y += (CAM.ty * 0.55 - CAM.y) * dampM;
+    CAM.roll += ((-((CAM.x - prevMX) / Math.max(dt, 1e-4)) * 0.02) - CAM.roll) * Math.min(1, dt * 6);
+
+    placeCamera();
     tunnel.update(G.distance);
     const p = Math.pow(1 - ((G.beatLocal * 0.5) % 1), 3);
     tunnel.pulse(p * 0.15);
@@ -516,7 +549,10 @@ function step(dt) {
 
   // distance ------------------------------------------------------
   if (G.state === State.PLAY) G.distance += G.speed * sdt;
-  else G.distance += G.speed * sdt * 0.35;
+  else if (G.recoil > 0) {
+    G.recoil = Math.max(0, G.recoil - dt);
+    G.distance -= 300 * sdt;          // knocked back down the corridor
+  } else G.distance += G.speed * sdt * 0.35;
 
   // camera --------------------------------------------------------
   if (ALIGN && G.state === State.PLAY) {
@@ -536,15 +572,7 @@ function step(dt) {
   const vx = (CAM.x - prevX) / Math.max(sdt, 1e-4);
   CAM.roll += ((-vx * 0.028) - CAM.roll) * Math.min(1, sdt * 8);
 
-  path.sample(G.distance, _camF);
-  camera.position.copy(_camF.p)
-    .addScaledVector(_camF.r, CAM.x * CAM_OFFSET)
-    .addScaledVector(_camF.u, CAM.y * CAM_OFFSET);
-  camera.up.copy(_camF.u);
-  _camTgt.copy(camera.position).add(_camF.f);
-  camera.lookAt(_camTgt);
-  camera.rotateZ(CAM.roll);
-  camera.updateMatrixWorld();
+  placeCamera();
 
   // beat pulse ----------------------------------------------------
   const frac = G.beat - Math.floor(G.beat);
@@ -579,7 +607,14 @@ function step(dt) {
       const c = G.chart[G.chartIndex++];
       gates.spawn(c.beat - G.beat, G.speed, SEC_PER_BEAT, G.time, c.sector);
     }
-    if (G.beat >= SONG_BEATS + 6 && !G.runOver) endRun('RUN COMPLETE');
+    // the last stretch washes out to white: you break out into the open
+    const esc = (G.beat - (SONG_BEATS - 12)) / 12;
+    if (esc > 0) {
+      G.escape = Math.min(1, esc);
+      elFlash.style.transition = 'none';
+      elFlash.style.opacity = String(G.escape * 0.95);
+    }
+    if (G.beat >= SONG_BEATS && !G.runOver) endRun('ESCAPED');
   }
 
   // gates ---------------------------------------------------------

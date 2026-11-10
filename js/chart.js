@@ -15,13 +15,13 @@ export const BPM = 128;
 /* energy decides the arrangement in audio.js and the density here */
 export const SECTIONS = [
   { name: 'INTRO',  beats: 16, gap: 999, pattern: 'sweep',    energy: 0.15 },
-  { name: 'A',      beats: 80, gap: 6.0, pattern: 'step',     energy: 0.45 },
-  { name: 'B',      beats: 64, gap: 6.0, pattern: 'opposite', energy: 0.55 },
-  { name: 'BUILD',  beats: 32, gap: 4.5, pattern: 'zigzag',   energy: 0.75 },
-  { name: 'DROP',   beats: 96, gap: 3.5, pattern: 'leap',     energy: 1.00 },
-  { name: 'BREAK',  beats: 32, gap: 8.0, pattern: 'sweep',    energy: 0.30 },
-  { name: 'A2',     beats: 64, gap: 4.5, pattern: 'step',     energy: 0.65 },
-  { name: 'FINALE', beats: 64, gap: 3.5, pattern: 'leap',     energy: 1.00 },
+  { name: 'A',      beats: 80, gap: 4.0, pattern: 'step',     energy: 0.45 },
+  { name: 'B',      beats: 64, gap: 4.0, pattern: 'opposite', energy: 0.55 },
+  { name: 'BUILD',  beats: 32, gap: 3.0, pattern: 'zigzag',   energy: 0.75 },
+  { name: 'DROP',   beats: 96, gap: 2.33, pattern: 'leap',     energy: 1.00 },
+  { name: 'BREAK',  beats: 32, gap: 5.33, pattern: 'sweep',    energy: 0.30 },
+  { name: 'A2',     beats: 64, gap: 3.0, pattern: 'step',     energy: 0.65 },
+  { name: 'FINALE', beats: 64, gap: 2.33, pattern: 'leap',     energy: 1.00 },
 ];
 
 function mulberry32(a) {

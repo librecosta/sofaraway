@@ -301,7 +301,7 @@ export class Tunnel {
     const seg = (a, b) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
     const A = frame(), B = frame();
 
-    const end = Math.min(this.path.length, 240);
+    const end = Math.min(this.path.length, 380);
     const rings = [];
     for (let s = 1.0; s < end; s += TUNNEL.ring) rings.push(s);
 
