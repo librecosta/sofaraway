@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY } from './quality.js?v=2026-11-10v';
+import { QUALITY } from './quality.js?v=2026-11-10w';
 import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
@@ -163,6 +163,8 @@ export class Tunnel {
 
     const A = frame();
     const B = frame();
+    const C = frame();
+    const D = frame();
     const v3 = new THREE.Vector3();
 
     const put = (arr, fr, px, py) => {
@@ -179,24 +181,43 @@ export class Tunnel {
       const vA = sA / totalPerim * 3.0;
       const vB = sB / totalPerim * 3.0;
 
+      /* Each bay is a recessed plate with a chamfer at both ends. The chamfers
+         matter more than the plate: their normals differ from the wall's, so
+         they take the rim light differently and the seam reads even though the
+         only light in here is the corridor's own edge glow. */
+      const CH = Math.min(0.34, (sB - sA) * 0.22);   // chamfer length in units
+      const DEPTH = 0.030;                            // how far the plate sits in
+      this.path.sample(sA + CH, C);
+      this.path.sample(sB - CH, D);
+
       for (let i = 0; i < edges && !ghost; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         const ex = p1[0] - p0[0], ey = p1[1] - p0[1];
         const el = Math.hypot(ex, ey) || 1;
         const nx2 = -ey / el, ny2 = ex / el;
 
-        const base = shell.pos.length / 3;
-        put(shell, A, p0[0], p0[1]);
-        put(shell, A, p1[0], p1[1]);
-        put(shell, B, p1[0], p1[1]);
-        put(shell, B, p0[0], p0[1]);
-
-        v3.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2);
-        for (let q = 0; q < 4; q++) shell.nor.push(v3.x, v3.y, v3.z);
-
         const u0 = perim[i] / totalPerim, u1 = perim[Math.min(i + 1, edges)] / totalPerim;
-        shell.uv.push(u0, vA, u1, vA, u1, vB, u0, vB);
-        shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+
+        const quad = (fa, ka, fb, kb, ua, ub, va, vb, nf) => {
+          const base = shell.pos.length / 3;
+          put(shell, fa, p0[0] * ka, p0[1] * ka);
+          put(shell, fa, p1[0] * ka, p1[1] * ka);
+          put(shell, fb, p1[0] * kb, p1[1] * kb);
+          put(shell, fb, p0[0] * kb, p0[1] * kb);
+          for (let q = 0; q < 4; q++) shell.nor.push(nf.x, nf.y, nf.z);
+          shell.uv.push(ua, va, ub, va, ub, vb, ua, vb);
+          shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        };
+
+        const nWall = v3.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2).clone();
+        const inner = 1 - DEPTH;
+
+        // lower chamfer
+        quad(A, 1.0, C, inner, u0, u1, vA, vA + CH * 0.02, nWall);
+        // recessed plate
+        quad(C, inner, D, inner, u0, u1, vA, vB, nWall);
+        // upper chamfer
+        quad(D, inner, B, 1.0, u0, u1, vB, vB, nWall);
       }
     }
 
