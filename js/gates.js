@@ -34,6 +34,7 @@ uniform float uTime;
 uniform float uFade;
 uniform float uSeed;
 uniform float uHit;
+uniform float uDetail;
 
 float sdHexagon(vec2 p, float r){
   const vec3 k = vec3(-0.8660254, 0.5, 0.57735);
@@ -74,8 +75,8 @@ void main(){
   sweep = pow(sweep, 7.0);
 
   float a = 0.0;
-  a += inside * (0.30 + 0.18 * scanB);
-  a += inside * 0.80 * scan * (0.40 + 0.60 * edge);
+  a += inside * (0.34 + 0.18 * scanB);
+  a += inside * mix(0.30, 0.80, uDetail) * scan * (0.40 + 0.60 * edge);
   a += inside * 0.09 * grain;
   a += edge * 1.45;
   a += frame * 0.55;
@@ -136,6 +137,7 @@ export class Gate {
         uFade: { value: 0 },
         uSeed: { value: this.seed },
         uHit: { value: 0 },
+        uDetail: { value: 1 },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -167,7 +169,8 @@ export class Gate {
     u.uTime.value = time;
     u.uColor.value.setHSL((hue + this.hueShift + 1) % 1, 0.85, 0.66);
 
-    const near = THREE.MathUtils.smoothstep(this.d, 1.0, 8.0);
+    const near = THREE.MathUtils.smoothstep(this.d, 2.5, 15.0);
+    u.uDetail.value = THREE.MathUtils.clamp(this.d / 22.0, 0, 1);
     const raw = this.spawnD > 2
       ? THREE.MathUtils.clamp((this.spawnD - this.d) / (this.spawnD * 0.22), 0, 1)
       : 1;

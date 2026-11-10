@@ -89,6 +89,11 @@ scene.add(tunnel.group);
 const gates = new Gates(scene);
 const post = new PostFX(renderer);
 post.setSize(window.innerWidth, window.innerHeight, PR);
+if (params.has('dof')) {
+  const [ap, mb] = params.get('dof').split(',').map(Number);
+  post.dofMat.uniforms.uAperture.value = ap;
+  if (!Number.isNaN(mb)) post.dofMat.uniforms.uMaxBlur.value = mb;
+}
 
 /* ------------------------------------------------------------------ *
  *  Wireframe mode (menu) — the signature look of the original
@@ -494,6 +499,13 @@ function step(dt) {
       }
     }
   }
+
+  // focus: pull to the gate you are about to thread -----------------
+  let focus = 46;
+  for (const g of gates.list) {
+    if (g.d > 1 && g.d < focus) focus = g.d;
+  }
+  post.setFocus(THREE.MathUtils.clamp(focus * 1.05, 26, 130));
 
   // score from distance ------------------------------------------
   if (G.state === State.PLAY) G.score += G.speed * sdt * 0.35;

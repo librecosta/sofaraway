@@ -1,14 +1,86 @@
 import * as THREE from 'three';
 
 /* ------------------------------------------------------------------ *
- *  Minimal post stack: bright-pass -> separable blur -> composite
- *  (bloom, chromatic aberration, vignette, grain, scanlines, flash)
+ *  Post: DOF -> bright pass -> separable blur -> composite
+ *  (depth of field, bloom, chromatic aberration, vignette, grain,
+ *   scanlines, flash, ACES shoulder)
  * ------------------------------------------------------------------ */
+
 const VS = /* glsl */`
 varying vec2 vUv;
 void main(){
   vUv = uv;
   gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+/* linear view-space distance, written straight into R */
+const DEPTH_VS = /* glsl */`
+varying float vDepth;
+void main(){
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vDepth = -mv.z;
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+const DEPTH_FS = /* glsl */`
+varying float vDepth;
+void main(){
+  gl_FragColor = vec4(vDepth, 0.0, 0.0, 1.0);
+}
+`;
+
+const DOF = /* glsl */`precision highp float;
+varying vec2 vUv;
+
+uniform sampler2D tColor;
+uniform sampler2D tDepth;
+uniform vec2  uTexel;     // 1 / resolution
+uniform float uNear;
+uniform float uFar;
+uniform float uFocus;     // world units
+uniform float uAperture;  // how fast CoC grows
+uniform float uMaxBlur;   // max radius, fraction of screen height
+
+float coc(float lin){
+  float rel = abs(lin - uFocus) / max(uFocus, 1.0);
+  return clamp(rel * uAperture, 0.0, 1.0) * uMaxBlur;
+}
+
+void main(){
+  vec3 col = texture2D(tColor, vUv).rgb;
+  float d0 = texture2D(tDepth, vUv).r;
+  float r0 = coc(d0);
+
+  if (r0 < 0.0006) {
+    gl_FragColor = vec4(col, 1.0);
+    return;
+  }
+
+  const int N = 14;
+  float radius = r0;
+  vec3 sum = col;
+  float wsum = 1.0;
+
+  for (int i = 0; i < N; i++) {
+    float fi = float(i);
+    float ang = fi * 2.39996323;                    // golden angle
+    float rad = sqrt((fi + 0.5) / float(N));
+    vec2 off = vec2(cos(ang), sin(ang)) * rad * radius * vec2(uTexel.y / uTexel.x, 1.0);
+
+    vec3 s = texture2D(tColor, vUv + off).rgb;
+    float ds = texture2D(tDepth, vUv + off).r;
+    float rs = coc(ds);
+
+    // a sample contributes if its own circle reaches this pixel
+    float w = smoothstep(0.0, 1.0, rs / max(r0, 1e-4));
+    w = max(w, 0.12);
+    sum += s * w;
+    wsum += w;
+  }
+
+  gl_FragColor = vec4(sum / wsum, 1.0);
 }
 `;
 
@@ -30,7 +102,7 @@ const BLUR = /* glsl */`
 precision highp float;
 varying vec2 vUv;
 uniform sampler2D tSrc;
-uniform vec2 uDir;      // texel-scaled direction
+uniform vec2 uDir;
 void main(){
   vec3 sum = texture2D(tSrc, vUv).rgb * 0.227027;
   sum += texture2D(tSrc, vUv + uDir * 1.384615).rgb * 0.316216;
@@ -69,34 +141,27 @@ void main(){
   vec2 d = uv - 0.5;
   float r2 = dot(d, d);
 
-  // radial chromatic aberration
   vec2 off = d * r2 * uCA;
   vec3 col;
   col.r = texture2D(tScene, uv + off).r;
   col.g = texture2D(tScene, uv).g;
   col.b = texture2D(tScene, uv - off).b;
 
-  vec3 bloom = texture2D(tBloom, uv).rgb;
-  col += bloom * uBloom;
+  col += texture2D(tBloom, uv).rgb * uBloom;
 
   col *= uExposure;
 
-  // vignette
   float vig = smoothstep(0.95, 0.15, r2 * 1.35);
   col *= mix(1.0, vig, uVignette);
 
-  // scanlines
   float sl = 0.5 + 0.5 * sin(uv.y * uRes.y * 3.14159265);
   col *= 1.0 - uScan * 0.5 * sl;
 
-  // film grain
   float g = fract(sin(dot(uv * uRes + uTime * 61.0, vec2(12.9898, 78.233))) * 43758.5453);
   col += (g - 0.5) * uGrain;
 
-  // flash
   col = mix(col, uFlashColor, clamp(uFlash, 0.0, 1.0));
 
-  // gentle filmic shoulder
   col = aces(col * 1.05);
 
   if (uInvert > 0.5) col = 1.0 - col;
@@ -108,7 +173,6 @@ void main(){
 export class PostFX {
   constructor(renderer) {
     this.renderer = renderer;
-    this.enabled = true;
 
     this.scene = new THREE.Scene();
     this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, -1, 1);
@@ -127,16 +191,51 @@ export class PostFX {
     };
 
     this.rtScene = new THREE.WebGLRenderTarget(2, 2, rtOpts);
-    this.rtScene.depthTexture = null;
+    this.rtDof = new THREE.WebGLRenderTarget(2, 2, { ...rtOpts, depthBuffer: false, samples: 0 });
 
     const bw = { ...rtOpts, depthBuffer: false, samples: 0 };
     this.rtA = new THREE.WebGLRenderTarget(2, 2, bw);
     this.rtB = new THREE.WebGLRenderTarget(2, 2, bw);
-    this.rtC = new THREE.WebGLRenderTarget(2, 2, bw);
+
+    // depth comes from its own packed pass — cheap geometry, and it keeps
+    // MSAA on the colour target untouched
+    this.rtDepth = new THREE.WebGLRenderTarget(2, 2, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.HalfFloatType,
+      depthBuffer: true,
+      stencilBuffer: false,
+      samples: 0,
+    });
+
+    // writes view-space distance straight into R — no packing, no decoding
+    this.depthMat = new THREE.ShaderMaterial({
+      vertexShader: DEPTH_VS,
+      fragmentShader: DEPTH_FS,
+      side: THREE.DoubleSide,
+      depthTest: true,
+      depthWrite: true,
+    });
+
+    this.dofMat = new THREE.ShaderMaterial({
+      vertexShader: VS, fragmentShader: DOF,
+      uniforms: {
+        tColor: { value: null },
+        tDepth: { value: null },
+        uTexel: { value: new THREE.Vector2() },
+        uNear: { value: 0.1 },
+        uFar: { value: 420.0 },
+        uFocus: { value: 40.0 },
+        uAperture: { value: 0.38 },
+        uMaxBlur: { value: 0.006 },
+      },
+      depthTest: false, depthWrite: false,
+    });
 
     this.brightMat = new THREE.ShaderMaterial({
       vertexShader: VS, fragmentShader: BRIGHT,
-      uniforms: { tSrc: { value: null }, uThreshold: { value: 0.78 }, uSoft: { value: 0.40 } },
+      uniforms: { tSrc: { value: null }, uThreshold: { value: 0.82 }, uSoft: { value: 0.30 } },
       depthTest: false, depthWrite: false,
     });
 
@@ -153,11 +252,11 @@ export class PostFX {
         tBloom: { value: null },
         uRes: { value: new THREE.Vector2(1, 1) },
         uTime: { value: 0 },
-        uBloom: { value: 1.05 },
-        uCA: { value: 0.010 },
-        uVignette: { value: 0.9 },
-        uGrain: { value: 0.035 },
-        uScan: { value: 0.10 },
+        uBloom: { value: 0.92 },
+        uCA: { value: 0.008 },
+        uVignette: { value: 0.92 },
+        uGrain: { value: 0.030 },
+        uScan: { value: 0.06 },
         uFlash: { value: 0 },
         uFlashColor: { value: new THREE.Color(1, 1, 1) },
         uExposure: { value: 1.0 },
@@ -171,15 +270,25 @@ export class PostFX {
     const W = Math.max(2, Math.floor(w * pr));
     const H = Math.max(2, Math.floor(h * pr));
     this.rtScene.setSize(W, H);
+    this.rtDof.setSize(W, H);
+    this.rtDepth.setSize(Math.max(2, W >> 1), Math.max(2, H >> 1));
+
     const bw = Math.max(2, Math.floor(W / 4));
     const bh = Math.max(2, Math.floor(H / 4));
     this.rtA.setSize(bw, bh);
     this.rtB.setSize(bw, bh);
-    this.rtC.setSize(Math.max(2, W >> 1), Math.max(2, H >> 1));
+
     this.compMat.uniforms.uRes.value.set(W, H);
+    this.dofMat.uniforms.uTexel.value.set(1 / W, 1 / H);
+
     this._W = W; this._H = H;
     this._bw = bw; this._bh = bh;
-    this._hw = Math.max(2, W >> 1); this._hh = Math.max(2, H >> 1);
+  }
+
+  /** focus is in world units; called every frame from the game loop */
+  setFocus(dist) {
+    const u = this.dofMat.uniforms;
+    u.uFocus.value += (dist - u.uFocus.value) * 0.12;
   }
 
   _pass(mat, target) {
@@ -192,16 +301,39 @@ export class PostFX {
   render(scene, camera, time) {
     const r = this.renderer;
 
-    // 1. scene
+    // 1. depth-only pass (gates excluded: they are additive, not geometry)
+    const gateVis = [];
+    const hidden = [];
+    scene.traverse((o) => {
+      if (o.isMesh && o.material && o.material.blending === THREE.AdditiveBlending) {
+        gateVis.push([o, o.visible]);
+        o.visible = false;
+      }
+    });
+    const prevOverride = scene.overrideMaterial;
+    scene.overrideMaterial = this.depthMat;
+    r.setRenderTarget(this.rtDepth);
+    r.clear();
+    r.render(scene, camera);
+    scene.overrideMaterial = prevOverride;
+    for (const [o, v] of gateVis) o.visible = v;
+
+    // 2. scene colour
     r.setRenderTarget(this.rtScene);
     r.clear();
     r.render(scene, camera);
 
-    // 2. bright pass -> quarter res
-    this.brightMat.uniforms.tSrc.value = this.rtScene.texture;
+    // 3. depth of field
+    this.dofMat.uniforms.tColor.value = this.rtScene.texture;
+    this.dofMat.uniforms.tDepth.value = this.rtDepth.texture;
+    this.dofMat.uniforms.uNear.value = camera.near;
+    this.dofMat.uniforms.uFar.value = camera.far;
+    this._pass(this.dofMat, this.rtDof);
+
+    // 4. bloom
+    this.brightMat.uniforms.tSrc.value = this.rtDof.texture;
     this._pass(this.brightMat, this.rtA);
 
-    // 3. two blur iterations H/V at quarter res
     const b = this.blurMat;
     for (let i = 0; i < 2; i++) {
       const scale = i === 0 ? 1.0 : 2.0;
@@ -213,9 +345,9 @@ export class PostFX {
       this._pass(b, this.rtA);
     }
 
-    // 4. composite
+    // 5. composite
     const u = this.compMat.uniforms;
-    u.tScene.value = this.rtScene.texture;
+    u.tScene.value = this.rtDof.texture;
     u.tBloom.value = this.rtA.texture;
     u.uTime.value = time;
     this._pass(this.compMat, null);

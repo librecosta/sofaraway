@@ -73,9 +73,11 @@ the vessel, so the marker lands off-centre and slides across the screen as you
 steer. It is projected every frame with `Vector3.project()`, which means what you
 aim with is exactly what collides.
 
-**No post-processing library.** A hand-rolled three-pass chain: bright-pass at quarter
-resolution → separable Gaussian ×2 → composite with bloom, radial chromatic
-aberration, vignette, grain, scanlines, flash and an ACES shoulder.
+**No post-processing library.** A hand-rolled chain: a half-res depth pass (linear
+view-space distance straight into R) → depth-of-field gather with a 14-tap golden-angle
+kernel → bright-pass at quarter resolution → separable Gaussian ×2 → composite with
+bloom, radial chromatic aberration, vignette, grain, scanlines, flash and an ACES
+shoulder. Focus rides the gate you are about to thread.
 
 **The music is synthesized, not loaded.** Drums, bass, pad and arp are scheduled with
 a 120 ms lookahead against `AudioContext.currentTime`, and the game clock reads back
