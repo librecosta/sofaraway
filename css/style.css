@@ -498,3 +498,29 @@ html,body{
   background:rgba(6,10,12,.72);
 }
 #menu .frame{ color:var(--ui); }
+/* ================================================================== *
+   VOLUME SELECTOR
+ * ================================================================== */
+.vols{
+  display:flex; gap:clamp(8px,1.2vw,18px); margin-top:3.2vh;
+  pointer-events:auto;
+}
+.vol-btn{
+  appearance:none; background:none; border:1px solid rgba(220,238,248,.20);
+  color:inherit; font-family:var(--text); font-weight:500;
+  padding:.6em 1.1em; display:flex; align-items:baseline; gap:.7em;
+  opacity:.45; transition:opacity .2s, border-color .2s, background .2s;
+}
+.vol-btn b{
+  font-family:var(--display); font-weight:700;
+  font-size:clamp(9px,.8vw,12px); letter-spacing:.1em; opacity:.7;
+}
+.vol-btn span{
+  font-size:clamp(8px,.66vw,10px); letter-spacing:.34em;
+}
+.vol-btn:hover{ opacity:.85; }
+.vol-btn.active{
+  opacity:1; background:rgba(116,255,220,.10);
+  border-color:var(--accent);
+}
+.vol-btn.active b{ color:var(--accent); }

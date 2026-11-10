@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10c';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10c';
-import { buildPath } from './path.js?v=2026-11-10c';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10c';
-import { PostFX } from './post.js?v=2026-11-10c';
-import { AudioEngine } from './audio.js?v=2026-11-10c';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10c';
-import { VOL } from './volumes.js?v=2026-11-10c';
-import { Recorder } from './recorder.js?v=2026-11-10c';
+import { buildTextures } from './textures.js?v=2026-11-10d';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10d';
+import { buildPath } from './path.js?v=2026-11-10d';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10d';
+import { PostFX } from './post.js?v=2026-11-10d';
+import { AudioEngine } from './audio.js?v=2026-11-10d';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10d';
+import { VOL } from './volumes.js?v=2026-11-10d';
+import { Recorder } from './recorder.js?v=2026-11-10d';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -807,6 +807,11 @@ window.addEventListener('resize', resize);
  *  UI wiring
  * ------------------------------------------------------------------ */
 document.getElementById('ui').addEventListener('click', (e) => {
+  const volBtn = e.target.closest('[data-vol]');
+  if (volBtn) {
+    location.search = '?vol=' + volBtn.dataset.vol;
+    return;
+  }
   const diffBtn = e.target.closest('[data-diff]');
   if (diffBtn) {
     difficulty = diffBtn.dataset.diff;
@@ -852,6 +857,13 @@ document.getElementById('ui').addEventListener('click', (e) => {
   }
   if (act === 'closepanel') elPanel.classList.add('hidden');
 });
+
+function syncVolume() {
+  for (const b of document.querySelectorAll('[data-vol]')) {
+    b.classList.toggle('active', b.dataset.vol === VOL.id);
+  }
+}
+syncVolume();
 
 function syncDifficulty() {
   for (const b of document.querySelectorAll('[data-diff]')) {

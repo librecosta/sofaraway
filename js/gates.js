@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TUNNEL } from './tunnel.js?v=2026-11-10c';
-import { VOL } from './volumes.js?v=2026-11-10c';
+import { TUNNEL } from './tunnel.js?v=2026-11-10d';
+import { VOL } from './volumes.js?v=2026-11-10d';
 
 /* ------------------------------------------------------------------ *
  *  A bulkhead is not a sheet with a hole in it — it is a set of glass
@@ -91,6 +91,7 @@ uniform vec2  uSize;
 uniform float uHub;
 uniform float uStyle;
 uniform float uAxis;
+uniform float uClip;     // 0 = closed octagon, 1 = open canal
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
@@ -100,6 +101,20 @@ float hash(float x){ return fract(sin(x * 127.1) * 43758.5453); }
 
 void main(){
   if (vDepth < 0.5) discard;
+
+  vec2 p = (vUv - 0.5) * uSize;
+
+  /* clip to the corridor's actual section, before either glass style */
+  float hullD;
+  if (uClip > 0.5) {
+    if (abs(p.x) > uHull.x || p.y < -uHull.y || p.y > 0.55) discard;
+    hullD = min(uHull.x - abs(p.x), min(p.y + uHull.y, 0.55 - p.y));
+  } else {
+    if (abs(p.x) > uHull.x || abs(p.y) > uHull.y) discard;
+    hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
+                (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
+    if (hullD < 0.0) discard;
+  }
 
   /* ---- shutter glass: three horizontal bands, one of them open ---- */
   if (uStyle > 0.5) {
@@ -126,14 +141,6 @@ void main(){
     gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
     return;
   }
-
-  vec2 p = (vUv - 0.5) * uSize;
-
-  // clip to the corridor's octagonal section
-  if (abs(p.x) > uHull.x || abs(p.y) > uHull.y) discard;
-  float hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
-                    (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
-  if (hullD < 0.0) discard;
 
   float r = length(p);
   float t = mod(atan(p.y, p.x) + TAU + PI / 8.0, TAU);
@@ -236,6 +243,7 @@ export class Gate {
         uHub: { value: HUB_R },
         uStyle: { value: VOL.obstacle === 'shutter' ? 1 : 0 },
         uAxis: { value: this.axis },
+        uClip: { value: VOL.topology === 'canal' ? 1 : 0 },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,

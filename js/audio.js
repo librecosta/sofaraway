@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10c';
+import { VOL } from './volumes.js?v=2026-11-10d';
 
 const BPM = VOL.bpm;
 const STEPS_PER_BAR = 16;
