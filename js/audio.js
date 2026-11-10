@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10i';
+import { VOL } from './volumes.js?v=2026-11-10j';
 
 const MOOD = VOL.music;
 
@@ -54,10 +54,22 @@ const PROG_DOWNTEMPO = [
   [55, 59, 62, 66], [50, 54, 57, 61],
 ];
 
-const PROG = MOOD === 'downtempo' ? PROG_DOWNTEMPO : PROG_TECHNO;
+/* industrial sits on a half-time feel: minor, tritone-adjacent, no lift */
+const PROG_INDUSTRIAL = [
+  [40, 43, 46], [41, 44, 47],
+  [40, 43, 46], [34, 38, 41],
+  [40, 43, 46], [41, 44, 47],
+  [40, 43, 46], [36, 39, 43],
+];
+
+const PROG = MOOD === 'downtempo' ? PROG_DOWNTEMPO
+           : MOOD === 'industrial' ? PROG_INDUSTRIAL
+           : PROG_TECHNO;
 
 const ROOT = MOOD === 'downtempo'
   ? [38, 35, 31, 33, 38, 35, 31, 26]
+  : MOOD === 'industrial'
+  ? [28, 29, 28, 22, 28, 29, 28, 24]
   : [45, 45, 41, 41, 48, 48, 43, 43];
 
 const BASS_PATTERN = [
@@ -235,21 +247,30 @@ export class AudioEngine {
     }
 
     // --- drums ---------------------------------------------------
+    const halfTime = MOOD === 'industrial';
+
     if (ending) {
       // drums out, pad and arp only
-    } else if (s % 4 === 0 && energy > 0.20) {
+    } else if (halfTime ? (s === 0 || s === 10) : (s % 4 === 0) && energy > 0.20) {
       this._kick(t, 0.55 + energy * 0.45);
       this._duck(t);
     }
-    if (!ending && (s === 4 || s === 12) && energy > 0.42) this._snare(t, 0.5 + energy * 0.5);
+    if (!ending && energy > 0.42) {
+      if (halfTime ? s === 8 : (s === 4 || s === 12)) this._snare(t, 0.5 + energy * 0.5);
+    }
     if (MOOD === 'downtempo') {
       // only a soft off-beat tick; the sixteenth grid stays empty
       if (!ending && (s === 4 || s === 12)) this._hat(t, 0.18 * (0.5 + energy * 0.6), 0.05);
     } else {
-      if (s % 2 === 0 && energy > 0.22) {
-        this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
+      if (halfTime) {
+        if (s % 4 === 2 && energy > 0.3) this._hat(t, 0.30 * (0.5 + energy * 0.6), 0.018);
+        if (s % 8 === 6 && energy > 0.6) this._hat(t, 0.18, 0.10);
+      } else {
+        if (s % 2 === 0 && energy > 0.22) {
+          this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
+        }
+        if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.bpm) / 4, 0.14, 0.02);
       }
-      if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.bpm) / 4, 0.14, 0.02);
     }
 
     // --- bass ----------------------------------------------------
@@ -368,13 +389,14 @@ export class AudioEngine {
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 7;
-    lp.frequency.setValueAtTime(180, t);
-    lp.frequency.exponentialRampToValueAtTime(1400, t + 0.02);
+    const dirty = MOOD === 'industrial';
+    lp.frequency.setValueAtTime(dirty ? 110 : 180, t);
+    lp.frequency.exponentialRampToValueAtTime(dirty ? 900 : 1400, t + 0.02);
     lp.frequency.exponentialRampToValueAtTime(220, t + dur);
 
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.42 * vel, t + 0.008);
+    g.gain.exponentialRampToValueAtTime((dirty ? 0.55 : 0.42) * vel, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     const g2 = c.createGain();
