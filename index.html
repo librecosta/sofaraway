@@ -66,22 +66,6 @@
       <button class="btn tiny" data-act="fullscreen"><span>FULL SCREEN</span></button>
     </div>
 
-    <div class="panel" id="panel" hidden>
-      <div class="panel-head">SETTINGS</div>
-      <div class="panel-row">
-        <span>QUALITY</span>
-        <div class="seg" id="seg-quality">
-          <button data-q="high">HIGH</button>
-          <button data-q="auto">AUTO</button>
-          <button data-q="low">LOW</button>
-        </div>
-      </div>
-      <div class="panel-row">
-        <span>VOLUME</span>
-        <input id="set-volume" type="range" min="0" max="100" value="80">
-      </div>
-      <button class="panel-close" id="panel-close">CLOSE</button>
-    </div>
 
     <div class="musicbadge">
       <span class="mb-k">MUSIC</span><span class="mb-v">SYNTHESIZED</span>
@@ -163,5 +147,23 @@
   });
 </script>
 <script type="module" src="js/main.js"></script>
+  <div class="modal hidden" id="settings">
+    <div class="panel">
+    <div class="panel-head">SETTINGS</div>
+    <div class="panel-row">
+        <span>QUALITY</span>
+      <div class="seg" id="seg-quality">
+          <button data-q="high">HIGH</button>
+          <button data-q="auto">AUTO</button>
+          <button data-q="low">LOW</button>
+        </div>
+      </div>
+    <div class="panel-row">
+        <span>VOLUME</span>
+        <input id="set-volume" type="range" min="0" max="100" value="80">
+      </div>
+      <button class="panel-close" data-act="closesettings">CLOSE</button>
+    </div>
+  </div>
 </body>
 </html>

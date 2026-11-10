@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10r';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10r';
-import { buildPath } from './path.js?v=2026-11-10r';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10r';
-import { PostFX } from './post.js?v=2026-11-10r';
-import { AudioEngine } from './audio.js?v=2026-11-10r';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10r';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10r';
-import { Recorder } from './recorder.js?v=2026-11-10r';
-import { QUALITY, TIER } from './quality.js?v=2026-11-10r';
+import { buildTextures } from './textures.js?v=2026-11-10s';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10s';
+import { buildPath } from './path.js?v=2026-11-10s';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10s';
+import { PostFX } from './post.js?v=2026-11-10s';
+import { AudioEngine } from './audio.js?v=2026-11-10s';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10s';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10s';
+import { Recorder } from './recorder.js?v=2026-11-10s';
+import { QUALITY, TIER } from './quality.js?v=2026-11-10s';
 
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 
@@ -847,14 +847,6 @@ document.getElementById('ui').addEventListener('click', (e) => {
     location.href = url.toString();
     return;
   }
-  if (e.target.closest('#panel-close') || e.target.closest('#panel')) {
-    if (e.target.closest('#panel-close')) $('panel').hidden = true;
-    return;
-  }
-  if (e.target.closest('[data-act="settings"]')) {
-    $('panel').hidden = !$('panel').hidden;
-    return;
-  }
   const volBtn = e.target.closest('[data-vol-step]');
   if (volBtn) {
     stepVolume(Number(volBtn.dataset.volStep));
@@ -895,14 +887,8 @@ document.getElementById('ui').addEventListener('click', (e) => {
       () => message(url, 2.5)
     );
   }
-  if (act === 'settings') {
-    openPanel('SETTINGS', `
-      MOUSE / TOUCH / ARROWS — steer<br>
-      SPACE — start · restart<br>
-      M — mute · ESC — menu<br><br>
-      Rendering: ${renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'} · DPR ${PR.toFixed(2)}
-    `);
-  }
+  if (act === 'settings') { $('settings').classList.remove('hidden'); syncQuality(); }
+  if (act === 'closesettings') $('settings').classList.add('hidden');
   if (act === 'closepanel') elPanel.classList.add('hidden');
 });
 

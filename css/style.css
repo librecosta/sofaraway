@@ -547,3 +547,34 @@ html,body{
   color:inherit; font:inherit; letter-spacing:.3em; padding:.7em 0; cursor:pointer; opacity:.6;
 }
 .panel-close:hover{ opacity:1; border-color:var(--accent); }
+
+/* ================================================================== *
+   PORTRAIT / NARROW
+ * ================================================================== */
+@media (max-width: 900px), (max-aspect-ratio: 3/4) {
+  #menu .wordmark{ font-size: 9.4vw; letter-spacing:-.02em; white-space:nowrap; }
+  #menu .tagline{ margin-top:4vh; letter-spacing:.3em; }
+  .vols{ margin-top:5vh; }
+  .vol-name{ min-width:60vw; font-size:3.4vw; letter-spacing:.3em; }
+  .vol-nav{ font-size:6vw; padding:.2em .5em; }
+
+  .diff{ gap:2.4vw; margin-top:5vh; }
+  .diff-btn{ padding:.9em 1.1em; }
+  .diff-btn b{ font-size:3vw; }
+
+  /* corners get out of the way; only the essentials stay */
+  .frame{ opacity:.5; }
+  .corner.br .btn span{ display:none; }
+  #menu .corner.tl .stack > *:not(:first-child){ display:none; }
+
+  .hud{ padding:3.2vw; }
+  .hud-blk .k{ font-size:2.6vw; letter-spacing:.3em; }
+  .hud-blk .v{ font-size:6.4vw; }
+  #hud-gates .v{ font-size:4.6vw; }
+  #hud-velocity{ display:none; }
+
+  .panel{ min-width:86vw; padding:6vw 5vw 4vw; font-size:3vw; }
+  .seg button{ padding:.7em 1em; }
+  .panel-row{ gap:4vw; }
+  .end-score{ font-size:22vw; }
+}

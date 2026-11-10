@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10r';
+import { VOL } from './volumes.js?v=2026-11-10s';
 
 const MOOD = VOL.music;
 
