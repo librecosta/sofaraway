@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY } from './quality.js?v=2026-11-10w';
+import { QUALITY } from './quality.js?v=2026-11-10x';
 import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
@@ -198,12 +198,15 @@ export class Tunnel {
 
         const u0 = perim[i] / totalPerim, u1 = perim[Math.min(i + 1, edges)] / totalPerim;
 
-        const quad = (fa, ka, fb, kb, ua, ub, va, vb, nf) => {
+        const lp = (t) => [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
+
+        const quad = (fa, ka, fb, kb, t0, t1, ua, ub, va, vb, nf) => {
+          const q0 = lp(t0), q1 = lp(t1);
           const base = shell.pos.length / 3;
-          put(shell, fa, p0[0] * ka, p0[1] * ka);
-          put(shell, fa, p1[0] * ka, p1[1] * ka);
-          put(shell, fb, p1[0] * kb, p1[1] * kb);
-          put(shell, fb, p0[0] * kb, p0[1] * kb);
+          put(shell, fa, q0[0] * ka, q0[1] * ka);
+          put(shell, fa, q1[0] * ka, q1[1] * ka);
+          put(shell, fb, q1[0] * kb, q1[1] * kb);
+          put(shell, fb, q0[0] * kb, q0[1] * kb);
           for (let q = 0; q < 4; q++) shell.nor.push(nf.x, nf.y, nf.z);
           shell.uv.push(ua, va, ub, va, ub, vb, ua, vb);
           shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -211,13 +214,17 @@ export class Tunnel {
 
         const nWall = v3.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2).clone();
         const inner = 1 - DEPTH;
+        const SEAM = 0.012;                 // half-width of the rib between plates
+        const um = (u0 + u1) * 0.5;
 
-        // lower chamfer
-        quad(A, 1.0, C, inner, u0, u1, vA, vA + CH * 0.02, nWall);
-        // recessed plate
-        quad(C, inner, D, inner, u0, u1, vA, vB, nWall);
-        // upper chamfer
-        quad(D, inner, B, 1.0, u0, u1, vB, vB, nWall);
+        // lower chamfer, full width
+        quad(A, 1.0, C, inner, 0, 1, u0, u1, vA, vA + CH * 0.02, nWall);
+        // plate, split in two by a raised rib down the middle
+        quad(C, inner, D, inner, 0, 0.5 - SEAM, u0, um, vA, vB, nWall);
+        quad(C, 1.0, D, 1.0, 0.5 - SEAM, 0.5 + SEAM, um, um, vA, vB, nWall);
+        quad(C, inner, D, inner, 0.5 + SEAM, 1, um, u1, vA, vB, nWall);
+        // upper chamfer, full width
+        quad(D, inner, B, 1.0, 0, 1, u0, u1, vB, vB, nWall);
       }
     }
 

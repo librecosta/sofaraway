@@ -1,4 +1,4 @@
-import { QUALITY } from './quality.js?v=2026-11-10w';
+import { QUALITY } from './quality.js?v=2026-11-10x';
 import * as THREE from 'three';
 
 /* ------------------------------------------------------------------ *
