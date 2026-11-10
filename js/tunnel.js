@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { QUALITY } from './quality.js?v=2026-11-10u';
 import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
@@ -15,6 +16,7 @@ export const TUNNEL = {
   ring: 3.0,
 };
 
+const RING = QUALITY.ring;   // rib spacing, set by the quality tier
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
@@ -136,7 +138,7 @@ export class Tunnel {
     const totalPerim = perim[edges];
 
     const rings = [];
-    for (let s = s0; s < s1; s += TUNNEL.ring) rings.push(s);
+    for (let s = s0; s < s1; s += RING) rings.push(s);
     rings.push(s1);
 
     const ghost = VOL.topology === 'orbit';   // light frame only, no hull
@@ -335,7 +337,7 @@ export class Tunnel {
 
     const end = Math.min(this.path.length, 380);
     const rings = [];
-    for (let s = 1.0; s < end; s += TUNNEL.ring) rings.push(s);
+    for (let s = 1.0; s < end; s += RING) rings.push(s);
 
     for (const s of rings) {
       this.path.sample(s, A);

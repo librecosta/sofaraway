@@ -24,9 +24,9 @@ const tier = (forced === 'low' || forced === 'mobile' || forced === 'high')
   : (coarse || narrow ? 'mobile' : 'high');
 
 const TABLE = {
-  high:   { antialias: true,  pr: 1.6,  samples: 4, taps: 14, dof: true },
-  mobile: { antialias: false, pr: 1.25, samples: 0, taps: 8,  dof: true },
-  low:    { antialias: false, pr: 1.0,  samples: 0, taps: 6,  dof: false },
+  high:   { antialias: true,  pr: 1.6,  samples: 4, taps: 14, dof: true,  ring: 1.5 },
+  mobile: { antialias: false, pr: 1.25, samples: 0, taps: 8,  dof: true,  ring: 2.4 },
+  low:    { antialias: false, pr: 1.0,  samples: 0, taps: 6,  dof: false, ring: 3.0 },
 };
 
 export const TIER = tier;
