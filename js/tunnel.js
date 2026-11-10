@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY } from './quality.js?v=2026-11-10u';
+import { QUALITY } from './quality.js?v=2026-11-10v';
 import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
@@ -16,7 +16,7 @@ export const TUNNEL = {
   ring: 3.0,
 };
 
-const RING = QUALITY.ring;   // rib spacing, set by the quality tier
+const RING = TUNNEL.ring;    // 3 units: dense enough to read, sparse enough not to stripe
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
@@ -124,6 +124,20 @@ export class Tunnel {
   }
 
   /* ---------------- one chunk ---------------- */
+  get boltGeo() {
+    if (!this._boltGeo) {
+      const g = new THREE.CylinderGeometry(0.040, 0.044, 0.028, 6);
+      g.rotateX(Math.PI / 2);
+      this._boltGeo = g;
+      this._boltMat = new THREE.MeshStandardMaterial({
+        color: 0x4a545e, roughness: 0.42, metalness: 0.9,
+      });
+    }
+    return this._boltGeo;
+  }
+
+  get boltMat() { return this._boltMat; }
+
   _buildChunk(s0, s1) {
     const PR = profile();
     const P = PR.pts;
@@ -230,6 +244,36 @@ export class Tunnel {
       }
     }
 
+    /* ---- bolts: an instanced disc at every profile corner of every ring ---- */
+    const boltMats = [];
+    {
+      const dummy = new THREE.Object3D();
+      const list = [];
+      for (const sPos of rings) {
+        this.path.sample(sPos, A);
+        for (let i = 0; i < edges; i++) {
+          const pt = P[i];
+          const px = pt[0] * 0.975, py = pt[1] * 0.975;
+          v3.copy(A.p).addScaledVector(A.r, px).addScaledVector(A.u, py);
+          dummy.position.copy(v3);
+          dummy.lookAt(
+            v3.x - A.r.x * pt[0] - A.u.x * pt[1],
+            v3.y - A.r.y * pt[0] - A.u.y * pt[1],
+            v3.z - A.r.z * pt[0] - A.u.z * pt[1],
+          );
+          dummy.updateMatrix();
+          list.push(dummy.matrix.clone());
+        }
+      }
+      if (list.length) {
+        const inst = new THREE.InstancedMesh(this.boltGeo, this.boltMat, list.length);
+        for (let i = 0; i < list.length; i++) inst.setMatrixAt(i, list[i]);
+        inst.instanceMatrix.needsUpdate = true;
+        inst.frustumCulled = false;
+        boltMats.push(inst);
+      }
+    }
+
     /* ---- build meshes ---- */
     const geoOf = (d) => {
       const g = new THREE.BufferGeometry();
@@ -240,7 +284,7 @@ export class Tunnel {
       return g;
     };
 
-    const meshes = [];
+    const meshes = boltMats.slice();
     const add = (geo, mat) => {
       const m = new THREE.Mesh(geo, mat);
       m.frustumCulled = false;
