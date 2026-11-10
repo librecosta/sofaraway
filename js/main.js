@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10f';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10f';
-import { buildPath } from './path.js?v=2026-11-10f';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10f';
-import { PostFX } from './post.js?v=2026-11-10f';
-import { AudioEngine } from './audio.js?v=2026-11-10f';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10f';
-import { VOL } from './volumes.js?v=2026-11-10f';
-import { Recorder } from './recorder.js?v=2026-11-10f';
+import { buildTextures } from './textures.js?v=2026-11-10g';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10g';
+import { buildPath } from './path.js?v=2026-11-10g';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10g';
+import { PostFX } from './post.js?v=2026-11-10g';
+import { AudioEngine } from './audio.js?v=2026-11-10g';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10g';
+import { VOL } from './volumes.js?v=2026-11-10g';
+import { Recorder } from './recorder.js?v=2026-11-10g';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -735,19 +735,10 @@ function step(dt) {
    trails at CAM_OFFSET, which is what makes the cursor slide rather than sit
    still in the middle of the screen. */
 function updateCursor() {
-  if (G.state === State.PLAY || G.state === State.CRASH) {
-    camera.updateMatrixWorld();
-    path.sample(G.distance, _camF);
-    _v3.copy(_camF.p)
-      .addScaledVector(_camF.r, CAM.x)
-      .addScaledVector(_camF.u, CAM.y)
-      .addScaledVector(_camF.f, 1.6);
-    _v3.project(camera);
-    const vw = window.innerWidth, vh = window.innerHeight;
-    paintCursor((_v3.x * 0.5 + 0.5) * vw, (-_v3.y * 0.5 + 0.5) * vh);
-  } else {
-    paintCursor(PTR.x, PTR.y);
-  }
+  // The reticle tracks the hand across the whole window. It used to be the
+  // projected vessel position, which meant it could only ever travel the 12%
+  // of the offset the camera does not follow — it looked pinned.
+  paintCursor(PTR.x, PTR.y);
 }
 
 /* ------------------------------------------------------------------ *
@@ -867,7 +858,11 @@ syncVolume();
 
 function syncDifficulty() {
   for (const b of document.querySelectorAll('[data-diff]')) {
-    b.classList.toggle('active', b.dataset.diff === difficulty);
+    const key = b.dataset.diff;
+    b.classList.toggle('active', key === difficulty);
+    const n = DIFFICULTY[key].lives;
+    const em = b.querySelector('em');
+    if (em) em.textContent = n + (n === 1 ? ' LIFE' : ' LIVES');
   }
 }
 syncDifficulty();
