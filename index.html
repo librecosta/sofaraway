@@ -48,10 +48,9 @@
       <div class="rule"></div>
       <div class="tagline">ANYWHERE BUT HERE</div>
       <div class="vols" id="vols">
-        <button class="vol-btn" data-vol="elsewhere"><b>I</b><span>ELSEWHERE</span></button>
-        <button class="vol-btn" data-vol="drift"><b>II</b><span>DRIFT</span></button>
-        <button class="vol-btn" data-vol="descent"><b>III</b><span>DESCENT</span></button>
-        <button class="vol-btn" data-vol="orbit"><b>IV</b><span>ORBIT</span></button>
+        <button class="vol-nav" data-vol-step="-1" aria-label="previous volume">&#8249;</button>
+        <span class="vol-name" id="vol-name">I &middot; ELSEWHERE</span>
+        <button class="vol-nav" data-vol-step="1" aria-label="next volume">&#8250;</button>
       </div>
 
       <div class="diff" id="diff">

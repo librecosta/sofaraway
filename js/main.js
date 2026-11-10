@@ -6,7 +6,7 @@ import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10p';
 import { PostFX } from './post.js?v=2026-11-10p';
 import { AudioEngine } from './audio.js?v=2026-11-10p';
 import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10p';
-import { VOL } from './volumes.js?v=2026-11-10p';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10p';
 import { Recorder } from './recorder.js?v=2026-11-10p';
 
 /* ------------------------------------------------------------------ *
@@ -365,6 +365,10 @@ window.addEventListener('keydown', (e) => {
   if (k === 'r') {
     if (e.shiftKey) rec.download();
     else rec.toggle();
+  }
+  if (G.state === State.MENU && (k === 'arrowleft' || k === 'arrowright')) {
+    stepVolume(k === 'arrowright' ? 1 : -1);
+    return;
   }
   if (k === 'm') { audio.setMuted(!audio.muted); message(audio.muted ? 'MUTED' : 'SOUND ON', 0.8); }
   keys.add(k);
@@ -816,9 +820,9 @@ window.addEventListener('resize', resize);
  *  UI wiring
  * ------------------------------------------------------------------ */
 document.getElementById('ui').addEventListener('click', (e) => {
-  const volBtn = e.target.closest('[data-vol]');
+  const volBtn = e.target.closest('[data-vol-step]');
   if (volBtn) {
-    location.search = '?vol=' + volBtn.dataset.vol;
+    stepVolume(Number(volBtn.dataset.volStep));
     return;
   }
   const diffBtn = e.target.closest('[data-diff]');
@@ -867,10 +871,16 @@ document.getElementById('ui').addEventListener('click', (e) => {
   if (act === 'closepanel') elPanel.classList.add('hidden');
 });
 
+function stepVolume(dir) {
+  const ready = VOLUMES.filter((v) => v.ready);
+  const i = ready.findIndex((v) => v.id === VOL.id);
+  const next = ready[(i + dir + ready.length) % ready.length];
+  if (next && next.id !== VOL.id) location.search = '?vol=' + next.id;
+}
+
 function syncVolume() {
-  for (const b of document.querySelectorAll('[data-vol]')) {
-    b.classList.toggle('active', b.dataset.vol === VOL.id);
-  }
+  const el = $('vol-name');
+  if (el) el.textContent = VOL.subtitle.replace('VOL.', '').trim() + ' \u00b7 ' + VOL.name;
 }
 syncVolume();
 
