@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildTextures } from './textures.js';
 import { Tunnel, TUNNEL } from './tunnel.js';
-import { Gates, cellOf, cellCentre, WALL } from './gates.js';
+import { Gates, sectorOf, sectorPoint } from './gates.js';
 import { PostFX } from './post.js';
 import { AudioEngine } from './audio.js';
 
@@ -423,7 +423,7 @@ function step(dt) {
     let best = null;
     for (const g of gates.list) if (!g.passed && (!best || g.d < best.d)) best = g;
     if (best) {
-      const [hx, hy] = cellCentre(best.open);
+      const [hx, hy] = sectorPoint(best.open);
       CAM.tx = hx;
       CAM.ty = hy;
     }
@@ -478,14 +478,14 @@ function step(dt) {
     for (const g of prevBeatGate) {
       if (!g.passed && g.dBeats <= 0) {
         g.passed = true;
-        const cell = cellOf(CAM.x, CAM.y, 1.06);
+        const sec = sectorOf(CAM.x, CAM.y);
 
-        if (cell === g.open || GOD) {
-          const [cx, cy] = cellCentre(g.open);
-          const off = Math.max(
-            Math.abs(CAM.x - cx) / (WALL.w / 6),
-            Math.abs(CAM.y - cy) / (WALL.h / 6)
-          );
+        if (sec === g.open || GOD) {
+          const ang = Math.atan2(CAM.y, CAM.x);
+          let da = Math.abs(ang - g.open * Math.PI / 4);
+          da = Math.abs(((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2));
+          if (da > Math.PI) da = Math.PI * 2 - da;
+          const off = da / (Math.PI / 8);
           G.gatesPassed++;
           G.combo = Math.min(50, G.combo + 1);
           G.score += 100 * (1 + G.combo * 0.06);
@@ -515,7 +515,7 @@ function step(dt) {
   let locked = false;
   for (const g of gates.list) {
     if (g.d > 3 && g.d < 34) {
-      if (cellOf(CAM.x, CAM.y, 1.06) === g.open) locked = true;
+      if (sectorOf(CAM.x, CAM.y) === g.open) locked = true;
       break;
     }
   }

@@ -2,16 +2,16 @@ import * as THREE from 'three';
 import { TUNNEL } from './tunnel.js';
 
 /* ------------------------------------------------------------------ *
- *  A bulkhead is a slab of lit glass across the corridor with exactly
- *  one aperture punched through it.
+ *  A bulkhead is not a sheet with a hole in it — it is a set of glass
+ *  panes fitted together, one of them missing. The missing pane *is*
+ *  the way through, and its edge is the neighbouring panes' frames.
  *
- *  Judgement is still a 3x3 grid (row * 3 + col, centre never opens),
- *  but nothing in the render says "grid": the glass is one continuous
- *  pane and only the aperture has structure around it.
+ *  Layout: a solid central hub, and eight wedge panes around it.
+ *  Sector index, counter-clockwise from east:
+ *      0 E   1 NE   2 N   3 NW   4 W   5 SW   6 S   7 SE
  *
- *  The slab is drawn twice — once at z, once 0.38 closer — so the two
- *  apertures parallax against each other as you steer. That is where
- *  the sense of thickness comes from.
+ *  Two planes 0.38 apart share the material, so the missing wedge and
+ *  its neighbours parallax against each other — that is the thickness.
  * ------------------------------------------------------------------ */
 export const WALL = {
   w: TUNNEL.a * 2 + 0.20,
@@ -19,26 +19,22 @@ export const WALL = {
 };
 
 export const THICKNESS = 0.38;
+export const HUB_R = 1.02;
+export const SECTORS = 8;
 
-const RING = [0, 1, 2, 3, 5, 6, 7, 8];
-
-export function cellCentre(idx) {
-  const col = idx % 3;
-  const row = Math.floor(idx / 3);
-  return [(col - 1) * (WALL.w / 3), (row - 1) * (WALL.h / 3)];
+/** world position at the middle of a sector's through-gap */
+export function sectorPoint(s, radius = 2.15) {
+  const a = s * (Math.PI / 4);
+  return [Math.cos(a) * radius, Math.sin(a) * radius];
 }
 
-export function cellOf(x, y, grace = 1.0) {
-  const hw = (WALL.w / 6) * grace;
-  const hh = (WALL.h / 6) * grace;
-  let col = Math.round(x / (WALL.w / 3) + 1);
-  let row = Math.round(y / (WALL.h / 3) + 1);
-  col = Math.min(2, Math.max(0, col));
-  row = Math.min(2, Math.max(0, row));
-  const idx = row * 3 + col;
-  const [cx, cy] = cellCentre(idx);
-  if (Math.abs(x - cx) > hw || Math.abs(y - cy) > hh) return -1;
-  return idx;
+/** which wedge a point falls in; -1 inside the hub */
+export function sectorOf(x, y) {
+  const r = Math.hypot(x, y);
+  if (r < HUB_R * 0.96) return -1;
+  let t = Math.atan2(y, x) + Math.PI * 2 + Math.PI / 8;
+  t = ((t % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  return Math.floor(t / (Math.PI / 4)) % SECTORS;
 }
 
 const VERT = /* glsl */`
@@ -57,88 +53,98 @@ precision highp float;
 varying vec2 vUv;
 varying float vDepth;
 
-uniform vec2  uHole;      // aperture centre, in cell units (0..3)
+uniform float uOpen;
 uniform vec3  uColor;
-uniform vec3  uFogColor;
-uniform float uFogDensity;
 uniform float uTime;
 uniform float uHit;
 uniform float uFade;
-uniform vec3  uHull;      // corridor half width / half height / chamfer
+uniform vec3  uHull;
 uniform vec2  uSize;
+uniform float uHub;
 
-/* chamfered-square distance, cell units. negative inside the aperture. */
-float aperture(vec2 q){
-  const float R  = 0.480;   // half aperture
-  const float CH = 0.150;   // corner chamfer
-  vec2 a = abs(q);
-  return max(max(a.x, a.y) - R, (a.x + a.y) - (2.0 * R - CH));
-}
+const float PI = 3.14159265;
+const float TAU = 6.28318531;
+const float STEP = 0.78539816;   // PI / 4
+
+float hash(float x){ return fract(sin(x * 127.1) * 43758.5453); }
 
 void main(){
   if (vDepth < 4.0) discard;
 
+  vec2 p = (vUv - 0.5) * uSize;
+
   // clip to the corridor's octagonal section
-  vec2 lp = (vUv - 0.5) * uSize;
-  if (abs(lp.x) > uHull.x || abs(lp.y) > uHull.y) discard;
-  if (abs(lp.x) + abs(lp.y) > uHull.x + uHull.y - uHull.z) discard;
+  if (abs(p.x) > uHull.x || abs(p.y) > uHull.y) discard;
+  float hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
+                    (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
+  if (hullD < 0.0) discard;
 
-  vec2 g = vUv * 3.0;
+  float r = length(p);
+  float t = mod(atan(p.y, p.x) + TAU + PI / 8.0, TAU);
 
-  // ---- aperture ----------------------------------------------------
-  float sd = aperture(g - uHole);
-  if (sd < 0.0) discard;
+  float sector = floor(t / STEP);
+  float inSector = mod(t, STEP);              // 0..STEP inside the wedge
+  float spoke = min(inSector, STEP - inSector); // angular distance to a seam
 
-  // ---- moving scanlines --------------------------------------------
+  bool inHub = r < uHub;
+  bool isOpen = (!inHub) && (abs(sector - uOpen) < 0.5);
+
+  /* ---------------- the missing pane --------------------------------
+     nothing to draw: the gap is defined by the panes that remain       */
+  if (isOpen) discard;
+
+  // ---- seams: the fitted edges between panes ------------------------
+  float seamAng = smoothstep(0.014, 0.0, spoke * max(r, 0.40)) * step(uHub, r);
+  float seamHub = smoothstep(0.022, 0.0, abs(r - uHub));
+  float seamHull = smoothstep(0.022, 0.0, hullD);
+  float seam = max(max(seamAng, seamHub), seamHull);
+
+  // soft glow hanging off each seam
+  float seamGlow = exp(-abs(r - uHub) * 9.0) * 0.35
+                 + exp(-spoke * max(r, 0.35) * 34.0) * 0.45
+                 + exp(-hullD * 9.0) * 0.30;
+
+  // ---- per-pane variation -------------------------------------------
+  float id = inHub ? 9.9 : sector;
+  float tint = 0.72 + 0.55 * hash(id + 1.0);
+  float tilt = hash(id + 7.0);
+
+  // ---- moving scanlines ---------------------------------------------
   float scan  = 0.5 + 0.5 * sin(vUv.y * 150.0 - uTime * 9.0);
   float scan2 = 0.5 + 0.5 * sin(vUv.y * 17.0 + uTime * 1.3);
   float grain = fract(sin(dot(floor(vUv * 220.0), vec2(12.9898, 78.233))) * 43758.5453);
 
-  // ---- structure ---------------------------------------------------
-  float rim   = exp(-sd * 15.0);                 // cut edge, very bright
-  float inner = exp(-sd * 3.2);                  // soft halo inside the glass
-  float bevel = smoothstep(0.075, 0.0, sd);      // the slab's cut face
+  // ---- glass body ----------------------------------------------------
+  vec3 glass = uColor * (0.50 + 0.80 * scan) * tint;
+  glass *= 0.60 + 0.70 * scan2;
+  glass *= mix(0.55, 1.30, vUv.y);          // lit from below
+  glass += vec3(0.03) * grain;
 
-  // outer frame of the pane, in cell units from the boundary
-  float bd = min(min(g.x, 3.0 - g.x), min(g.y, 3.0 - g.y));
-  float frame = smoothstep(0.12, 0.0, bd) * 0.85 + exp(-bd * 18.0) * 0.7;
+  // the hub is denser, colder glass
+  if (inHub) glass *= 0.55 + 0.35 * smoothstep(0.0, 0.9, r);
 
-  // ---- glass body --------------------------------------------------
-  vec3 glass = uColor * (0.55 + 0.75 * scan);
-  glass *= 0.55 + 0.75 * scan2;
-  glass += vec3(0.04) * grain;
+  // dark groove just inside every seam so the panes read as separate pieces
+  float groove = smoothstep(0.055, 0.0, spoke * max(r, 0.40)) * step(uHub, r);
+  groove = max(groove, smoothstep(0.055, 0.0, abs(r - uHub)) * 0.8);
+  glass *= 1.0 - groove * 0.62;
 
-  // vertical falloff so the slab is lit from below
-  glass *= mix(0.55, 1.25, vUv.y);
+  vec3 col = glass + uColor * seamGlow * 0.55;
 
-  vec3 col = glass;
+  // seams read as bright fitted edges
+  col = mix(col, mix(uColor * 1.7, vec3(1.0), 0.18), seam * 0.42);
 
-  // cut face: brighter toward the aperture mouth, darker deeper in
-  col = mix(col, uColor * 2.2, bevel * 0.75);
-
-  // the rim goes white hot
-  col = mix(col, mix(uColor * 2.6, vec3(1.0), 0.55), clamp(rim, 0.0, 1.0));
-
-  // soft inner halo bleeding into the pane
-  col += uColor * inner * 0.55;
-
-  // frame edge
-  col += uColor * frame * 1.5;
-
-  // ---- alpha -------------------------------------------------------
-  float a = 0.115 + 0.090 * scan;
+  // ---- alpha ---------------------------------------------------------
+  float a = 0.100 + 0.080 * scan;
   a *= 0.55 + 0.60 * scan2;
-  a += bevel * 0.22;
-  a += inner * 0.10;
-  a += rim * 0.95;
-  a += frame * 0.52;
-  a += grain * 0.02;
+  a *= mix(0.8, 1.15, tilt);
+  a += seamGlow * 0.14;
+  a += seam * 0.30;
+  a += grain * 0.015;
   a *= uFade;
 
-  col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
+  if (inHub) a *= 1.25;
 
-  float fogF = 1.0 - exp(-pow(vDepth * uFogDensity, 2.0));
-  a *= 1.0 - fogF * 0.85;
+  col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
 
   gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
 }
@@ -151,30 +157,25 @@ const GEO = new THREE.PlaneGeometry(WALL.w, WALL.h);
  * ------------------------------------------------------------------ */
 export class Gate {
   constructor(rng, time) {
-    this.open = RING[Math.floor(rng() * RING.length) % RING.length];
-    this.style = Math.floor(rng() * 3);
+    this.open = Math.floor(rng() * SECTORS) % SECTORS;
     this.dBeats = 0;
     this.d = 0;
     this.spawnT = time;
     this.passed = false;
     this.hit = 0;
 
-    const col = this.open % 3;
-    const row = Math.floor(this.open / 3);
-
     this.mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
       uniforms: {
-        uHole: { value: new THREE.Vector2(col + 0.5, row + 0.5) },
+        uOpen: { value: this.open },
         uColor: { value: new THREE.Color(0xffffff) },
-        uFogColor: { value: new THREE.Color(0x000000) },
-        uFogDensity: { value: 0.0118 },
         uTime: { value: 0 },
         uHit: { value: 0 },
         uFade: { value: 1 },
         uHull: { value: new THREE.Vector3(TUNNEL.a, TUNNEL.b, TUNNEL.ch) },
         uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
+        uHub: { value: HUB_R },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -192,10 +193,6 @@ export class Gate {
       m.userData.offset = i * THICKNESS;
       this.meshes.push(m);
     }
-  }
-
-  centre() {
-    return cellCentre(this.open);
   }
 
   place(d) {
