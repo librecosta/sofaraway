@@ -75,6 +75,7 @@ html,body{
 #cursor span{ position:absolute; display:block; }
 
 .c-ring{
+  box-sizing:border-box;
   left:0; top:0; width:20px; height:20px;
   margin:-10px 0 0 -10px;
   border:1px solid currentColor;
@@ -334,7 +335,7 @@ html,body{
   background:rgba(4,7,9,.86); backdrop-filter:blur(3px);
   transition:opacity .25s ease;
 }
-.modal.hidden{ opacity:0; pointer-events:none; }
+.modal.hidden{ opacity:0; pointer-events:none; visibility:hidden; }
 .modal-inner{ max-width:min(640px,86vw); text-align:center; }
 .modal-inner .eyebrow{ justify-content:center; }
 #panel-body{
@@ -525,7 +526,7 @@ html,body{
    SETTINGS PANEL
  * ================================================================== */
 .panel{
-  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  position:relative; left:50%; top:50%; transform:translate(-50%,-50%);
   min-width:min(78vw,420px); padding:2.2em 2.4em 1.6em;
   background:rgba(4,8,10,.94); border:1px solid rgba(220,238,248,.22);
   display:flex; flex-direction:column; gap:1.4em; pointer-events:auto;
