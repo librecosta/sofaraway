@@ -89,7 +89,9 @@ const tex = buildTextures();
 /* the corridor is a curve: straights joined by quarter turns */
 const UNITS_PER_BEAT = 20 * (60 / 128);
 /* long enough to still have corridor under you at full boost for the whole song */
-const CORRIDOR_LEN = 7000;
+const PATH_BACK = 4200;          // corridor generated behind the start, for the reel-back
+const START_S = PATH_BACK;
+const CORRIDOR_LEN = PATH_BACK + 7200;
 const path = buildPath(CORRIDOR_LEN);
 const tunnel = new Tunnel(tex, path);
 scene.add(tunnel.group);
@@ -128,9 +130,8 @@ function setWireframe(on) {
   document.body.classList.toggle('wires', on);
   tunnel.setWireframe(on);
   for (const g of gates.list) for (const mm of g.meshes) mm.visible = !on;
-  if (on) tunnel.setHue(0.55, 0.0, 0.5);
 }
-setWireframe(true);
+
 
 /* ------------------------------------------------------------------ *
  *  Audio
@@ -177,6 +178,8 @@ const G = {
   hitFlash: 0,
 };
 
+G.distance = START_S + 80;
+
 const PHASES = [0.44, 0.78, 0.92, 0.57, 0.09, 0.66];
 const PHASE_BEATS = 32;
 const SPAWN_LOOKAHEAD = 9;   // beats of warning before a gate arrives
@@ -212,7 +215,7 @@ function setState(s) {
   show(elMenu, s === State.MENU);
   show(elHud, s === State.PLAY);
   show(elOver, s === State.OVER);
-  setWireframe(s === State.MENU);
+  setWireframe(false);   // the menu now sits over the lit corridor, no x-ray mode
 }
 
 function flash(amount = 0.8, ms = 220, color = '#ffffff') {
@@ -349,7 +352,7 @@ function resetRun() {
   G.gatesTotal = G.chart.length;
   G.maxLives = d.lives;
   G.lives = d.lives;
-  G.distance = 0;
+  G.distance = START_S;
   G.speed = 24;
   G.score = 0;
   G.combo = 0;
@@ -501,9 +504,8 @@ function step(dt) {
   G.time += dt;
 
   if (G.state === State.MENU) {
-    // drift forward and back for ever; the camera leans with the pointer
-    G.menuT += dt;
-    G.distance = 150 + 105 * Math.sin(G.menuT * 0.085);
+    // the menu only ever moves forward, very slowly; the corridor keeps being built
+    G.distance += 2.6 * dt;
     G.beatLocal += dt * BPM / 60;
 
     const dampM = 1 - Math.exp(-dt * 4.5);
@@ -549,9 +551,13 @@ function step(dt) {
 
   // distance ------------------------------------------------------
   if (G.state === State.PLAY) G.distance += G.speed * sdt;
-  else if (G.recoil > 0) {
-    G.recoil = Math.max(0, G.recoil - dt);
-    G.distance -= 300 * sdt;          // knocked back down the corridor
+  else if (G.state === State.CRASH || G.state === State.OVER) {
+    if (G.recoil > 0) {
+      G.recoil = Math.max(0, G.recoil - dt);
+      G.distance -= 300 * sdt;        // the hit knocks you back
+    } else {
+      G.distance -= 16 * sdt;         // then it just keeps receding, for ever
+    }
   } else G.distance += G.speed * sdt * 0.35;
 
   // camera --------------------------------------------------------

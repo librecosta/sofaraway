@@ -351,20 +351,8 @@ html,body{
 .wires .frame{ color:var(--ink); }
 .wires .frame .fc{ opacity:.22; }
 
-.wires .center{ position:relative; }
-.wires .center::before{
-  content:'';
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%,-50%);
-  width:100%; height:min(62vh,540px);
-  background:linear-gradient(180deg,
-    rgba(255,255,255,0)   0%,
-    rgba(255,255,255,.86) 18%,
-    rgba(255,255,255,.90) 50%,
-    rgba(255,255,255,.86) 82%,
-    rgba(255,255,255,0)  100%);
-  pointer-events:none;
-}
+
+
 .wires .center > *{ position:relative; }
 .wires .eyebrow{ opacity:.62; }
 .wires .tagline{ opacity:.9; }
@@ -472,3 +460,41 @@ html,body{
   *, *::before, *::after{ cursor:auto !important; }
   #cursor{ display:none; }
 }
+
+/* ================================================================== *
+   MENU OVER THE LIT CORRIDOR  (light UI, no x-ray sheet)
+ * ================================================================== */
+#menu{ color:var(--ui); }
+#menu .dim{ color:var(--ui-dim); }
+#menu .wordmark{
+  font-size:clamp(30px,8.4vw,124px);
+  color:#f2fbff;
+  text-shadow:0 0 70px rgba(116,255,220,.22), 0 0 160px rgba(116,255,220,.12);
+}
+#menu .rule{
+  background:linear-gradient(90deg,transparent,var(--ui) 18%,var(--ui) 82%,transparent);
+  opacity:.28;
+}
+#menu .tagline{ opacity:.72; margin-top:2.4vh; }
+#menu .diff{ margin-top:4.2vh; }
+#menu .diff-btn{ opacity:.6; }
+#menu .diff-btn.active{ opacity:1; }
+#menu .eyebrow{ opacity:.5; }
+
+#menu .diff-btn{
+  border-color:rgba(220,238,248,.30);
+  color:rgba(220,238,248,.75);
+}
+#menu .diff-btn.active{
+  background:var(--accent);
+  border-color:var(--accent);
+  color:#04140f;
+}
+#menu .diff-btn.active em{ opacity:.7; }
+
+#menu .btn{ color:var(--ui); }
+#menu .musicbadge{
+  border-color:rgba(220,238,248,.22);
+  background:rgba(6,10,12,.72);
+}
+#menu .frame{ color:var(--ui); }
