@@ -578,3 +578,36 @@ html,body{
   .panel-row{ gap:4vw; }
   .end-score{ font-size:22vw; }
 }
+
+/* ================================================================== *
+   HUD PORTRAIT
+ * ================================================================== */
+@media (max-width: 900px), (max-aspect-ratio: 3/4) {
+  /* four corners become two bars: score and gates on top, section beneath,
+     combo bottom-right. Nothing overlaps the play area. */
+  #hud{ padding:0; }
+
+  .hud-tl{ top:4vw; left:4vw; }
+  /* gates move to the bottom-left, replacing the velocity bar. Left-anchored
+     so the count can never run off the right edge on a narrow screen */
+  .hud-tr{ top:auto; bottom:5vw; left:4vw; right:auto; text-align:left; }
+  .hud-tr .key{ display:none; }
+  .hud-tc{ top:4vw; left:50%; transform:translateX(-50%); text-align:center; }
+
+  .hud-tl .value{ font-size:9vw; line-height:.95; }
+  .hud-tr .value{ font-size:4.4vw; letter-spacing:.04em; }
+  .hud-tc .value.sm{ font-size:3.2vw; letter-spacing:.34em; }
+  .hud-tc .key, .hud-tl .key, .hud-tr .key{ font-size:2.2vw; letter-spacing:.3em; }
+
+  .lives{ gap:1.2vw; margin-top:1.4vw; justify-content:center; }
+  .lives i{ width:5vw; height:0.7vw; }
+
+  .hud-bl{ display:none; }                    /* velocity is decoration */
+  .hud-br{ bottom:5vw; right:4vw; }
+  .hud-br .value{ font-size:6.6vw; }
+
+  .boost{ bottom:6vw; left:50%; transform:translateX(-50%); font-size:3vw; letter-spacing:.4em; }
+  .hint{ bottom:22vh; }
+  .hint b{ font-size:3.4vw; letter-spacing:.34em; }
+  .hint span{ font-size:2.6vw; letter-spacing:.3em; }
+}
