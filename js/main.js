@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10x';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10x';
-import { buildPath } from './path.js?v=2026-11-10x';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10x';
-import { PostFX } from './post.js?v=2026-11-10x';
-import { AudioEngine } from './audio.js?v=2026-11-10x';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10x';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10x';
-import { Recorder } from './recorder.js?v=2026-11-10x';
-import { QUALITY, TIER } from './quality.js?v=2026-11-10x';
+import { buildTextures } from './textures.js?v=2026-11-10y';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10y';
+import { buildPath } from './path.js?v=2026-11-10y';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10y';
+import { PostFX } from './post.js?v=2026-11-10y';
+import { AudioEngine } from './audio.js?v=2026-11-10y';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10y';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10y';
+import { Recorder } from './recorder.js?v=2026-11-10y';
+import { QUALITY, TIER } from './quality.js?v=2026-11-10y';
 
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 
@@ -235,6 +235,23 @@ let currentHue = PHASES[0];
 let phaseIndex = 0;
 
 const CAM = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
+/* The section is an octagon, not a box: |x| <= a and |y| <= b are not enough,
+   the chamfer is the line |x| + |y| = a + b - ch. Clamp against all three or the
+   camera ends up outside the hull on a corner and the wall clips away. */
+function clampSection(x, y, margin) {
+  const ax = TUNNEL.a - margin;
+  const ay = TUNNEL.b - margin;
+  const diag = TUNNEL.a + TUNNEL.b - TUNNEL.ch - margin * 1.9;
+  let px = THREE.MathUtils.clamp(x, -ax, ax);
+  let py = THREE.MathUtils.clamp(y, -ay, ay);
+  const d = Math.abs(px) + Math.abs(py);
+  if (d > diag && d > 1e-4) {
+    const k = diag / d;
+    px *= k; py *= k;
+  }
+  return [px, py];
+}
+
 const RANGE_X = TUNNEL.a - 0.32;
 const RANGE_Y = TUNNEL.b - 0.32;
 /* the camera trails the vessel instead of sitting on it, so the marker you
@@ -339,8 +356,13 @@ const TOUCH_LIFT = 64;
 function pointerToTarget(cx, cy) {
   const nx = (cx / window.innerWidth) * 2 - 1;
   const ny = (cy / window.innerHeight) * 2 - 1;
-  CAM.tx = THREE.MathUtils.clamp(nx, -1, 1) * RANGE_X;
-  CAM.ty = THREE.MathUtils.clamp(-ny, -1, 1) * RANGE_Y;
+  const [tx, ty] = clampSection(
+    THREE.MathUtils.clamp(nx, -1, 1) * RANGE_X,
+    THREE.MathUtils.clamp(-ny, -1, 1) * RANGE_Y,
+    0.34,
+  );
+  CAM.tx = tx;
+  CAM.ty = ty;
 }
 
 window.addEventListener('pointermove', (e) => {
@@ -353,8 +375,13 @@ function touchSteer(cx, cy) {
   if (!touchLast) { touchLast = { x: cx, y: cy }; return; }
   const kx = (RANGE_X * 2) / (window.innerWidth * 0.62);
   const ky = (RANGE_Y * 2) / (window.innerHeight * 0.62);
-  CAM.tx = THREE.MathUtils.clamp(CAM.tx + (cx - touchLast.x) * kx, -RANGE_X, RANGE_X);
-  CAM.ty = THREE.MathUtils.clamp(CAM.ty - (cy - touchLast.y) * ky, -RANGE_Y, RANGE_Y);
+  const [nx2, ny2] = clampSection(
+    CAM.tx + (cx - touchLast.x) * kx,
+    CAM.ty - (cy - touchLast.y) * ky,
+    0.34,
+  );
+  CAM.tx = nx2;
+  CAM.ty = ny2;
   touchLast = { x: cx, y: cy };
   // the reticle rides above the thumb so the barrier stays visible
   PTR.x = window.innerWidth * 0.5 + (CAM.tx / RANGE_X) * window.innerWidth * 0.31;
@@ -568,8 +595,9 @@ function updateHud(force) {
  * ------------------------------------------------------------------ */
 function placeCamera() {
   path.sample(G.distance, _camF);
-  const cx = THREE.MathUtils.clamp(CAM.x * CAM_OFFSET, -CAM_LIMIT_X, CAM_LIMIT_X);
-  const cy = THREE.MathUtils.clamp(CAM.y * CAM_OFFSET, -CAM_LIMIT_Y, CAM_LIMIT_Y);
+  const [cx, cy] = clampSection(
+    CAM.x * CAM_OFFSET, CAM.y * CAM_OFFSET, 0.62,
+  );
   camera.position.copy(_camF.p)
     .addScaledVector(_camF.r, cx)
     .addScaledVector(_camF.u, cy);
