@@ -6,7 +6,9 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10d';
+import { VOL } from './volumes.js?v=2026-11-10e';
+
+const MOOD = VOL.music;
 
 const BPM = VOL.bpm;
 const STEPS_PER_BAR = 16;
@@ -26,18 +28,25 @@ function energyAt(beat) {
   return 0.15;
 }
 
-const PROG = [
-  [57, 60, 64], // Am
-  [57, 60, 64],
-  [53, 57, 60], // F
-  [53, 57, 60],
-  [48, 52, 55], // C
-  [48, 52, 55],
-  [55, 59, 62], // G
-  [55, 59, 62],
+/* downtempo drifts through maj7 colour rather than driving minor triads */
+const PROG_TECHNO = [
+  [57, 60, 64], [57, 60, 64],
+  [53, 57, 60], [53, 57, 60],
+  [48, 52, 55], [48, 52, 55],
+  [55, 59, 62], [55, 59, 62],
+];
+const PROG_DOWNTEMPO = [
+  [62, 66, 69, 73], [59, 62, 66, 69],
+  [55, 59, 62, 66], [57, 60, 64, 67],
+  [62, 66, 69, 73], [59, 62, 66, 69],
+  [55, 59, 62, 66], [50, 54, 57, 61],
 ];
 
-const ROOT = [45, 45, 41, 41, 48, 48, 43, 43];
+const PROG = MOOD === 'downtempo' ? PROG_DOWNTEMPO : PROG_TECHNO;
+
+const ROOT = MOOD === 'downtempo'
+  ? [38, 35, 31, 33, 38, 35, 31, 26]
+  : [45, 45, 41, 41, 48, 48, 43, 43];
 
 const BASS_PATTERN = [
   { s: 0,  o: 0,  d: 0.22, v: 1.0 },

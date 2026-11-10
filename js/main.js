@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10d';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10d';
-import { buildPath } from './path.js?v=2026-11-10d';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10d';
-import { PostFX } from './post.js?v=2026-11-10d';
-import { AudioEngine } from './audio.js?v=2026-11-10d';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10d';
-import { VOL } from './volumes.js?v=2026-11-10d';
-import { Recorder } from './recorder.js?v=2026-11-10d';
+import { buildTextures } from './textures.js?v=2026-11-10e';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10e';
+import { buildPath } from './path.js?v=2026-11-10e';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10e';
+import { PostFX } from './post.js?v=2026-11-10e';
+import { AudioEngine } from './audio.js?v=2026-11-10e';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10e';
+import { VOL } from './volumes.js?v=2026-11-10e';
+import { Recorder } from './recorder.js?v=2026-11-10e';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -217,8 +217,8 @@ const RANGE_Y = TUNNEL.b - 0.32;
 /* the camera trails the vessel instead of sitting on it, so the marker you
    steer is visibly *off-centre* — first person, but not glued to the axis */
 const CAM_OFFSET = 0.88;
-const CAM_LIMIT_X = TUNNEL.a - 0.95;   // the camera never touches the wall
-const CAM_LIMIT_Y = TUNNEL.b - 0.95;
+const CAM_LIMIT_X = TUNNEL.a - 0.18;   // effectively free; only stops a hard scrape
+const CAM_LIMIT_Y = TUNNEL.b - 0.18;
 const _v3 = new THREE.Vector3();
 
 /* ------------------------------------------------------------------ *
