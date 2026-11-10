@@ -123,12 +123,13 @@ export class PostFX {
       type: THREE.HalfFloatType,
       depthBuffer: true,
       stencilBuffer: false,
+      samples: 4,
     };
 
     this.rtScene = new THREE.WebGLRenderTarget(2, 2, rtOpts);
     this.rtScene.depthTexture = null;
 
-    const bw = { ...rtOpts, depthBuffer: false };
+    const bw = { ...rtOpts, depthBuffer: false, samples: 0 };
     this.rtA = new THREE.WebGLRenderTarget(2, 2, bw);
     this.rtB = new THREE.WebGLRenderTarget(2, 2, bw);
     this.rtC = new THREE.WebGLRenderTarget(2, 2, bw);

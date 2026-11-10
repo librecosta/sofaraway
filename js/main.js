@@ -25,7 +25,7 @@ THREE.ColorManagement.enabled = false;
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: false,
+  antialias: true,
   alpha: false,
   powerPreference: 'high-performance',
   stencil: false,
@@ -93,19 +93,17 @@ post.setSize(window.innerWidth, window.innerHeight, PR);
 /* ------------------------------------------------------------------ *
  *  Wireframe mode (menu) — the signature look of the original
  * ------------------------------------------------------------------ */
-const wireMat = new THREE.MeshBasicMaterial({
-  color: 0x05070a,
-  wireframe: true,
-  fog: true,
-});
+const wireMat = null;
+void wireMat;
 let wireframe = false;
 function setWireframe(on) {
   if (wireframe === on) return;
   wireframe = on;
-  scene.overrideMaterial = on ? wireMat : null;
   fog.color.setHex(on ? 0xffffff : FOG_PLAY);
   renderer.setClearColor(on ? 0xffffff : 0x000000, 1);
   document.body.classList.toggle('wires', on);
+  tunnel.setWireframe(on);
+  for (const g of gates.list) g.mesh.visible = !on;
   if (on) tunnel.setHue(0.55, 0.0, 0.5);
 }
 setWireframe(true);
@@ -152,6 +150,10 @@ let phaseIndex = 0;
 const CAM = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
 const RANGE_X = TUNNEL.a - 0.45;
 const RANGE_Y = TUNNEL.b - 0.45;
+/* the camera trails the vessel instead of sitting on it, so the marker you
+   steer is visibly *off-centre* — first person, but not glued to the axis */
+const CAM_OFFSET = 0.42;
+const _v3 = new THREE.Vector3();
 
 /* ------------------------------------------------------------------ *
  *  DOM
@@ -161,7 +163,9 @@ if (params.get('ui') === '0') $('ui').style.display = 'none';
 const elMenu = $('menu'), elHud = $('hud'), elOver = $('over');
 const elScore = $('hud-score'), elBest = $('hud-best');
 const elSpeed = $('hud-speed'), elCombo = $('hud-combo');
-const elReticle = $('reticle'), elMsg = $('center-msg');
+const elMsg = $('center-msg');
+const elVessel = $('vessel');
+const elCursor = $('cursor');
 const elFlash = $('flash'), elPanel = $('panel');
 const elOverScore = $('over-score'), elOverSub = $('over-sub');
 
@@ -191,6 +195,35 @@ function message(text, secs = 0.9) {
   elMsg.classList.add('show');
   msgTimer = secs;
 }
+
+/* ------------------------------------------------------------------ *
+ *  Custom cursor — always visible, never the OS pointer
+ * ------------------------------------------------------------------ */
+function paintCursor(x, y) {
+  elCursor.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+}
+paintCursor(window.innerWidth / 2, window.innerHeight / 2);
+if (params.has('cur')) {
+  const [cx, cy] = params.get('cur').split(',').map(Number);
+  paintCursor(cx, cy);
+}
+
+window.addEventListener('pointermove', (e) => {
+  paintCursor(e.clientX, e.clientY);
+  if (e.pointerType === 'touch') return;
+  elCursor.classList.remove('hidden');
+}, { passive: true });
+
+window.addEventListener('pointerover', (e) => {
+  const t = e.target;
+  const hit = t && t.closest ? t.closest('[data-act]') : null;
+  elCursor.classList.toggle('hover', !!hit);
+}, true);
+
+window.addEventListener('pointerdown', () => elCursor.classList.add('down'));
+window.addEventListener('pointerup', () => elCursor.classList.remove('down'));
+document.addEventListener('pointerleave', () => elCursor.classList.add('hidden'));
+document.addEventListener('pointerenter', () => elCursor.classList.remove('hidden'));
 
 /* ------------------------------------------------------------------ *
  *  Input
@@ -398,9 +431,10 @@ function step(dt) {
   const vx = (CAM.x - prevX) / Math.max(sdt, 1e-4);
   CAM.roll += ((-vx * 0.045) - CAM.roll) * Math.min(1, sdt * 8);
 
-  camera.position.x = CAM.x;
-  camera.position.y = CAM.y;
+  camera.position.x = CAM.x * CAM_OFFSET;
+  camera.position.y = CAM.y * CAM_OFFSET;
   camera.rotation.z = CAM.roll;
+  camera.updateMatrixWorld();
 
   // beat pulse ----------------------------------------------------
   const frac = G.beat - Math.floor(G.beat);
@@ -473,7 +507,7 @@ function step(dt) {
       break;
     }
   }
-  elReticle.classList.toggle('lock', locked);
+  elVessel.classList.toggle('lock', locked && G.state === State.PLAY);
 
   // shake ---------------------------------------------------------
   if (G.shake > 0) {
@@ -488,7 +522,27 @@ function step(dt) {
     if (msgTimer <= 0) elMsg.classList.remove('show');
   }
 
+  updateVessel();
+
   updateHud();
+}
+
+/* Because the camera trails the vessel (CAM_OFFSET), the marker lands
+   off-centre and slides across the screen as you steer. This *is* the
+   in-game cursor, so it has to be recomputed on resize as well. */
+function updateVessel() {
+  if (G.state !== State.PLAY && G.state !== State.CRASH) {
+    elVessel.classList.add('hidden');
+    return;
+  }
+  camera.updateMatrixWorld();
+  _v3.set(CAM.x, CAM.y, -1.6).project(camera);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const sx = (_v3.x * 0.5 + 0.5) * vw;
+  const sy = (-_v3.y * 0.5 + 0.5) * vh;
+  elVessel.style.transform =
+    `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) rotate(${(-CAM.roll * 57.2958).toFixed(2)}deg)`;
+  elVessel.classList.remove('hidden');
 }
 
 /* ------------------------------------------------------------------ *
@@ -510,7 +564,7 @@ function render(now) {
     document.getElementById('errbox').textContent =
       `state=${G.state} wire=${wireframe} calls=${i.calls} tris=${i.triangles} ` +
       `gates=${gates.list.length} d=${G.distance.toFixed(1)} beat=${G.beat.toFixed(2)} ` +
-      `hue=${currentHue.toFixed(3)} cam=${camera.position.x.toFixed(2)},${camera.position.y.toFixed(2)}`;
+      `hue=${currentHue.toFixed(3)}`;
   }
 }
 
@@ -537,6 +591,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   post.setSize(w, h, PR);
+  if (typeof updateVessel === 'function') updateVessel();
 }
 window.addEventListener('resize', resize);
 
@@ -592,11 +647,7 @@ function openPanel(title, html) {
 /* ------------------------------------------------------------------ *
  *  Start
  * ------------------------------------------------------------------ */
-document.body.classList.add('showcursor');
 resize();
-requestAnimationFrame(() => {
-  document.body.classList.remove('showcursor');
-});
 
 if (FIXED_T !== null) {
   // deterministic capture: simulate, then present a single frame
@@ -609,9 +660,9 @@ if (FIXED_T !== null) {
     acc += FIXED_DT;
   }
   render(performance.now());
-  document.body.classList.add('showcursor');
   // keep presenting so the compositor definitely picks up the frame
   (function tick() {
+    updateVessel();
     render(performance.now());
     requestAnimationFrame(tick);
   })();

@@ -37,6 +37,7 @@ export class Tunnel {
     this._buildRibs(tex);
     this._buildStrips();
     this._buildWallBars();
+    this._buildWire();
 
     this.lights = [];
     this._buildLights();
@@ -283,6 +284,62 @@ export class Tunnel {
     this.group.add(this.bars);
   }
 
+  /* ---------------- menu wireframe: clean architectural line work ----------------
+     Deliberately NOT a triangle wireframe. Only rings, seams and radial ticks,
+     so nothing ever crosses a face diagonally.                                */
+  _buildWire() {
+    const P = profile();
+    const n = P.length;
+    const pos = [];
+
+    const seg = (a, b) => {
+      pos.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+    };
+
+    const INNER = 0.955;
+    const step = TUNNEL.seg * 0.5;
+    const Z0 = -1.2;
+
+    // ring pairs, dense enough to read as a structure rather than a cage
+    for (let z = Z0; z >= TUNNEL.zFar; z -= step) {
+      for (let i = 0; i < n; i++) {
+        const p0 = P[i], p1 = P[(i + 1) % n];
+        seg([p0[0], p0[1], z], [p1[0], p1[1], z]);
+        seg([p0[0] * INNER, p0[1] * INNER, z - 0.06], [p1[0] * INNER, p1[1] * INNER, z - 0.06]);
+      }
+    }
+
+    // radial panel ticks on the module grid only
+    for (let z = Z0; z >= TUNNEL.zFar; z -= TUNNEL.seg) {
+      for (let i = 0; i < n; i++) {
+        const p = P[i];
+        seg([p[0], p[1], z], [p[0] * INNER, p[1] * INNER, z - 0.06]);
+      }
+    }
+
+    // longitudinal seams down every corner
+    for (let i = 0; i < n; i++) {
+      const p = P[i];
+      seg([p[0], p[1], Z0], [p[0], p[1], TUNNEL.zFar]);
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+
+    const m = new THREE.LineBasicMaterial({
+      color: 0x0a0d10,
+      transparent: true,
+      opacity: 1,
+      fog: true,
+      depthWrite: false,
+    });
+
+    this.wire = new THREE.LineSegments(g, m);
+    this.wire.frustumCulled = false;
+    this.wire.visible = false;
+    this.group.add(this.wire);
+  }
+
   /* ---------------- moving light rig ---------------- */
   _buildLights() {
     this.hemi = new THREE.HemisphereLight(0x88bbdd, 0x08090b, 0.22);
@@ -358,9 +415,12 @@ export class Tunnel {
   }
 
   setWireframe(on) {
-    this.shell.material.wireframe = on;
-    this.ribs.material.wireframe = on;
-    for (const s of this.strips) s.mesh.visible = !on;
-    if (this.bars) this.bars.visible = !on;
+    const solid = !on;
+    this.shell.visible = solid;
+    this.ribs.visible = solid;
+    this.rims.visible = solid;
+    this.bars.visible = solid;
+    for (const s of this.strips) s.mesh.visible = solid;
+    if (this.wire) this.wire.visible = on;
   }
 }

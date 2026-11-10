@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#000000">
 <meta name="description" content="ELSEWHERE — a hypnotic browser rhythm runner. Thread the gates, ride the beat. Procedural music, procedural worlds, zero assets.">
 <title>ELSEWHERE — a rhythm runner</title>
+<link rel="preload" href="css/fonts/rajdhani-300.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="css/fonts/chakra-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
@@ -15,28 +17,59 @@
 
 <canvas id="gl"></canvas>
 
+<!-- ============ custom cursor ============ -->
+<div id="cursor" aria-hidden="true">
+  <span class="c-ring"></span>
+  <span class="c-tick t"></span>
+  <span class="c-tick b"></span>
+  <span class="c-tick l"></span>
+  <span class="c-tick r"></span>
+  <span class="c-dot"></span>
+</div>
+
+<!-- ============ in-flight vessel marker ============ -->
+<div id="vessel" aria-hidden="true">
+  <svg viewBox="0 0 120 120">
+    <polygon class="v-hex" points="60,8 105,34 105,86 60,112 15,86 15,34"/>
+    <path class="v-br" d="M8 30 L8 8 L30 8"/>
+    <path class="v-br" d="M90 8 L112 8 L112 30"/>
+    <path class="v-br" d="M112 90 L112 112 L90 112"/>
+    <path class="v-br" d="M30 112 L8 112 L8 90"/>
+  </svg>
+  <i class="v-dot"></i>
+</div>
+
 <div id="ui">
+
+  <div class="frame" aria-hidden="true">
+    <i class="fc tl"></i><i class="fc tr"></i><i class="fc bl"></i><i class="fc br"></i>
+  </div>
 
   <!-- ============ MENU ============ -->
   <section id="menu" class="screen">
     <div class="top">
-      <button class="btn tiny" data-act="credits">CREDITS</button>
-      <button class="btn tiny" data-act="share">SHARE</button>
+      <button class="btn tiny" data-act="credits"><span>CREDITS</span></button>
+      <button class="btn tiny" data-act="share"><span>SHARE</span></button>
     </div>
 
     <div class="center">
-      <h1 class="wordmark">Elsewhere</h1>
+      <div class="eyebrow">
+        <i></i><span>VOL. I &nbsp;/&nbsp; PROCEDURAL&nbsp;RUNNER</span><i></i>
+      </div>
+      <h1 class="wordmark">ELSEWHERE</h1>
+      <div class="rule"></div>
       <div class="tagline">ANYWHERE BUT HERE</div>
-      <div class="tagline dim">A BROWSER RHYTHM RUNNER &middot; VOL. I</div>
     </div>
 
     <div class="bottom">
-      <button class="btn tiny" data-act="settings">SETTINGS</button>
-      <button class="btn start" data-act="start">PRESS SPACE TO START</button>
-      <button class="btn tiny" data-act="fullscreen">FULL SCREEN</button>
+      <button class="btn tiny" data-act="settings"><span>SETTINGS</span></button>
+      <button class="btn start" data-act="start"><span>PRESS SPACE TO START</span></button>
+      <button class="btn tiny" data-act="fullscreen"><span>FULL SCREEN</span></button>
     </div>
 
-    <div class="musicbadge">MUSIC BY<br><b>PROCEDURAL</b></div>
+    <div class="musicbadge">
+      <span class="mb-k">MUSIC</span><span class="mb-v">SYNTHESIZED</span>
+    </div>
   </section>
 
   <!-- ============ HUD ============ -->
@@ -50,18 +83,13 @@
       <div class="value dim" id="hud-best">0</div>
     </div>
     <div class="hud-bl">
-      <div class="label">SPEED</div>
+      <div class="label">VELOCITY</div>
       <div class="bar"><i id="hud-speed"></i></div>
+      <div class="ticks"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     </div>
     <div class="hud-br">
-      <div class="label">COMBO</div>
+      <div class="label">LINK</div>
       <div class="value" id="hud-combo">&times;1</div>
-    </div>
-
-    <div class="reticle" id="reticle">
-      <svg viewBox="0 0 100 100" width="100%" height="100%">
-        <polygon points="50,6 88,28 88,72 50,94 12,72 12,28" fill="none" stroke="currentColor" stroke-width="2.5"/>
-      </svg>
     </div>
 
     <div class="center-msg" id="center-msg"></div>
@@ -70,23 +98,22 @@
   <!-- ============ GAME OVER ============ -->
   <section id="over" class="screen hidden">
     <div class="center">
-      <div class="over-title">RUN ENDED</div>
+      <div class="eyebrow"><i></i><span>RUN TERMINATED</span><i></i></div>
       <div class="over-score" id="over-score">0</div>
       <div class="over-sub" id="over-sub">DISTANCE 0 M</div>
-      <button class="btn start" data-act="restart">SPACE TO RUN AGAIN</button>
-      <button class="btn tiny" data-act="menu">BACK TO MENU</button>
+      <button class="btn start" data-act="restart"><span>SPACE TO RUN AGAIN</span></button>
+      <button class="btn tiny" data-act="menu"><span>BACK TO MENU</span></button>
     </div>
   </section>
 
-  <!-- ============ OVERLAYS ============ -->
   <div id="flash"></div>
   <div id="shade"></div>
 
   <section id="panel" class="modal hidden">
     <div class="modal-inner">
-      <h2 id="panel-title">CREDITS</h2>
+      <div class="eyebrow"><i></i><span id="panel-title">CREDITS</span><i></i></div>
       <div id="panel-body"></div>
-      <button class="btn tiny" data-act="closepanel">CLOSE</button>
+      <button class="btn tiny" data-act="closepanel"><span>CLOSE</span></button>
     </div>
   </section>
 

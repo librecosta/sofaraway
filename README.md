@@ -62,9 +62,16 @@ speed ramps.
 exists in GLSL (drawing the hole) and in JS (collision). The shader and the physics
 cannot disagree about where the gap is.
 
-**The wireframe menu is one line.** `scene.overrideMaterial = MeshBasicMaterial({ wireframe: true })`
-plus a white clear colour and white fog turns the entire scene into the X-ray look
-used on the title screen.
+**The wireframe menu is not a triangle wireframe.** Drawing the scene with
+`wireframe: true` gives you every quad diagonal, which reads as noise. The title
+screen instead uses a dedicated `LineSegments` layer: ring pairs on a half-module
+grid, radial panel ticks, and eight longitudinal seams — nothing crosses a face
+diagonally, so every line is parallel or concentric.
+
+**The in-game cursor is not a fixed reticle.** The camera sits at 42% of the way to
+the vessel, so the marker lands off-centre and slides across the screen as you
+steer. It is projected every frame with `Vector3.project()`, which means what you
+aim with is exactly what collides.
 
 **No post-processing library.** A hand-rolled three-pass chain: bright-pass at quarter
 resolution → separable Gaussian ×2 → composite with bloom, radial chromatic
