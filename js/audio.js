@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10e';
+import { VOL } from './volumes.js?v=2026-11-10f';
 
 const MOOD = VOL.music;
 
@@ -210,10 +210,15 @@ export class AudioEngine {
       this._duck(t);
     }
     if ((s === 4 || s === 12) && energy > 0.42) this._snare(t, 0.5 + energy * 0.5);
-    if (s % 2 === 0 && energy > 0.22) {
-      this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
+    if (MOOD === 'downtempo') {
+      // only a soft off-beat tick; the sixteenth grid stays empty
+      if (s === 4 || s === 12) this._hat(t, 0.18 * (0.5 + energy * 0.6), 0.05);
+    } else {
+      if (s % 2 === 0 && energy > 0.22) {
+        this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
+      }
+      if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.bpm) / 4, 0.14, 0.02);
     }
-    if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.bpm) / 4, 0.14, 0.02);
 
     // --- bass ----------------------------------------------------
     if (energy > 0.28) {
@@ -234,7 +239,7 @@ export class AudioEngine {
 
     // --- pad -----------------------------------------------------
     if (s === 0) {
-      this._pad(t, chord, 60 / this.bpm);
+      this._pad(t, chord, (60 / this.bpm) * (MOOD === 'downtempo' ? 2 : 1));
     }
 
     // --- fill ----------------------------------------------------
@@ -250,12 +255,19 @@ export class AudioEngine {
     o.type = 'sine';
     const g = c.createGain();
 
-    o.frequency.setValueAtTime(168, t);
-    o.frequency.exponentialRampToValueAtTime(44, t + 0.10);
-
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vel, t + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+    if (MOOD === 'downtempo') {
+      o.frequency.setValueAtTime(96, t);
+      o.frequency.exponentialRampToValueAtTime(46, t + 0.16);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vel * 0.85, t + 0.010);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    } else {
+      o.frequency.setValueAtTime(168, t);
+      o.frequency.exponentialRampToValueAtTime(44, t + 0.10);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vel, t + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+    }
 
     o.connect(g); g.connect(this.drumBus);
     o.start(t); o.stop(t + 0.34);
@@ -319,7 +331,7 @@ export class AudioEngine {
 
     const o2 = c.createOscillator();
     o2.type = 'sine';
-    o2.frequency.value = f * 0.5;
+    o2.frequency.value = f * (MOOD === 'downtempo' ? 0.25 : 0.5);
 
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
@@ -335,7 +347,7 @@ export class AudioEngine {
 
     const g2 = c.createGain();
     g2.gain.setValueAtTime(0.0001, t);
-    g2.gain.exponentialRampToValueAtTime(0.22 * vel, t + 0.008);
+    g2.gain.exponentialRampToValueAtTime((MOOD === 'downtempo' ? 0.34 : 0.22) * vel, t + 0.008);
     g2.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     o.connect(lp); lp.connect(g); g.connect(this.musicBus);
@@ -380,8 +392,9 @@ export class AudioEngine {
     const dur = barDur * 1.05;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(0.085, t + 0.28);
-    g.gain.setValueAtTime(0.085, t + dur * 0.7);
+    const padLevel = MOOD === 'downtempo' ? 0.15 : 0.085;
+    g.gain.linearRampToValueAtTime(padLevel, t + 0.28);
+    g.gain.setValueAtTime(padLevel, t + dur * 0.7);
     g.gain.linearRampToValueAtTime(0.0001, t + dur);
 
     const lp = c.createBiquadFilter();
