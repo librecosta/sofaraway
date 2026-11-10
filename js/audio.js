@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10g';
+import { VOL } from './volumes.js?v=2026-11-10h';
 
 const MOOD = VOL.music;
 
@@ -18,6 +18,18 @@ const STEPS_PER_BAR = 16;
 /* same table the chart is built from, so the arrangement thins exactly where
    the gates thin */
 const SONG = VOL.sections.map((s) => ({ beats: s.beats, energy: s.energy }));
+
+function sectionAt(beat) {
+  let acc = 0;
+  for (let i = 0; i < SONG.length; i++) {
+    const sec = SONG[i];
+    if (beat < acc + sec.beats) {
+      return { i, start: acc, end: acc + sec.beats, energy: sec.energy, next: SONG[i + 1] };
+    }
+    acc += sec.beats;
+  }
+  return null;
+}
 
 function energyAt(beat) {
   let acc = 0;
@@ -202,17 +214,37 @@ export class AudioEngine {
   _playStep(s, bar, t) {
     const chord = PROG[bar];
     const root = ROOT[bar];
-    const energy = energyAt(this.step / 4);
+    const beat = this.step / 4;
+    const energy = energyAt(beat);
+    const sec = sectionAt(beat);
+    const ending = beat > VOL.beats - 8;   // last two bars: let it ring out
+
+    /* ---- section transitions ---- */
+    if (sec && s === 0 && !ending) {
+      const left = sec.end - beat;
+      const nextE = sec.next ? sec.next.energy : 0;
+      // a riser through the last bar before anything louder
+      if (left <= 4.01 && nextE > sec.energy + 0.05) {
+        this._riser(t, (60 / this.bpm) * 4);
+      }
+      // and a hit on the downbeat of the new, louder section
+      if (beat <= sec.start + 0.01 && sec.i > 0) {
+        const prev = SONG[sec.i - 1];
+        if (sec.energy > prev.energy + 0.05) this._impact(t);
+      }
+    }
 
     // --- drums ---------------------------------------------------
-    if (s % 4 === 0 && energy > 0.20) {
+    if (ending) {
+      // drums out, pad and arp only
+    } else if (s % 4 === 0 && energy > 0.20) {
       this._kick(t, 0.55 + energy * 0.45);
       this._duck(t);
     }
-    if ((s === 4 || s === 12) && energy > 0.42) this._snare(t, 0.5 + energy * 0.5);
+    if (!ending && (s === 4 || s === 12) && energy > 0.42) this._snare(t, 0.5 + energy * 0.5);
     if (MOOD === 'downtempo') {
       // only a soft off-beat tick; the sixteenth grid stays empty
-      if (s === 4 || s === 12) this._hat(t, 0.18 * (0.5 + energy * 0.6), 0.05);
+      if (!ending && (s === 4 || s === 12)) this._hat(t, 0.18 * (0.5 + energy * 0.6), 0.05);
     } else {
       if (s % 2 === 0 && energy > 0.22) {
         this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
@@ -418,6 +450,39 @@ export class AudioEngine {
         o.start(t); o.stop(t + dur + 0.05);
       }
     }
+  }
+
+  _riser(t, dur) {
+    const c = this.ctx;
+    const n = c.createBufferSource();
+    n.buffer = this.noiseBuf;
+    n.loop = true;
+    const bp = c.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.8;
+    bp.frequency.setValueAtTime(280, t);
+    bp.frequency.exponentialRampToValueAtTime(6800, t + dur);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.13, t + dur * 0.92);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    n.connect(bp); bp.connect(g); g.connect(this.musicBus); g.connect(this.revSend);
+    n.start(t); n.stop(t + dur + 0.05);
+  }
+
+  _impact(t) {
+    const c = this.ctx;
+    const n = c.createBufferSource();
+    n.buffer = this.noiseBuf;
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(9000, t);
+    lp.frequency.exponentialRampToValueAtTime(500, t + 0.45);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.34, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    n.connect(lp); lp.connect(g); g.connect(this.drumBus); g.connect(this.revSend);
+    n.start(t); n.stop(t + 0.65);
   }
 
   _duck(t) {
