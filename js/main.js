@@ -153,11 +153,11 @@ let currentHue = PHASES[0];
 let phaseIndex = 0;
 
 const CAM = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
-const RANGE_X = TUNNEL.a - 0.45;
-const RANGE_Y = TUNNEL.b - 0.45;
+const RANGE_X = TUNNEL.a - 0.32;
+const RANGE_Y = TUNNEL.b - 0.32;
 /* the camera trails the vessel instead of sitting on it, so the marker you
    steer is visibly *off-centre* — first person, but not glued to the axis */
-const CAM_OFFSET = 0.25;
+const CAM_OFFSET = 0.88;
 const _v3 = new THREE.Vector3();
 
 /* ------------------------------------------------------------------ *
@@ -434,7 +434,7 @@ function step(dt) {
   CAM.x += (CAM.tx - CAM.x) * damp;
   CAM.y += (CAM.ty - CAM.y) * damp;
   const vx = (CAM.x - prevX) / Math.max(sdt, 1e-4);
-  CAM.roll += ((-vx * 0.045) - CAM.roll) * Math.min(1, sdt * 8);
+  CAM.roll += ((-vx * 0.028) - CAM.roll) * Math.min(1, sdt * 8);
 
   camera.position.x = CAM.x * CAM_OFFSET;
   camera.position.y = CAM.y * CAM_OFFSET;
