@@ -152,7 +152,7 @@ const RANGE_X = TUNNEL.a - 0.45;
 const RANGE_Y = TUNNEL.b - 0.45;
 /* the camera trails the vessel instead of sitting on it, so the marker you
    steer is visibly *off-centre* — first person, but not glued to the axis */
-const CAM_OFFSET = 0.42;
+const CAM_OFFSET = 0.25;
 const _v3 = new THREE.Vector3();
 
 /* ------------------------------------------------------------------ *
@@ -164,7 +164,6 @@ const elMenu = $('menu'), elHud = $('hud'), elOver = $('over');
 const elScore = $('hud-score'), elBest = $('hud-best');
 const elSpeed = $('hud-speed'), elCombo = $('hud-combo');
 const elMsg = $('center-msg');
-const elVessel = $('vessel');
 const elCursor = $('cursor');
 const elFlash = $('flash'), elPanel = $('panel');
 const elOverScore = $('over-score'), elOverSub = $('over-sub');
@@ -199,17 +198,19 @@ function message(text, secs = 0.9) {
 /* ------------------------------------------------------------------ *
  *  Custom cursor — always visible, never the OS pointer
  * ------------------------------------------------------------------ */
+const PTR = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
 function paintCursor(x, y) {
   elCursor.style.transform = `translate3d(${x}px, ${y}px, 0)`;
 }
 paintCursor(window.innerWidth / 2, window.innerHeight / 2);
 if (params.has('cur')) {
   const [cx, cy] = params.get('cur').split(',').map(Number);
-  paintCursor(cx, cy);
+  PTR.x = cx; PTR.y = cy;
 }
 
 window.addEventListener('pointermove', (e) => {
-  paintCursor(e.clientX, e.clientY);
+  PTR.x = e.clientX; PTR.y = e.clientY;
   if (e.pointerType === 'touch') return;
   elCursor.classList.remove('hidden');
 }, { passive: true });
@@ -424,7 +425,7 @@ function step(dt) {
     }
   }
 
-  const damp = 1 - Math.exp(-sdt * 11);
+  const damp = 1 - Math.exp(-sdt * 20);
   const prevX = CAM.x;
   CAM.x += (CAM.tx - CAM.x) * damp;
   CAM.y += (CAM.ty - CAM.y) * damp;
@@ -507,7 +508,7 @@ function step(dt) {
       break;
     }
   }
-  elVessel.classList.toggle('lock', locked && G.state === State.PLAY);
+  elCursor.classList.toggle('lock', locked && G.state === State.PLAY);
 
   // shake ---------------------------------------------------------
   if (G.shake > 0) {
@@ -522,27 +523,23 @@ function step(dt) {
     if (msgTimer <= 0) elMsg.classList.remove('show');
   }
 
-  updateVessel();
-
   updateHud();
 }
 
-/* Because the camera trails the vessel (CAM_OFFSET), the marker lands
-   off-centre and slides across the screen as you steer. This *is* the
-   in-game cursor, so it has to be recomputed on resize as well. */
-function updateVessel() {
-  if (G.state !== State.PLAY && G.state !== State.CRASH) {
-    elVessel.classList.add('hidden');
-    return;
+/* One cursor, everywhere.
+   In menus it sits on the pointer. In flight it is projected from the vessel's
+   world position, so what you aim with is exactly what collides. The camera
+   trails at CAM_OFFSET, which is what makes the cursor slide rather than sit
+   still in the middle of the screen. */
+function updateCursor() {
+  if (G.state === State.PLAY || G.state === State.CRASH) {
+    camera.updateMatrixWorld();
+    _v3.set(CAM.x, CAM.y, -1.6).project(camera);
+    const vw = window.innerWidth, vh = window.innerHeight;
+    paintCursor((_v3.x * 0.5 + 0.5) * vw, (-_v3.y * 0.5 + 0.5) * vh);
+  } else {
+    paintCursor(PTR.x, PTR.y);
   }
-  camera.updateMatrixWorld();
-  _v3.set(CAM.x, CAM.y, -1.6).project(camera);
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const sx = (_v3.x * 0.5 + 0.5) * vw;
-  const sy = (-_v3.y * 0.5 + 0.5) * vh;
-  elVessel.style.transform =
-    `translate3d(${sx.toFixed(1)}px, ${sy.toFixed(1)}px, 0) rotate(${(-CAM.roll * 57.2958).toFixed(2)}deg)`;
-  elVessel.classList.remove('hidden');
 }
 
 /* ------------------------------------------------------------------ *
@@ -551,6 +548,7 @@ function updateVessel() {
 let lastT = performance.now();
 
 function render(now) {
+  updateCursor();
   if (wireframe || NO_POST) {
     renderer.setRenderTarget(null);
     camera.fov = wireframe ? 82 : camera.fov;
@@ -591,7 +589,7 @@ function resize() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   post.setSize(w, h, PR);
-  if (typeof updateVessel === 'function') updateVessel();
+  updateCursor();
 }
 window.addEventListener('resize', resize);
 
@@ -662,7 +660,6 @@ if (FIXED_T !== null) {
   render(performance.now());
   // keep presenting so the compositor definitely picks up the frame
   (function tick() {
-    updateVessel();
     render(performance.now());
     requestAnimationFrame(tick);
   })();
