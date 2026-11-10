@@ -124,14 +124,57 @@ washes to white.
 
 ## Status
 
-Four volumes are playable. What is left is not more content:
+Four volumes are playable end to end. Art pass 1 is done.
 
-- [ ] Art pass 1 — geometry density: closer ribs, panel recesses, bolts
-- [ ] Art pass 2 — baked lighting: UV atlas, AO and irradiance maps
-- [ ] Art pass 3 — WebGPU global illumination
-- [ ] Settle what boost changes (speed / score / field of view)
-- [ ] A second verb, if the game needs one
-- [ ] Mobile touch tuning
+### Done
+
+- [x] **Art pass 1 — geometry.** Ribs every 3 units, instanced bolts at every
+      profile corner, recessed panels with chamfered edges, a raised seam rib
+      splitting each bay in two, corner gussets welded into each vertex, and
+      plating UVs that repeat exactly once per bay.
+
+### Art pass 2 — baked lighting (next)
+
+The corridor is lit entirely by its own edge glow. That is why bolts had to be
+made to catch the rim light before they were visible at all, and why recessed
+details only read where a chamfer turns the normal. Baking is what turns this
+from "shapes that happen to catch a highlight" into actual volume.
+
+This is an architectural change, not a texture swap, and should be planned
+before it is written:
+
+- [ ] **2a — UV atlas.** The corridor streams in 210-unit chunks, each built
+      independently. A bake needs globally continuous UVs across the whole
+      corridor, so either the layout must be computed upfront, or chunk
+      generation must be made atlas-aware. Decide this first.
+- [ ] **2b — ambient occlusion.** Cast rays against the corridor geometry
+      offline (Node, no browser), store one PNG per chunk.
+- [ ] **2c — irradiance.** Low-resolution per-chunk maps for indirect fill.
+- [ ] **2d — material sampling.** Feed both into the shell material; corner
+      gussets and recesses should darken on their own.
+
+### Art pass 3 — WebGPU GI
+
+Depends on 2's output. Real-time global illumination via SSGI or light probes,
+with the WebGL2 path kept as a fallback.
+
+### Open design questions
+
+- [ ] **What does boost change?** It currently raises speed, score and field of
+      view at once. Speed and beat-locked gates pull against each other; this
+      has never been resolved.
+- [ ] **A second verb?** Converge/spread would make "fast and risky" versus
+      "slow and safe" a live choice. The alternative is one verb, pushed hard.
+- [ ] **Mobile** — touch steering is relative now, boost is off on coarse
+      pointers and the HUD has a portrait layout, but none of it has been on a
+      real device.
+
+### Worth verifying before building further
+
+Audio has been written six times in this project and never heard in a finished
+state; touch input has never been tried on a phone. Listen to the four
+arrangements, play one run of each volume, and open settings, before starting
+pass 2.
 
 ## Credits
 
