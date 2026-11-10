@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { TUNNEL } from './tunnel.js?v=2026-11-10a';
+import { TUNNEL } from './tunnel.js?v=2026-11-10b';
+import { VOL } from './volumes.js?v=2026-11-10b';
 
 /* ------------------------------------------------------------------ *
  *  A bulkhead is not a sheet with a hole in it — it is a set of glass
@@ -21,6 +22,30 @@ export const WALL = {
 export const THICKNESS = 0.38;
 export const HUB_R = 1.02;
 export const SECTORS = 8;
+
+/* ---- lanes: how the gap is addressed depends on the glass style ---- */
+
+export function laneCount() {
+  return VOL.obstacle === 'shutter' ? 3 : SECTORS;
+}
+
+/** which lane a point sits in */
+export function laneOf(x, y) {
+  if (VOL.obstacle === 'shutter') {
+    const t = (y / TUNNEL.b) * 0.5 + 0.5;
+    return Math.min(2, Math.max(0, Math.floor(t * 3)));
+  }
+  return sectorOf(x, y);
+}
+
+/** middle of a lane, for the bot and for scoring */
+export function lanePoint(idx) {
+  if (VOL.obstacle === 'shutter') {
+    const t = (idx + 0.5) / 3;
+    return [0, (t * 2 - 1) * TUNNEL.b];
+  }
+  return sectorPoint(idx);
+}
 
 /** world position at the middle of a sector's through-gap */
 export function sectorPoint(s, radius = 2.15) {
@@ -61,6 +86,7 @@ uniform float uFade;
 uniform vec3  uHull;
 uniform vec2  uSize;
 uniform float uHub;
+uniform float uStyle;
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
@@ -70,6 +96,32 @@ float hash(float x){ return fract(sin(x * 127.1) * 43758.5453); }
 
 void main(){
   if (vDepth < 0.5) discard;
+
+  /* ---- shutter glass: three horizontal bands, one of them open ---- */
+  if (uStyle > 0.5) {
+    float t = vUv.y;
+    float b = t * 3.0;
+    int band = int(floor(b));
+    if (abs(float(band) - uOpen) < 0.5) discard;
+
+    float f = fract(b);
+    float edge = min(f, 1.0 - f);
+
+    float slat = 0.5 + 0.5 * sin(t * 240.0 - uTime * 6.0);
+    float bandTone = 0.5 + 0.5 * sin(t * 18.0 + uTime * 1.1);
+    float rimT = exp(-edge * 24.0);
+
+    vec3 glass = uColor * (0.42 + 0.65 * slat) * (0.55 + 0.7 * bandTone);
+    glass *= mix(0.6, 1.25, t);
+    vec3 col = glass + uColor * rimT * 1.5;
+
+    float a = 0.08 + 0.065 * slat + rimT * 0.5;
+    a *= uFade;
+    if (vDepth < 4.0) a *= smoothstep(4.0, 10.0, vDepth);
+
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+    return;
+  }
 
   vec2 p = (vUv - 0.5) * uSize;
 
@@ -157,7 +209,8 @@ const GEO = new THREE.PlaneGeometry(WALL.w, WALL.h);
  * ------------------------------------------------------------------ */
 export class Gate {
   constructor(sector, time) {
-    this.open = ((sector | 0) % SECTORS + SECTORS) % SECTORS;
+    const lanes = laneCount();
+    this.open = (((sector | 0) % lanes) + lanes) % lanes;
     this.dBeats = 0;
     this.d = 0;
     this.spawnT = time;
@@ -176,6 +229,7 @@ export class Gate {
         uHull: { value: new THREE.Vector3(TUNNEL.a, TUNNEL.b, TUNNEL.ch) },
         uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
         uHub: { value: HUB_R },
+        uStyle: { value: VOL.obstacle === 'shutter' ? 1 : 0 },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,

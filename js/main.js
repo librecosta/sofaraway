@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10a';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10a';
-import { buildPath } from './path.js?v=2026-11-10a';
-import { Gates, sectorOf, sectorPoint } from './gates.js?v=2026-11-10a';
-import { PostFX } from './post.js?v=2026-11-10a';
-import { AudioEngine } from './audio.js?v=2026-11-10a';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10a';
-import { VOL } from './volumes.js?v=2026-11-10a';
-import { Recorder } from './recorder.js?v=2026-11-10a';
+import { buildTextures } from './textures.js?v=2026-11-10b';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10b';
+import { buildPath } from './path.js?v=2026-11-10b';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10b';
+import { PostFX } from './post.js?v=2026-11-10b';
+import { AudioEngine } from './audio.js?v=2026-11-10b';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10b';
+import { VOL } from './volumes.js?v=2026-11-10b';
+import { Recorder } from './recorder.js?v=2026-11-10b';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -602,7 +602,7 @@ function step(dt) {
     let best = null;
     for (const g of gates.list) if (!g.passed && (!best || g.d < best.d)) best = g;
     if (best) {
-      const [hx, hy] = sectorPoint(best.open);
+      const [hx, hy] = lanePoint(best.open);
       CAM.tx = hx;
       CAM.ty = hy;
     }
@@ -666,14 +666,11 @@ function step(dt) {
     for (const g of prevBeatGate) {
       if (!g.passed && g.dBeats <= 0) {
         g.passed = true;
-        const sec = sectorOf(CAM.x, CAM.y);
+        const sec = laneOf(CAM.x, CAM.y);
 
         if (sec === g.open || GOD) {
-          const ang = Math.atan2(CAM.y, CAM.x);
-          let da = Math.abs(ang - g.open * Math.PI / 4);
-          da = Math.abs(((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2));
-          if (da > Math.PI) da = Math.PI * 2 - da;
-          const off = da / (Math.PI / 8);
+          const [lx, ly] = lanePoint(g.open);
+          const off = Math.min(1, Math.hypot(CAM.x - lx, CAM.y - ly) / 2.2);
 
           G.gatesPassed++;
           G.combo = Math.min(50, G.combo + 1);
@@ -710,7 +707,7 @@ function step(dt) {
   let locked = false;
   for (const g of gates.list) {
     if (g.d > 3 && g.d < 34) {
-      if (sectorOf(CAM.x, CAM.y) === g.open) locked = true;
+      if (laneOf(CAM.x, CAM.y) === g.open) locked = true;
       break;
     }
   }
