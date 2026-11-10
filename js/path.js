@@ -123,10 +123,17 @@ export class Path {
  *  One straight then one quarter turn, repeated. Straights are long
  *  enough to hold a handful of bulkheads; turns are the breathing room.
  * ------------------------------------------------------------------ */
-export function buildPath(totalLength, straightLen = 150, radius = 46) {
+export function buildPath(totalLength, straightLen = 150, radius = 46, topology = 'conduit') {
   const path = new Path();
   let dirs = ['left', 'right', 'up', 'down'];
   let di = 0;
+
+  // a shaft plunges first, then keeps turning on the way down
+  if (topology === 'shaft') {
+    path.straight(60);
+    path.bend('down', radius);
+    dirs = ['down', 'left', 'down', 'right'];
+  }
 
   while (path.length < totalLength) {
     path.straight(straightLen);

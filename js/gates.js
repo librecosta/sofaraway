@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TUNNEL } from './tunnel.js?v=2026-11-10h';
-import { VOL } from './volumes.js?v=2026-11-10h';
+import { TUNNEL } from './tunnel.js?v=2026-11-10i';
+import { VOL } from './volumes.js?v=2026-11-10i';
 
 /* ------------------------------------------------------------------ *
  *  A bulkhead is not a sheet with a hole in it — it is a set of glass
@@ -26,11 +26,17 @@ export const SECTORS = 8;
 /* ---- lanes: how the gap is addressed depends on the glass style ---- */
 
 export function laneCount() {
+  if (VOL.obstacle === 'lattice') return 9;
   return VOL.obstacle === 'shutter' ? 3 : SECTORS;
 }
 
 /** which lane a point sits in */
 export function laneOf(x, y, axis) {
+  if (VOL.obstacle === 'lattice') {
+    const col = Math.min(2, Math.max(0, Math.floor(((x / TUNNEL.a) * 0.5 + 0.5) * 3)));
+    const row = Math.min(2, Math.max(0, Math.floor(((y / TUNNEL.b) * 0.5 + 0.5) * 3)));
+    return row * 3 + col;
+  }
   if (VOL.obstacle === 'shutter') {
     // axis 0 = horizontal bands (judge on y), 1 = vertical (judge on x)
     const v = axis ? x : y;
@@ -43,6 +49,13 @@ export function laneOf(x, y, axis) {
 
 /** middle of a lane, for the bot and for scoring */
 export function lanePoint(idx, axis) {
+  if (VOL.obstacle === 'lattice') {
+    const col = idx % 3, row = Math.floor(idx / 3);
+    return [
+      ((col + 0.5) / 3 * 2 - 1) * TUNNEL.a,
+      ((row + 0.5) / 3 * 2 - 1) * TUNNEL.b,
+    ];
+  }
   if (VOL.obstacle === 'shutter') {
     const v = ((idx + 0.5) / 3) * 2 - 1;
     return axis ? [v * TUNNEL.a, 0] : [0, v * TUNNEL.b];
@@ -114,6 +127,35 @@ void main(){
     hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
                 (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
     if (hullD < 0.0) discard;
+  }
+
+  /* ---- lattice glass: nine plates fitted, one of them missing ---- */
+  if (uStyle > 1.5) {
+    vec2 g = vUv * 3.0;
+    vec2 c = floor(g);
+    int idx = int(c.y) * 3 + int(c.x);
+    if (idx != 4 && abs(float(idx) - uOpen) < 0.5) discard;
+
+    vec2 f = fract(g);
+    vec2 e2 = min(f, 1.0 - f);
+    float edge = min(e2.x, e2.y);
+
+    if (idx == 4) {
+      // solid hub plate
+      vec3 plate = uColor * (0.16 + 0.10 * f.y);
+      plate += uColor * exp(-edge * 40.0) * 0.9;
+      gl_FragColor = vec4(plate, clamp(0.55 * uFade, 0.0, 1.0));
+      return;
+    }
+
+    float rim = exp(-edge * 26.0);
+    float hatch = 0.5 + 0.5 * sin(f.y * 18.0 + uTime * 0.7);
+    vec3 glass = uColor * (0.30 + 0.55 * hatch);
+    vec3 col = glass + uColor * rim * 1.5;
+    float a = 0.10 + 0.06 * hatch + rim * 0.55;
+    a *= uFade;
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+    return;
   }
 
   /* ---- shutter glass: three horizontal bands, one of them open ---- */
@@ -222,7 +264,9 @@ export class Gate {
   constructor(sector, axis, time) {
     this.axis = axis | 0;
     const lanes = laneCount();
-    this.open = (((sector | 0) % lanes) + lanes) % lanes;
+    let pick = (((sector | 0) % lanes) + lanes) % lanes;
+    if (VOL.obstacle === 'lattice' && pick === 4) pick = 5;   // centre is solid
+    this.open = pick;
     this.dBeats = 0;
     this.d = 0;
     this.spawnT = time;
@@ -241,7 +285,7 @@ export class Gate {
         uHull: { value: new THREE.Vector3(TUNNEL.a, TUNNEL.b, TUNNEL.ch) },
         uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
         uHub: { value: HUB_R },
-        uStyle: { value: VOL.obstacle === 'shutter' ? 1 : 0 },
+        uStyle: { value: VOL.obstacle === 'shutter' ? 1 : (VOL.obstacle === 'lattice' ? 2 : 0) },
         uAxis: { value: this.axis },
         uClip: { value: VOL.topology === 'canal' ? 1 : 0 },
       },

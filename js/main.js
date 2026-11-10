@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10h';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10h';
-import { buildPath } from './path.js?v=2026-11-10h';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10h';
-import { PostFX } from './post.js?v=2026-11-10h';
-import { AudioEngine } from './audio.js?v=2026-11-10h';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10h';
-import { VOL } from './volumes.js?v=2026-11-10h';
-import { Recorder } from './recorder.js?v=2026-11-10h';
+import { buildTextures } from './textures.js?v=2026-11-10i';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10i';
+import { buildPath } from './path.js?v=2026-11-10i';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10i';
+import { PostFX } from './post.js?v=2026-11-10i';
+import { AudioEngine } from './audio.js?v=2026-11-10i';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10i';
+import { VOL } from './volumes.js?v=2026-11-10i';
+import { Recorder } from './recorder.js?v=2026-11-10i';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -112,7 +112,7 @@ const PATH_BACK = 4200;          // corridor generated behind the start, for the
 const START_S = PATH_BACK;
 const MENU_S = START_S + 140;   // title screen lives here, always
 const CORRIDOR_LEN = PATH_BACK + 7200;
-const path = buildPath(CORRIDOR_LEN);
+const path = buildPath(CORRIDOR_LEN, 150, 46, VOL.topology);
 const tunnel = new Tunnel(tex, path);
 scene.add(tunnel.group);
 

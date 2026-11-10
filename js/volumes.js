@@ -97,7 +97,7 @@ export const VOLUMES = [
     music: 'industrial',
     hue: [0.03, 0.98, 0.09],
     lives: { easy: 3, normal: 2, hard: 1 },
-    ready: false,
+    ready: true,
   },
   {
     id: 'orbit',
