@@ -1,3 +1,4 @@
+import { QUALITY } from './quality.js?v=2026-11-10q';
 import * as THREE from 'three';
 
 /* ------------------------------------------------------------------ *
@@ -58,7 +59,7 @@ void main(){
     return;
   }
 
-  const int N = 14;
+  const int N = ${QUALITY.taps};
   float radius = r0;
   vec3 sum = col;
   float wsum = 1.0;
@@ -199,7 +200,7 @@ export class PostFX {
       type: THREE.HalfFloatType,
       depthBuffer: true,
       stencilBuffer: false,
-      samples: 4,
+      samples: QUALITY.samples,
     };
 
     this.rtScene = new THREE.WebGLRenderTarget(2, 2, rtOpts);

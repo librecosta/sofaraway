@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10p';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10p';
-import { buildPath } from './path.js?v=2026-11-10p';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10p';
-import { PostFX } from './post.js?v=2026-11-10p';
-import { AudioEngine } from './audio.js?v=2026-11-10p';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10p';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10p';
-import { Recorder } from './recorder.js?v=2026-11-10p';
+import { buildTextures } from './textures.js?v=2026-11-10q';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10q';
+import { buildPath } from './path.js?v=2026-11-10q';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10q';
+import { PostFX } from './post.js?v=2026-11-10q';
+import { AudioEngine } from './audio.js?v=2026-11-10q';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10q';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10q';
+import { Recorder } from './recorder.js?v=2026-11-10q';
+import { QUALITY, TIER } from './quality.js?v=2026-11-10q';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -29,7 +30,7 @@ THREE.ColorManagement.enabled = false;
 
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: true,
+  antialias: QUALITY.antialias,
   alpha: false,
   powerPreference: 'high-performance',
   stencil: false,
@@ -38,7 +39,7 @@ renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.setClearColor(0x000000, 1);
 
-const PR = LOWQ ? 1 : Math.min(window.devicePixelRatio || 1, 1.6);
+const PR = LOWQ ? 1 : Math.min(window.devicePixelRatio || 1, QUALITY.pr);
 renderer.setPixelRatio(PR);
 renderer.setSize(window.innerWidth, window.innerHeight, false);
 
@@ -148,6 +149,8 @@ const _camF = { p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vec
 const _camTgt = new THREE.Vector3();
 const _negF = new THREE.Vector3();
 const rec = new Recorder();
+const frameTimes = [];
+let droppedRes = false;
 if (params.get('rec') === '1') rec.toggle();
 const _basis = new THREE.Matrix4();
 const post = new PostFX(renderer);
@@ -794,6 +797,19 @@ function loop(now) {
   const raw = (now - lastT) / 1000;
   lastT = now;
   const dt = Math.min(raw, 0.05);
+
+  /* keep an eye on the frame time; if we cannot hold ~38 fps, give up pixels
+     before we give up geometry */
+  frameTimes.push(dt);
+  if (frameTimes.length > 180) frameTimes.shift();
+  if (!droppedRes && frameTimes.length === 180) {
+    const sorted = [...frameTimes].sort((a, b) => a - b);
+    const median = sorted[90];
+    if (median > 1 / 38 && renderer.getPixelRatio() > 1) {
+      renderer.setPixelRatio(1);
+      droppedRes = true;
+    }
+  }
 
   step(dt);
   rec.sample(performance.now() / 1000, camera, G, CAM);
