@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10b';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10b';
-import { buildPath } from './path.js?v=2026-11-10b';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10b';
-import { PostFX } from './post.js?v=2026-11-10b';
-import { AudioEngine } from './audio.js?v=2026-11-10b';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10b';
-import { VOL } from './volumes.js?v=2026-11-10b';
-import { Recorder } from './recorder.js?v=2026-11-10b';
+import { buildTextures } from './textures.js?v=2026-11-10c';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10c';
+import { buildPath } from './path.js?v=2026-11-10c';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10c';
+import { PostFX } from './post.js?v=2026-11-10c';
+import { AudioEngine } from './audio.js?v=2026-11-10c';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10c';
+import { VOL } from './volumes.js?v=2026-11-10c';
+import { Recorder } from './recorder.js?v=2026-11-10c';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -602,7 +602,7 @@ function step(dt) {
     let best = null;
     for (const g of gates.list) if (!g.passed && (!best || g.d < best.d)) best = g;
     if (best) {
-      const [hx, hy] = lanePoint(best.open);
+      const [hx, hy] = lanePoint(best.open, best.axis);
       CAM.tx = hx;
       CAM.ty = hy;
     }
@@ -666,10 +666,10 @@ function step(dt) {
     for (const g of prevBeatGate) {
       if (!g.passed && g.dBeats <= 0) {
         g.passed = true;
-        const sec = laneOf(CAM.x, CAM.y);
+        const sec = laneOf(CAM.x, CAM.y, g.axis);
 
         if (sec === g.open || GOD) {
-          const [lx, ly] = lanePoint(g.open);
+          const [lx, ly] = lanePoint(g.open, g.axis);
           const off = Math.min(1, Math.hypot(CAM.x - lx, CAM.y - ly) / 2.2);
 
           G.gatesPassed++;
@@ -707,7 +707,7 @@ function step(dt) {
   let locked = false;
   for (const g of gates.list) {
     if (g.d > 3 && g.d < 34) {
-      if (laneOf(CAM.x, CAM.y) === g.open) locked = true;
+      if (laneOf(CAM.x, CAM.y, g.axis) === g.open) locked = true;
       break;
     }
   }

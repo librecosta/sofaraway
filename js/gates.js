@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TUNNEL } from './tunnel.js?v=2026-11-10b';
-import { VOL } from './volumes.js?v=2026-11-10b';
+import { TUNNEL } from './tunnel.js?v=2026-11-10c';
+import { VOL } from './volumes.js?v=2026-11-10c';
 
 /* ------------------------------------------------------------------ *
  *  A bulkhead is not a sheet with a hole in it — it is a set of glass
@@ -30,19 +30,22 @@ export function laneCount() {
 }
 
 /** which lane a point sits in */
-export function laneOf(x, y) {
+export function laneOf(x, y, axis) {
   if (VOL.obstacle === 'shutter') {
-    const t = (y / TUNNEL.b) * 0.5 + 0.5;
+    // axis 0 = horizontal bands (judge on y), 1 = vertical (judge on x)
+    const v = axis ? x : y;
+    const half = axis ? TUNNEL.a : TUNNEL.b;
+    const t = (v / half) * 0.5 + 0.5;
     return Math.min(2, Math.max(0, Math.floor(t * 3)));
   }
   return sectorOf(x, y);
 }
 
 /** middle of a lane, for the bot and for scoring */
-export function lanePoint(idx) {
+export function lanePoint(idx, axis) {
   if (VOL.obstacle === 'shutter') {
-    const t = (idx + 0.5) / 3;
-    return [0, (t * 2 - 1) * TUNNEL.b];
+    const v = ((idx + 0.5) / 3) * 2 - 1;
+    return axis ? [v * TUNNEL.a, 0] : [0, v * TUNNEL.b];
   }
   return sectorPoint(idx);
 }
@@ -87,6 +90,7 @@ uniform vec3  uHull;
 uniform vec2  uSize;
 uniform float uHub;
 uniform float uStyle;
+uniform float uAxis;
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
@@ -99,7 +103,7 @@ void main(){
 
   /* ---- shutter glass: three horizontal bands, one of them open ---- */
   if (uStyle > 0.5) {
-    float t = vUv.y;
+    float t = mix(vUv.y, vUv.x, uAxis);
     float b = t * 3.0;
     int band = int(floor(b));
     if (abs(float(band) - uOpen) < 0.5) discard;
@@ -208,7 +212,8 @@ const GEO = new THREE.PlaneGeometry(WALL.w, WALL.h);
  *  One bulkhead
  * ------------------------------------------------------------------ */
 export class Gate {
-  constructor(sector, time) {
+  constructor(sector, axis, time) {
+    this.axis = axis | 0;
     const lanes = laneCount();
     this.open = (((sector | 0) % lanes) + lanes) % lanes;
     this.dBeats = 0;
@@ -230,6 +235,7 @@ export class Gate {
         uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
         uHub: { value: HUB_R },
         uStyle: { value: VOL.obstacle === 'shutter' ? 1 : 0 },
+        uAxis: { value: this.axis },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -289,7 +295,8 @@ export class Gates {
 
   spawn(dBeats, speed, secPerBeat, time, sector) {
     const s = sector === undefined ? Math.floor(this.rng() * SECTORS) : sector;
-    const g = new Gate(s, time);
+    const ax = this.rng() < 0.5 ? 0 : 1;
+    const g = new Gate(s, ax, time);
     g.dBeats = dBeats;
     g.d = speed * dBeats * secPerBeat;
     for (const m of g.meshes) {
