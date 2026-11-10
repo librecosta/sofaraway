@@ -1,14 +1,16 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10q';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10q';
-import { buildPath } from './path.js?v=2026-11-10q';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10q';
-import { PostFX } from './post.js?v=2026-11-10q';
-import { AudioEngine } from './audio.js?v=2026-11-10q';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10q';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10q';
-import { Recorder } from './recorder.js?v=2026-11-10q';
-import { QUALITY, TIER } from './quality.js?v=2026-11-10q';
+import { buildTextures } from './textures.js?v=2026-11-10r';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10r';
+import { buildPath } from './path.js?v=2026-11-10r';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10r';
+import { PostFX } from './post.js?v=2026-11-10r';
+import { AudioEngine } from './audio.js?v=2026-11-10r';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10r';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10r';
+import { Recorder } from './recorder.js?v=2026-11-10r';
+import { QUALITY, TIER } from './quality.js?v=2026-11-10r';
+
+const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -836,6 +838,23 @@ window.addEventListener('resize', resize);
  *  UI wiring
  * ------------------------------------------------------------------ */
 document.getElementById('ui').addEventListener('click', (e) => {
+  const qBtn = e.target.closest('[data-q]');
+  if (qBtn) {
+    const v = qBtn.dataset.q;
+    try { localStorage.setItem('sofaraway.quality', v); } catch (err) { /* ignore */ }
+    const url = new URL(location.href);
+    if (v === 'auto') url.searchParams.delete('q'); else url.searchParams.set('q', v);
+    location.href = url.toString();
+    return;
+  }
+  if (e.target.closest('#panel-close') || e.target.closest('#panel')) {
+    if (e.target.closest('#panel-close')) $('panel').hidden = true;
+    return;
+  }
+  if (e.target.closest('[data-act="settings"]')) {
+    $('panel').hidden = !$('panel').hidden;
+    return;
+  }
   const volBtn = e.target.closest('[data-vol-step]');
   if (volBtn) {
     stepVolume(Number(volBtn.dataset.volStep));
@@ -893,6 +912,17 @@ function stepVolume(dir) {
   const next = ready[(i + dir + ready.length) % ready.length];
   if (next && next.id !== VOL.id) location.search = '?vol=' + next.id;
 }
+
+function syncQuality() {
+  let stored = 'auto';
+  try { stored = localStorage.getItem('sofaraway.quality') || 'auto'; } catch (e) { /* ignore */ }
+  const shown = stored === 'auto' ? (TIER === 'low' ? 'low' : TIER === 'mobile' ? 'auto' : 'high') : stored;
+  for (const b of document.querySelectorAll('[data-q]')) {
+    b.classList.toggle('on', b.dataset.q === shown);
+  }
+}
+syncQuality();
+if (params.get('panel') === '1') $('panel').hidden = false;
 
 function syncVolume() {
   const el = $('vol-name');

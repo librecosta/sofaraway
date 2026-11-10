@@ -15,7 +15,9 @@ const params = new URLSearchParams(location.search);
 const coarse = typeof matchMedia !== 'undefined'
   && window.matchMedia('(pointer: coarse)').matches;
 const narrow = window.innerWidth < 860;
-const forced = params.get('q');
+let stored = null;
+try { stored = localStorage.getItem('sofaraway.quality'); } catch (e) { /* private mode */ }
+const forced = params.get('q') || stored || 'auto';
 
 const tier = (forced === 'low' || forced === 'mobile' || forced === 'high')
   ? forced
