@@ -139,6 +139,7 @@ export class Tunnel {
     for (let s = s0; s < s1; s += TUNNEL.ring) rings.push(s);
     rings.push(s1);
 
+    const ghost = VOL.topology === 'orbit';   // light frame only, no hull
     const shell = { pos: [], nor: [], uv: [], idx: [] };
     const rib = { pos: [], nor: [], idx: [] };
     const rim = { pos: [], nor: [], idx: [] };
@@ -162,7 +163,7 @@ export class Tunnel {
       const vA = sA / totalPerim * 3.0;
       const vB = sB / totalPerim * 3.0;
 
-      for (let i = 0; i < edges; i++) {
+      for (let i = 0; i < edges && !ghost; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         const ex = p1[0] - p0[0], ey = p1[1] - p0[1];
         const el = Math.hypot(ex, ey) || 1;
@@ -258,7 +259,6 @@ export class Tunnel {
 
   /* ---------------- streaming ---------------- */
   update(s) {
-    if (VOL.topology === 'orbit') return;   // nothing to build: you are in the void
     this.moveLights(s);
 
     const need0 = s - KEEP_BEHIND;

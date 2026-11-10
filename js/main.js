@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10n';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10n';
-import { buildPath } from './path.js?v=2026-11-10n';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10n';
-import { PostFX } from './post.js?v=2026-11-10n';
-import { AudioEngine } from './audio.js?v=2026-11-10n';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10n';
-import { VOL } from './volumes.js?v=2026-11-10n';
-import { Recorder } from './recorder.js?v=2026-11-10n';
+import { buildTextures } from './textures.js?v=2026-11-10p';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10p';
+import { buildPath } from './path.js?v=2026-11-10p';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10p';
+import { PostFX } from './post.js?v=2026-11-10p';
+import { AudioEngine } from './audio.js?v=2026-11-10p';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10p';
+import { VOL } from './volumes.js?v=2026-11-10p';
+import { Recorder } from './recorder.js?v=2026-11-10p';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
