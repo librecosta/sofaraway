@@ -1,0 +1,32 @@
+{
+  "name": "@librecosta/elsewhere",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A hypnotic browser rhythm runner. Thread the gates, ride the beat.",
+  "type": "module",
+  "license": "MIT",
+  "author": "librecosta",
+  "homepage": "https://elsewhere.librecosta.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/librecosta/elsewhere.git"
+  },
+  "keywords": [
+    "webgl",
+    "webgl2",
+    "three.js",
+    "web-audio",
+    "rhythm-game",
+    "endless-runner",
+    "procedural-generation",
+    "procedural-music",
+    "generative-music",
+    "browser-game",
+    "shader",
+    "no-build"
+  ],
+  "scripts": {
+    "start": "python -m http.server 8080",
+    "serve": "python -m http.server 8080"
+  }
+}
