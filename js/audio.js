@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10l';
+import { VOL } from './volumes.js?v=2026-11-10n';
 
 const MOOD = VOL.music;
 
@@ -62,14 +62,25 @@ const PROG_INDUSTRIAL = [
   [40, 43, 46], [36, 39, 43],
 ];
 
+/* synthwave opens up: maj7 and add9 shapes, a IV-V-vi-iii lift */
+const PROG_SYNTHWAVE = [
+  [53, 57, 60, 64], [55, 59, 62, 66],
+  [57, 60, 64, 67], [52, 55, 59, 62],
+  [53, 57, 60, 64], [55, 59, 62, 66],
+  [57, 60, 64, 67], [48, 52, 55, 59],
+];
+
 const PROG = MOOD === 'downtempo' ? PROG_DOWNTEMPO
            : MOOD === 'industrial' ? PROG_INDUSTRIAL
+           : MOOD === 'synthwave' ? PROG_SYNTHWAVE
            : PROG_TECHNO;
 
 const ROOT = MOOD === 'downtempo'
   ? [38, 35, 31, 33, 38, 35, 31, 26]
   : MOOD === 'industrial'
   ? [28, 29, 28, 22, 28, 29, 28, 24]
+  : MOOD === 'synthwave'
+  ? [41, 43, 45, 36, 41, 43, 45, 40]
   : [45, 45, 41, 41, 48, 48, 43, 43];
 
 const BASS_PATTERN = [
@@ -345,10 +356,13 @@ export class AudioEngine {
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.75 * vel, t + 0.003);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    const gate = MOOD === 'synthwave';
+    g.gain.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.42 : 0.16));
     n.connect(hp); hp.connect(g); g.connect(this.drumBus);
-    g.connect(this.revSend);
-    n.start(t); n.stop(t + 0.2);
+    const send = c.createGain();
+    send.gain.value = gate ? 1.6 : 0.7;      // gated-reverb snare
+    g.connect(send); send.connect(this.revSend);
+    n.start(t); n.stop(t + (gate ? 0.55 : 0.2));
 
     const o = c.createOscillator();
     o.type = 'triangle';
