@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY } from './quality.js?v=2026-11-10y';
+import { QUALITY } from './quality.js?v=2026-11-10z';
 import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
@@ -160,6 +160,7 @@ export class Tunnel {
     const rib = { pos: [], nor: [], idx: [] };
     const rim = { pos: [], nor: [], idx: [] };
     const strip = { pos: [], idx: [] };
+    const brace = { pos: [], nor: [], idx: [] };
 
     const A = frame();
     const B = frame();
@@ -272,6 +273,49 @@ export class Tunnel {
       }
     }
 
+    /* ---- corner gussets: a triangular bracket welded into every vertex ---- */
+    if (!ghost) {
+      const W = 0.13;    // how far in from the corner
+      const H = 0.085;   // half-width across the corner
+      for (let k = 0; k < rings.length - 1; k++) {
+        this.path.sample(rings[k], A);
+        this.path.sample(rings[k + 1], B);
+        for (let i = 0; i < edges; i++) {
+          const pt = P[i];
+          const L = Math.hypot(pt[0], pt[1]) || 1;
+          const inx = -pt[0] / L, iny = -pt[1] / L;
+          const tx = -iny, ty = inx;
+          const A0 = [pt[0] * 0.995, pt[1] * 0.995];
+          const B0 = [A0[0] + inx * W - tx * H, A0[1] + iny * W - ty * H];
+          const C0 = [A0[0] + inx * W + tx * H, A0[1] + iny * W + ty * H];
+
+          const face = (fr0, fr1, q0, q1) => {
+            const base = brace.pos.length / 3;
+            put(brace, fr0, q0[0], q0[1]);
+            put(brace, fr0, q1[0], q1[1]);
+            put(brace, fr1, q1[0], q1[1]);
+            put(brace, fr1, q0[0], q0[1]);
+            // flat normal from the quad
+            const ax = brace.pos[base * 3],         ay = brace.pos[base * 3 + 1], az = brace.pos[base * 3 + 2];
+            const bx = brace.pos[base * 3 + 3],     by = brace.pos[base * 3 + 4], bz = brace.pos[base * 3 + 5];
+            const cx2 = brace.pos[base * 3 + 6],    cy2 = brace.pos[base * 3 + 7], cz = brace.pos[base * 3 + 8];
+            const e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+            const e2x = cx2 - ax, e2y = cy2 - ay, e2z = cz - az;
+            let nx = e1y * e2z - e1z * e2y;
+            let ny = e1z * e2x - e1x * e2z;
+            let nz = e1x * e2y - e1y * e2x;
+            const nl = Math.hypot(nx, ny, nz) || 1;
+            nx /= nl; ny /= nl; nz /= nl;
+            for (let q = 0; q < 4; q++) brace.nor.push(nx, ny, nz);
+            brace.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+          };
+
+          face(A, B, A0, B0);
+          face(A, B, C0, A0);
+        }
+      }
+    }
+
     /* ---- bolts: an instanced disc at every profile corner of every ring ---- */
     const boltMats = [];
     {
@@ -313,6 +357,12 @@ export class Tunnel {
     };
 
     const meshes = boltMats.slice();
+    if (brace.pos.length) {
+      const bm = new THREE.Mesh(geoOf(brace), this.ribMat);
+      bm.frustumCulled = false;
+      meshes.push(bm);
+      this.group.add(bm);
+    }
     const add = (geo, mat) => {
       const m = new THREE.Mesh(geo, mat);
       m.frustumCulled = false;
