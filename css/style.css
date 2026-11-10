@@ -382,6 +382,67 @@ html,body{
 }
 #errbox:empty{ display:none; }
 
+
+/* ================================================================== *
+   DIFFICULTY SELECTOR
+ * ================================================================== */
+.diff{
+  display:flex; gap:clamp(10px,1.6vw,26px); margin-top:3.6vh;
+  pointer-events:auto;
+}
+.diff-btn{
+  appearance:none; background:none; border:1px solid currentColor;
+  color:inherit; font-family:var(--text); font-weight:500;
+  font-size:clamp(8px,.66vw,11px); letter-spacing:.34em;
+  padding:.75em 1em .6em; opacity:.40;
+  display:flex; flex-direction:column; align-items:center; gap:.5em;
+  transition:opacity .2s ease, background .2s ease, color .2s ease;
+}
+.diff-btn em{ font-style:normal; font-size:.76em; letter-spacing:.22em; opacity:.6; }
+.diff-btn:hover{ opacity:.85; }
+.diff-btn.active{ opacity:1; background:var(--ink); color:#eaf6ff; }
+
+/* ================================================================== *
+   HUD CENTRE
+ * ================================================================== */
+.hud-tc{
+  position:absolute; left:50%; top:4vh; transform:translateX(-50%);
+  text-align:center;
+}
+.value.sm{
+  font-size:clamp(11px,.95vw,15px); letter-spacing:.34em;
+  opacity:.85; text-shadow:none;
+}
+.lives{ display:flex; gap:6px; justify-content:center; margin-top:.9em; }
+.lives i{
+  width:16px; height:3px; background:var(--accent);
+  box-shadow:0 0 8px var(--accent); opacity:.18;
+  transition:opacity .2s ease;
+}
+.lives i.on{ opacity:1; }
+
+.boost{
+  position:absolute; left:50%; bottom:9.5vh; transform:translateX(-50%);
+  font-family:var(--display); font-weight:600;
+  font-size:clamp(8px,.66vw,11px); letter-spacing:.52em;
+  color:var(--accent); opacity:0; transition:opacity .12s ease;
+}
+.boost.on{ opacity:1; }
+
+/* ================================================================== *
+   RESULTS
+ * ================================================================== */
+.rank{
+  font-family:var(--display); font-weight:700;
+  font-size:clamp(30px,4.6vw,68px); line-height:1;
+  color:var(--accent); letter-spacing:.08em;
+  text-shadow:0 0 44px rgba(116,255,220,.55);
+  margin-top:1.2vh;
+}
+.stats{ display:flex; gap:clamp(18px,3.2vw,58px); margin-top:3.4vh; }
+.stats div{ display:flex; flex-direction:column; gap:.55em; align-items:center; }
+.stats b{ font-family:var(--display); font-weight:600; font-size:clamp(13px,1.3vw,20px); }
+.stats span{ font-size:clamp(7px,.58vw,9px); letter-spacing:.4em; opacity:.45; }
 /* ================================================================== *
    SMALL SCREENS / TOUCH
  * ================================================================== */

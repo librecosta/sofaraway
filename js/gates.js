@@ -156,8 +156,8 @@ const GEO = new THREE.PlaneGeometry(WALL.w, WALL.h);
  *  One bulkhead
  * ------------------------------------------------------------------ */
 export class Gate {
-  constructor(rng, time) {
-    this.open = Math.floor(rng() * SECTORS) % SECTORS;
+  constructor(sector, time) {
+    this.open = ((sector | 0) % SECTORS + SECTORS) % SECTORS;
     this.dBeats = 0;
     this.d = 0;
     this.spawnT = time;
@@ -236,8 +236,9 @@ export class Gates {
     this.list.length = 0;
   }
 
-  spawn(dBeats, speed, secPerBeat, time) {
-    const g = new Gate(() => this.rng(), time);
+  spawn(dBeats, speed, secPerBeat, time, sector) {
+    const s = sector === undefined ? Math.floor(this.rng() * SECTORS) : sector;
+    const g = new Gate(s, time);
     g.dBeats = dBeats;
     g.place(speed * dBeats * secPerBeat);
     for (const m of g.meshes) this.scene.add(m);

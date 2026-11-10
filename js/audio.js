@@ -9,6 +9,28 @@
 const BPM = 128;
 const STEPS_PER_BAR = 16;
 
+/* must mirror the section table in chart.js — the arrangement follows the
+   same energy curve the gate density follows */
+const SONG = [
+  { beats: 32, energy: 0.15 },
+  { beats: 64, energy: 0.45 },
+  { beats: 64, energy: 0.55 },
+  { beats: 32, energy: 0.75 },
+  { beats: 96, energy: 1.00 },
+  { beats: 32, energy: 0.30 },
+  { beats: 64, energy: 0.65 },
+  { beats: 64, energy: 1.00 },
+];
+
+function energyAt(beat) {
+  let acc = 0;
+  for (const s of SONG) {
+    if (beat < acc + s.beats) return s.energy;
+    acc += s.beats;
+  }
+  return 0.15;
+}
+
 const PROG = [
   [57, 60, 64], // Am
   [57, 60, 64],
@@ -174,29 +196,34 @@ export class AudioEngine {
   _playStep(s, bar, t) {
     const chord = PROG[bar];
     const root = ROOT[bar];
+    const energy = energyAt(this.step / 4);
 
     // --- drums ---------------------------------------------------
-    if (s % 4 === 0) {
-      this._kick(t, 1.0);
+    if (s % 4 === 0 && energy > 0.20) {
+      this._kick(t, 0.55 + energy * 0.45);
       this._duck(t);
     }
-    if (s === 4 || s === 12) this._snare(t, 0.9);
-    if (s % 2 === 0) this._hat(t, s % 4 === 0 ? 0.5 : 0.28, s === 14 ? 0.075 : 0.028);
-    if (s % 4 === 2) this._hat(t + 0.5 * (60 / this.bpm) / 4, 0.14, 0.02);
+    if ((s === 4 || s === 12) && energy > 0.42) this._snare(t, 0.5 + energy * 0.5);
+    if (s % 2 === 0 && energy > 0.22) {
+      this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
+    }
+    if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.bpm) / 4, 0.14, 0.02);
 
     // --- bass ----------------------------------------------------
-    for (const n of BASS_PATTERN) {
-      if (n.s === s) {
-        this._bass(t, root + n.o, n.d, n.v);
-        break;
+    if (energy > 0.28) {
+      for (const n of BASS_PATTERN) {
+        if (n.s === s) {
+          this._bass(t, root + n.o, n.d, n.v * (0.6 + energy * 0.5));
+          break;
+        }
       }
     }
 
     // --- arp -----------------------------------------------------
-    if (s % 2 === 0) {
+    if (s % 2 === 0 && energy > 0.5) {
       const idx = (s / 2) % chord.length;
       const oct = (s % 8 === 0) ? 24 : 12;
-      this._pluck(t, chord[idx] + oct, 0.10, 0.42);
+      this._pluck(t, chord[idx] + oct, 0.10, 0.42 * (0.5 + energy * 0.6));
     }
 
     // --- pad -----------------------------------------------------
@@ -205,7 +232,7 @@ export class AudioEngine {
     }
 
     // --- fill ----------------------------------------------------
-    if (bar % 4 === 3 && s >= 12) {
+    if (bar % 4 === 3 && s >= 12 && energy > 0.6) {
       this._snare(t, 0.35 + (s - 12) * 0.14);
     }
   }

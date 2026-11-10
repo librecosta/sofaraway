@@ -4,6 +4,7 @@ import { Tunnel, TUNNEL } from './tunnel.js';
 import { Gates, sectorOf, sectorPoint } from './gates.js';
 import { PostFX } from './post.js';
 import { AudioEngine } from './audio.js';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -15,7 +16,7 @@ const AUTOPLAY = params.get('auto') === '1' || FIXED_T !== null;
 const NO_POST = params.get('post') === '0';
 const DBG = params.get('dbg') === '1';
 const ALIGN = params.get('align') === '1';
-const GOD = params.get('god') === '1';
+let GOD = params.get('god') === '1';
 
 /* ------------------------------------------------------------------ *
  *  Renderer
@@ -125,6 +126,10 @@ const SEC_PER_BEAT = 60 / BPM;
  * ------------------------------------------------------------------ */
 const State = { MENU: 'menu', PLAY: 'play', CRASH: 'crash', OVER: 'over' };
 
+const DIFF_KEYS = ['easy', 'normal', 'hard'];
+let difficulty = localStorage.getItem('elsewhere.difficulty') || 'normal';
+if (!DIFFICULTY[difficulty]) difficulty = 'normal';
+
 const G = {
   state: State.MENU,
   time: 0,
@@ -134,20 +139,26 @@ const G = {
   speed: 24,
   score: 0,
   best: parseInt(localStorage.getItem('elsewhere.best') || '0', 10),
-  combo: 1,
+  combo: 0,
+  maxCombo: 0,
   gatesPassed: 0,
-  nextSpawnBeat: 4,
+  gatesTotal: 0,
+  hits: 0,
+  lives: 2,
+  maxLives: 2,
+  invuln: 0,
+  boosting: false,
+  runOver: false,
+  chart: [],
+  chartIndex: 0,
   timeScale: 1,
   shake: 0,
   hitFlash: 0,
-  hueFlash: 0,
-  nextHueBeat: 0,
 };
 
 const PHASES = [0.44, 0.78, 0.92, 0.57, 0.09, 0.66];
 const PHASE_BEATS = 32;
-const LEAD_BEATS = 2.6;
-const SPAWN_EVERY = 1.3;
+const SPAWN_LOOKAHEAD = 9;   // beats of warning before a gate arrives
 
 let currentHue = PHASES[0];
 let phaseIndex = 0;
@@ -166,12 +177,12 @@ const _v3 = new THREE.Vector3();
 const $ = (id) => document.getElementById(id);
 if (params.get('ui') === '0') $('ui').style.display = 'none';
 const elMenu = $('menu'), elHud = $('hud'), elOver = $('over');
-const elScore = $('hud-score'), elBest = $('hud-best');
+const elScore = $('hud-score');
 const elSpeed = $('hud-speed'), elCombo = $('hud-combo');
 const elMsg = $('center-msg');
 const elCursor = $('cursor');
 const elFlash = $('flash'), elPanel = $('panel');
-const elOverScore = $('over-score'), elOverSub = $('over-sub');
+const elOverScore = $('over-score');
 
 function show(el, on) { el.classList.toggle('hidden', !on); }
 
@@ -226,8 +237,16 @@ window.addEventListener('pointerover', (e) => {
   elCursor.classList.toggle('hover', !!hit);
 }, true);
 
-window.addEventListener('pointerdown', () => elCursor.classList.add('down'));
-window.addEventListener('pointerup', () => elCursor.classList.remove('down'));
+window.addEventListener('pointerdown', () => {
+  elCursor.classList.add('down');
+  if (G.state === State.PLAY) G.boosting = true;
+});
+window.addEventListener('pointerup', () => {
+  elCursor.classList.remove('down');
+  G.boosting = false;
+});
+window.addEventListener('pointercancel', () => { G.boosting = false; });
+window.addEventListener('blur', () => { G.boosting = false; });
 document.addEventListener('pointerleave', () => elCursor.classList.add('hidden'));
 document.addEventListener('pointerenter', () => elCursor.classList.remove('hidden'));
 
@@ -274,10 +293,15 @@ window.addEventListener('keydown', (e) => {
   if (k === 'escape') {
     if (G.state === State.PLAY || G.state === State.OVER) toMenu();
   }
+  if (k === 'shift') { if (G.state === State.PLAY) G.boosting = true; }
   if (k === 'm') { audio.setMuted(!audio.muted); message(audio.muted ? 'MUTED' : 'SOUND ON', 0.8); }
   keys.add(k);
 });
-window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+window.addEventListener('keyup', (e) => {
+  const k = e.key.toLowerCase();
+  keys.delete(k);
+  if (k === 'shift') G.boosting = false;
+});
 window.addEventListener('blur', () => keys.clear());
 
 function readKeyboard(dt) {
@@ -297,30 +321,43 @@ function readKeyboard(dt) {
 /* ------------------------------------------------------------------ *
  *  Flow
  * ------------------------------------------------------------------ */
-async function startGame() {
-  flash(0.9, 260);
-  gates.clear();
+function resetRun() {
+  const d = DIFFICULTY[difficulty];
+  G.chart = chartFor(difficulty, d.seed);
+  G.chartIndex = 0;
+  G.gatesTotal = G.chart.length;
+  G.maxLives = d.lives;
+  G.lives = d.lives;
   G.distance = 0;
   G.speed = 24;
   G.score = 0;
-  G.combo = 1;
+  G.combo = 0;
+  G.maxCombo = 0;
   G.gatesPassed = 0;
+  G.hits = 0;
+  G.invuln = 0;
+  G.runOver = false;
+  G.boosting = false;
   G.time = 0;
   G.beatLocal = 0;
-  G.nextSpawnBeat = 3;
   G.timeScale = 1;
   G.shake = 0;
   G.hitFlash = 0;
-  G.nextHueBeat = 0;
   phaseIndex = 0;
   currentHue = PHASES[0];
   CAM.x = CAM.tx = 0;
   CAM.y = CAM.ty = 0;
+  updateHud(true);
+}
+
+async function startGame() {
+  flash(0.9, 260);
+  gates.clear();
+  resetRun();
   setState(State.PLAY);
   if (!FIXED_T) {
     try { await audio.start(); } catch (e) { /* ignore */ }
   }
-  updateHud(true);
 }
 
 function toMenu() {
@@ -331,30 +368,58 @@ function toMenu() {
   G.beatLocal = 0;
 }
 
-function crash(gate) {
-  if (G.state !== State.PLAY) return;
-  G.state = State.CRASH;
-  G.timeScale = 0.18;
+/* a hit costs a life; the run is only over when the last one goes */
+function takeHit(gate) {
+  if (G.state !== State.PLAY || G.invuln > 0) return;
+  G.lives--;
+  G.combo = 0;
+  G.hits++;
+  G.invuln = 1.4;
   G.shake = 1.0;
   G.hitFlash = 1.0;
   if (gate) gate.hit = 1;
 
-  flash(0.95, 420, '#ffffff');
+  flash(0.9, 380, '#ff5a5a');
   shakeDom(1);
 
+  if (G.lives <= 0) endRun('TERMINATED');
+}
+
+function endRun(title) {
+  if (G.runOver) return;
+  G.runOver = true;
+  G.state = State.CRASH;
+  G.timeScale = 1;
+  audio.stop();
+
+  const total = G.gatesPassed + G.hits;
+  const acc = total > 0 ? G.gatesPassed / total : 0;
+
+  let rank = 'C';
+  if (G.lives > 0) {
+    if (acc >= 0.985) rank = 'S';
+    else if (acc >= 0.93) rank = 'A';
+    else if (acc >= 0.82) rank = 'B';
+  } else if (acc >= 0.93) {
+    rank = 'B';
+  }
+
   setTimeout(() => {
-    G.timeScale = 1;
     G.state = State.OVER;
     show(elHud, false);
     show(elOver, true);
+    $('over-title').textContent = title || 'RUN COMPLETE';
     elOverScore.textContent = String(Math.floor(G.score));
-    elOverSub.textContent = `DISTANCE ${Math.floor(G.distance)} M · ${G.gatesPassed} GATES`;
+    $('over-rank').textContent = rank;
+    $('over-gates').textContent = `${G.gatesPassed}/${G.gatesTotal}`;
+    $('over-combo').textContent = String(G.maxCombo);
+    $('over-acc').textContent = Math.round(acc * 100) + '%';
+
     if (G.score > G.best) {
       G.best = Math.floor(G.score);
       localStorage.setItem('elsewhere.best', String(G.best));
     }
-    audio.stop();
-  }, 850);
+  }, 700);
 }
 
 let shakeT = 0;
@@ -369,10 +434,23 @@ function shakeDom(amount) {
  * ------------------------------------------------------------------ */
 function updateHud(force) {
   elScore.textContent = String(Math.floor(G.score));
-  elBest.textContent = String(G.best);
+  $('hud-gates').textContent = G.gatesPassed + '/' + G.gatesTotal;
   elCombo.textContent = '×' + G.combo;
-  const p = THREE.MathUtils.clamp((G.speed - 24) / 30, 0, 1) * 100;
+  const p = THREE.MathUtils.clamp((G.speed - 24) / 34, 0, 1) * 100;
   elSpeed.style.width = p + '%';
+
+  const bars = $('hud-lives').children;
+  for (let i = 0; i < bars.length; i++) {
+    bars[i].classList.toggle('on', i < G.lives);
+    bars[i].style.display = i < G.maxLives ? '' : 'none';
+  }
+
+  $('hud-boost').classList.toggle('on', G.boosting && G.state === State.PLAY);
+
+  if (G.chart.length) {
+    const c = G.chart[Math.min(G.chartIndex, G.chart.length - 1)];
+    $('hud-section').textContent = (c && c.section) ? c.section : '—';
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -410,9 +488,13 @@ function step(dt) {
     G.beat = G.beatLocal;
   }
 
-  // speed ---------------------------------------------------------
-  const targetSpeed = 24 + Math.min(G.gatesPassed * 0.62, 30);
-  G.speed += (targetSpeed - G.speed) * Math.min(1, sdt * 1.6);
+  // speed: the corridor keeps accelerating, and boosting adds on top
+  // (gates are beat-indexed, so speed never desyncs them from the music)
+  const boost = (G.boosting && G.state === State.PLAY) ? 1.45 : 1.0;
+  const targetSpeed = (24 + Math.min(G.gatesPassed * 0.22, 10)) * boost;
+  G.speed += (targetSpeed - G.speed) * Math.min(1, sdt * (boost > 1 ? 4.0 : 1.6));
+
+  if (G.invuln > 0) G.invuln = Math.max(0, G.invuln - sdt);
 
   // distance ------------------------------------------------------
   if (G.state === State.PLAY) G.distance += G.speed * sdt;
@@ -461,13 +543,20 @@ function step(dt) {
   fog.color.setHSL((currentHue + 1) % 1, 0.75, 0.030);
 
   // fov kick ------------------------------------------------------
-  camera.fov = 76 + pulse * 3.4 + (G.state === State.PLAY ? Math.min(G.speed, 56) * 0.045 : 0);
+  const boostFov = (G.boosting && G.state === State.PLAY) ? -4.5 : 0;
+  camera.fov = 76 + pulse * 3.4 + boostFov + (G.state === State.PLAY ? Math.min(G.speed, 56) * 0.045 : 0);
   camera.updateProjectionMatrix();
 
-  // spawn ---------------------------------------------------------
-  if (G.state === State.PLAY && G.beat >= G.nextSpawnBeat) {
-    G.nextSpawnBeat += SPAWN_EVERY;
-    gates.spawn(LEAD_BEATS, G.speed, SEC_PER_BEAT, G.time);
+  // spawn from the chart ------------------------------------------
+  if (G.state === State.PLAY) {
+    while (
+      G.chartIndex < G.chart.length &&
+      G.chart[G.chartIndex].beat - G.beat <= SPAWN_LOOKAHEAD
+    ) {
+      const c = G.chart[G.chartIndex++];
+      gates.spawn(c.beat - G.beat, G.speed, SEC_PER_BEAT, G.time, c.sector);
+    }
+    if (G.beat >= SONG_BEATS + 6 && !G.runOver) endRun('RUN COMPLETE');
   }
 
   // gates ---------------------------------------------------------
@@ -486,16 +575,22 @@ function step(dt) {
           da = Math.abs(((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2));
           if (da > Math.PI) da = Math.PI * 2 - da;
           const off = da / (Math.PI / 8);
+
           G.gatesPassed++;
           G.combo = Math.min(50, G.combo + 1);
-          G.score += 100 * (1 + G.combo * 0.06);
+          G.maxCombo = Math.max(G.maxCombo, G.combo);
+
+          const d = DIFFICULTY[difficulty];
+          const boostMul = G.boosting ? 1.5 : 1.0;
+          G.score += 100 * d.mult * boostMul * (1 + G.combo * 0.05);
+
           if (off < 0.42) {
-            G.score += 150;
-            message('CLEAN ×' + G.combo, 0.7);
+            G.score += 150 * d.mult;
+            message('CLEAN ×' + G.combo, 0.6);
           }
-        } else {
-          crash(g);
-          break;
+        } else if (G.invuln <= 0) {
+          takeHit(g);
+          if (G.runOver) break;
         }
       }
     }
@@ -608,6 +703,13 @@ window.addEventListener('resize', resize);
  *  UI wiring
  * ------------------------------------------------------------------ */
 document.getElementById('ui').addEventListener('click', (e) => {
+  const diffBtn = e.target.closest('[data-diff]');
+  if (diffBtn) {
+    difficulty = diffBtn.dataset.diff;
+    localStorage.setItem('elsewhere.difficulty', difficulty);
+    syncDifficulty();
+    return;
+  }
   const btn = e.target.closest('[data-act]');
   if (!btn) return;
   const act = btn.dataset.act;
@@ -647,6 +749,13 @@ document.getElementById('ui').addEventListener('click', (e) => {
   if (act === 'closepanel') elPanel.classList.add('hidden');
 });
 
+function syncDifficulty() {
+  for (const b of document.querySelectorAll('[data-diff]')) {
+    b.classList.toggle('active', b.dataset.diff === difficulty);
+  }
+}
+syncDifficulty();
+
 function openPanel(title, html) {
   $('panel-title').textContent = title;
   $('panel-body').innerHTML = html;
@@ -660,8 +769,13 @@ resize();
 
 if (FIXED_T !== null) {
   // deterministic capture: simulate, then present a single frame
+  if (params.has('diff') && DIFFICULTY[params.get('diff')]) {
+    difficulty = params.get('diff');
+  }
+  if (params.get('god') !== '1') GOD = true;   // captures should reach the end
+  gates.clear();
+  resetRun();
   setState(State.PLAY);
-  G.nextSpawnBeat = 3;
   const FIXED_DT = 1 / 60;
   let acc = 0;
   while (acc < FIXED_T) {

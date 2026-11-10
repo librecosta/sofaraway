@@ -27,7 +27,6 @@
   <span class="c-dot"></span>
 </div>
 
-
 <div id="ui">
 
   <div class="frame" aria-hidden="true">
@@ -48,6 +47,11 @@
       <h1 class="wordmark">ELSEWHERE</h1>
       <div class="rule"></div>
       <div class="tagline">ANYWHERE BUT HERE</div>
+      <div class="diff" id="diff">
+        <button class="diff-btn" data-diff="easy">EASY<em>3 LIVES</em></button>
+        <button class="diff-btn" data-diff="normal">NORMAL<em>2 LIVES</em></button>
+        <button class="diff-btn" data-diff="hard">HARD<em>1 LIFE</em></button>
+      </div>
     </div>
 
     <div class="bottom">
@@ -67,9 +71,14 @@
       <div class="label">SCORE</div>
       <div class="value" id="hud-score">0</div>
     </div>
+    <div class="hud-tc">
+      <div class="label">SECTOR</div>
+      <div class="value sm" id="hud-section">INTRO</div>
+      <div class="lives" id="hud-lives"><i></i><i></i><i></i></div>
+    </div>
     <div class="hud-tr">
-      <div class="label">BEST</div>
-      <div class="value dim" id="hud-best">0</div>
+      <div class="label">GATES</div>
+      <div class="value dim" id="hud-gates">0/0</div>
     </div>
     <div class="hud-bl">
       <div class="label">VELOCITY</div>
@@ -78,18 +87,24 @@
     </div>
     <div class="hud-br">
       <div class="label">LINK</div>
-      <div class="value" id="hud-combo">&times;1</div>
+      <div class="value" id="hud-combo">&times;0</div>
     </div>
 
+    <div class="boost" id="hud-boost">BOOST</div>
     <div class="center-msg" id="center-msg"></div>
   </section>
 
   <!-- ============ GAME OVER ============ -->
   <section id="over" class="screen hidden">
     <div class="center">
-      <div class="eyebrow"><i></i><span>RUN TERMINATED</span><i></i></div>
+      <div class="eyebrow"><i></i><span id="over-title">RUN TERMINATED</span><i></i></div>
       <div class="over-score" id="over-score">0</div>
-      <div class="over-sub" id="over-sub">DISTANCE 0 M</div>
+      <div class="rank" id="over-rank">C</div>
+      <div class="stats">
+        <div><b id="over-gates">0/0</b><span>GATES</span></div>
+        <div><b id="over-combo">0</b><span>MAX LINK</span></div>
+        <div><b id="over-acc">0%</b><span>ACCURACY</span></div>
+      </div>
       <button class="btn start" data-act="restart"><span>SPACE TO RUN AGAIN</span></button>
       <button class="btn tiny" data-act="menu"><span>BACK TO MENU</span></button>
     </div>
