@@ -9,7 +9,7 @@
  *      0 E   1 NE   2 N   3 NW   4 W   5 SW   6 S   7 SE
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10s';
+import { VOL } from './volumes.js?v=2026-11-10t';
 
 export const SONG_BEATS = VOL.beats;
 export const BPM = VOL.bpm;

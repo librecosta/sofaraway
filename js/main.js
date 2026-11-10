@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10s';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10s';
-import { buildPath } from './path.js?v=2026-11-10s';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10s';
-import { PostFX } from './post.js?v=2026-11-10s';
-import { AudioEngine } from './audio.js?v=2026-11-10s';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10s';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10s';
-import { Recorder } from './recorder.js?v=2026-11-10s';
-import { QUALITY, TIER } from './quality.js?v=2026-11-10s';
+import { buildTextures } from './textures.js?v=2026-11-10t';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10t';
+import { buildPath } from './path.js?v=2026-11-10t';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10t';
+import { PostFX } from './post.js?v=2026-11-10t';
+import { AudioEngine } from './audio.js?v=2026-11-10t';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10t';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10t';
+import { Recorder } from './recorder.js?v=2026-11-10t';
+import { QUALITY, TIER } from './quality.js?v=2026-11-10t';
 
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 
@@ -329,6 +329,13 @@ document.addEventListener('pointerenter', () => elCursor.classList.remove('hidde
 const pointers = { x: 0.5, y: 0.5 };
 let usingKeyboard = false;
 
+/* On a coarse pointer the finger hides what it is aiming at, so the reticle is
+   driven by how far the finger has travelled since it went down, and drawn a
+   little above it. Absolute mapping would also force the thumb to the screen
+   edge to reach the edge of the corridor. */
+let touchLast = null;
+const TOUCH_LIFT = 64;
+
 function pointerToTarget(cx, cy) {
   const nx = (cx / window.innerWidth) * 2 - 1;
   const ny = (cy / window.innerHeight) * 2 - 1;
@@ -342,15 +349,27 @@ window.addEventListener('pointermove', (e) => {
   pointerToTarget(e.clientX, e.clientY);
 }, { passive: true });
 
+function touchSteer(cx, cy) {
+  if (!touchLast) { touchLast = { x: cx, y: cy }; return; }
+  const kx = (RANGE_X * 2) / (window.innerWidth * 0.62);
+  const ky = (RANGE_Y * 2) / (window.innerHeight * 0.62);
+  CAM.tx = THREE.MathUtils.clamp(CAM.tx + (cx - touchLast.x) * kx, -RANGE_X, RANGE_X);
+  CAM.ty = THREE.MathUtils.clamp(CAM.ty - (cy - touchLast.y) * ky, -RANGE_Y, RANGE_Y);
+  touchLast = { x: cx, y: cy };
+  // the reticle rides above the thumb so the barrier stays visible
+  PTR.x = window.innerWidth * 0.5 + (CAM.tx / RANGE_X) * window.innerWidth * 0.31;
+  PTR.y = window.innerHeight * 0.5 - (CAM.ty / RANGE_Y) * window.innerHeight * 0.31 - TOUCH_LIFT;
+}
+
 window.addEventListener('pointerdown', (e) => {
-  if (G.state === State.PLAY && e.pointerType === 'touch') {
-    pointerToTarget(e.clientX, e.clientY);
-  }
+  if (e.pointerType === 'touch') touchLast = { x: e.clientX, y: e.clientY };
 }, { passive: true });
+
+window.addEventListener('pointerup', () => { touchLast = null; }, { passive: true });
 
 window.addEventListener('touchmove', (e) => {
   if (e.touches.length) {
-    pointerToTarget(e.touches[0].clientX, e.touches[0].clientY);
+    touchSteer(e.touches[0].clientX, e.touches[0].clientY);
   }
 }, { passive: true });
 
@@ -899,6 +918,30 @@ function stepVolume(dir) {
   if (next && next.id !== VOL.id) location.search = '?vol=' + next.id;
 }
 
+/* wire settings close — 'wire settings close'
+   #settings is a body-level sibling of #ui, so #ui's delegated click handler
+   never sees it. */
+(function () {
+  const box = document.getElementById('settings');
+  if (!box) return;
+  box.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="closesettings"]') || e.target === box) {
+      box.classList.add('hidden');
+    }
+  });
+  const vol = document.getElementById('set-volume');
+  if (!vol) return;
+  let saved = 80;
+  try { saved = Number(localStorage.getItem('sofaraway.volume') ?? 80); } catch (err) { /* ignore */ }
+  vol.value = String(saved);
+  audio.setVolume(saved / 100);
+  vol.addEventListener('input', () => {
+    const v = Number(vol.value);
+    audio.setVolume(v / 100);
+    try { localStorage.setItem('sofaraway.volume', String(v)); } catch (err) { /* ignore */ }
+  });
+})();
+
 function syncQuality() {
   let stored = 'auto';
   try { stored = localStorage.getItem('sofaraway.quality') || 'auto'; } catch (e) { /* ignore */ }
@@ -908,7 +951,7 @@ function syncQuality() {
   }
 }
 syncQuality();
-if (params.get('panel') === '1') $('panel').hidden = false;
+if (params.get('panel') === '1') { $('settings').classList.remove('hidden'); syncQuality(); }
 
 function syncVolume() {
   const el = $('vol-name');

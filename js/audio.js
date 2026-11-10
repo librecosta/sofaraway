@@ -6,7 +6,7 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10s';
+import { VOL } from './volumes.js?v=2026-11-10t';
 
 const MOOD = VOL.music;
 
@@ -519,6 +519,11 @@ export class AudioEngine {
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
     n.connect(lp); lp.connect(g); g.connect(this.drumBus); g.connect(this.revSend);
     n.start(t); n.stop(t + 0.65);
+  }
+
+  setVolume(v) {
+    if (!this.master) return;
+    this.master.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime, 0.05);
   }
 
   _duck(t) {
