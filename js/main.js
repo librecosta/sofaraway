@@ -109,6 +109,8 @@ gates.place = (mesh, dist) => {
 };
 const _camF = { p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3() };
 const _camTgt = new THREE.Vector3();
+const _negF = new THREE.Vector3();
+const _basis = new THREE.Matrix4();
 const post = new PostFX(renderer);
 post.setSize(window.innerWidth, window.innerHeight, PR);
 if (params.has('dof')) {
@@ -410,7 +412,7 @@ function takeHit(gate) {
 
   flash(0.9, 380, '#ff5a5a');
   shakeDom(1);
-  G.recoil = 0.10;
+  G.recoil = 0.12;
 
   if (G.lives <= 0) endRun('TERMINATED');
 }
@@ -420,7 +422,7 @@ function endRun(title) {
   G.runOver = true;
   G.state = State.CRASH;
   G.timeScale = 1;
-  G.recoil = title === 'ESCAPED' ? 0 : 0.45;
+  G.recoil = title === 'ESCAPED' ? 0 : 0.55;
   audio.stop();
 
   const total = G.gatesPassed + G.hits;
@@ -500,9 +502,12 @@ function placeCamera() {
   camera.position.copy(_camF.p)
     .addScaledVector(_camF.r, cx)
     .addScaledVector(_camF.u, cy);
-  camera.up.copy(_camF.u);
-  _camTgt.copy(camera.position).add(_camF.f);
-  camera.lookAt(_camTgt);
+  // build the orientation straight from the frame. lookAt() degenerates when
+  // the forward axis drifts towards the up axis, which is what made the view
+  // shiver on some stretches of the curve
+  _negF.copy(_camF.f).negate();
+  _basis.makeBasis(_camF.r, _camF.u, _negF);
+  camera.quaternion.setFromRotationMatrix(_basis);
   camera.rotateZ(CAM.roll);
   camera.updateMatrixWorld();
 }
@@ -560,11 +565,10 @@ function step(dt) {
   // distance ------------------------------------------------------
   if (G.state === State.PLAY) G.distance += G.speed * sdt;
   else if (G.state === State.CRASH || G.state === State.OVER) {
+    // the world stops dead; only the camera eases back a couple of metres
     if (G.recoil > 0) {
       G.recoil = Math.max(0, G.recoil - dt);
-      G.distance -= 110 * sdt;        // a light knock, not a teleport
-    } else {
-      G.distance -= 16 * sdt;         // then it just keeps receding, for ever
+      G.distance -= 26 * sdt;
     }
   } else G.distance += G.speed * sdt * 0.35;
 
@@ -631,7 +635,7 @@ function step(dt) {
 
   // gates ---------------------------------------------------------
   const prevBeatGate = gates.list.slice();
-  gates.update(dBeat, G.speed, SEC_PER_BEAT, G.time, currentHue);
+  if (!G.runOver) gates.update(dBeat, G.speed, SEC_PER_BEAT, G.time, currentHue);
 
   if (G.state === State.PLAY) {
     for (const g of prevBeatGate) {
