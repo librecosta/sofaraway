@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10z';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10z';
-import { buildPath } from './path.js?v=2026-11-10z';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10z';
-import { PostFX } from './post.js?v=2026-11-10z';
-import { AudioEngine } from './audio.js?v=2026-11-10z';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10z';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10z';
-import { Recorder } from './recorder.js?v=2026-11-10z';
-import { QUALITY, TIER } from './quality.js?v=2026-11-10z';
+import { buildTextures } from './textures.js?v=2026-11-10za';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10za';
+import { buildPath } from './path.js?v=2026-11-10za';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10za';
+import { PostFX } from './post.js?v=2026-11-10za';
+import { AudioEngine } from './audio.js?v=2026-11-10za';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10za';
+import { VOL, VOLUMES } from './volumes.js?v=2026-11-10za';
+import { Recorder } from './recorder.js?v=2026-11-10za';
+import { QUALITY, TIER } from './quality.js?v=2026-11-10za';
 
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 

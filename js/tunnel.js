@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY } from './quality.js?v=2026-11-10z';
+import { QUALITY } from './quality.js?v=2026-11-10za';
 import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
@@ -179,8 +179,9 @@ export class Tunnel {
       this.path.sample(sA, A);
       this.path.sample(sB, B);
       // absolute V, so the plating is continuous across chunk seams
-      const vA = sA / totalPerim * 3.0;
-      const vB = sB / totalPerim * 3.0;
+      // one texture repeat per bay, so the plating lines up with the recesses
+      const vA = sA / RING;
+      const vB = sB / RING;
 
       /* Each bay is a recessed plate with a chamfer at both ends. The chamfers
          matter more than the plate: their normals differ from the wall's, so
@@ -222,7 +223,7 @@ export class Tunnel {
         quad(A, 1.0, C, inner, 0, 1, u0, u1, vA, vA + CH * 0.02, nWall);
         // plate, split in two by a raised rib down the middle
         quad(C, inner, D, inner, 0, 0.5 - SEAM, u0, um, vA, vB, nWall);
-        quad(C, 1.0, D, 1.0, 0.5 - SEAM, 0.5 + SEAM, um, um, vA, vB, nWall);
+        quad(C, 1.0, D, 1.0, 0.5 - SEAM, 0.5 + SEAM, um - 0.003, um + 0.003, vA, vB, nWall);
         quad(C, inner, D, inner, 0.5 + SEAM, 1, um, u1, vA, vB, nWall);
         // upper chamfer, full width
         quad(D, inner, B, 1.0, 0, 1, u0, u1, vB, vB, nWall);
