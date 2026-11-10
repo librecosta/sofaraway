@@ -254,20 +254,29 @@ export class Tunnel {
       }
     }
 
-    let furthest = 0;
-    if (this.chunks.length) {
-      for (const c of this.chunks) furthest = Math.max(furthest, c.s1);
-    } else {
-      furthest = Math.max(0, s - KEEP_BEHIND);
-    }
+    let lo = Infinity, hi = -Infinity;
+    for (const c of this.chunks) { lo = Math.min(lo, c.s0); hi = Math.max(hi, c.s1); }
+    if (!this.chunks.length) { lo = s; hi = s; }
 
+    // build forward
     let guard = 0;
-    while (furthest < need1 && furthest < this.path.length - 1 && guard++ < 8) {
-      const a = Math.max(0, furthest);
+    while (hi < need1 && hi < this.path.length - 1 && guard++ < 8) {
+      const a = Math.max(0, hi);
       const b = Math.min(this.path.length, a + CHUNK);
       if (b - a < 1) break;
       this.chunks.push(this._buildChunk(a, b));
-      furthest = b;
+      hi = b;
+    }
+
+    // build backward — the camera can now recede, so the corridor has to grow
+    // behind it as well as ahead
+    guard = 0;
+    while (lo > need0 && lo > 0 && guard++ < 8) {
+      const b = Math.min(this.path.length, lo);
+      const a = Math.max(0, b - CHUNK);
+      if (b - a < 1) break;
+      this.chunks.push(this._buildChunk(a, b));
+      lo = a;
     }
   }
 

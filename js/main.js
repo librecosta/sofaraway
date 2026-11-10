@@ -91,6 +91,7 @@ const UNITS_PER_BEAT = 20 * (60 / 128);
 /* long enough to still have corridor under you at full boost for the whole song */
 const PATH_BACK = 4200;          // corridor generated behind the start, for the reel-back
 const START_S = PATH_BACK;
+const MENU_S = START_S + 140;   // title screen lives here, always
 const CORRIDOR_LEN = PATH_BACK + 7200;
 const path = buildPath(CORRIDOR_LEN);
 const tunnel = new Tunnel(tex, path);
@@ -178,7 +179,7 @@ const G = {
   hitFlash: 0,
 };
 
-G.distance = START_S + 80;
+G.distance = MENU_S;
 
 const PHASES = [0.44, 0.78, 0.92, 0.57, 0.09, 0.66];
 const PHASE_BEATS = 32;
@@ -188,8 +189,8 @@ let currentHue = PHASES[0];
 let phaseIndex = 0;
 
 const CAM = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
-const RANGE_X = TUNNEL.a - 0.32;
-const RANGE_Y = TUNNEL.b - 0.32;
+const RANGE_X = TUNNEL.a - 0.80;
+const RANGE_Y = TUNNEL.b - 0.80;
 /* the camera trails the vessel instead of sitting on it, so the marker you
    steer is visibly *off-centre* — first person, but not glued to the axis */
 const CAM_OFFSET = 0.88;
@@ -386,6 +387,7 @@ async function startGame() {
 
 function toMenu() {
   gates.clear();
+  G.distance = MENU_S;          // the menu never inherits where the run ended
   setState(State.MENU);
   audio.stop();
   G.time = 0;
@@ -405,7 +407,7 @@ function takeHit(gate) {
 
   flash(0.9, 380, '#ff5a5a');
   shakeDom(1);
-  G.recoil = 0.16;
+  G.recoil = 0.10;
 
   if (G.lives <= 0) endRun('TERMINATED');
 }
@@ -415,7 +417,7 @@ function endRun(title) {
   G.runOver = true;
   G.state = State.CRASH;
   G.timeScale = 1;
-  G.recoil = title === 'ESCAPED' ? 0 : 0.85;
+  G.recoil = title === 'ESCAPED' ? 0 : 0.45;
   audio.stop();
 
   const total = G.gatesPassed + G.hits;
@@ -554,7 +556,7 @@ function step(dt) {
   else if (G.state === State.CRASH || G.state === State.OVER) {
     if (G.recoil > 0) {
       G.recoil = Math.max(0, G.recoil - dt);
-      G.distance -= 300 * sdt;        // the hit knocks you back
+      G.distance -= 110 * sdt;        // a light knock, not a teleport
     } else {
       G.distance -= 16 * sdt;         // then it just keeps receding, for ever
     }
