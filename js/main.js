@@ -108,7 +108,7 @@ function setWireframe(on) {
   renderer.setClearColor(on ? 0xffffff : 0x000000, 1);
   document.body.classList.toggle('wires', on);
   tunnel.setWireframe(on);
-  for (const g of gates.list) g.mesh.visible = !on;
+  for (const g of gates.list) for (const mm of g.meshes) mm.visible = !on;
   if (on) tunnel.setHue(0.55, 0.0, 0.5);
 }
 setWireframe(true);
