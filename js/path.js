@@ -82,10 +82,19 @@ export class Path {
     const t = out || {};
     const maxS = this.length;
     const cs = s < 0 ? 0 : (s > maxS ? maxS : s);
-    const i = Math.min(this.frames.length - 2, Math.floor(cs));
-    const a = this.frames[i];
-    const b = this.frames[i + 1] || a;
-    const k = b === a ? 0 : (cs - a.s) / (b.s - a.s);
+    // Frames are not exactly one unit apart (a quarter turn's arc length is
+    // whatever it is), so index by arc length, not by rounding the distance.
+    // Rounding made the sample slip one frame every time d crossed an integer,
+    // which is the periodic 0.1 unit jump that read as the camera shivering.
+    const n = this.frames.length;
+    let lo = 0, hi = n - 1;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.frames[mid].s <= cs) lo = mid; else hi = mid;
+    }
+    const a = this.frames[lo];
+    const b = this.frames[hi] || a;
+    const k = b.s > a.s ? (cs - a.s) / (b.s - a.s) : 0;
 
     t.p = (t.p || new THREE.Vector3()).copy(a.p).lerp(b.p, k);
     t.f = (t.f || new THREE.Vector3()).copy(a.f).lerp(b.f, k).normalize();

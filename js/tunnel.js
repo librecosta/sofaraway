@@ -140,8 +140,9 @@ export class Tunnel {
       const sA = rings[k], sB = rings[k + 1];
       this.path.sample(sA, A);
       this.path.sample(sB, B);
-      const vA = (sA - s0) / totalPerim * 3.0;
-      const vB = (sB - s0) / totalPerim * 3.0;
+      // absolute V, so the plating is continuous across chunk seams
+      const vA = sA / totalPerim * 3.0;
+      const vB = sB / totalPerim * 3.0;
 
       for (let i = 0; i < n; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
