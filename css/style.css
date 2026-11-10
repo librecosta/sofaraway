@@ -51,7 +51,7 @@ body.showcursor{ cursor:default; }
 /* ---------- wordmark ---------- */
 .wordmark{
   margin:0; line-height:.86;
-  font-size: clamp(52px, 15.5vw, 230px);
+  font-size: clamp(46px, 14.2vw, 208px);
   font-weight:900;
   letter-spacing:-.045em;
   text-transform:lowercase;
@@ -90,7 +90,7 @@ body.showcursor{ cursor:default; }
 @keyframes breathe{ 0%,100%{opacity:.95} 50%{opacity:.35} }
 
 .musicbadge{
-  position:absolute; right:3.4vw; top:50%; transform:translateY(-50%);
+  position:absolute; right:2.4vw; top:50%; transform:translateY(-50%);
   background:rgba(11,13,16,.82); color:#e9f6ff;
   padding:.7em 1em; text-align:left; line-height:1.45;
   font-size: clamp(8px,.68vw,11px); letter-spacing:.26em; font-weight:600;
@@ -193,6 +193,7 @@ body.showcursor{ cursor:default; }
   text-shadow:0 0 5px #fff, 0 0 12px #fff, 0 0 22px #fff, 0 0 32px #fff;
 }
 .wires .tagline.dim{
+  opacity:.75;
   text-shadow:0 0 5px #fff, 0 0 12px #fff, 0 0 20px #fff;
 }
 
