@@ -195,10 +195,6 @@ export class Gate {
     }
   }
 
-  place(d) {
-    this.d = d;
-    for (const m of this.meshes) m.position.z = -d + m.userData.offset;
-  }
 
   update(time, hue) {
     const u = this.mat.uniforms;
@@ -241,8 +237,11 @@ export class Gates {
     const s = sector === undefined ? Math.floor(this.rng() * SECTORS) : sector;
     const g = new Gate(s, time);
     g.dBeats = dBeats;
-    g.place(speed * dBeats * secPerBeat);
-    for (const m of g.meshes) this.scene.add(m);
+    g.d = speed * dBeats * secPerBeat;
+    for (const m of g.meshes) {
+      this.scene.add(m);
+      if (this.place) this.place(m, g.d - m.userData.offset);
+    }
     this.list.push(g);
     return g;
   }
@@ -251,7 +250,8 @@ export class Gates {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const g = this.list[i];
       g.dBeats -= dBeat;
-      g.place(Math.max(-2, speed * g.dBeats * secPerBeat));
+      g.d = Math.max(-2, speed * g.dBeats * secPerBeat);
+      if (this.place) for (const m of g.meshes) this.place(m, g.d - m.userData.offset);
       g.update(time, hue);
       if (g.dBeats < -0.35) {
         for (const m of g.meshes) this.scene.remove(m);

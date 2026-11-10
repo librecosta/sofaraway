@@ -443,7 +443,25 @@ html,body{
 .stats div{ display:flex; flex-direction:column; gap:.55em; align-items:center; }
 .stats b{ font-family:var(--display); font-weight:600; font-size:clamp(13px,1.3vw,20px); }
 .stats span{ font-size:clamp(7px,.58vw,9px); letter-spacing:.4em; opacity:.45; }
+
 /* ================================================================== *
+   TUTORIAL HINT
+ * ================================================================== */
+.hint{
+  position:absolute; left:50%; bottom:16vh; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:.9em;
+  opacity:0; transition:opacity .6s ease; text-align:center;
+}
+.hint.show{ opacity:1; }
+.hint b{
+  font-family:var(--display); font-weight:600;
+  font-size:clamp(10px,.9vw,14px); letter-spacing:.5em;
+  color:var(--accent); text-shadow:0 0 22px currentColor;
+}
+.hint span{
+  font-size:clamp(8px,.7vw,11px); letter-spacing:.44em;
+  opacity:.55;
+}/* ================================================================== *
    SMALL SCREENS / TOUCH
  * ================================================================== */
 @media (max-width:760px){

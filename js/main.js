@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildTextures } from './textures.js';
 import { Tunnel, TUNNEL } from './tunnel.js';
+import { buildPath } from './path.js';
 import { Gates, sectorOf, sectorPoint } from './gates.js';
 import { PostFX } from './post.js';
 import { AudioEngine } from './audio.js';
@@ -44,7 +45,7 @@ renderer.setSize(window.innerWidth, window.innerHeight, false);
  * ------------------------------------------------------------------ */
 const scene = new THREE.Scene();
 const FOG_PLAY = 0x000000;
-const fog = new THREE.FogExp2(FOG_PLAY, 0.0118);
+const fog = new THREE.FogExp2(FOG_PLAY, 0.0062);
 scene.fog = fog;
 
 /* a cheap equirect environment so the metal hull has something to reflect */
@@ -84,10 +85,26 @@ const camera = new THREE.PerspectiveCamera(76, window.innerWidth / window.innerH
 camera.position.set(0, 0, 0);
 
 const tex = buildTextures();
-const tunnel = new Tunnel(tex);
+
+/* the corridor is a curve: straights joined by quarter turns */
+const UNITS_PER_BEAT = 20 * (60 / 128);
+const CORRIDOR_LEN = 200 + 448 * UNITS_PER_BEAT + 200;
+const path = buildPath(CORRIDOR_LEN);
+const tunnel = new Tunnel(tex, path);
 scene.add(tunnel.group);
 
 const gates = new Gates(scene);
+const _gp = { p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3() };
+const _gt = new THREE.Vector3();
+gates.place = (mesh, dist) => {
+  path.sample(G.distance + dist, _gp);
+  mesh.position.copy(_gp.p);
+  mesh.up.copy(_gp.u);
+  _gt.copy(_gp.p).sub(_gp.f);
+  mesh.lookAt(_gt);
+};
+const _camF = { p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3() };
+const _camTgt = new THREE.Vector3();
 const post = new PostFX(renderer);
 post.setSize(window.innerWidth, window.innerHeight, PR);
 if (params.has('dof')) {
@@ -446,6 +463,7 @@ function updateHud(force) {
   }
 
   $('hud-boost').classList.toggle('on', G.boosting && G.state === State.PLAY);
+  $('hint').classList.toggle('show', G.state === State.PLAY && G.beat < 15);
 
   if (G.chart.length) {
     const c = G.chart[Math.min(G.chartIndex, G.chart.length - 1)];
@@ -518,9 +536,14 @@ function step(dt) {
   const vx = (CAM.x - prevX) / Math.max(sdt, 1e-4);
   CAM.roll += ((-vx * 0.028) - CAM.roll) * Math.min(1, sdt * 8);
 
-  camera.position.x = CAM.x * CAM_OFFSET;
-  camera.position.y = CAM.y * CAM_OFFSET;
-  camera.rotation.z = CAM.roll;
+  path.sample(G.distance, _camF);
+  camera.position.copy(_camF.p)
+    .addScaledVector(_camF.r, CAM.x * CAM_OFFSET)
+    .addScaledVector(_camF.u, CAM.y * CAM_OFFSET);
+  camera.up.copy(_camF.u);
+  _camTgt.copy(camera.position).add(_camF.f);
+  camera.lookAt(_camTgt);
+  camera.rotateZ(CAM.roll);
   camera.updateMatrixWorld();
 
   // beat pulse ----------------------------------------------------
@@ -641,7 +664,12 @@ function step(dt) {
 function updateCursor() {
   if (G.state === State.PLAY || G.state === State.CRASH) {
     camera.updateMatrixWorld();
-    _v3.set(CAM.x, CAM.y, -1.6).project(camera);
+    path.sample(G.distance, _camF);
+    _v3.copy(_camF.p)
+      .addScaledVector(_camF.r, CAM.x)
+      .addScaledVector(_camF.u, CAM.y)
+      .addScaledVector(_camF.f, 1.6);
+    _v3.project(camera);
     const vw = window.innerWidth, vh = window.innerHeight;
     paintCursor((_v3.x * 0.5 + 0.5) * vw, (-_v3.y * 0.5 + 0.5) * vh);
   } else {

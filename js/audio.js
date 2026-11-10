@@ -12,8 +12,8 @@ const STEPS_PER_BAR = 16;
 /* must mirror the section table in chart.js — the arrangement follows the
    same energy curve the gate density follows */
 const SONG = [
-  { beats: 32, energy: 0.15 },
-  { beats: 64, energy: 0.45 },
+  { beats: 16, energy: 0.15 },
+  { beats: 80, energy: 0.45 },
   { beats: 64, energy: 0.55 },
   { beats: 32, energy: 0.75 },
   { beats: 96, energy: 1.00 },
