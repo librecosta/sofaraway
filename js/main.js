@@ -330,6 +330,7 @@ window.addEventListener('keyup', (e) => {
   if (k === 'shift') G.boosting = false;
 });
 window.addEventListener('blur', () => keys.clear());
+window.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function readKeyboard(dt) {
   let ax = 0, ay = 0;
@@ -515,10 +516,11 @@ function step(dt) {
     G.beatLocal += dt * BPM / 60;
 
     const dampM = 1 - Math.exp(-dt * 4.5);
-    const prevMX = CAM.x;
     CAM.x += (CAM.tx * 0.55 - CAM.x) * dampM;
     CAM.y += (CAM.ty * 0.55 - CAM.y) * dampM;
-    CAM.roll += ((-((CAM.x - prevMX) / Math.max(dt, 1e-4)) * 0.02) - CAM.roll) * Math.min(1, dt * 6);
+    // roll straight off the offset: the old velocity term divided by dt and
+    // jittered badly whenever a frame ran long
+    CAM.roll += ((-CAM.x * 0.050) - CAM.roll) * (1 - Math.exp(-dt * 5.0));
 
     placeCamera();
     tunnel.update(G.distance);
@@ -578,11 +580,9 @@ function step(dt) {
   }
 
   const damp = 1 - Math.exp(-sdt * 20);
-  const prevX = CAM.x;
   CAM.x += (CAM.tx - CAM.x) * damp;
   CAM.y += (CAM.ty - CAM.y) * damp;
-  const vx = (CAM.x - prevX) / Math.max(sdt, 1e-4);
-  CAM.roll += ((-vx * 0.028) - CAM.roll) * Math.min(1, sdt * 8);
+  CAM.roll += ((-CAM.x * 0.028) - CAM.roll) * (1 - Math.exp(-sdt * 8));
 
   placeCamera();
 
