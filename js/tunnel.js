@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
  *  The corridor, built along a Path.
@@ -18,14 +19,29 @@ const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
 
+/* conduit: a closed octagon.  canal: an open U — floor, two low walls,
+   nothing overhead — with a glazed side handled by the shell material. */
 export function profile() {
   const { a, b, ch } = TUNNEL;
-  return [
-    [-a + ch, -b], [a - ch, -b],
-    [a, -b + ch], [a, b - ch],
-    [a - ch, b], [-a + ch, b],
-    [-a, b - ch], [-a, -b + ch],
-  ];
+  if (VOL.topology === 'canal') {
+    const lip = 0.55;
+    return {
+      closed: false,
+      pts: [
+        [-a, lip], [-a, -b + ch], [-a + ch, -b],
+        [a - ch, -b], [a, -b + ch], [a, lip],
+      ],
+    };
+  }
+  return {
+    closed: true,
+    pts: [
+      [-a + ch, -b], [a - ch, -b],
+      [a, -b + ch], [a, b - ch],
+      [a - ch, b], [-a + ch, b],
+      [-a, b - ch], [-a, -b + ch],
+    ],
+  };
 }
 
 function frame() {
@@ -107,15 +123,17 @@ export class Tunnel {
 
   /* ---------------- one chunk ---------------- */
   _buildChunk(s0, s1) {
-    const P = profile();
+    const PR = profile();
+    const P = PR.pts;
     const n = P.length;
+    const edges = PR.closed ? n : n - 1;
 
     const perim = [0];
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < edges; i++) {
       const a = P[i], b = P[(i + 1) % n];
       perim.push(perim[i] + Math.hypot(b[0] - a[0], b[1] - a[1]));
     }
-    const totalPerim = perim[n];
+    const totalPerim = perim[edges];
 
     const rings = [];
     for (let s = s0; s < s1; s += TUNNEL.ring) rings.push(s);
@@ -144,7 +162,7 @@ export class Tunnel {
       const vA = sA / totalPerim * 3.0;
       const vB = sB / totalPerim * 3.0;
 
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         const ex = p1[0] - p0[0], ey = p1[1] - p0[1];
         const el = Math.hypot(ex, ey) || 1;
@@ -159,7 +177,7 @@ export class Tunnel {
         v3.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2);
         for (let q = 0; q < 4; q++) shell.nor.push(v3.x, v3.y, v3.z);
 
-        const u0 = perim[i] / totalPerim, u1 = perim[i + 1] / totalPerim;
+        const u0 = perim[i] / totalPerim, u1 = perim[Math.min(i + 1, edges)] / totalPerim;
         shell.uv.push(u0, vA, u1, vA, u1, vB, u0, vB);
         shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
       }
@@ -169,7 +187,7 @@ export class Tunnel {
     const R = 1.055, IN = 0.955, RIMW = 0.948;
     for (const s of rings) {
       this.path.sample(s, A);
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         const addRing = (target, a, b) => {
           const base = target.pos.length / 3;
@@ -190,7 +208,7 @@ export class Tunnel {
 
     /* ---- light ribbons down every corner ---- */
     const SW = 0.042;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < edges; i++) {
       const p = P[i];
       const len = Math.hypot(p[0], p[1]) || 1;
       const tx = -p[1] / len, ty = p[0] / len;
@@ -306,8 +324,10 @@ export class Tunnel {
 
   /* ---------------- menu wireframe ---------------- */
   _buildWire() {
-    const P = profile();
+    const PR = profile();
+    const P = PR.pts;
     const n = P.length;
+    const edges = PR.closed ? n : n - 1;
     const pos = [];
     const seg = (a, b) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
     const A = frame(), B = frame();
@@ -318,7 +338,7 @@ export class Tunnel {
 
     for (const s of rings) {
       this.path.sample(s, A);
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         seg(
           new THREE.Vector3().copy(A.p).addScaledVector(A.r, p0[0]).addScaledVector(A.u, p0[1]),

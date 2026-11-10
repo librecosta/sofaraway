@@ -25,11 +25,11 @@ const SECTIONS_I = [
 /* downtempo: fewer, wider gates; the turn is the event, not the gap */
 const SECTIONS_II = [
   { name: 'OPEN',   beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.10 },
-  { name: 'DRIFT',  beats: 96, gap: 6.0,  pattern: 'step',     energy: 0.35 },
-  { name: 'SWELL',  beats: 64, gap: 5.0,  pattern: 'opposite', energy: 0.55 },
-  { name: 'LULL',   beats: 48, gap: 8.0,  pattern: 'sweep',    energy: 0.20 },
-  { name: 'RISE',   beats: 64, gap: 4.0,  pattern: 'zigzag',   energy: 0.70 },
-  { name: 'OUT',    beats: 32, gap: 6.0,  pattern: 'sweep',    energy: 0.25 },
+  { name: 'DRIFT',  beats: 64, gap: 6.0,  pattern: 'step',     energy: 0.35 },
+  { name: 'SWELL',  beats: 48, gap: 5.0,  pattern: 'opposite', energy: 0.55 },
+  { name: 'LULL',   beats: 32, gap: 8.0,  pattern: 'sweep',    energy: 0.20 },
+  { name: 'RISE',   beats: 48, gap: 4.0,  pattern: 'zigzag',   energy: 0.70 },
+  { name: 'OUT',    beats: 16, gap: 6.0,  pattern: 'sweep',    energy: 0.25 },
 ];
 
 const SECTIONS_III = [
@@ -82,7 +82,7 @@ export const VOLUMES = [
     music: 'downtempo',
     hue: [0.52, 0.60, 0.47, 0.68],
     lives: { easy: 4, normal: 3, hard: 2 },
-    ready: false,
+    ready: true,
   },
   {
     id: 'descent',
@@ -116,7 +116,11 @@ export const VOLUMES = [
   },
 ];
 
-export const VOL = VOLUMES[0];
+const wanted = typeof location !== 'undefined'
+  ? new URLSearchParams(location.search).get('vol')
+  : null;
+
+export const VOL = VOLUMES.find((v) => v.id === wanted && v.ready) || VOLUMES[0];
 
 export function volumeById(id) {
   return VOLUMES.find((v) => v.id === id) || VOLUMES[0];

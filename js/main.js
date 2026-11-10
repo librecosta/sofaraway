@@ -83,6 +83,23 @@ function makeEnvMap(r) {
 }
 scene.environment = makeEnvMap(renderer);
 
+/* an open-topped corridor needs a sky behind it, not the clear colour */
+if (VOL.topology === 'canal') {
+  const c = document.createElement('canvas');
+  c.width = 8; c.height = 256;
+  const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, 256);
+  grd.addColorStop(0.00, '#0b1a2c');
+  grd.addColorStop(0.42, '#16374e');
+  grd.addColorStop(0.62, '#1d4a63');
+  grd.addColorStop(1.00, '#05090f');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 8, 256);
+  const sky = new THREE.CanvasTexture(c);
+  sky.mapping = THREE.EquirectangularReflectionMapping;
+  scene.background = sky;
+}
+
 const camera = new THREE.PerspectiveCamera(76, window.innerWidth / window.innerHeight, 0.1, 420);
 camera.position.set(0, 0, 0);
 
