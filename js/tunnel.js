@@ -194,13 +194,14 @@ export class Tunnel {
       const len = Math.hypot(p[0], p[1]) || 1;
       const tx = -p[1] / len, ty = p[0] / len;
 
+      const INSET = 0.972;      // sit inside the hull, not through it
       for (let k = 0; k < rings.length - 1; k++) {
         this.path.sample(rings[k], A);
         this.path.sample(rings[k + 1], B);
         const base = strip.pos.length / 3;
         for (const fr of [A, B]) {
           for (const sgn of [-1, 1]) {
-            put(strip, fr, p[0] + tx * SW * sgn, p[1] + ty * SW * sgn);
+            put(strip, fr, (p[0] + tx * SW * sgn) * INSET, (p[1] + ty * SW * sgn) * INSET);
           }
         }
         strip.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);

@@ -189,11 +189,13 @@ let currentHue = PHASES[0];
 let phaseIndex = 0;
 
 const CAM = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
-const RANGE_X = TUNNEL.a - 0.80;
-const RANGE_Y = TUNNEL.b - 0.80;
+const RANGE_X = TUNNEL.a - 0.32;
+const RANGE_Y = TUNNEL.b - 0.32;
 /* the camera trails the vessel instead of sitting on it, so the marker you
    steer is visibly *off-centre* — first person, but not glued to the axis */
 const CAM_OFFSET = 0.88;
+const CAM_LIMIT_X = TUNNEL.a - 0.95;   // the camera never touches the wall
+const CAM_LIMIT_Y = TUNNEL.b - 0.95;
 const _v3 = new THREE.Vector3();
 
 /* ------------------------------------------------------------------ *
@@ -492,9 +494,11 @@ function updateHud(force) {
  * ------------------------------------------------------------------ */
 function placeCamera() {
   path.sample(G.distance, _camF);
+  const cx = THREE.MathUtils.clamp(CAM.x * CAM_OFFSET, -CAM_LIMIT_X, CAM_LIMIT_X);
+  const cy = THREE.MathUtils.clamp(CAM.y * CAM_OFFSET, -CAM_LIMIT_Y, CAM_LIMIT_Y);
   camera.position.copy(_camF.p)
-    .addScaledVector(_camF.r, CAM.x * CAM_OFFSET)
-    .addScaledVector(_camF.u, CAM.y * CAM_OFFSET);
+    .addScaledVector(_camF.r, cx)
+    .addScaledVector(_camF.u, cy);
   camera.up.copy(_camF.u);
   _camTgt.copy(camera.position).add(_camF.f);
   camera.lookAt(_camTgt);

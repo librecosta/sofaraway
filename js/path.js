@@ -89,8 +89,12 @@ export class Path {
 
     t.p = (t.p || new THREE.Vector3()).copy(a.p).lerp(b.p, k);
     t.f = (t.f || new THREE.Vector3()).copy(a.f).lerp(b.f, k).normalize();
-    t.r = (t.r || new THREE.Vector3()).copy(a.r).lerp(b.r, k).normalize();
     t.u = (t.u || new THREE.Vector3()).copy(a.u).lerp(b.u, k).normalize();
+
+    // rebuilding the basis keeps it exactly orthonormal; lerping three
+    // vectors independently lets them drift apart and the camera wobbles
+    t.r.crossVectors(t.f, t.u).normalize();
+    t.u.crossVectors(t.r, t.f).normalize();
     return t;
   }
 

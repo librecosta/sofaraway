@@ -250,7 +250,7 @@ export class Gates {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const g = this.list[i];
       g.dBeats -= dBeat;
-      g.d = Math.max(-2, speed * g.dBeats * secPerBeat);
+      g.d -= speed * dBeat * secPerBeat;   // integrate: no snap when boost changes speed
       if (this.place) for (const m of g.meshes) this.place(m, g.d - m.userData.offset);
       g.update(time, hue);
       if (g.dBeats < -0.35) {
