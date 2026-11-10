@@ -7,6 +7,7 @@ import { PostFX } from './post.js';
 import { AudioEngine } from './audio.js';
 import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js';
 import { VOL } from './volumes.js';
+import { Recorder } from './recorder.js';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -111,6 +112,8 @@ gates.place = (mesh, dist) => {
 const _camF = { p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3() };
 const _camTgt = new THREE.Vector3();
 const _negF = new THREE.Vector3();
+const rec = new Recorder();
+if (params.get('rec') === '1') rec.toggle();
 const _basis = new THREE.Matrix4();
 const post = new PostFX(renderer);
 post.setSize(window.innerWidth, window.innerHeight, PR);
@@ -324,6 +327,10 @@ window.addEventListener('keydown', (e) => {
     if (G.state === State.PLAY || G.state === State.OVER) toMenu();
   }
   if (k === 'shift') { if (G.state === State.PLAY) G.boosting = true; }
+  if (k === 'r') {
+    if (e.shiftKey) rec.download();
+    else rec.toggle();
+  }
   if (k === 'm') { audio.setMuted(!audio.muted); message(audio.muted ? 'MUTED' : 'SOUND ON', 0.8); }
   keys.add(k);
 });
@@ -762,6 +769,8 @@ function loop(now) {
   const dt = Math.min(raw, 0.05);
 
   step(dt);
+  rec.sample(performance.now() / 1000, camera, G, CAM);
+  rec.draw();
   render(now);
 
   requestAnimationFrame(loop);
