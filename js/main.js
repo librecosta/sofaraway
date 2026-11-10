@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildTextures } from './textures.js';
 import { Tunnel, TUNNEL } from './tunnel.js';
-import { Gates, sdHexagon } from './gates.js';
+import { Gates, cellOf, cellCentre, WALL } from './gates.js';
 import { PostFX } from './post.js';
 import { AudioEngine } from './audio.js';
 
@@ -423,8 +423,7 @@ function step(dt) {
     let best = null;
     for (const g of gates.list) if (!g.passed && (!best || g.d < best.d)) best = g;
     if (best) {
-      const tArrive = G.time + Math.max(0, best.d) / Math.max(1, G.speed);
-      const [hx, hy] = best.holeAt(tArrive);
+      const [hx, hy] = cellCentre(best.open);
       CAM.tx = hx;
       CAM.ty = hy;
     }
@@ -468,8 +467,7 @@ function step(dt) {
   // spawn ---------------------------------------------------------
   if (G.state === State.PLAY && G.beat >= G.nextSpawnBeat) {
     G.nextSpawnBeat += SPAWN_EVERY;
-    const difficulty = THREE.MathUtils.clamp(G.gatesPassed / 26, 0, 1);
-    gates.spawn(LEAD_BEATS, G.speed, SEC_PER_BEAT, G.time, difficulty);
+    gates.spawn(LEAD_BEATS, G.speed, SEC_PER_BEAT, G.time);
   }
 
   // gates ---------------------------------------------------------
@@ -480,17 +478,20 @@ function step(dt) {
     for (const g of prevBeatGate) {
       if (!g.passed && g.dBeats <= 0) {
         g.passed = true;
-        const [hx, hy] = g.holeAt(G.time);
-        const dist = sdHexagon(CAM.x - hx, CAM.y - hy, g.r * 0.94);
+        const cell = cellOf(CAM.x, CAM.y, 1.06);
 
-        if (dist < 0 || GOD) {
-          const closeness = 1 - Math.min(1, Math.abs(dist) / g.r);
+        if (cell === g.open || GOD) {
+          const [cx, cy] = cellCentre(g.open);
+          const off = Math.max(
+            Math.abs(CAM.x - cx) / (WALL.w / 6),
+            Math.abs(CAM.y - cy) / (WALL.h / 6)
+          );
           G.gatesPassed++;
-          G.combo = Math.min(8, G.combo + 1);
-          G.score += 60 * G.combo;
-          if (closeness > 0.55) {
-            G.score += 120;
-            message('PERFECT ×' + G.combo, 0.7);
+          G.combo = Math.min(50, G.combo + 1);
+          G.score += 100 * (1 + G.combo * 0.06);
+          if (off < 0.42) {
+            G.score += 150;
+            message('CLEAN ×' + G.combo, 0.7);
           }
         } else {
           crash(g);
@@ -514,9 +515,7 @@ function step(dt) {
   let locked = false;
   for (const g of gates.list) {
     if (g.d > 3 && g.d < 34) {
-      const [hx, hy] = g.holeAt(G.time);
-      const dd = sdHexagon(CAM.x - hx, CAM.y - hy, g.r * 0.8);
-      if (dd < 0) locked = true;
+      if (cellOf(CAM.x, CAM.y, 1.06) === g.open) locked = true;
       break;
     }
   }

@@ -53,7 +53,7 @@ void main(){
   float d0 = texture2D(tDepth, vUv).r;
   float r0 = coc(d0);
 
-  if (r0 < 0.0006) {
+  if (r0 < uTexel.y * 1.5) {
     gl_FragColor = vec4(col, 1.0);
     return;
   }
@@ -200,8 +200,8 @@ export class PostFX {
     // depth comes from its own packed pass — cheap geometry, and it keeps
     // MSAA on the colour target untouched
     this.rtDepth = new THREE.WebGLRenderTarget(2, 2, {
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
       format: THREE.RGBAFormat,
       type: THREE.HalfFloatType,
       depthBuffer: true,
@@ -227,8 +227,8 @@ export class PostFX {
         uNear: { value: 0.1 },
         uFar: { value: 420.0 },
         uFocus: { value: 40.0 },
-        uAperture: { value: 0.38 },
-        uMaxBlur: { value: 0.006 },
+        uAperture: { value: 0.30 },
+        uMaxBlur: { value: 0.005 },
       },
       depthTest: false, depthWrite: false,
     });
@@ -252,7 +252,7 @@ export class PostFX {
         tBloom: { value: null },
         uRes: { value: new THREE.Vector2(1, 1) },
         uTime: { value: 0 },
-        uBloom: { value: 0.92 },
+        uBloom: { value: 0.72 },
         uCA: { value: 0.008 },
         uVignette: { value: 0.92 },
         uGrain: { value: 0.030 },

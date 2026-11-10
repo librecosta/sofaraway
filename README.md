@@ -12,9 +12,9 @@ Vol. I · zero assets · zero build step · WebGL2
 
 ## What it is
 
-You fall forward down an endless corridor at 128 BPM. Holographic gates rush at you —
-each one a curtain of scanlines with a single hexagonal opening. Find the opening,
-pass through it, keep going.
+You fall forward down a corridor at 128 BPM. Bulkheads rush at you — each one a
+three-by-three assembly of bolted plates with a single cell missing. The centre plate
+never opens. Be in the missing cell when it reaches you.
 
 The world is built from the soundtrack: gates arrive on beat boundaries, the tunnel
 pulses on the kick, and the palette shifts every eight bars.
@@ -58,9 +58,9 @@ real forward travel, but the geometry is never rebuilt and nothing is ever recyc
 render time. That means a gate always arrives exactly on a beat, no matter how the
 speed ramps.
 
-**One hexagon definition, two implementations.** The same signed-distance function
-exists in GLSL (drawing the hole) and in JS (collision). The shader and the physics
-cannot disagree about where the gap is.
+**One cell grid, two implementations.** The wall draws its 3x3 plate grid from `uv`;
+the collision runs the same index arithmetic over the player's world position. The
+shader and the judgement cannot disagree about which cell the gap is in.
 
 **The wireframe menu is not a triangle wireframe.** Drawing the scene with
 `wireframe: true` gives you every quad diagonal, which reads as noise. The title
