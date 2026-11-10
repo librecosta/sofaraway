@@ -258,6 +258,7 @@ export class Tunnel {
 
   /* ---------------- streaming ---------------- */
   update(s) {
+    if (VOL.topology === 'orbit') return;   // nothing to build: you are in the void
     this.moveLights(s);
 
     const need0 = s - KEEP_BEHIND;

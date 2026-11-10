@@ -112,7 +112,7 @@ export const VOLUMES = [
     music: 'synthwave',
     hue: [0.62, 0.70, 0.55],
     lives: { easy: 3, normal: 2, hard: 1 },
-    ready: false,
+    ready: true,
   },
 ];
 

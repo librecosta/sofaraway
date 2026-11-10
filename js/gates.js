@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TUNNEL } from './tunnel.js?v=2026-11-10j';
-import { VOL } from './volumes.js?v=2026-11-10j';
+import { TUNNEL } from './tunnel.js?v=2026-11-10l';
+import { VOL } from './volumes.js?v=2026-11-10l';
 
 /* ------------------------------------------------------------------ *
  *  A bulkhead is not a sheet with a hole in it — it is a set of glass
@@ -105,6 +105,7 @@ uniform float uHub;
 uniform float uStyle;
 uniform float uAxis;
 uniform float uClip;     // 0 = closed octagon, 1 = open canal
+uniform vec2  uHolePos;  // aperture centre in section units
 
 const float PI = 3.14159265;
 const float TAU = 6.28318531;
@@ -127,6 +128,24 @@ void main(){
     hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
                 (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
     if (hullD < 0.0) discard;
+  }
+
+  /* ---- aperture glass: one round hole in a full pane ---- */
+  if (uStyle > 2.5) {
+    float d = length(p - uHolePos) - 0.95;
+    if (d < 0.0) discard;
+
+    float rim = exp(-d * 16.0);
+    float scan = 0.5 + 0.5 * sin(vUv.y * 150.0 - uTime * 8.0);
+    float band = 0.5 + 0.5 * sin(length(p - uHolePos) * 3.6 - uTime * 1.2);
+
+    vec3 glass = uColor * (0.26 + 0.48 * scan) * (0.6 + 0.7 * band);
+    vec3 col = glass + uColor * rim * 2.1;
+
+    float a = 0.085 + 0.06 * scan + rim * 0.85;
+    a *= uFade;
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+    return;
   }
 
   /* ---- lattice glass: nine plates fitted, one of them missing ---- */
@@ -285,9 +304,10 @@ export class Gate {
         uHull: { value: new THREE.Vector3(TUNNEL.a, TUNNEL.b, TUNNEL.ch) },
         uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
         uHub: { value: HUB_R },
-        uStyle: { value: VOL.obstacle === 'shutter' ? 1 : (VOL.obstacle === 'lattice' ? 2 : 0) },
+        uStyle: { value: VOL.obstacle === 'shutter' ? 1 : (VOL.obstacle === 'lattice' ? 2 : (VOL.obstacle === 'aperture' ? 3 : 0)) },
         uAxis: { value: this.axis },
         uClip: { value: VOL.topology === 'canal' ? 1 : 0 },
+        uHolePos: { value: new THREE.Vector2(...lanePoint(this.open, this.axis)) },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,

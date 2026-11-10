@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10j';
-import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10j';
-import { buildPath } from './path.js?v=2026-11-10j';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10j';
-import { PostFX } from './post.js?v=2026-11-10j';
-import { AudioEngine } from './audio.js?v=2026-11-10j';
-import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10j';
-import { VOL } from './volumes.js?v=2026-11-10j';
-import { Recorder } from './recorder.js?v=2026-11-10j';
+import { buildTextures } from './textures.js?v=2026-11-10l';
+import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10l';
+import { buildPath } from './path.js?v=2026-11-10l';
+import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10l';
+import { PostFX } from './post.js?v=2026-11-10l';
+import { AudioEngine } from './audio.js?v=2026-11-10l';
+import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10l';
+import { VOL } from './volumes.js?v=2026-11-10l';
+import { Recorder } from './recorder.js?v=2026-11-10l';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -84,6 +84,24 @@ function makeEnvMap(r) {
 scene.environment = makeEnvMap(renderer);
 
 /* an open-topped corridor needs a sky behind it, not the clear colour */
+if (VOL.topology === 'orbit') {
+  // a sparse starfield, drawn once into an equirect strip
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#03060b';
+  g.fillRect(0, 0, 1024, 512);
+  for (let i = 0; i < 320; i++) {
+    const x = Math.random() * 1024, y = Math.random() * 512;
+    const r = Math.random() ** 2 * 0.9 + 0.18;
+    g.fillStyle = `rgba(${180 + Math.random() * 75 | 0},${200 + Math.random() * 55 | 0},255,${0.25 + Math.random() * 0.7})`;
+    g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
+  }
+  const stars = new THREE.CanvasTexture(c);
+  stars.mapping = THREE.EquirectangularReflectionMapping;
+  scene.background = stars;
+}
+
 if (VOL.topology === 'canal') {
   const c = document.createElement('canvas');
   c.width = 8; c.height = 256;
