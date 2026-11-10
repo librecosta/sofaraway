@@ -6,6 +6,7 @@ import { Gates, sectorOf, sectorPoint } from './gates.js';
 import { PostFX } from './post.js';
 import { AudioEngine } from './audio.js';
 import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js';
+import { VOL } from './volumes.js';
 
 /* ------------------------------------------------------------------ *
  *  Boot flags
@@ -87,7 +88,7 @@ camera.position.set(0, 0, 0);
 const tex = buildTextures();
 
 /* the corridor is a curve: straights joined by quarter turns */
-const UNITS_PER_BEAT = 20 * (60 / 128);
+const UNITS_PER_BEAT = 20 * (60 / VOL.bpm);
 /* long enough to still have corridor under you at full boost for the whole song */
 const PATH_BACK = 4200;          // corridor generated behind the start, for the reel-back
 const START_S = PATH_BACK;
@@ -139,8 +140,8 @@ function setWireframe(on) {
 /* ------------------------------------------------------------------ *
  *  Audio
  * ------------------------------------------------------------------ */
-const audio = new AudioEngine(128);
-const BPM = 128;
+const audio = new AudioEngine(VOL.bpm);
+const BPM = VOL.bpm;
 const SEC_PER_BEAT = 60 / BPM;
 
 /* ------------------------------------------------------------------ *
@@ -183,7 +184,7 @@ const G = {
 
 G.distance = MENU_S;
 
-const PHASES = [0.44, 0.78, 0.92, 0.57, 0.09, 0.66];
+const PHASES = VOL.hue;
 const PHASE_BEATS = 32;
 const SPAWN_LOOKAHEAD = 9;   // beats of warning before a gate arrives
 

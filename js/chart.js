@@ -9,20 +9,13 @@
  *      0 E   1 NE   2 N   3 NW   4 W   5 SW   6 S   7 SE
  * ------------------------------------------------------------------ */
 
-export const SONG_BEATS = 448;          // 3:30 at 128 BPM
-export const BPM = 128;
+import { VOL } from './volumes.js';
 
-/* energy decides the arrangement in audio.js and the density here */
-export const SECTIONS = [
-  { name: 'INTRO',  beats: 16, gap: 999, pattern: 'sweep',    energy: 0.15 },
-  { name: 'A',      beats: 80, gap: 4.0, pattern: 'step',     energy: 0.45 },
-  { name: 'B',      beats: 64, gap: 4.0, pattern: 'opposite', energy: 0.55 },
-  { name: 'BUILD',  beats: 32, gap: 3.0, pattern: 'zigzag',   energy: 0.75 },
-  { name: 'DROP',   beats: 96, gap: 2.33, pattern: 'leap',     energy: 1.00 },
-  { name: 'BREAK',  beats: 32, gap: 5.33, pattern: 'sweep',    energy: 0.30 },
-  { name: 'A2',     beats: 64, gap: 3.0, pattern: 'step',     energy: 0.65 },
-  { name: 'FINALE', beats: 64, gap: 2.33, pattern: 'leap',     energy: 1.00 },
-];
+export const SONG_BEATS = VOL.beats;
+export const BPM = VOL.bpm;
+
+/* the section table now lives in volumes.js — chart and arrangement share it */
+export const SECTIONS = VOL.sections;
 
 function mulberry32(a) {
   return function () {
@@ -60,7 +53,7 @@ function nextSector(pattern, prev, i, rng) {
 }
 
 /** the authored chart, deterministic for a given seed */
-export function buildChart(seed = 20131) {
+export function buildChart(seed = VOL.seed) {
   const rng = mulberry32(seed);
   const out = [];
   let beat = 8;
@@ -84,7 +77,7 @@ export function buildChart(seed = 20131) {
 }
 
 /** difficulty trims the chart; hard and normal play the authored one */
-export function chartFor(difficulty, seed = 20131) {
+export function chartFor(difficulty, seed = VOL.seed) {
   const base = buildChart(seed);
   if (difficulty !== 'easy') return base;
 
@@ -100,7 +93,7 @@ export function chartFor(difficulty, seed = 20131) {
 }
 
 export const DIFFICULTY = {
-  easy:   { label: 'EASY',   lives: 3, mult: 1.0, seed: 20131 },
-  normal: { label: 'NORMAL', lives: 2, mult: 1.6, seed: 77345 },
-  hard:   { label: 'HARD',   lives: 1, mult: 2.4, seed: 44129 },
+  easy:   { label: 'EASY',   lives: VOL.lives.easy,   mult: 1.0, seed: VOL.seed },
+  normal: { label: 'NORMAL', lives: VOL.lives.normal, mult: 1.6, seed: VOL.seed + 7 },
+  hard:   { label: 'HARD',   lives: VOL.lives.hard,   mult: 2.4, seed: VOL.seed + 13 },
 };
