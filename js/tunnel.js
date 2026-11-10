@@ -383,6 +383,25 @@ export class Tunnel {
   }
 
   /* ---------------- streaming ---------------- */
+  _disposeChunk(chunk) {
+    for (const mesh of chunk.meshes) {
+      this.group.remove(mesh);
+      if (mesh.isInstancedMesh) mesh.dispose();
+      else mesh.geometry.dispose();
+    }
+  }
+
+  dispose() {
+    for (const chunk of this.chunks) this._disposeChunk(chunk);
+    this.chunks.length = 0;
+    this.group.clear();
+    this.wire.geometry.dispose();
+    this._boltGeo?.dispose();
+    for (const material of [this.shellMat, this.ribMat, this.rimMat, this.stripMat, this.wireMat, this._boltMat]) {
+      material?.dispose();
+    }
+  }
+
   update(s) {
     this.moveLights(s);
 
@@ -391,11 +410,8 @@ export class Tunnel {
 
     for (let i = this.chunks.length - 1; i >= 0; i--) {
       const c = this.chunks[i];
-      if (c.s1 < need0) {
-        for (const m of c.meshes) {
-          this.group.remove(m);
-          m.geometry.dispose();
-        }
+      if (c.s1 < need0 || c.s0 > need1) {
+        this._disposeChunk(c);
         this.chunks.splice(i, 1);
       }
     }

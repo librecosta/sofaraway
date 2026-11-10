@@ -43,6 +43,14 @@ else is hand-written ES modules.
 > ES modules are subject to CORS — opening `index.html` straight off the filesystem
 > will not work. Serve it over HTTP.
 
+### A0 tests
+
+Run `npm ci`, `npx playwright install chromium`, then `npm test` with Python 3
+available. `npm run test:perf` samples real-time Chromium frames and WebGL
+resources. Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome. See the
+[A0 audit](docs/audits/A0-audit-report.md) for conditions,
+the verification matrix, and the baseline comparison.
+
 ## Controls
 
 | Input | Action |

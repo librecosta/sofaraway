@@ -299,6 +299,12 @@ export class PostFX {
     this._bw = bw; this._bh = bh;
   }
 
+  dispose() {
+    for (const target of [this.rtScene, this.rtDof, this.rtDepth, this.rtA, this.rtB]) target.dispose();
+    for (const material of [this.depthMat, this.dofMat, this.brightMat, this.blurMat, this.compMat]) material.dispose();
+    this.quad.geometry.dispose();
+  }
+
   /** focus is in world units; called every frame from the game loop */
   setFocus(dist) {
     const u = this.dofMat.uniforms;

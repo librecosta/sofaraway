@@ -22,6 +22,7 @@ export const WALL = {
 export const THICKNESS = 0.38;
 export const HUB_R = 1.02;
 export const SECTORS = 8;
+const HOLE_R = 0.95;
 
 /* ---- lanes: how the gap is addressed depends on the glass style ---- */
 
@@ -32,17 +33,16 @@ export function laneCount() {
 
 /** which lane a point sits in */
 export function laneOf(x, y, axis) {
+  const u = x / WALL.w + 0.5;
+  const v = y / WALL.h + 0.5;
   if (VOL.obstacle === 'lattice') {
-    const col = Math.min(2, Math.max(0, Math.floor(((x / TUNNEL.a) * 0.5 + 0.5) * 3)));
-    const row = Math.min(2, Math.max(0, Math.floor(((y / TUNNEL.b) * 0.5 + 0.5) * 3)));
+    const col = Math.floor(u * 3);
+    const row = Math.floor(v * 3);
     return row * 3 + col;
   }
   if (VOL.obstacle === 'shutter') {
     // axis 0 = horizontal bands (judge on y), 1 = vertical (judge on x)
-    const v = axis ? x : y;
-    const half = axis ? TUNNEL.a : TUNNEL.b;
-    const t = (v / half) * 0.5 + 0.5;
-    return Math.min(2, Math.max(0, Math.floor(t * 3)));
+    return Math.floor((axis ? u : v) * 3);
   }
   return sectorOf(x, y);
 }
@@ -52,13 +52,13 @@ export function lanePoint(idx, axis) {
   if (VOL.obstacle === 'lattice') {
     const col = idx % 3, row = Math.floor(idx / 3);
     return [
-      ((col + 0.5) / 3 * 2 - 1) * TUNNEL.a,
-      ((row + 0.5) / 3 * 2 - 1) * TUNNEL.b,
+      ((col + 0.5) / 3 - 0.5) * WALL.w,
+      ((row + 0.5) / 3 - 0.5) * WALL.h,
     ];
   }
   if (VOL.obstacle === 'shutter') {
-    const v = ((idx + 0.5) / 3) * 2 - 1;
-    return axis ? [v * TUNNEL.a, 0] : [0, v * TUNNEL.b];
+    const v = (idx + 0.5) / 3 - 0.5;
+    return axis ? [v * WALL.w, 0] : [0, v * WALL.h];
   }
   return sectorPoint(idx);
 }
@@ -72,7 +72,7 @@ export function sectorPoint(s, radius = 2.15) {
 /** which wedge a point falls in; -1 inside the hub */
 export function sectorOf(x, y) {
   const r = Math.hypot(x, y);
-  if (r < HUB_R * 0.96) return -1;
+  if (r < HUB_R) return -1;
   let t = Math.atan2(y, x) + Math.PI * 2 + Math.PI / 8;
   t = ((t % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
   return Math.floor(t / (Math.PI / 4)) % SECTORS;
@@ -104,7 +104,6 @@ uniform vec2  uSize;
 uniform float uHub;
 uniform float uStyle;
 uniform float uAxis;
-uniform float uClip;     // 0 = closed octagon, 1 = open canal
 uniform vec2  uHolePos;  // aperture centre in section units
 
 const float PI = 3.14159265;
@@ -118,21 +117,14 @@ void main(){
 
   vec2 p = (vUv - 0.5) * uSize;
 
-  /* clip to the corridor's actual section, before either glass style */
-  float hullD;
-  if (uClip > 0.5) {
-    if (abs(p.x) > uHull.x || p.y < -uHull.y || p.y > 0.55) discard;
-    hullD = min(uHull.x - abs(p.x), min(p.y + uHull.y, 0.55 - p.y));
-  } else {
-    if (abs(p.x) > uHull.x || abs(p.y) > uHull.y) discard;
-    hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
-                (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
-    if (hullD < 0.0) discard;
-  }
+  /* All gates span the steerable section, including above the canal lip. */
+  float hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
+                    (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
+  if (hullD < 0.0) discard;
 
   /* ---- aperture glass: one round hole in a full pane ---- */
   if (uStyle > 2.5) {
-    float d = length(p - uHolePos) - 0.95;
+    float d = length(p - uHolePos) - ${HOLE_R};
     if (d < 0.0) discard;
 
     float rim = exp(-d * 16.0);
@@ -197,7 +189,6 @@ void main(){
 
     float a = 0.08 + 0.065 * slat + rimT * 0.5;
     a *= uFade;
-    if (vDepth < 4.0) a *= smoothstep(4.0, 10.0, vDepth);
 
     gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
     return;
@@ -286,7 +277,6 @@ export class Gate {
     let pick = (((sector | 0) % lanes) + lanes) % lanes;
     if (VOL.obstacle === 'lattice' && pick === 4) pick = 5;   // centre is solid
     this.open = pick;
-    this.dBeats = 0;
     this.d = 0;
     this.spawnT = time;
     this.passed = false;
@@ -306,7 +296,6 @@ export class Gate {
         uHub: { value: HUB_R },
         uStyle: { value: VOL.obstacle === 'shutter' ? 1 : (VOL.obstacle === 'lattice' ? 2 : (VOL.obstacle === 'aperture' ? 3 : 0)) },
         uAxis: { value: this.axis },
-        uClip: { value: VOL.topology === 'canal' ? 1 : 0 },
         uHolePos: { value: new THREE.Vector2(...lanePoint(this.open, this.axis)) },
       },
       transparent: true,
@@ -327,6 +316,13 @@ export class Gate {
     }
   }
 
+  canPass(x, y) {
+    if (VOL.obstacle === 'aperture') {
+      const center = this.mat.uniforms.uHolePos.value;
+      return Math.hypot(x - center.x, y - center.y) < HOLE_R;
+    }
+    return laneOf(x, y, this.axis) === this.open;
+  }
 
   update(time, hue) {
     const u = this.mat.uniforms;
@@ -363,14 +359,20 @@ export class Gates {
       g.dispose();
     }
     this.list.length = 0;
+    this.rngState = 987654321;
   }
 
-  spawn(dBeats, speed, secPerBeat, time, sector) {
+  dispose() {
+    this.clear();
+    GEO.dispose();
+  }
+
+  spawn(beat, nowBeat, speed, secPerBeat, time, sector) {
     const s = sector === undefined ? Math.floor(this.rng() * SECTORS) : sector;
     const ax = this.rng() < 0.5 ? 0 : 1;
     const g = new Gate(s, ax, time);
-    g.dBeats = dBeats;
-    g.d = speed * dBeats * secPerBeat;
+    g.beat = beat;
+    g.d = speed * (beat - nowBeat) * secPerBeat;
     for (const m of g.meshes) {
       this.scene.add(m);
       if (this.place) this.place(m, g.d - m.userData.offset);
@@ -379,14 +381,18 @@ export class Gates {
     return g;
   }
 
-  update(dBeat, speed, secPerBeat, time, hue) {
-    for (let i = this.list.length - 1; i >= 0; i--) {
-      const g = this.list[i];
-      g.dBeats -= dBeat;
-      g.d -= speed * dBeat * secPerBeat;   // integrate: no snap when boost changes speed
+  update(beat, speed, secPerBeat, time, hue) {
+    for (const g of this.list) {
+      g.d = speed * (g.beat - beat) * secPerBeat;
       if (this.place) for (const m of g.meshes) this.place(m, g.d - m.userData.offset);
       g.update(time, hue);
-      if (g.dBeats < -0.35) {
+    }
+  }
+
+  prune(beat) {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      const g = this.list[i];
+      if (g.beat < beat - 0.35) {
         for (const m of g.meshes) this.scene.remove(m);
         g.dispose();
         this.list.splice(i, 1);

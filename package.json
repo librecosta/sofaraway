@@ -27,6 +27,11 @@
   ],
   "scripts": {
     "start": "python -m http.server 8080",
-    "serve": "python -m http.server 8080"
+    "serve": "python -m http.server 8080",
+    "test": "playwright test --grep-invert @perf",
+    "test:perf": "playwright test --grep @perf"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
   }
 }

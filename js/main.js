@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { buildTextures } from './textures.js?v=2026-11-10za';
+import { buildTextures, mulberry } from './textures.js?v=2026-11-10za';
 import { Tunnel, TUNNEL } from './tunnel.js?v=2026-11-10za';
 import { buildPath } from './path.js?v=2026-11-10za';
-import { Gates, laneOf, lanePoint } from './gates.js?v=2026-11-10za';
+import { Gates, lanePoint } from './gates.js?v=2026-11-10za';
 import { PostFX } from './post.js?v=2026-11-10za';
 import { AudioEngine } from './audio.js?v=2026-11-10za';
 import { chartFor, DIFFICULTY, SONG_BEATS } from './chart.js?v=2026-11-10za';
-import { VOL, VOLUMES } from './volumes.js?v=2026-11-10za';
+import { VOL, VOLUMES, sectionAt } from './volumes.js?v=2026-11-10za';
 import { Recorder } from './recorder.js?v=2026-11-10za';
-import { QUALITY, TIER } from './quality.js?v=2026-11-10za';
+import { QUALITY } from './quality.js?v=2026-11-10za';
 
 const TOUCH = window.matchMedia('(pointer: coarse)').matches;
 
@@ -16,13 +16,14 @@ const TOUCH = window.matchMedia('(pointer: coarse)').matches;
  *  Boot flags
  * ------------------------------------------------------------------ */
 const params = new URLSearchParams(location.search);
-const FIXED_T = params.has('t') ? parseFloat(params.get('t')) : null;
-const LOWQ = params.get('q') === 'low';
+const fixedTime = parseFloat(params.get('t'));
+const FIXED_T = Number.isFinite(fixedTime) && fixedTime >= 0
+  ? Math.min(fixedTime, SONG_BEATS * 60 / VOL.bpm + 10) : null;
 const AUTOPLAY = params.get('auto') === '1' || FIXED_T !== null;
 const NO_POST = params.get('post') === '0';
 const DBG = params.get('dbg') === '1';
 const ALIGN = params.get('align') === '1';
-let GOD = params.get('god') === '1';
+const GOD = params.get('god') === '1' || (FIXED_T !== null && !params.has('god'));
 
 /* ------------------------------------------------------------------ *
  *  Renderer
@@ -40,10 +41,6 @@ const renderer = new THREE.WebGLRenderer({
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.setClearColor(0x000000, 1);
-
-const PR = LOWQ ? 1 : Math.min(window.devicePixelRatio || 1, QUALITY.pr);
-renderer.setPixelRatio(PR);
-renderer.setSize(window.innerWidth, window.innerHeight, false);
 
 /* ------------------------------------------------------------------ *
  *  Scene
@@ -82,9 +79,10 @@ function makeEnvMap(r) {
   const rt = pmrem.fromEquirectangular(tex);
   pmrem.dispose();
   tex.dispose();
-  return rt.texture;
+  return rt;
 }
-scene.environment = makeEnvMap(renderer);
+let environment = makeEnvMap(renderer);
+scene.environment = environment.texture;
 
 /* an open-topped corridor needs a sky behind it, not the clear colour */
 if (VOL.topology === 'orbit') {
@@ -94,10 +92,11 @@ if (VOL.topology === 'orbit') {
   const g = c.getContext('2d');
   g.fillStyle = '#03060b';
   g.fillRect(0, 0, 1024, 512);
+  const random = mulberry(VOL.seed);
   for (let i = 0; i < 320; i++) {
-    const x = Math.random() * 1024, y = Math.random() * 512;
-    const r = Math.random() ** 2 * 0.9 + 0.18;
-    g.fillStyle = `rgba(${180 + Math.random() * 75 | 0},${200 + Math.random() * 55 | 0},255,${0.25 + Math.random() * 0.7})`;
+    const x = random() * 1024, y = random() * 512;
+    const r = random() ** 2 * 0.9 + 0.18;
+    g.fillStyle = `rgba(${180 + random() * 75 | 0},${200 + random() * 55 | 0},255,${0.25 + random() * 0.7})`;
     g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
   }
   const stars = new THREE.CanvasTexture(c);
@@ -127,12 +126,15 @@ camera.position.set(0, 0, 0);
 const tex = buildTextures();
 
 /* the corridor is a curve: straights joined by quarter turns */
-const UNITS_PER_BEAT = 20 * (60 / VOL.bpm);
+const CRUISE_SPEED = 24;
+const MAX_SPEED_BONUS = 10;
+const BOOST_MULTIPLIER = 1.45;
 /* long enough to still have corridor under you at full boost for the whole song */
 const PATH_BACK = 4200;          // corridor generated behind the start, for the reel-back
 const START_S = PATH_BACK;
 const MENU_S = START_S + 140;   // title screen lives here, always
-const CORRIDOR_LEN = PATH_BACK + 7200;
+const CORRIDOR_LEN = START_S + SONG_BEATS * 60 / VOL.bpm
+  * (CRUISE_SPEED + MAX_SPEED_BONUS) * BOOST_MULTIPLIER + 650;
 const path = buildPath(CORRIDOR_LEN, 150, 46, VOL.topology);
 const tunnel = new Tunnel(tex, path);
 scene.add(tunnel.group);
@@ -156,7 +158,6 @@ let droppedRes = false;
 if (params.get('rec') === '1') rec.toggle();
 const _basis = new THREE.Matrix4();
 const post = new PostFX(renderer);
-post.setSize(window.innerWidth, window.innerHeight, PR);
 if (params.has('dof')) {
   const [ap, mb] = params.get('dof').split(',').map(Number);
   post.dofMat.uniforms.uAperture.value = ap;
@@ -208,19 +209,19 @@ const G = {
   combo: 0,
   maxCombo: 0,
   gatesPassed: 0,
+  gatesJudged: 0,
   gatesTotal: 0,
   hits: 0,
   lives: 2,
   maxLives: 2,
-  invuln: 0,
+  invulnUntil: 0,
   boosting: false,
   runOver: false,
   chart: [],
   chartIndex: 0,
   menuT: 0,
-  escape: 0,
   recoil: 0,
-  timeScale: 1,
+  settleAt: 0,
   shake: 0,
   hitFlash: 0,
 };
@@ -232,7 +233,9 @@ const PHASE_BEATS = 32;
 const SPAWN_LOOKAHEAD = 9;   // beats of warning before a gate arrives
 
 let currentHue = PHASES[0];
-let phaseIndex = 0;
+let startingAudio = null;
+let contextLost = false;
+let disposed = false;
 
 const CAM = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
 /* The section is an octagon, not a box: |x| <= a and |y| <= b are not enough,
@@ -273,6 +276,8 @@ const elMsg = $('center-msg');
 const elCursor = $('cursor');
 const elFlash = $('flash'), elPanel = $('panel');
 const elOverScore = $('over-score');
+const settings = $('settings');
+if (TOUCH) $('hint').querySelector('b').style.display = 'none';
 
 function show(el, on) { el.classList.toggle('hidden', !on); }
 
@@ -284,11 +289,13 @@ function setState(s) {
   setWireframe(false);   // the menu now sits over the lit corridor, no x-ray mode
 }
 
+let flashFrame = 0;
 function flash(amount = 0.8, ms = 220, color = '#ffffff') {
+  cancelAnimationFrame(flashFrame);
   elFlash.style.background = color;
   elFlash.style.opacity = String(amount);
   elFlash.style.transition = 'none';
-  requestAnimationFrame(() => {
+  flashFrame = requestAnimationFrame(() => {
     elFlash.style.transition = `opacity ${ms}ms ease-out`;
     elFlash.style.opacity = '0';
   });
@@ -316,8 +323,8 @@ if (params.has('cur')) {
 }
 
 window.addEventListener('pointermove', (e) => {
-  PTR.x = e.clientX; PTR.y = e.clientY;
   if (e.pointerType === 'touch') return;
+  PTR.x = e.clientX; PTR.y = e.clientY;
   elCursor.classList.remove('hidden');
 }, { passive: true });
 
@@ -327,30 +334,20 @@ window.addEventListener('pointerover', (e) => {
   elCursor.classList.toggle('hover', !!hit);
 }, true);
 
-window.addEventListener('pointerdown', () => {
-  elCursor.classList.add('down');
-  if (G.state === State.PLAY) G.boosting = true;
-});
-window.addEventListener('pointerup', () => {
-  elCursor.classList.remove('down');
-  G.boosting = false;
-});
-window.addEventListener('pointercancel', () => { G.boosting = false; });
-window.addEventListener('blur', () => { G.boosting = false; });
 document.addEventListener('pointerleave', () => elCursor.classList.add('hidden'));
 document.addEventListener('pointerenter', () => elCursor.classList.remove('hidden'));
 
 /* ------------------------------------------------------------------ *
  *  Input
  * ------------------------------------------------------------------ */
-const pointers = { x: 0.5, y: 0.5 };
-let usingKeyboard = false;
+let boostPointer = null;
 
 /* On a coarse pointer the finger hides what it is aiming at, so the reticle is
    driven by how far the finger has travelled since it went down, and drawn a
    little above it. Absolute mapping would also force the thumb to the screen
    edge to reach the edge of the corridor. */
 let touchLast = null;
+let touchPointer = null;
 const TOUCH_LIFT = 64;
 
 function pointerToTarget(cx, cy) {
@@ -367,12 +364,10 @@ function pointerToTarget(cx, cy) {
 
 window.addEventListener('pointermove', (e) => {
   if (e.pointerType === 'touch') return;
-  usingKeyboard = false;
   pointerToTarget(e.clientX, e.clientY);
 }, { passive: true });
 
 function touchSteer(cx, cy) {
-  if (!touchLast) { touchLast = { x: cx, y: cy }; return; }
   const kx = (RANGE_X * 2) / (window.innerWidth * 0.62);
   const ky = (RANGE_Y * 2) / (window.innerHeight * 0.62);
   const [nx2, ny2] = clampSection(
@@ -388,31 +383,60 @@ function touchSteer(cx, cy) {
   PTR.y = window.innerHeight * 0.5 - (CAM.ty / RANGE_Y) * window.innerHeight * 0.31 - TOUCH_LIFT;
 }
 
-window.addEventListener('pointerdown', (e) => {
-  if (e.pointerType === 'touch') touchLast = { x: e.clientX, y: e.clientY };
-}, { passive: true });
-
-window.addEventListener('pointerup', () => { touchLast = null; }, { passive: true });
-
-window.addEventListener('touchmove', (e) => {
-  if (e.touches.length) {
-    touchSteer(e.touches[0].clientX, e.touches[0].clientY);
+canvas.addEventListener('pointerdown', (e) => {
+  if (G.state !== State.PLAY || !e.isPrimary || e.button !== 0) return;
+  canvas.setPointerCapture(e.pointerId);
+  elCursor.classList.add('down');
+  if (e.pointerType === 'touch') {
+    touchPointer = e.pointerId;
+    touchLast = { x: e.clientX, y: e.clientY };
+  } else {
+    boostPointer = e.pointerId;
   }
-}, { passive: true });
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerId === touchPointer) touchSteer(e.clientX, e.clientY);
+});
+function releasePointer(e) {
+  if (e.pointerId === boostPointer) boostPointer = null;
+  if (e.pointerId === touchPointer) {
+    touchPointer = null;
+    touchLast = null;
+  }
+  elCursor.classList.remove('down');
+}
+for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  canvas.addEventListener(event, releasePointer);
+}
 
 const keys = new Set();
+function clearInput() {
+  const captured = [boostPointer, touchPointer];
+  boostPointer = touchPointer = touchLast = null;
+  for (const id of captured) {
+    if (id !== null && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+  }
+  keys.clear();
+  G.boosting = false;
+  elCursor.classList.remove('down');
+}
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  const modal = [settings, elPanel].find(el => !el.classList.contains('hidden'));
+  if (modal) {
+    if (k === 'escape') show(modal, false);
+    return;
+  }
   if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
 
-  if (k === ' ' || k === 'enter') {
+  if ((k === ' ' || k === 'enter') && !e.repeat) {
+    if (k === 'enter' && e.target.closest?.('button')) return;
     if (G.state === State.MENU) startGame();
     else if (G.state === State.OVER) startGame();
   }
   if (k === 'escape') {
-    if (G.state === State.PLAY || G.state === State.OVER) toMenu();
+    if (G.state !== State.MENU) toMenu();
   }
-  if (k === 'shift') { if (G.state === State.PLAY) G.boosting = true; }
   if (k === 'r') {
     if (e.shiftKey) rec.download();
     else rec.toggle();
@@ -421,15 +445,14 @@ window.addEventListener('keydown', (e) => {
     stepVolume(k === 'arrowright' ? 1 : -1);
     return;
   }
-  if (k === 'm') { audio.setMuted(!audio.muted); message(audio.muted ? 'MUTED' : 'SOUND ON', 0.8); }
-  keys.add(k);
+  if (k === 'm' && !e.repeat) { audio.setMuted(!audio.muted); message(audio.muted ? 'MUTED' : 'SOUND ON', 0.8); }
+  if (G.state === State.PLAY) keys.add(k);
 });
 window.addEventListener('keyup', (e) => {
   const k = e.key.toLowerCase();
   keys.delete(k);
-  if (k === 'shift') G.boosting = false;
 });
-window.addEventListener('blur', () => keys.clear());
+window.addEventListener('blur', clearInput);
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function readKeyboard(dt) {
@@ -439,10 +462,10 @@ function readKeyboard(dt) {
   if (keys.has('arrowup') || keys.has('w')) ay += 1;
   if (keys.has('arrowdown') || keys.has('s')) ay -= 1;
   if (ax || ay) {
-    usingKeyboard = true;
     const sp = 6.2;
-    CAM.tx = THREE.MathUtils.clamp(CAM.tx + ax * sp * dt, -RANGE_X, RANGE_X);
-    CAM.ty = THREE.MathUtils.clamp(CAM.ty + ay * sp * dt, -RANGE_Y, RANGE_Y);
+    [CAM.tx, CAM.ty] = clampSection(CAM.tx + ax * sp * dt, CAM.ty + ay * sp * dt, 0.34);
+    PTR.x = (CAM.tx / RANGE_X + 1) * window.innerWidth / 2;
+    PTR.y = (1 - CAM.ty / RANGE_Y) * window.innerHeight / 2;
   }
 }
 
@@ -450,6 +473,7 @@ function readKeyboard(dt) {
  *  Flow
  * ------------------------------------------------------------------ */
 function resetRun() {
+  clearRunEffects();
   const d = DIFFICULTY[difficulty];
   G.chart = chartFor(difficulty, d.seed);
   G.chartIndex = 0;
@@ -457,38 +481,64 @@ function resetRun() {
   G.maxLives = d.lives;
   G.lives = d.lives;
   G.distance = START_S;
-  G.speed = 24;
+  G.speed = CRUISE_SPEED;
   G.score = 0;
   G.combo = 0;
   G.maxCombo = 0;
   G.gatesPassed = 0;
+  G.gatesJudged = 0;
   G.hits = 0;
-  G.invuln = 0;
+  G.invulnUntil = 0;
   G.runOver = false;
   G.boosting = false;
   G.time = 0;
+  G.beat = 0;
   G.beatLocal = 0;
-  G.timeScale = 1;
+  G.recoil = 0;
   G.shake = 0;
   G.hitFlash = 0;
-  phaseIndex = 0;
   currentHue = PHASES[0];
   CAM.x = CAM.tx = 0;
   CAM.y = CAM.ty = 0;
-  updateHud(true);
+  CAM.roll = 0;
+  updateHud();
 }
 
-async function startGame() {
-  flash(0.9, 260);
+async function startGame(withAudio = true) {
+  if (G.state !== State.MENU && G.state !== State.OVER) return;
   gates.clear();
   resetRun();
   setState(State.PLAY);
-  if (!FIXED_T) {
-    try { await audio.start(); } catch (e) { /* ignore */ }
+  flash(0.9, 260);
+  if (withAudio && FIXED_T === null) {
+    const pending = audio.start();
+    startingAudio = pending;
+    try {
+      if (await pending && startingAudio === pending && (document.hidden || contextLost)) {
+        pauseForSurface(true);
+      }
+    } catch (error) {
+      console.warn('Audio unavailable for this run', error);
+    } finally {
+      if (startingAudio === pending) startingAudio = null;
+    }
   }
 }
 
+function clearRunEffects() {
+  clearInput();
+  cancelAnimationFrame(flashFrame);
+  clearTimeout(shakeTimer);
+  document.body.style.transform = '';
+  elFlash.style.opacity = '0';
+  elMsg.classList.remove('show');
+  elCursor.classList.remove('lock');
+  msgTimer = 0;
+}
+
 function toMenu() {
+  startingAudio = null;
+  clearRunEffects();
   gates.clear();
   G.distance = MENU_S;          // the menu never inherits where the run ended
   setState(State.MENU);
@@ -499,18 +549,16 @@ function toMenu() {
 
 /* a hit costs a life; the run is only over when the last one goes */
 function takeHit(gate) {
-  if (G.state !== State.PLAY || G.invuln > 0) return;
   G.lives--;
   G.combo = 0;
   G.hits++;
-  G.invuln = 1.4;
+  G.invulnUntil = gate.beat + 1.4 / SEC_PER_BEAT;
   G.shake = 1.0;
   G.hitFlash = 1.0;
   if (gate) gate.hit = 1;
 
   flash(0.9, 380, '#ff5a5a');
   shakeDom(1);
-  G.recoil = 0.12;
 
   if (G.lives <= 0) endRun('TERMINATED');
 }
@@ -519,12 +567,15 @@ function endRun(title) {
   if (G.runOver) return;
   G.runOver = true;
   G.state = State.CRASH;
-  G.timeScale = 1;
+  G.settleAt = G.time + 0.7;
   G.recoil = title === 'ESCAPED' ? 0 : 0.55;
+  G.resultTitle = title;
+  clearInput();
   audio.stop();
+}
 
-  const total = G.gatesPassed + G.hits;
-  const acc = total > 0 ? G.gatesPassed / total : 0;
+function settleRun() {
+  const acc = G.gatesJudged > 0 ? G.gatesPassed / G.gatesJudged : 0;
 
   let rank = 'C';
   if (G.lives > 0) {
@@ -535,40 +586,36 @@ function endRun(title) {
     rank = 'B';
   }
 
-  setTimeout(() => {
-    G.state = State.OVER;
-    show(elHud, false);
-    show(elOver, true);
+  setState(State.OVER);
 
-    // let the white-out burn off so the results sit on the corridor again
-    elFlash.style.transition = 'opacity 900ms ease-out';
-    elFlash.style.opacity = '0';
+  elFlash.style.transition = 'opacity 900ms ease-out';
+  elFlash.style.opacity = '0';
 
-    $('over-title').textContent = title || 'RUN COMPLETE';
-    elOverScore.textContent = String(Math.floor(G.score));
-    $('over-rank').textContent = rank;
-    $('over-gates').textContent = `${G.gatesPassed}/${G.gatesTotal}`;
-    $('over-combo').textContent = String(G.maxCombo);
-    $('over-acc').textContent = Math.round(acc * 100) + '%';
+  $('over-title').textContent = G.resultTitle;
+  elOverScore.textContent = String(Math.floor(G.score));
+  $('over-rank').textContent = rank;
+  $('over-gates').textContent = `${G.gatesPassed}/${G.gatesTotal}`;
+  $('over-combo').textContent = String(G.maxCombo);
+  $('over-acc').textContent = Math.round(acc * 100) + '%';
 
-    if (G.score > G.best) {
-      G.best = Math.floor(G.score);
-      localStorage.setItem('sofaraway.best', String(G.best));
-    }
-  }, 700);
+  if (FIXED_T === null && G.score > G.best) {
+    G.best = Math.floor(G.score);
+    localStorage.setItem('sofaraway.best', String(G.best));
+  }
 }
 
-let shakeT = 0;
+let shakeTimer = 0;
 function shakeDom(amount) {
-  shakeT = amount;
+  if (FIXED_T !== null) return;
+  clearTimeout(shakeTimer);
   document.body.style.transform = `translate(${(Math.random() - 0.5) * 22 * amount}px, ${(Math.random() - 0.5) * 22 * amount}px)`;
-  setTimeout(() => { document.body.style.transform = ''; }, 90);
+  shakeTimer = setTimeout(() => { document.body.style.transform = ''; }, 90);
 }
 
 /* ------------------------------------------------------------------ *
  *  HUD
  * ------------------------------------------------------------------ */
-function updateHud(force) {
+function updateHud() {
   elScore.textContent = String(Math.floor(G.score));
   $('hud-gates').textContent = G.gatesPassed + '/' + G.gatesTotal;
   elCombo.textContent = '×' + G.combo;
@@ -584,10 +631,7 @@ function updateHud(force) {
   $('hud-boost').classList.toggle('on', G.boosting && G.state === State.PLAY);
   $('hint').classList.toggle('show', G.state === State.PLAY && G.beat < 15);
 
-  if (G.chart.length) {
-    const c = G.chart[Math.min(G.chartIndex, G.chart.length - 1)];
-    $('hud-section').textContent = (c && c.section) ? c.section : '—';
-  }
+  $('hud-section').textContent = sectionAt(G.beat)?.name ?? VOL.sections.at(-1).name;
 }
 
 /* ------------------------------------------------------------------ *
@@ -612,7 +656,12 @@ function placeCamera() {
 }
 
 function step(dt) {
+  if (startingAudio) return;
   G.time += dt;
+  if (msgTimer > 0) {
+    msgTimer -= dt;
+    if (msgTimer <= 0) elMsg.classList.remove('show');
+  }
 
   if (G.state === State.MENU) {
     // the menu only ever moves forward, very slowly; the corridor keeps being built
@@ -635,46 +684,41 @@ function step(dt) {
 
   if (G.state === State.OVER) {
     G.distance += 3 * dt;
+    placeCamera();
     tunnel.update(G.distance);
     return;
   }
 
-  // clock ---------------------------------------------------------
-  const sdt = dt * G.timeScale;
-  const dBeat = sdt * BPM / 60;
-
-  if (FIXED_T !== null) {
-    G.beatLocal += dBeat;
-    G.beat = G.beatLocal;
-  } else if (audio.running) {
-    G.beat = audio.beat;
-  } else {
-    G.beatLocal += dBeat;
-    G.beat = G.beatLocal;
+  if (G.state === State.CRASH) {
+    const recoil = Math.min(dt, G.recoil);
+    G.recoil -= recoil;
+    G.distance -= 26 * recoil;
+    placeCamera();
+    tunnel.update(G.distance);
+    if (G.time >= G.settleAt) settleRun();
+    return;
   }
 
-  // speed: the corridor keeps accelerating, and boosting adds on top
-  // (gates are beat-indexed, so speed never desyncs them from the music)
-  const boost = (G.boosting && G.state === State.PLAY) ? 1.45 : 1.0;
-  const targetSpeed = (24 + Math.min(G.gatesPassed * 0.22, 10)) * boost;
-  G.speed += (targetSpeed - G.speed) * Math.min(1, sdt * (boost > 1 ? 4.0 : 1.6));
+  const prevBeat = G.beat;
+  const nextBeat = audio.running ? audio.beat : prevBeat + dt / SEC_PER_BEAT;
+  G.beat = Math.min(SONG_BEATS, Math.max(prevBeat, nextBeat));
+  const elapsed = (G.beat - prevBeat) * SEC_PER_BEAT;
+  const sdt = Math.min(dt, 0.05);
+  if (FIXED_T === null) G.boosting = boostPointer !== null || keys.has('shift');
+  const boost = G.boosting ? BOOST_MULTIPLIER : 1;
+  const targetSpeed = (CRUISE_SPEED + Math.min(G.gatesPassed * 0.22, MAX_SPEED_BONUS)) * boost;
+  G.speed += (targetSpeed - G.speed) * Math.min(1, elapsed * (boost > 1 ? 4 : 1.6));
+  G.distance += G.speed * elapsed;
 
-  if (G.invuln > 0) G.invuln = Math.max(0, G.invuln - sdt);
-
-  // distance ------------------------------------------------------
-  if (G.state === State.PLAY) G.distance += G.speed * sdt;
-  else if (G.state === State.CRASH || G.state === State.OVER) {
-    // the world stops dead; only the camera eases back a couple of metres
-    if (G.recoil > 0) {
-      G.recoil = Math.max(0, G.recoil - dt);
-      G.distance -= 26 * sdt;
-    }
-  } else G.distance += G.speed * sdt * 0.35;
+  while (G.chartIndex < G.chart.length && G.chart[G.chartIndex].beat <= G.beat + SPAWN_LOOKAHEAD) {
+    const c = G.chart[G.chartIndex++];
+    gates.spawn(c.beat, G.beat, G.speed, SEC_PER_BEAT, G.time, c.sector);
+  }
 
   // camera --------------------------------------------------------
-  if (ALIGN && G.state === State.PLAY) {
-    let best = null;
-    for (const g of gates.list) if (!g.passed && (!best || g.d < best.d)) best = g;
+  readKeyboard(sdt);
+  if (ALIGN) {
+    const best = gates.list.find(g => !g.passed);
     if (best) {
       const [hx, hy] = lanePoint(best.open, best.axis);
       CAM.tx = hx;
@@ -682,17 +726,57 @@ function step(dt) {
     }
   }
 
+  const prevX = CAM.x, prevY = CAM.y;
   const damp = 1 - Math.exp(-sdt * 20);
   CAM.x += (CAM.tx - CAM.x) * damp;
   CAM.y += (CAM.ty - CAM.y) * damp;
   CAM.roll += ((-CAM.x * 0.028) - CAM.roll) * (1 - Math.exp(-sdt * 8));
+
+  G.score += G.speed * elapsed * 0.35;
+  for (const g of gates.list) {
+    if (g.passed) continue;
+    if (g.beat > G.beat) break;
+
+    g.passed = true;
+    G.gatesJudged++;
+    const fraction = G.beat > prevBeat
+      ? THREE.MathUtils.clamp((g.beat - prevBeat) / (G.beat - prevBeat), 0, 1) : 1;
+    const x = THREE.MathUtils.lerp(prevX, CAM.x, fraction);
+    const y = THREE.MathUtils.lerp(prevY, CAM.y, fraction);
+
+    if (g.canPass(x, y) || GOD) {
+      const [lx, ly] = lanePoint(g.open, g.axis);
+      G.gatesPassed++;
+      G.combo++;
+      G.maxCombo = Math.max(G.maxCombo, G.combo);
+
+      const d = DIFFICULTY[difficulty];
+      const boostMul = G.boosting ? 1.5 : 1.0;
+      G.score += 100 * d.mult * boostMul * (1 + Math.min(G.combo, 50) * 0.05);
+
+      if (Math.hypot(x - lx, y - ly) < 0.42 * 2.2) {
+        G.score += 150 * d.mult;
+        message('CLEAN ×' + G.combo, 0.6);
+      }
+    } else {
+      G.combo = 0;
+      if (g.beat >= G.invulnUntil) takeHit(g);
+      if (G.runOver) {
+        const overshoot = G.speed * (G.beat - g.beat) * SEC_PER_BEAT;
+        G.distance -= overshoot;
+        G.score -= overshoot * 0.35;
+        G.beat = g.beat;
+        break;
+      }
+    }
+  }
+  gates.prune(G.beat);
 
   placeCamera();
 
   // beat pulse ----------------------------------------------------
   const frac = G.beat - Math.floor(G.beat);
   const pulse = Math.pow(1 - frac, 4);
-  const barPulse = Math.pow(1 - ((G.beat / 4) % 1), 5);
 
   // hue -----------------------------------------------------------
   const phasePos = G.beat / PHASE_BEATS;
@@ -713,58 +797,15 @@ function step(dt) {
   camera.fov = 76 + pulse * 3.4 + boostFov + (G.state === State.PLAY ? Math.min(G.speed, 56) * 0.045 : 0);
   camera.updateProjectionMatrix();
 
-  // spawn from the chart ------------------------------------------
-  if (G.state === State.PLAY) {
-    while (
-      G.chartIndex < G.chart.length &&
-      G.chart[G.chartIndex].beat - G.beat <= SPAWN_LOOKAHEAD
-    ) {
-      const c = G.chart[G.chartIndex++];
-      gates.spawn(c.beat - G.beat, G.speed, SEC_PER_BEAT, G.time, c.sector);
-    }
-    // the last stretch washes out to white: you break out into the open
-    const esc = (G.beat - (SONG_BEATS - 12)) / 12;
-    if (esc > 0) {
-      G.escape = Math.min(1, esc);
-      elFlash.style.transition = 'none';
-      elFlash.style.opacity = String(G.escape * 0.95);
-    }
-    if (G.beat >= SONG_BEATS && !G.runOver) endRun('ESCAPED');
+  // The last stretch washes out to white.
+  const escape = (G.beat - (SONG_BEATS - 12)) / 12;
+  if (escape > 0 && !G.runOver) {
+    elFlash.style.transition = 'none';
+    elFlash.style.opacity = String(escape * 0.95);
   }
 
-  // gates ---------------------------------------------------------
-  const prevBeatGate = gates.list.slice();
-  if (!G.runOver) gates.update(dBeat, G.speed, SEC_PER_BEAT, G.time, currentHue);
-
-  if (G.state === State.PLAY) {
-    for (const g of prevBeatGate) {
-      if (!g.passed && g.dBeats <= 0) {
-        g.passed = true;
-        const sec = laneOf(CAM.x, CAM.y, g.axis);
-
-        if (sec === g.open || GOD) {
-          const [lx, ly] = lanePoint(g.open, g.axis);
-          const off = Math.min(1, Math.hypot(CAM.x - lx, CAM.y - ly) / 2.2);
-
-          G.gatesPassed++;
-          G.combo = Math.min(50, G.combo + 1);
-          G.maxCombo = Math.max(G.maxCombo, G.combo);
-
-          const d = DIFFICULTY[difficulty];
-          const boostMul = G.boosting ? 1.5 : 1.0;
-          G.score += 100 * d.mult * boostMul * (1 + G.combo * 0.05);
-
-          if (off < 0.42) {
-            G.score += 150 * d.mult;
-            message('CLEAN ×' + G.combo, 0.6);
-          }
-        } else if (G.invuln <= 0) {
-          takeHit(g);
-          if (G.runOver) break;
-        }
-      }
-    }
-  }
+  gates.update(G.beat, G.speed, SEC_PER_BEAT, G.time, currentHue);
+  if (G.beat >= SONG_BEATS && !G.runOver) endRun('ESCAPED');
 
   // focus: pull to the gate you are about to thread -----------------
   let focus = 46;
@@ -774,30 +815,22 @@ function step(dt) {
   post.setFocus(THREE.MathUtils.clamp(focus * 1.05, 26, 130));
   post.setBoost(G.boosting && G.state === State.PLAY ? 1 : 0);
 
-  // score from distance ------------------------------------------
-  if (G.state === State.PLAY) G.score += G.speed * sdt * 0.35;
-
   // reticle -------------------------------------------------------
   let locked = false;
   for (const g of gates.list) {
     if (g.d > 3 && g.d < 34) {
-      if (laneOf(CAM.x, CAM.y, g.axis) === g.open) locked = true;
+      if (g.canPass(CAM.x, CAM.y)) locked = true;
       break;
     }
   }
   elCursor.classList.toggle('lock', locked && G.state === State.PLAY);
 
   // shake ---------------------------------------------------------
-  if (G.shake > 0) {
+  if (G.shake > 0 && FIXED_T === null) {
     G.shake = Math.max(0, G.shake - sdt * 2.2);
     const s = G.shake * G.shake;
     camera.position.x += (Math.random() - 0.5) * s * 0.9;
     camera.position.y += (Math.random() - 0.5) * s * 0.9;
-  }
-
-  if (msgTimer > 0) {
-    msgTimer -= dt;
-    if (msgTimer <= 0) elMsg.classList.remove('show');
   }
 
   updateHud();
@@ -821,6 +854,10 @@ function updateCursor() {
 let lastT = performance.now();
 
 function render(now) {
+  if (DBG) {
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+  }
   updateCursor();
   if (wireframe || NO_POST) {
     renderer.setRenderTarget(null);
@@ -843,9 +880,14 @@ function render(now) {
  *  Main loop
  * ------------------------------------------------------------------ */
 function loop(now) {
+  if (disposed) return;
   const raw = (now - lastT) / 1000;
   lastT = now;
-  const dt = Math.min(raw, 0.05);
+  const dt = Math.max(0, raw);
+  if (document.hidden || contextLost) {
+    requestAnimationFrame(loop);
+    return;
+  }
 
   /* keep an eye on the frame time; if we cannot hold ~38 fps, give up pixels
      before we give up geometry */
@@ -855,8 +897,8 @@ function loop(now) {
     const sorted = [...frameTimes].sort((a, b) => a - b);
     const median = sorted[90];
     if (median > 1 / 38 && renderer.getPixelRatio() > 1) {
-      renderer.setPixelRatio(1);
       droppedRes = true;
+      resize();
     }
   }
 
@@ -873,27 +915,67 @@ function loop(now) {
  * ------------------------------------------------------------------ */
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
+  const pr = Math.min(window.devicePixelRatio || 1, droppedRes ? 1 : QUALITY.pr);
+  if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  post.setSize(w, h, PR);
+  post.setSize(w, h, pr);
   updateCursor();
 }
 window.addEventListener('resize', resize);
+
+function pauseForSurface(paused) {
+  clearInput();
+  lastT = performance.now();
+  frameTimes.length = 0;
+  if (audio.running) {
+    const transition = paused ? audio.ctx.suspend() : audio.ctx.resume();
+    transition.catch(error => console.warn('Audio surface transition failed', error));
+  }
+}
+
+document.addEventListener('visibilitychange', () => pauseForSurface(document.hidden || contextLost));
+canvas.addEventListener('webglcontextlost', event => {
+  event.preventDefault();
+  contextLost = true;
+  pauseForSurface(true);
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  if (disposed) return;
+  environment.dispose();
+  environment = makeEnvMap(renderer);
+  scene.environment = environment.texture;
+  contextLost = false;
+  resize();
+  pauseForSurface(document.hidden);
+});
+window.addEventListener('pagehide', event => {
+  if (event.persisted) {
+    pauseForSurface(true);
+    return;
+  }
+  disposed = true;
+  clearRunEffects();
+  audio.stop();
+  audio.ctx?.close().catch(error => console.warn('Audio close failed', error));
+  gates.dispose();
+  tunnel.dispose();
+  post.dispose();
+  for (const texture of Object.values(tex)) texture.dispose();
+  scene.background?.dispose();
+  environment.dispose();
+  rec.canvas.remove();
+  renderer.dispose();
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted) pauseForSurface(document.hidden || contextLost);
+});
 
 /* ------------------------------------------------------------------ *
  *  UI wiring
  * ------------------------------------------------------------------ */
 document.getElementById('ui').addEventListener('click', (e) => {
-  const qBtn = e.target.closest('[data-q]');
-  if (qBtn) {
-    const v = qBtn.dataset.q;
-    try { localStorage.setItem('sofaraway.quality', v); } catch (err) { /* ignore */ }
-    const url = new URL(location.href);
-    if (v === 'auto') url.searchParams.delete('q'); else url.searchParams.set('q', v);
-    location.href = url.toString();
-    return;
-  }
   const volBtn = e.target.closest('[data-vol-step]');
   if (volBtn) {
     stepVolume(Number(volBtn.dataset.volStep));
@@ -934,8 +1016,7 @@ document.getElementById('ui').addEventListener('click', (e) => {
       () => message(url, 2.5)
     );
   }
-  if (act === 'settings') { $('settings').classList.remove('hidden'); syncQuality(); }
-  if (act === 'closesettings') $('settings').classList.add('hidden');
+  if (act === 'settings') { show(settings, true); syncQuality(); }
   if (act === 'closepanel') elPanel.classList.add('hidden');
 });
 
@@ -943,37 +1024,40 @@ function stepVolume(dir) {
   const ready = VOLUMES.filter((v) => v.ready);
   const i = ready.findIndex((v) => v.id === VOL.id);
   const next = ready[(i + dir + ready.length) % ready.length];
-  if (next && next.id !== VOL.id) location.search = '?vol=' + next.id;
+  if (next && next.id !== VOL.id) {
+    const url = new URL(location.href);
+    url.searchParams.set('vol', next.id);
+    location.href = url.toString();
+  }
 }
 
-/* wire settings close — 'wire settings close'
-   #settings is a body-level sibling of #ui, so #ui's delegated click handler
-   never sees it. */
-(function () {
-  const box = document.getElementById('settings');
-  if (!box) return;
-  box.addEventListener('click', (e) => {
-    if (e.target.closest('[data-act="closesettings"]') || e.target === box) {
-      box.classList.add('hidden');
-    }
-  });
-  const vol = document.getElementById('set-volume');
-  if (!vol) return;
-  let saved = 80;
-  try { saved = Number(localStorage.getItem('sofaraway.volume') ?? 80); } catch (err) { /* ignore */ }
-  vol.value = String(saved);
-  audio.setVolume(saved / 100);
-  vol.addEventListener('input', () => {
-    const v = Number(vol.value);
-    audio.setVolume(v / 100);
-    try { localStorage.setItem('sofaraway.volume', String(v)); } catch (err) { /* ignore */ }
-  });
-})();
+settings.addEventListener('click', (e) => {
+  if (e.target.closest('[data-act="closesettings"]') || e.target === settings) {
+    show(settings, false);
+  }
+  const qBtn = e.target.closest('[data-q]');
+  if (qBtn) {
+    const v = qBtn.dataset.q;
+    try { localStorage.setItem('sofaraway.quality', v); } catch (err) { /* ignore */ }
+    const url = new URL(location.href);
+    url.searchParams.set('q', v);
+    location.href = url.toString();
+  }
+});
+
+const volumeInput = $('set-volume');
+try { volumeInput.value = localStorage.getItem('sofaraway.volume') ?? '80'; } catch (err) { /* ignore */ }
+audio.setVolume(Number(volumeInput.value) / 100);
+volumeInput.addEventListener('input', () => {
+  audio.setVolume(Number(volumeInput.value) / 100);
+  try { localStorage.setItem('sofaraway.volume', volumeInput.value); } catch (err) { /* ignore */ }
+});
 
 function syncQuality() {
   let stored = 'auto';
   try { stored = localStorage.getItem('sofaraway.quality') || 'auto'; } catch (e) { /* ignore */ }
-  const shown = stored === 'auto' ? (TIER === 'low' ? 'low' : TIER === 'mobile' ? 'auto' : 'high') : stored;
+  const chosen = params.get('q') || stored;
+  const shown = chosen === 'mobile' ? 'auto' : chosen;
   for (const b of document.querySelectorAll('[data-q]')) {
     b.classList.toggle('on', b.dataset.q === shown);
   }
@@ -1014,25 +1098,24 @@ if (FIXED_T !== null) {
   if (params.has('diff') && DIFFICULTY[params.get('diff')]) {
     difficulty = params.get('diff');
   }
-  if (params.get('god') !== '1') GOD = true;   // captures should reach the end
   gates.clear();
   resetRun();
   if (params.get('boost') === '1') G.boosting = true;
   setState(State.PLAY);
   const FIXED_DT = 1 / 60;
-  let acc = 0;
-  while (acc < FIXED_T) {
-    step(FIXED_DT);
-    acc += FIXED_DT;
-  }
-  render(performance.now());
-  // keep presenting so the compositor definitely picks up the frame
+  const steps = Math.floor(FIXED_T / FIXED_DT);
+  for (let i = 0; i < steps; i++) step(FIXED_DT);
+  const remainder = FIXED_T - steps * FIXED_DT;
+  if (remainder > 0) step(remainder);
+  if (!contextLost) render(performance.now());
+  // Keep presenting so the compositor picks up the capture and resizes.
   (function tick() {
-    render(performance.now());
+    if (disposed) return;
+    if (!contextLost) render(performance.now());
     requestAnimationFrame(tick);
   })();
 } else if (AUTOPLAY) {
-  startGame();
+  startGame(navigator.userActivation?.hasBeenActive === true);
   requestAnimationFrame((t) => { lastT = t; requestAnimationFrame(loop); });
 } else {
   lastT = performance.now();

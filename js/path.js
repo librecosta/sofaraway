@@ -102,7 +102,7 @@ export class Path {
 
     // rebuilding the basis keeps it exactly orthonormal; lerping three
     // vectors independently lets them drift apart and the camera wobbles
-    t.r.crossVectors(t.f, t.u).normalize();
+    t.r = (t.r || new THREE.Vector3()).crossVectors(t.f, t.u).normalize();
     t.u.crossVectors(t.r, t.f).normalize();
     return t;
   }

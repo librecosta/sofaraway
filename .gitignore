@@ -15,4 +15,6 @@ desktop.ini
 
 # Tooling
 node_modules/
+test-results/
+playwright-report/
 *.log

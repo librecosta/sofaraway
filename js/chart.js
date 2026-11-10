@@ -56,7 +56,7 @@ function nextSector(pattern, prev, i, rng) {
 export function buildChart(seed = VOL.seed) {
   const rng = mulberry32(seed);
   const out = [];
-  let beat = 8;
+  let beat = 0;
   let prev = 2;          // start up
 
   for (const sec of SECTIONS) {

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 /* ------------------------------------------------------------------ *
  *  Deterministic pseudo-random
  * ------------------------------------------------------------------ */
-function mulberry(seed) {
+export function mulberry(seed) {
   let s = seed >>> 0;
   return function () {
     s = (s + 0x6D2B79F5) >>> 0;

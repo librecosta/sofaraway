@@ -4,9 +4,6 @@
  *  Everything a run needs hangs off these: tempo, length, the section
  *  table that both the chart and the arrangement read, the corridor
  *  topology, the kind of glass you are threading, and the palette.
- *
- *  Only VOL I is wired end to end today. The other three are declared so
- *  the shape is fixed before anything is built against it.
  * ------------------------------------------------------------------ */
 
 /* section = { name, beats, gap, pattern, energy } */
@@ -124,4 +121,14 @@ export const VOL = VOLUMES.find((v) => v.id === wanted && v.ready) || VOLUMES[0]
 
 export function volumeById(id) {
   return VOLUMES.find((v) => v.id === id) || VOLUMES[0];
+}
+
+export function sectionAt(beat) {
+  let start = 0;
+  for (const [i, section] of VOL.sections.entries()) {
+    const end = start + section.beats;
+    if (beat < end) return { ...section, i, start, end, next: VOL.sections[i + 1] };
+    start = end;
+  }
+  return null;
 }

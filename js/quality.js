@@ -8,7 +8,7 @@
  *
  *  A phone gets no MSAA (the composite already softens), 1.25x pixels
  *  and eight taps. If it still cannot hold 38 fps, main.js drops the
- *  pixel ratio to 1 at runtime without rebuilding any targets.
+ *  pixel ratio to 1 at runtime for the canvas and all post targets.
  * ------------------------------------------------------------------ */
 
 const params = new URLSearchParams(location.search);

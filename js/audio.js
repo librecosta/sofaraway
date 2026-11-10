@@ -6,39 +6,12 @@
  *  from the audio clock so the visuals lock to the beat.
  * ------------------------------------------------------------------ */
 
-import { VOL } from './volumes.js?v=2026-11-10za';
+import { VOL, sectionAt } from './volumes.js?v=2026-11-10za';
 
 const MOOD = VOL.music;
 
 const BPM = VOL.bpm;
 const STEPS_PER_BAR = 16;
-
-/* must mirror the section table in chart.js — the arrangement follows the
-   same energy curve the gate density follows */
-/* same table the chart is built from, so the arrangement thins exactly where
-   the gates thin */
-const SONG = VOL.sections.map((s) => ({ beats: s.beats, energy: s.energy }));
-
-function sectionAt(beat) {
-  let acc = 0;
-  for (let i = 0; i < SONG.length; i++) {
-    const sec = SONG[i];
-    if (beat < acc + sec.beats) {
-      return { i, start: acc, end: acc + sec.beats, energy: sec.energy, next: SONG[i + 1] };
-    }
-    acc += sec.beats;
-  }
-  return null;
-}
-
-function energyAt(beat) {
-  let acc = 0;
-  for (const s of SONG) {
-    if (beat < acc + s.beats) return s.energy;
-    acc += s.beats;
-  }
-  return 0.15;
-}
 
 /* downtempo drifts through maj7 colour rather than driving minor triads */
 const PROG_TECHNO = [
@@ -103,18 +76,20 @@ export class AudioEngine {
     this.ctx = null;
     this.running = false;
     this.muted = false;
+    this.volume = 0.9;
     this.step = 0;
     this.nextTime = 0;
     this.t0 = 0;
     this.lookahead = 0.12;
     this.timer = null;
     this.ok = false;
+    this.generation = 0;
   }
 
   /* ---------------- setup ---------------- */
   async init() {
     if (this.ctx) return this.ok;
-    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!Ctx && !this.ctxFactory) return false;
 
     try {
@@ -126,7 +101,7 @@ export class AudioEngine {
     const c = this.ctx;
 
     this.master = c.createGain();
-    this.master.gain.value = 0.9;
+    this.master.gain.value = this.muted ? 0 : this.volume;
 
     this.comp = c.createDynamicsCompressor();
     this.comp.threshold.value = -14;
@@ -135,29 +110,49 @@ export class AudioEngine {
     this.comp.attack.value = 0.004;
     this.comp.release.value = 0.22;
 
+    // Preserve the mix below the knee and round off transients the compressor misses.
+    const output = c.createGain();
+    output.gain.value = 0.75;
+    const peakGuard = c.createWaveShaper();
+    peakGuard.curve = Float32Array.from({ length: 1025 }, (_, i) => {
+      const sample = i / 512 - 1;
+      const level = Math.abs(sample);
+      const knee = 0.9;
+      const excess = Math.max(0, level - knee) / (1 - knee);
+      return Math.sign(sample) * (Math.min(level, knee) + (1 - knee) * (excess - excess ** 2 / 2));
+    });
     this.master.connect(this.comp);
-    this.comp.connect(c.destination);
+    this.comp.connect(output);
+    output.connect(peakGuard);
+    peakGuard.connect(c.destination);
 
-    // reverb
+    this.impulse = this._impulse(1.9, 2.4);
+    this.noiseBuf = this._noise(2.0);
+    this._connectRun();
+    this.ok = true;
+    return true;
+  }
+
+  _connectRun() {
+    const c = this.ctx;
+    this.runBus = c.createGain();
+    this.runBus.connect(this.master);
+
     this.reverb = c.createConvolver();
-    this.reverb.buffer = this._impulse(1.9, 2.4);
+    this.reverb.buffer = this.impulse;
     this.revSend = c.createGain();
     this.revSend.gain.value = 0.55;
     this.revSend.connect(this.reverb);
-    this.reverb.connect(this.master);
+    this.reverb.connect(this.runBus);
 
     // busses
     this.drumBus = c.createGain();
     this.drumBus.gain.value = 0.95;
-    this.drumBus.connect(this.master);
+    this.drumBus.connect(this.runBus);
 
     this.musicBus = c.createGain();
     this.musicBus.gain.value = 0.8;
-    this.musicBus.connect(this.master);
-
-    this.noiseBuf = this._noise(2.0);
-    this.ok = true;
-    return true;
+    this.musicBus.connect(this.runBus);
   }
 
   _noise(seconds) {
@@ -184,10 +179,13 @@ export class AudioEngine {
 
   /* ---------------- transport ---------------- */
   async start() {
-    await this.init();
-    if (!this.ok) return false;
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
+    this.stop();
+    const generation = this.generation;
+    if (!await this.init() || generation !== this.generation) return false;
+    if (this.ctx.state !== 'running') await this.ctx.resume();
+    if (generation !== this.generation || this.ctx.state !== 'running') return false;
 
+    if (!this.runBus) this._connectRun();
     this.step = 0;
     this.nextTime = this.ctx.currentTime + 0.06;
     this.t0 = this.nextTime;
@@ -200,19 +198,20 @@ export class AudioEngine {
   }
 
   stop() {
+    this.generation++;
     this.running = false;
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.runBus?.disconnect();
+    this.runBus = null;
   }
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) {
-      this.master.gain.setTargetAtTime(m ? 0.0 : 0.9, this.ctx.currentTime, 0.05);
-    }
+    this._applyVolume();
   }
 
   get time() {
-    return this.ok && this.running ? this.ctx.currentTime - this.t0 : 0;
+    return this.ok && this.running ? Math.max(0, this.ctx.currentTime - this.t0) : 0;
   }
 
   get beat() {
@@ -221,16 +220,20 @@ export class AudioEngine {
 
   /* ---------------- scheduling ---------------- */
   _schedule() {
-    if (!this.running || !this.ok) return;
+    if (!this.running || !this.ok || this.ctx.state !== 'running') return;
     const now = this.ctx.currentTime;
-    if (this.nextTime < now - 0.4) this.nextTime = now + 0.02;
+    const stepSeconds = 15 / this.bpm;
+    if (this.nextTime < now) {
+      this.step = Math.max(this.step, Math.ceil((now - this.t0) / stepSeconds));
+      this.nextTime = this.t0 + this.step * stepSeconds;
+    }
 
-    while (this.nextTime < now + this.lookahead) {
+    while (this.step < VOL.beats * 4 && this.nextTime < now + this.lookahead) {
       const s = this.step % STEPS_PER_BAR;
       const bar = Math.floor(this.step / STEPS_PER_BAR) % 8;
       this._playStep(s, bar, this.nextTime);
       this.step++;
-      this.nextTime += (60 / this.bpm) / 4;
+      this.nextTime = this.t0 + this.step * stepSeconds;
     }
   }
 
@@ -238,8 +241,8 @@ export class AudioEngine {
     const chord = PROG[bar];
     const root = ROOT[bar];
     const beat = this.step / 4;
-    const energy = energyAt(beat);
     const sec = sectionAt(beat);
+    const energy = sec?.energy ?? 0.15;
     const ending = beat > VOL.beats - 8;   // last two bars: let it ring out
 
     /* ---- section transitions ---- */
@@ -252,7 +255,7 @@ export class AudioEngine {
       }
       // and a hit on the downbeat of the new, louder section
       if (beat <= sec.start + 0.01 && sec.i > 0) {
-        const prev = SONG[sec.i - 1];
+        const prev = VOL.sections[sec.i - 1];
         if (sec.energy > prev.energy + 0.05) this._impact(t);
       }
     }
@@ -522,8 +525,17 @@ export class AudioEngine {
   }
 
   setVolume(v) {
-    if (!this.master) return;
-    this.master.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime, 0.05);
+    if (!Number.isFinite(v)) return;
+    this.volume = Math.max(0, Math.min(1, v));
+    this._applyVolume();
+  }
+
+  _applyVolume() {
+    if (this.master) {
+      const now = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(now);
+      this.master.gain.setTargetAtTime(this.muted ? 0 : this.volume, now, 0.05);
+    }
   }
 
   _duck(t) {
