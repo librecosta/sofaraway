@@ -1,6 +1,7 @@
 import { memo, useSyncExternalStore } from 'react';
 import { initialSnapshot } from '../game/contracts';
 import type { GameRuntime } from '../game/contracts';
+import { ROUTE_LABELS } from '../game/core/branches';
 import { classes as c } from '../styles/classes';
 
 const fallback = () => initialSnapshot;
@@ -10,6 +11,7 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
   const snapshot = useSyncExternalStore(runtime?.subscribe ?? noSubscribe, runtime?.getSnapshot ?? fallback, fallback);
   const visible = ['playing', 'paused', 'crash'].includes(snapshot.phase);
   const routeHint = snapshot.routeHint;
+  const routeLabel = snapshot.route ? ROUTE_LABELS[snapshot.route] : null;
   const speed = Math.max(0, Math.min(1, (snapshot.speed - 24) / 34)) * 100;
   return (
     <section id="hud" className={c('screen', !visible && 'hidden')}>
@@ -26,12 +28,12 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
             {snapshot.shield ? 'SHIELD ×1' : `RESONANCE ×${snapshot.resonance}`}
           </div>
         )}
-        {snapshot.route && <div className={c('route-status')} id="hud-route">{snapshot.route.toUpperCase()}</div>}
+        {routeLabel && <div className={c('route-status')} id="hud-route">{routeLabel}</div>}
       </div>
       {snapshot.phase === 'playing' && routeHint && (
         <div className={c('sr-only')} id="route-hint" role="status">
-          {snapshot.route ? `Entering ${snapshot.route} route.`
-            : `Steer left for ${routeHint.left}, straight for main, or right for ${routeHint.right}.`}
+          {routeLabel ? `Entering ${routeLabel.toLowerCase()} route.`
+            : `Steer left for ${ROUTE_LABELS[routeHint.left].toLowerCase()}, straight for main, or right for ${ROUTE_LABELS[routeHint.right].toLowerCase()}.`}
         </div>
       )}
       <div className={c('hud-tr')}>
@@ -46,7 +48,7 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
       <div className={c('hud-br')}>
         <div className={c('label')}>LINK</div><div className={c('value')} id="hud-combo">×{snapshot.combo}</div>
       </div>
-      <div className={c('hint', snapshot.hint && 'show')} id="hint"><b>HOLD TO BOOST</b><span>MOVE TO STEER</span></div>
+      <div className={c('hint', snapshot.hint && 'show')} id="hint"><b>HOLD SHIFT TO BOOST</b><span>MOVE TO STEER</span></div>
       <div className={c('boost', snapshot.boosting && 'on')} id="hud-boost">BOOST</div>
       <div className={c('center-msg', !!snapshot.message && 'show')} id="center-msg">{snapshot.message}</div>
       {snapshot.phase === 'playing' && <button type="button" className={c('btn', 'tiny', 'touch-pause')}

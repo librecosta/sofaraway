@@ -1,4 +1,5 @@
 import type { GameSnapshot } from '../game/contracts';
+import { ROUTE_LABELS } from '../game/core/branches';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 
@@ -12,7 +13,7 @@ export function ResultsScreen({ snapshot, restart, menu }: {
         <div className={c('over-score')} id="over-score">{snapshot.score}</div>
         <div className={c('rank')} id="over-rank">{snapshot.result?.rank ?? 'C'}</div>
         {snapshot.result?.route && <div className={c('route-status')} id="over-route">
-          {snapshot.result.route.toUpperCase()} ROUTE
+          {ROUTE_LABELS[snapshot.result.route]} ROUTE
         </div>}
         <div className={c('stats')}>
           <div><b id="over-gates">{snapshot.gatesPassed}/{snapshot.gatesTotal}</b><span>GATES</span></div>

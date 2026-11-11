@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { branchSpread, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SPACING, MERGE_BEAT, routeSides } from '../core/branches';
+import { branchSpread, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SPACING, MERGE_BEAT, ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
@@ -182,7 +182,7 @@ export class BranchVisual {
     ctx.font = 'bold 43px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(route.toUpperCase(), 192, 49);
+    ctx.fillText(ROUTE_LABELS[route], 192, 49);
     const texture = new THREE.CanvasTexture(canvas);
     this.textures.push(texture);
     const material = signMaterial(texture, color.clone().lerp(new THREE.Color(0xffffff), 0.8));

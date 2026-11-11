@@ -14,6 +14,7 @@ export const BRANCH_SIDE_THRESHOLD = 2.4;
 export const ROUTE_STREAM = 0x524f5554;
 export const ROUTE_GATE_MULTIPLIERS = { main: 1, challenge: 2, score: 0.65 } as const;
 export type RouteKind = keyof typeof ROUTE_GATE_MULTIPLIERS;
+export const ROUTE_LABELS = { main: 'MAIN', challenge: 'CHALLENGE', score: 'BONUS' } satisfies Record<RouteKind, string>;
 export type RouteSide = 'left' | 'center' | 'right';
 export type BranchLayout = Readonly<Record<RouteSide, RouteKind>>;
 export const routeSides = ['left', 'center', 'right'] as const;

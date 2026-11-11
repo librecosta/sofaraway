@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { routeSides } from '../core/branches';
+import { ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { routeGlyphs } from './route-glyphs';
 
@@ -42,7 +42,7 @@ function label(word: string) {
   const size = 0.00043;
   const shapes: THREE.Shape[] = [];
   let advance = 0;
-  for (const letter of word.toUpperCase()) {
+  for (const letter of word) {
     const [width, outline] = routeGlyphs[letter];
     const tokens = outline.split(' ');
     const path = new THREE.ShapePath();
@@ -109,7 +109,9 @@ function material() {
 export class RouteHologram {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 16);
-  private readonly labels = { main: label('main'), challenge: label('challenge'), score: label('score') };
+  private readonly labels = {
+    main: label(ROUTE_LABELS.main), challenge: label(ROUTE_LABELS.challenge), score: label(ROUTE_LABELS.score),
+  };
   private readonly markers = routeSides.map(side => {
     const root = new THREE.Group();
     const surface = material();

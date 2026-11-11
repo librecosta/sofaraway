@@ -6,6 +6,7 @@ test('desktop input, focus loss, termination and restart', async ({ page }) => {
   await page.locator('[data-diff=hard]').click();
   await page.locator('[data-act=start]').click();
   await expect(page.locator('#hud')).toBeVisible();
+  await expect(page.locator('#hint')).toContainText('HOLD SHIFT TO BOOST');
   await page.mouse.move(480, 270);
   for (const [key, axis] of [['d', 'tx'], ['ArrowUp', 'ty']] as const) {
     const before = (await readMetrics(page)).camera[axis];

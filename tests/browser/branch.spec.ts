@@ -33,7 +33,7 @@ test('the live junction has visible labelled mouths, route-local gates and bound
 test('fixed time reproduces the junction view and all route results', async ({ page }) => {
   await page.goto(fixed(319.9));
   const layout = branchLayout(0);
-  await expect(page.locator('#route-hint')).toHaveText(`Steer left for ${layout.left}, straight for main, or right for ${layout.right}.`);
+  await expect(page.locator('#route-hint')).toHaveText('Steer left for bonus, straight for main, or right for challenge.');
   const capture = async () => {
     await page.addStyleTag({ content: '#ui, #cursor, #errbox { display:none!important; }' });
     return page.locator('#gl').screenshot();
@@ -45,11 +45,12 @@ test('fixed time reproduces the junction view and all route results', async ({ p
 
   const count = { main: 141, challenge: 145, score: 157 };
   const scores = { main: 105326, challenge: 118126, score: 111406 };
+  const names = { main: 'MAIN', challenge: 'CHALLENGE', score: 'BONUS' };
   for (const side of ['left', 'center', 'right'] as const) {
     const route = layout[side];
     await page.goto(fixed(450, side));
     await expect(page.locator('#over-title')).toHaveText('ESCAPED');
-    await expect(page.locator('#over-route')).toHaveText(route.toUpperCase() + ' ROUTE');
+    await expect(page.locator('#over-route')).toHaveText(names[route] + ' ROUTE');
     await expect(page.locator('#over-acc')).toHaveText('100%');
     await expect(page.locator('#over-gates')).toHaveText(`${count[route]}/${count[route]}`);
     await expect(page.locator('#over-score')).toHaveText(String(scores[route]));
@@ -83,6 +84,9 @@ test('three horizontal holograms keep their outlines while their interiors move'
   }
   await page.goto(fixed(322.4, 'right', true));
   await expect(page.locator('#route-hint')).toHaveText('Entering challenge route.');
+  await page.goto(fixed(322.4, 'left', true));
+  await expect(page.locator('#route-hint')).toHaveText('Entering bonus route.');
+  await expect(page.locator('#hud-route')).toHaveText('BONUS');
   await page.goto(fixed(323.2, 'right', true));
   await expect(page.locator('#hud-route')).toHaveText('CHALLENGE');
   await expect(page.locator('#route-hint')).toHaveCount(0);
