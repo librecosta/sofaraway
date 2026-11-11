@@ -43,17 +43,20 @@ export function shaderMismatches(id: VolumeId) {
   return { mismatches, glError };
 }
 
-function signal(buffer: AudioBuffer, from: number, to: number) {
-  let squares = 0, peak = 0, count = 0;
+export function signal(buffer: AudioBuffer, from: number, to: number) {
+  let squares = 0, peak = 0, count = 0, nonFinite = 0, clipped = 0;
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const samples = buffer.getChannelData(channel);
     for (let index = Math.floor(from * buffer.sampleRate); index < Math.min(samples.length, to * buffer.sampleRate); index++) {
-      squares += samples[index] ** 2;
-      peak = Math.max(peak, Math.abs(samples[index]));
+      const value = samples[index];
+      if (!Number.isFinite(value)) { nonFinite++; continue; }
+      if (Math.abs(value) >= 1) clipped++;
+      squares += value ** 2;
+      peak = Math.max(peak, Math.abs(value));
       count++;
     }
   }
-  return { rms: Math.sqrt(squares / count), peak };
+  return { rms: Math.sqrt(squares / count), peak, nonFinite, clipped };
 }
 
 export async function sectionSignals(id: VolumeId) {

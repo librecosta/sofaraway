@@ -68,7 +68,7 @@ test('a hard run can terminate once, settle, and restart cleanly', () => {
   expect([sim.gatesJudged, sim.hits, sim.lives, sim.combo, sim.score, sim.beat]).toEqual([0, 0, 3, 0, 0, 0]);
 });
 
-test('fixed steps yield the same result at 60, 120, and 144 Hz', () => {
+test('fixed steps yield the same result at 20, 60, 120, and 144 Hz', () => {
   function run(hz: number) {
     const sim = new Simulation(VOLUMES[3], { align: true });
     const clock = new FixedStepClock();
@@ -80,6 +80,7 @@ test('fixed steps yield the same result at 60, 120, and 144 Hz', () => {
     }
     return [sim.beat, sim.camera, sim.score, sim.lives, sim.gatesJudged, sim.distance];
   }
+  expect(run(20)).toEqual(run(60));
   expect(run(60)).toEqual(run(120));
   expect(run(60)).toEqual(run(144));
 });

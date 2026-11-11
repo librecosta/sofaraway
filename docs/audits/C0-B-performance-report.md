@@ -8,7 +8,7 @@
 
 ```sh
 git worktree add --detach ../sofaraway-c0b-base f1a164a208ac8aa31b8f4ec40e2b3d8d8d4d7b53
-node --input-type=module -e "import {copyFileSync} from 'node:fs'; for (const f of ['index.html','main.ts','stability.ts']) copyFileSync('tests/harness/'+f, '../sofaraway-c0b-base/tests/harness/'+f)"
+node --input-type=module -e "import {copyFileSync,existsSync} from 'node:fs'; for (const f of ['index.html','main.ts','stability.ts','signals.ts','audio-sync.ts']) if (existsSync('tests/harness/'+f)) copyFileSync('tests/harness/'+f, '../sofaraway-c0b-base/tests/harness/'+f)"
 npm --prefix ../sofaraway-c0b-base ci
 npm --prefix ../sofaraway-c0b-base run build
 npm --prefix ../sofaraway-c0b-base run build:harness

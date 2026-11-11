@@ -57,6 +57,10 @@ Run `npm run test:stability` for the frame benchmark and the full-song soak.
 The [C0-B performance report](docs/audits/C0-B-performance-report.md) documents
 the browser requirements and the reference-build comparison.
 
+Run `npm run test:sync` for audio timing, lifecycle, offline signal checks and
+four real-time songs. See the [C0-C audio sync report](docs/audits/C0-C-audio-sync-report.md)
+for browser setup and the listening checklist.
+
 Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome for a comparable GPU
 sample. To rerun the original suite against the A0 baseline, run
 `git worktree add --detach ../sofaraway-a0 88a4adb`, set `A0_APP_ROOT` to the

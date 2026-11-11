@@ -3,7 +3,9 @@ import { createBuffers, createMaster, Synthesizer } from './synthesizer.client';
 
 const LEAD = 0.06;
 const LOOKAHEAD = 0.12;
+const GRID_EPSILON = 1e-9;
 const ACTIVATION_TIMEOUT = 2000;
+type Interruption = 'audio' | 'long-frame';
 
 export class AudioTransport {
   private context?: AudioContext;
@@ -13,21 +15,29 @@ export class AudioTransport {
   private timer?: ReturnType<typeof setInterval>;
   private anchor = 0;
   private offset = 0;
+  private stepSeconds = 0;
+  private nextStepAt = Infinity;
+  private lastScheduledStep = -1;
+  private playedThrough = -1;
   private cancelActivation?: () => void;
   private generation = 0;
   private disposed = false;
   private volume = 0.8;
   private muted = false;
 
-  constructor(private readonly onInterrupt: () => void) {}
+  constructor(private readonly onInterrupt: (reason: Interruption) => void) {}
 
-  get time() {
-    return this.synth && this.context ? Math.max(this.offset, this.context.currentTime - this.anchor) : this.offset;
+  get time(): number | Interruption {
+    const ctx = this.context;
+    if (!this.synth || !ctx || ctx.state !== 'running') return 'audio';
+    const now = ctx.currentTime;
+    if (now - this.nextStepAt > GRID_EPSILON) return 'long-frame';
+    return Math.max(this.offset, now - this.anchor);
   }
 
-  async start(volume: VolumeDefinition, offset: number): Promise<boolean> {
+  async start(volume: VolumeDefinition, offset: number, resume = false): Promise<boolean> {
     if (this.disposed) return false;
-    this.stop();
+    this.stop(resume);
     const generation = this.generation;
     if (this.context?.state === 'closed') {
       this.context.onstatechange = null;
@@ -47,36 +57,53 @@ export class AudioTransport {
     this.offset = offset;
     this.anchor = ctx.currentTime + LEAD - offset;
     const stepTime = 15 / volume.bpm;
-    let step = Math.ceil(offset / stepTime - 1e-9);
+    this.stepSeconds = stepTime;
+    const endStep = volume.beats * 4;
+    let step = Math.max(0, Math.ceil((offset - GRID_EPSILON) / stepTime), this.playedThrough + 1);
+    this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
     const schedule = () => {
       if (generation !== this.generation || ctx.state !== 'running') return;
       const now = ctx.currentTime;
-      step = Math.max(step, Math.ceil((now - this.anchor) / stepTime));
-      while (step < volume.beats * 4 && this.anchor + step * stepTime < now + LOOKAHEAD) {
-        synth.playStep(step, this.anchor + step * stepTime);
+      if (now - this.nextStepAt > GRID_EPSILON) {
+        this.interrupt('long-frame');
+        return;
+      }
+      while (this.nextStepAt < now + LOOKAHEAD) {
+        synth.playStep(step, this.nextStepAt);
+        this.lastScheduledStep = step;
         step++;
+        this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
       }
     };
     schedule();
+    if (generation !== this.generation) return false;
     this.timer = setInterval(() => {
       try {
         schedule();
       } catch {
         if (generation !== this.generation) return;
-        this.stop();
-        this.onInterrupt();
+        this.interrupt('audio');
       }
     }, 25);
     return true;
   }
 
-  stop() {
+  stop(keepPosition = false) {
+    if (keepPosition && this.synth && this.context) {
+      // Keep the last rendered step separate from the simulation's last committed tick.
+      const rendered = Math.ceil((this.context.currentTime - this.anchor - GRID_EPSILON) / this.stepSeconds) - 1;
+      this.playedThrough = Math.max(this.playedThrough, Math.min(this.lastScheduledStep, rendered));
+    } else if (!keepPosition) {
+      this.playedThrough = -1;
+    }
     this.generation++;
     this.cancelActivation?.();
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
     this.synth?.dispose();
     this.synth = undefined;
+    this.nextStepAt = Infinity;
+    this.lastScheduledStep = -1;
   }
 
   setLevel(volume: number, muted: boolean) {
@@ -106,9 +133,14 @@ export class AudioTransport {
     if (!Context) return undefined;
     const context = new Context({ latencyHint: 'interactive' });
     context.onstatechange = () => {
-      if (this.synth && context.state !== 'running') this.onInterrupt();
+      if (this.synth && context.state !== 'running') this.interrupt('audio');
     };
     return context;
+  }
+
+  private interrupt(reason: Interruption) {
+    this.stop(true);
+    this.onInterrupt(reason);
   }
 
   private activate(ctx: AudioContext) {

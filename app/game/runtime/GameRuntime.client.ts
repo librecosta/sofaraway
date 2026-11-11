@@ -30,7 +30,7 @@ export class Runtime implements GameRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly events = new AbortController();
   private readonly clock = new FixedStepClock();
-  private readonly audio = new AudioTransport(() => this.pause('audio'));
+  private readonly audio = new AudioTransport(reason => this.pause(reason));
   private graphics?: Graphics;
   private simulation?: Simulation;
   private input?: InputController;
@@ -132,7 +132,7 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase !== 'playing' && !this.resumePending) return;
     this.generation++;
     this.resumePending = false;
-    this.audio.stop();
+    this.audio.stop(true);
     this.input?.clear();
     this.publishRun({ phase: 'paused', pauseReason: reason, error: reason === 'audio' ? audioError : null,
       boosting: false });
@@ -143,7 +143,7 @@ export class Runtime implements GameRuntime {
     if (!sim || this.snapshot.phase !== 'paused' || this.resumePending || this.unavailable()) return;
     this.resumePending = true;
     const generation = ++this.generation;
-    if (!silent && !await this.startAudio(sim, this.clock.elapsed, generation)) {
+    if (!silent && !await this.startAudio(sim, this.clock.elapsed, generation, true)) {
       if (generation === this.generation) {
         this.resumePending = false;
         this.publish({ error: audioError });
@@ -153,7 +153,7 @@ export class Runtime implements GameRuntime {
     if (generation !== this.generation) return;
     this.resumePending = false;
     if (this.unavailable()) {
-      this.audio.stop();
+      this.audio.stop(true);
       return;
     }
     this.silent = silent;
@@ -307,11 +307,11 @@ export class Runtime implements GameRuntime {
 
   private anchorSilent() { this.silentAnchor = performance.now() / 1000 - this.clock.elapsed; }
 
-  private async startAudio(sim: Simulation, time: number, generation: number) {
+  private async startAudio(sim: Simulation, time: number, generation: number, resume = false) {
     try {
-      return await this.audio.start(sim.volume, time);
+      return await this.audio.start(sim.volume, time, resume);
     } catch {
-      if (generation === this.generation) this.audio.stop();
+      if (generation === this.generation) this.audio.stop(resume);
       return false;
     }
   }
@@ -332,7 +332,8 @@ export class Runtime implements GameRuntime {
       if (!fixed) {
         if (this.snapshot.phase === 'playing') {
           const target = this.silent ? now / 1000 - this.silentAnchor : this.audio.time;
-          if (this.clock.consume(target, () => {
+          if (typeof target !== 'number') this.pause(target);
+          else if (this.clock.consume(target, () => {
             this.step(sim);
             return sim.phase === 'playing';
           }) === 'stalled') this.pause('long-frame');
