@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import { HOLE_R, HUB_R, lanePoint, SECTION, WALL } from '../core/collision';
+import { DIAMOND_EXTENT, HOLE_R, HUB_R, lanePoint, SECTION, SQUARE_HALF, WALL } from '../core/collision';
 import type { Axis } from '../core/collision';
-import type { Obstacle } from '../core/volumes';
+import type { GateKind } from '../core/volumes';
 
 export const THICKNESS = 0.38;
+
+const styles: Record<GateKind, number> = { iris: 0, shutter: 1, lattice: 2, aperture: 3, square: 4, diamond: 5 };
 
 const VERT = /* glsl */`
 varying vec2 vUv;
@@ -48,6 +50,27 @@ void main(){
   float hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
                     (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
   if (hullD < 0.0) discard;
+
+  /* ---- centred glass: fixed square or diamond opening ---- */
+  if (uStyle > 3.5) {
+    vec2 q = abs(p);
+    bool diamond = uStyle > 4.5;
+    float edge = diamond ? q.x + q.y - ${DIAMOND_EXTENT} : max(q.x, q.y) - ${SQUARE_HALF};
+    if (edge < 0.0) discard;
+
+    float rim = exp(-edge * 20.0);
+    float frame = exp(-hullD * 20.0);
+    float braceDist = diamond ? min(q.x, q.y) : abs(q.x - q.y) * 0.7071;
+    float brace = 1.0 - smoothstep(0.0, 0.034, braceDist);
+    float scan = 0.5 + 0.5 * sin(vUv.y * 150.0 - uTime * 9.0);
+    float band = 0.5 + 0.5 * sin(vUv.y * 17.0 + uTime * 1.3);
+    vec3 glass = uColor * (0.50 + 0.80 * scan) * (0.60 + 0.70 * band);
+    vec3 col = glass + uColor * (1.7 * rim + 0.7 * frame + 0.45 * brace);
+    col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
+    float a = (0.10 + 0.08 * scan + 0.55 * rim + 0.26 * frame + 0.16 * brace) * uFade;
+    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+    return;
+  }
 
   /* ---- aperture glass: one round hole in a full pane ---- */
   if (uStyle > 2.5) {
@@ -197,7 +220,7 @@ export class GateVisual {
   readonly mat: THREE.ShaderMaterial;
   readonly meshes: THREE.Mesh[] = [];
 
-  constructor(geometry: THREE.PlaneGeometry, obstacle: Obstacle, open: number, axis: Axis) {
+  constructor(geometry: THREE.PlaneGeometry, obstacle: GateKind, open: number, axis: Axis) {
     this.mat = new THREE.ShaderMaterial({
       vertexShader: VERT,
       fragmentShader: FRAG,
@@ -210,7 +233,7 @@ export class GateVisual {
         uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
         uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
         uHub: { value: HUB_R },
-        uStyle: { value: obstacle === 'shutter' ? 1 : (obstacle === 'lattice' ? 2 : (obstacle === 'aperture' ? 3 : 0)) },
+        uStyle: { value: styles[obstacle] },
         uAxis: { value: axis },
         uHolePos: { value: new THREE.Vector2(...lanePoint(obstacle, open, axis)) },
       },

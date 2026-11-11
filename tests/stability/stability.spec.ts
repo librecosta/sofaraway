@@ -173,14 +173,16 @@ test('fixed-time visual comparison across four volumes', async ({ browser }) => 
   try {
     for (const { id } of VOLUMES) {
       const images = [];
+      // Compare ELSEWHERE during its original Iris-only section.
+      const seconds = id === 'elsewhere' ? 36 : 83;
       for (const build of [reference, candidate]) {
-        await page.goto(`${build.client}/?vol=${id}&q=high&t=83&align=1&ui=0&dbg=1`);
+        await page.goto(`${build.client}/?vol=${id}&q=high&t=${seconds}&align=1&ui=0&dbg=1`);
         await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
         await page.addStyleTag({ content: '#errbox { display: none; }' });
         images.push(await page.locator('#gl').screenshot());
       }
-      expect(images[1].equals(images[0]), `${id} at t=83`).toBe(true);
-      log('visual', { id, seconds: 83, status: 'IDENTICAL' });
+      expect(images[1].equals(images[0]), `${id} at t=${seconds}`).toBe(true);
+      log('visual', { id, seconds, status: 'IDENTICAL' });
     }
   } finally { await page.close(); }
 });
@@ -214,6 +216,41 @@ test('repeated volume prewarming releases every compiled shader handle', async (
   log('shader-handles', result);
   expect(result.created).toBeGreaterThan(0);
   expect(result.deleted).toBe(result.created);
+});
+
+test('switching away from mixed gates keeps GPU resource counts bounded', async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHarness(page);
+  const samples = await page.evaluate(async () => {
+    const game = window.b0Harness;
+    const counts = () => {
+      const { geometries, textures, programs } = JSON.parse(game.metrics()!);
+      return { phase: game.snapshot().phase, geometries, textures, programs };
+    };
+    try {
+      // Warm the renderer's sky geometry and shader before comparing counts.
+      await game.mount({ volumeId: 'drift', quality: 'high', diagnostics: {
+        fixedTime: 113, autoplay: false, god: false, align: true, boost: false,
+        mobileQuality: false, post: true, record: false, debug: true,
+      } });
+      game.returnToMenu();
+      // At 113 s the DROP preview includes Iris, Square and Diamond.
+      await game.select('elsewhere');
+      const result = [counts()];
+      for (let repeat = 0; repeat < 3; repeat++) {
+        game.returnToMenu();
+        await game.select('drift');
+        game.returnToMenu();
+        await game.select('elsewhere');
+        result.push(counts());
+      }
+      return result;
+    } finally { game.dispose(); }
+  });
+  expect(samples[0].phase).toBe('playing');
+  expect(samples.slice(1)).toEqual(Array(3).fill(samples[0]));
+  expect(errors).toEqual([]);
+  log('mixed-gate-resources', { samples });
 });
 
 test('soak 20 lifecycles and a full song on the longest volume', async ({ browser }) => {

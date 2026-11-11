@@ -1,6 +1,6 @@
 import type { Difficulty, VolumeId } from '../contracts';
 
-export type Obstacle = 'iris' | 'shutter' | 'lattice' | 'aperture';
+export type GateKind = 'iris' | 'square' | 'diamond' | 'shutter' | 'lattice' | 'aperture';
 export type Topology = 'conduit' | 'canal' | 'shaft' | 'orbit';
 export type Music = 'techno' | 'downtempo' | 'industrial' | 'synthwave';
 export interface Section {
@@ -9,6 +9,7 @@ export interface Section {
   gap: number;
   pattern: string;
   energy: number;
+  gateSequence?: readonly GateKind[];
 }
 export interface VolumeDefinition {
   id: VolumeId;
@@ -19,7 +20,7 @@ export interface VolumeDefinition {
   beats: number;
   seed: number;
   topology: Topology;
-  obstacle: Obstacle;
+  obstacle: Exclude<GateKind, 'square' | 'diamond'>;
   music: Music;
   hue: readonly number[];
   lives: Readonly<Record<Difficulty, number>>;
@@ -35,15 +36,21 @@ export interface VolumeDefinition {
 
 /* section = { name, beats, gap, pattern, energy } */
 
-const SECTIONS_I = [
+const SECTIONS_I: readonly Section[] = [
   { name: 'INTRO',  beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.15 },
   { name: 'A',      beats: 80, gap: 4.0,  pattern: 'step',     energy: 0.45 },
-  { name: 'B',      beats: 64, gap: 4.0,  pattern: 'opposite', energy: 0.55 },
-  { name: 'BUILD',  beats: 32, gap: 3.0,  pattern: 'zigzag',   energy: 0.75 },
-  { name: 'DROP',   beats: 96, gap: 2.33, pattern: 'leap',     energy: 1.00 },
-  { name: 'BREAK',  beats: 32, gap: 5.33, pattern: 'sweep',    energy: 0.30 },
-  { name: 'A2',     beats: 64, gap: 3.0,  pattern: 'step',     energy: 0.65 },
-  { name: 'FINALE', beats: 64, gap: 2.33, pattern: 'leap',     energy: 1.00 },
+  { name: 'B',      beats: 64, gap: 4.0,  pattern: 'opposite', energy: 0.55,
+    gateSequence: ['iris', 'iris', 'iris', 'square'] },
+  { name: 'BUILD',  beats: 32, gap: 3.0,  pattern: 'zigzag',   energy: 0.75,
+    gateSequence: ['iris', 'iris', 'iris', 'diamond'] },
+  { name: 'DROP',   beats: 96, gap: 2.33, pattern: 'leap',     energy: 1.00,
+    gateSequence: ['iris', 'iris', 'square', 'iris', 'diamond'] },
+  { name: 'BREAK',  beats: 32, gap: 5.33, pattern: 'sweep',    energy: 0.30,
+    gateSequence: ['iris', 'square', 'iris', 'diamond', 'iris', 'square'] },
+  { name: 'A2',     beats: 64, gap: 3.0,  pattern: 'step',     energy: 0.65,
+    gateSequence: ['iris', 'iris', 'square', 'iris', 'diamond'] },
+  { name: 'FINALE', beats: 64, gap: 2.33, pattern: 'leap',     energy: 1.00,
+    gateSequence: ['iris', 'square', 'iris', 'diamond', 'iris'] },
 ];
 
 /* downtempo: fewer, wider gates; the turn is the event, not the gap */

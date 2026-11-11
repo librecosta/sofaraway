@@ -19,7 +19,7 @@ different arrangement — but the same engine underneath.
 
 | | World | Glass | Music | Length | Gates (Normal) |
 |---|---|---|---|---|---|
-| **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing | techno · 128 | 3:30 | 144 |
+| **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 144 |
 | **II · DRIFT** | open canal, sky above | **shutter** — one of three slats missing, horizontal or vertical | downtempo · 96 | 2:20 | 40 |
 | **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 3:38 | 158 |
 | **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:12 | 91 |
@@ -153,6 +153,6 @@ takes it somewhere else.
 
 ## License
 
-This branch carries the [MIT license](LICENSE). The default `main` branch
-carries BSD-3-Clause. See the release readiness report for the pending
-maintainer decision and third-party notices.
+SoFarAway is licensed under the [BSD 3-Clause License](LICENSE).
+The static build includes the project license, the fonts' SIL Open Font
+License notices, and the bundled dependencies' third-party notices.

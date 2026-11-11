@@ -22,7 +22,9 @@ describe.each(VOLUMES.map((volume, index) => ({ volume, baseline: baselines[inde
     const chart = chartFor(volume, difficulty);
     const [easy, normal, hard] = baseline;
     expect(chart).toHaveLength([easy, normal, hard][i]);
-    expect(createHash('sha256').update(JSON.stringify(chart)).digest('hex')).toBe(baseline[3 + i]);
+    const originalFields = chart.map(({ beat, sector, section }) => ({ beat, sector, section }));
+    expect(createHash('sha256').update(JSON.stringify(originalFields)).digest('hex')).toBe(baseline[3 + i]);
+    if (volume.id !== 'elsewhere') expect(new Set(chart.map(gate => gate.kind))).toEqual(new Set([volume.obstacle]));
     for (const gate of chart) expect(sectionAt(volume, gate.beat)?.name).toBe(gate.section);
     const sim = new Simulation(volume, { align: true });
     sim.start(difficulty);

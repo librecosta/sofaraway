@@ -2,20 +2,21 @@
  *  Chart — the score.
  *
  *  One run is one song. Gates sit on absolute beats so they always land
- *  on the music no matter how fast the corridor scrolls. Each gate names
- *  the sector that is *missing* from the bulkhead.
+ *  on the music no matter how fast the corridor scrolls. Directional gates
+ *  use the sector to select the missing pane.
  *
  *  Sector index, counter-clockwise from east:
  *      0 E   1 NE   2 N   3 NW   4 W   5 SW   6 S   7 SE
  * ------------------------------------------------------------------ */
 
 import type { Difficulty } from '../contracts';
-import type { VolumeDefinition } from './volumes';
+import type { GateKind, VolumeDefinition } from './volumes';
 
 export interface ChartGate {
   beat: number;
   sector: number;
   section: string;
+  kind: GateKind;
 }
 
 function mulberry32(a: number) {
@@ -67,7 +68,9 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
     if (sec.gap >= 900) { beat = end; continue; }   // gate-free section
     while (b < end - 0.75) {
       const sector = nextSector(sec.pattern, prev, i, rng);
-      out.push({ beat: Math.round(b * 100) / 100, sector, section: sec.name });
+      const sequence = sec.gateSequence;
+      const kind = sequence?.[i % sequence.length] ?? volume.obstacle;
+      out.push({ beat: Math.round(b * 100) / 100, sector, section: sec.name, kind });
       prev = sector;
       b += sec.gap;
       i++;

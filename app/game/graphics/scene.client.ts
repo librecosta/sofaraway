@@ -120,7 +120,7 @@ class VolumeScene {
     for (const gate of sim.previewGates) {
       let visual = this.visuals.get(gate);
       if (!visual) {
-        visual = new GateVisual(this.geometry, this.volume.obstacle, gate.open, gate.axis);
+        visual = new GateVisual(this.geometry, gate.kind, gate.open, gate.axis);
         this.visuals.set(gate, visual);
         this.scene.add(...visual.meshes);
       }
@@ -142,7 +142,7 @@ class VolumeScene {
       this.camera.position.y += (Math.random() - 0.5) * shake * 0.9;
     }
     return { focus, locked: sim.phase === 'playing' && !!aimed
-      && canPass(this.volume.obstacle, aimed.open, aimed.axis, x, y) };
+      && canPass(aimed.kind, aimed.open, aimed.axis, x, y) };
   }
 
   dispose() {

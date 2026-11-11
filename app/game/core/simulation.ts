@@ -5,7 +5,7 @@ import type { Axis } from './collision';
 import { steer } from './input';
 import type { InputFrame } from './input';
 import { sectionAt } from './volumes';
-import type { VolumeDefinition } from './volumes';
+import type { GateKind, VolumeDefinition } from './volumes';
 
 export const START_DISTANCE = 4200;
 const MENU_DISTANCE = START_DISTANCE + 140;
@@ -21,6 +21,7 @@ export function corridorLength(volume: VolumeDefinition) {
 
 export interface RunGate {
   readonly beat: number;
+  readonly kind: GateKind;
   readonly open: number;
   readonly axis: Axis;
   judged: boolean;
@@ -72,10 +73,13 @@ export class Simulation {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
-    this.chart = chartFor(this.volume, difficulty, rules.seed).map(gate => {
-      rng = (rng * 1103515245 + 12345) & 0x7fffffff;
-      return { beat: gate.beat, open: opening(this.volume.obstacle, gate.sector),
-        axis: rng / 0x7fffffff < 0.5 ? 0 : 1, judged: false, hit: false };
+    this.chart = chartFor(this.volume, difficulty, rules.seed).map(({ beat, kind, sector }) => {
+      let axis: Axis = 0;
+      if (kind !== 'square' && kind !== 'diamond') {
+        rng = (rng * 1103515245 + 12345) & 0x7fffffff;
+        axis = rng / 0x7fffffff < 0.5 ? 0 : 1;
+      }
+      return { beat, kind, open: opening(kind, sector), axis, judged: false, hit: false };
     });
     this.phase = 'playing';
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
@@ -145,7 +149,7 @@ export class Simulation {
     [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt);
     const next = this.chart[this.judged];
     if (this.options.align && next && next.beat <= this.beat + 9) {
-      [camera.tx, camera.ty] = lanePoint(this.volume.obstacle, next.open, next.axis);
+      [camera.tx, camera.ty] = lanePoint(next.kind, next.open, next.axis);
     }
     const { x, y } = camera;
     const damp = 1 - Math.exp(-dt * 20);
@@ -184,8 +188,8 @@ export class Simulation {
   private judge(gate: RunGate, x: number, y: number) {
     gate.judged = true;
     this.gatesJudged++;
-    if (this.options.god || canPass(this.volume.obstacle, gate.open, gate.axis, x, y)) {
-      const [lx, ly] = lanePoint(this.volume.obstacle, gate.open, gate.axis);
+    if (this.options.god || canPass(gate.kind, gate.open, gate.axis, x, y)) {
+      const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
       this.gatesPassed++;
       this.combo++;
       this.maxCombo = Math.max(this.maxCombo, this.combo);

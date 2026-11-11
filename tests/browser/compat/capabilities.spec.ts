@@ -143,7 +143,7 @@ test('actual gate shader pixels agree with collision on this engine', async ({ p
     const result = await page.evaluate(id => window.b0Harness.shaderMismatches(id), id);
     expect(result, id).toEqual({ mismatches: [], glError: 0 });
   }
-  record(info, 'PASS', 'All four gate shaders match collision at measured openings and seams');
+  record(info, 'PASS', 'All six gate kinds match collision at measured openings and seams');
 });
 
 for (const scope of ['core', 'post'] as const) {

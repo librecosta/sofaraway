@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import { canPass, lanePoint, opening, WALL } from '../../app/game/core/collision';
+import type { Axis, Point } from '../../app/game/core/collision';
 import { volumeById } from '../../app/game/core/volumes';
+import type { GateKind } from '../../app/game/core/volumes';
 import type { VolumeId } from '../../app/game/contracts';
 import { GateVisual } from '../../app/game/graphics/gates.client';
 
@@ -13,26 +15,57 @@ export function shaderMismatches(id: VolumeId) {
   const camera = new THREE.OrthographicCamera(-0.001, 0.001, 0.001, -0.001, 0.1, 30);
   const geometry = new THREE.PlaneGeometry(WALL.w, WALL.h);
   const pixel = new Uint8Array(4);
-  const mismatches = [];
+  const mismatches: { kind: GateKind; axis: Axis; open: number; x: number; y: number }[] = [];
+  function check(kind: GateKind, open: number, axis: Axis, points: Point[]) {
+    const gate = new GateVisual(geometry, kind, open, axis);
+    scene.add(gate.meshes[0]);
+    for (const [x, y] of points) {
+      if (Math.abs(x) > 3.4 || Math.abs(y) > 2.6 || Math.abs(x) + Math.abs(y) > 4.85) continue;
+      camera.position.set(x, y, 3);
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      renderer.readRenderTargetPixels(target, 1, 1, 1, 1, pixel);
+      // No MSAA or post-processing in this target. Any colour is a glass fragment.
+      const visible = pixel[0] + pixel[1] + pixel[2] > 0;
+      if (visible === canPass(kind, open, axis, x, y)) mismatches.push({ kind, axis, open, x, y });
+    }
+    scene.remove(gate.meshes[0]);
+    gate.dispose();
+  }
   for (const axis of [0, 1] as const) {
     for (let sector = 0; sector < 9; sector++) {
       const open = opening(obstacle, sector);
-      const gate = new GateVisual(geometry, obstacle, open, axis);
-      scene.add(gate.meshes[0]);
       const [cx, cy] = lanePoint(obstacle, open, axis);
-      for (const [x, y] of [[0, 0], [cx, cy], [1, 0], [1.05, 0], [0.95, 0], [1.25, 0],
-        [1.27, 0], [-1.27, 0], [0, 1], [0, -1], [0, 2], [0, -2], [cx + 0.94, cy], [cx + 0.96, cy]]) {
-        if (Math.abs(x) > 3.4 || Math.abs(y) > 2.6 || Math.abs(x) + Math.abs(y) > 4.85) continue;
-        camera.position.set(x, y, 3);
-        renderer.setRenderTarget(target);
-        renderer.render(scene, camera);
-        renderer.readRenderTargetPixels(target, 1, 1, 1, 1, pixel);
-        const visible = pixel[0] + pixel[1] + pixel[2] > 0;
-        if (visible === canPass(obstacle, open, axis, x, y)) mismatches.push({ obstacle, axis, open, x, y });
+      const points: Point[] = [[0, 0], [cx, cy], [1, 0], [1.05, 0], [0.95, 0], [1.25, 0],
+        [1.27, 0], [-1.27, 0], [0, 1], [0, -1], [0, 2], [0, -2], [cx + 0.94, cy], [cx + 0.96, cy]];
+      if (obstacle === 'iris' && sector < 8) {
+        const angle = sector * Math.PI / 4;
+        for (const offset of [-0.396, -0.389, 0.389, 0.396]) {
+          points.push([2 * Math.cos(angle + offset), 2 * Math.sin(angle + offset)]);
+        }
+        for (const radius of [1.015, 1.025]) points.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
       }
-      scene.remove(gate.meshes[0]);
-      gate.dispose();
+      check(obstacle, open, axis, points);
     }
+  }
+  if (id === 'elsewhere') {
+    const square: Point[] = [[0, 0]];
+    const diamond: Point[] = [[0, 0]];
+    for (const sign of [-1, 1]) {
+      for (const edge of [1.344, 1.347, 1.353, 1.356]) {
+        square.push([sign * edge, 0.4], [0.4, sign * edge]);
+      }
+      for (const tip of [1.904, 1.907, 1.913, 1.916]) {
+        diamond.push([sign * tip, 0], [0, sign * tip]);
+      }
+      for (const otherSign of [-1, 1]) {
+        for (const edge of [0.950, 0.953, 0.957, 0.960]) {
+          diamond.push([sign * edge, otherSign * edge]);
+        }
+      }
+    }
+    check('square', 0, 0, square);
+    check('diamond', 0, 0, diamond);
   }
   const glError = renderer.getContext().getError();
   renderer.setRenderTarget(null);
