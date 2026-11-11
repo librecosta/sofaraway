@@ -165,11 +165,12 @@ export class Runtime implements GameRuntime {
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.view.shake?.(0, 0);
-    this.publish({ phase: 'menu', error: null, pauseReason: null, result: null, hint: false, boosting: false });
+    this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
+      pauseReason: null, result: null, hint: false, boosting: false });
   }
 
   async selectVolume(id: VolumeId) {
-    if (!this.canConfigure() || this.unavailable() || id === this.snapshot.volumeId) return;
+    if (!this.canConfigure() || this.contextLost || this.cached || id === this.snapshot.volumeId) return;
     const generation = ++this.generation;
     const begin = performance.now();
     this.publish({ phase: 'initializing', error: null, result: null, pauseReason: null });
@@ -261,8 +262,10 @@ export class Runtime implements GameRuntime {
     const graphics = this.graphics!;
     graphics.load(volume);
     this.simulation = new Simulation(volume, flags);
-    this.draw(this.simulation, performance.now());
-    graphics.prepare();
+    if (flags.fixedTime === null) {
+      this.draw(this.simulation, performance.now());
+      graphics.prepare();
+    }
     this.visualDebt = 0;
     this.lastFrame = 0;
   }
@@ -270,14 +273,20 @@ export class Runtime implements GameRuntime {
   private capture(seconds: number) {
     const sim = this.simulation!;
     const flags = this.options!.diagnostics;
+    const graphics = this.graphics!;
     sim.start(this.snapshot.difficulty);
     const time = Math.min(seconds, sim.volume.beats * sim.secondsPerBeat + 10);
     const steps = Math.floor(time / STEP);
     const input = flags.boost ? { ...idleInput, boosting: true } : idleInput;
-    for (let i = 0; i < steps; i++) sim.step(STEP, input);
-    if (time - steps * STEP > 0) sim.step(time - steps * STEP, input);
+    const advance = (dt: number) => {
+      sim.step(dt, input);
+      graphics.update(sim, true);
+    };
+    for (let i = 0; i < steps; i++) advance(STEP);
+    if (time - steps * STEP > 0) advance(time - steps * STEP);
+    if (time === 0) graphics.update(sim, true);
     this.publishRun({ phase: sim.phase });
-    this.draw(sim, performance.now());
+    this.draw(sim, performance.now(), false);
   }
 
   private canConfigure() {
@@ -366,11 +375,11 @@ export class Runtime implements GameRuntime {
     }
   }
 
-  private draw(sim: Simulation, now: number) {
+  private draw(sim: Simulation, now: number, updateScene = true) {
     const graphics = this.graphics;
     if (!graphics || this.contextLost) return;
     const fixed = this.options?.diagnostics.fixedTime != null;
-    const locked = graphics.draw(sim, fixed);
+    const locked = graphics.draw(sim, fixed, updateScene);
     if (this.input) {
       this.input.pointer.locked = locked && this.snapshot.phase === 'playing';
       this.view.pointer(this.input.pointer);
@@ -389,7 +398,8 @@ export class Runtime implements GameRuntime {
     if (this.options?.diagnostics.debug && (fixed || now >= this.nextDebug)) {
       this.nextDebug = now + 80;
       this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
-        distance: sim.distance, hitCount: sim.hits, initMs: this.initMs, switchMs: this.switchMs }));
+        distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits,
+        initMs: this.initMs, switchMs: this.switchMs }));
     }
   }
 

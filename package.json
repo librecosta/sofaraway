@@ -22,20 +22,21 @@
     "procedural-music",
     "generative-music",
     "browser-game",
-    "shader",
-    "no-build"
+    "shader"
   ],
   "scripts": {
-    "start": "python -m http.server 8080",
-    "serve": "python -m http.server 8080",
-    "test": "playwright test --grep-invert @perf",
-    "test:perf": "playwright test --grep @perf",
+    "start": "node tools/serve-static.mjs",
+    "serve": "npm start",
+    "test": "npm run test:unit && npm run build && npm run build:harness && npm run test:b0",
+    "test:perf": "npm run build && npm run build:harness && playwright test --config playwright.b0.config.ts --grep @perf",
+    "test:a0": "playwright test --config playwright.config.js --grep-invert @perf",
+    "test:a0:perf": "playwright test --config playwright.config.js --grep @perf",
     "dev": "react-router dev",
-    "build": "react-router build",
+    "build": "react-router build && node tools/build-audio.mjs",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test:unit": "vitest run",
     "build:harness": "vite build tests/harness --outDir ../../build/harness --emptyOutDir",
-    "test:b0": "playwright test --config playwright.b0.config.ts"
+    "test:b0": "playwright test --config playwright.b0.config.ts --grep-invert @perf"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

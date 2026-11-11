@@ -2,7 +2,7 @@
 
 - **Project** LibreCosta / SoFarAway
 - **Status** Frozen
-**Baseline** `dev@88a4adb533e2c5ec6f8e77a166ca11e75794be58`
+- **Baseline** `dev@88a4adb533e2c5ec6f8e77a166ca11e75794be58`
 
 ## 1. Purpose and technology
 

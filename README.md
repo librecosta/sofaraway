@@ -2,7 +2,7 @@
 
 > **A hypnotic browser rhythm runner. Thread the gates, ride the beat.**
 
-Vol. I–IV · zero assets · zero build step · WebGL2
+Vol. I–IV · runtime procedural graphics and music · WebGL2
 
 ![Menu](shots/menu.png)
 
@@ -29,27 +29,31 @@ the world moves to the music rather than alongside it.
 
 ## Play
 
-**Local** — it is a static site. Any file server works:
+Use Node 24 LTS and run:
 
-```bash
-python -m http.server 8080
+```sh
+npm ci
+npm run dev
 ```
 
-Then open <http://localhost:8080>.
+For a production preview, run `npm run build` and `npm start`, then open
+<http://127.0.0.1:8080>. Any ordinary HTTP static server can serve `build/client`.
 
-No `npm install`. No bundler. No asset pipeline. `three.js` is vendored, everything
-else is hand-written ES modules.
+### Tests
 
-> ES modules are subject to CORS — opening `index.html` straight off the filesystem
-> will not work. Serve it over HTTP.
+```sh
+npx playwright install chromium
+npm run typecheck
+npm test
+npm run test:perf
+```
 
-### A0 tests
-
-Run `npm ci`, `npx playwright install chromium`, then `npm test` with Python 3
-available. `npm run test:perf` samples real-time Chromium frames and WebGL
-resources. Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome. See the
-[A0 audit](docs/audits/A0-audit-report.md) for conditions,
-the verification matrix, and the baseline comparison.
+Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome for a comparable GPU
+sample. To rerun the original suite against the A0 baseline, run
+`git worktree add --detach ../sofaraway-a0 88a4adb`, set `A0_APP_ROOT` to the
+baseline worktree's absolute path, then run `npm run test:a0` and
+`npm run test:a0:perf`. See the [A0 audit](docs/audits/A0-audit-report.md) and the
+[B0 regression report](docs/audits/B0-regression-report.md).
 
 ## Controls
 
@@ -57,66 +61,41 @@ the verification matrix, and the baseline comparison.
 | --- | --- |
 | Mouse / touch drag | Steer — the reticle follows your hand across the whole window |
 | Arrow keys / WASD | Steer |
-| Hold left button / `Shift` | Boost |
+| Hold left button / `Shift` | Boost on desktop |
 | `Space` | Start · retry |
 | `M` | Mute |
+| `P` | Pause or resume |
 | `Esc` | Back to menu |
 | `R` | Flight recorder overlay · `Shift+R` downloads the log |
 
 ## How it is built
 
-**Everything is configuration.** `js/volumes.js` holds one record per map: tempo,
-length, the section table, corridor topology, glass style, palette, lives. The
-chart and the arrangement both read the *same* section table, so gate density and
-instrumentation can never drift apart.
+React Router Framework Mode prerenders the menu. After hydration, React sends
+commands to the runtime and subscribes to immutable snapshots for the UI. Three.js
+and Web Audio are initialized in the browser.
 
-**The corridor is a curve.** `js/path.js` integrates frames along a centreline of
-straights joined by quarter turns — left, right, up or down. The camera, the
-geometry and every bulkhead sample the same curve.
+The runtime drives a 60 Hz simulation from the audio clock or a monotonic silent
+clock. Charts, collision, scoring and camera motion share the same simulation.
+Chart and synthesis read the same section and tempo definitions. Render frames
+can arrive at a different rate from simulation ticks.
 
-**Geometry streams.** `js/tunnel.js` builds 210-unit chunks that grow ahead *and*
-behind the camera, so a turn is fully built long before you can see it, and a
-knockback never walks off the edge of the world.
+The graphics session samples a shared path for the camera, procedural tunnel
+chunks and GLSL gates. PostFX renders bloom, chromatic aberration, vignette and
+grain. High and supported auto profiles add depth of field. The soundtrack is
+synthesized in real time. The production preview also serves
+`/tools/render-audio.html?vol=orbit` for optional offline WAV export.
 
-**Glass is a lane abstraction.** `laneOf` / `lanePoint` / `laneCount` hide the fact
-that an iris counts eight angles, a shutter counts three heights, a lattice counts
-nine cells and an aperture counts... one round hole. Judgement, scoring, the
-auto-align bot and the reticle lock all go through those three functions.
-
-**No post-processing library.** A hand-rolled chain: half-res depth pass (linear
-view-space distance straight into R) → depth-of-field gather with a golden-angle
-kernel → bright-pass at quarter resolution → separable Gaussian ×2 → composite with
-bloom, radial chromatic aberration, vignette, grain, scanlines, flash and an ACES
-shoulder.
-
-**The music is synthesized, not loaded.** Drums, bass, pad and arp are scheduled
-with a 120 ms lookahead against `AudioContext.currentTime`, and the game clock reads
-back from the audio clock so visuals cannot drift. Section changes fire risers and
-impacts; the last two bars drop the drums and let the piece ring out as the screen
-washes to white.
-
-## Project layout
-
+```text
+app/components/    React menu, HUD, settings and results
+app/game/runtime/  renderer and audio ownership, sessions, RAF, input
+app/game/core/     portable clock, simulation, collision, charts and volumes
+app/game/graphics/ procedural scene, tunnel, gates, textures and PostFX
+app/game/audio/    Web Audio transport and synthesizer
+tests/             Vitest, Playwright and isolated browser harness
+build/client/      generated static deployment directory
 ```
-.
-├── index.html              entry point + import map
-├── css/style.css           menu / HUD / game-over UI
-├── vendor/
-│   ├── three.module.js     three.js r187
-│   └── three.core.js
-├── tools/render-audio.html offline render → WAV
-└── js/
-    ├── main.js             state machine, loop, input, camera, collision
-    ├── volumes.js          the four volumes, as data
-    ├── path.js             centreline, frames, straights and quarter turns
-    ├── tunnel.js           chunked corridor: shell, ribs, light strips, rig
-    ├── gates.js            bulkheads: iris / shutter / lattice / aperture
-    ├── chart.js            gate chart from the section table
-    ├── audio.js            procedural soundtrack (Web Audio)
-    ├── post.js             depth, bloom, chromatic aberration, grain
-    ├── textures.js         procedural canvas textures
-    └── recorder.js         camera flight recorder + live trace overlay
-```
+
+See the [B0 architecture contract](docs/contracts/B0-application-game-runtime-architecture.md).
 
 ## Debug parameters
 
@@ -124,73 +103,30 @@ washes to white.
 | --- | --- |
 | `?vol=drift` | Load a volume (`elsewhere` · `drift` · `descent` · `orbit`) |
 | `?t=24.4` | Deterministic — simulate to 24.4 s, then render one frame |
-| `?god=1` | Disable collision |
-| `?q=low` | Lock pixel ratio to 1 |
+| `?god=1` | Disable collision (on by default in fixed captures, set `god=0` to judge gates) |
+| `?align=1` | Steer toward gate openings |
+| `?q=low` | Low quality, DPR at most 1, depth of field disabled |
 | `?rec=1` | Open the flight recorder |
 | `?ui=0` | Hide the UI |
-| `?dbg=1` | Draw-call / triangle readout |
+| `?dbg=1` | Read-only timing, draw-call, target and resource diagnostics |
+
+Fixed captures also accept `diff`, `boost`, and `cur`. The game accepts the
+existing `post`, `dof`, `panel`, `auto`, and `q=mobile` diagnostics.
 
 ## Status
 
-Four volumes are playable end to end. Art pass 1 is done.
-
-### Done
-
-- [x] **Art pass 1 — geometry.** Ribs every 3 units, instanced bolts at every
-      profile corner, recessed panels with chamfered edges, a raised seam rib
-      splitting each bay in two, corner gussets welded into each vertex, and
-      plating UVs that repeat exactly once per bay.
-
-### Art pass 2 — baked lighting (next)
-
-The corridor is lit entirely by its own edge glow. That is why bolts had to be
-made to catch the rim light before they were visible at all, and why recessed
-details only read where a chamfer turns the normal. Baking is what turns this
-from "shapes that happen to catch a highlight" into actual volume.
-
-This is an architectural change, not a texture swap, and should be planned
-before it is written:
-
-- [ ] **2a — UV atlas.** The corridor streams in 210-unit chunks, each built
-      independently. A bake needs globally continuous UVs across the whole
-      corridor, so either the layout must be computed upfront, or chunk
-      generation must be made atlas-aware. Decide this first.
-- [ ] **2b — ambient occlusion.** Cast rays against the corridor geometry
-      offline (Node, no browser), store one PNG per chunk.
-- [ ] **2c — irradiance.** Low-resolution per-chunk maps for indirect fill.
-- [ ] **2d — material sampling.** Feed both into the shell material; corner
-      gussets and recesses should darken on their own.
-
-### Art pass 3 — WebGPU GI
-
-Depends on 2's output. Real-time global illumination via SSGI or light probes,
-with the WebGL2 path kept as a fallback.
-
-### Open design questions
-
-- [ ] **What does boost change?** It currently raises speed, score and field of
-      view at once. Speed and beat-locked gates pull against each other; this
-      has never been resolved.
-- [ ] **A second verb?** Converge/spread would make "fast and risky" versus
-      "slow and safe" a live choice. The alternative is one verb, pushed hard.
-- [ ] **Mobile** — touch steering is relative now, boost is off on coarse
-      pointers and the HUD has a portrait layout, but none of it has been on a
-      real device.
-
-### Worth verifying before building further
-
-Audio has been written six times in this project and never heard in a finished
-state; touch input has never been tried on a phone. Listen to the four
-arrangements, play one run of each volume, and open settings, before starting
-pass 2.
+Four volumes are playable end to end. Art pass 1 geometry remains in place.
+C0 covers cross-device engine stability, compatibility and real-device
+performance. D0 covers art, music and gameplay polish. The game generates
+environment geometry, textures and music at runtime. Screenshots in `shots/`
+are for documentation.
 
 ## Credits
 
 Made by **[librecosta](https://github.com/librecosta)**.
 
-Built with [three.js](https://threejs.org). Every material, shader, texture and note
-in this repository is generated at runtime — the project ships no image files and no
-audio files.
+Built with [three.js](https://threejs.org). The game generates its materials,
+geometry, textures and notes at runtime.
 
 **Inspiration.** The mechanic is inspired by **HelloRun** (HelloEnjoy, 2013), a
 browser game that proved WebGL could be this hypnotic. No code, assets or audio from

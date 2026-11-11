@@ -13,8 +13,7 @@ export default defineConfig({
     viewport: { width: 960, height: 540 },
   },
   webServer: {
-    command: 'python -m http.server 8088 --bind 127.0.0.1',
-    cwd: process.env.A0_APP_ROOT,
+    command: 'node tools/serve-static.mjs --a0 8088',
     url: 'http://127.0.0.1:8088',
     stderr: 'ignore',
   },

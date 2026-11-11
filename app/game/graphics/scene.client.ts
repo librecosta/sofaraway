@@ -35,6 +35,7 @@ class VolumeScene {
   private readonly gateTarget = new THREE.Vector3();
   private readonly basis = new THREE.Matrix4();
   private hue: number;
+  private phase?: Simulation['phase'];
 
   constructor(private readonly volume: VolumeDefinition, renderer: THREE.WebGLRenderer, halfFloat: boolean) {
     this.hue = volume.hue[0];
@@ -84,6 +85,8 @@ class VolumeScene {
     this.camera.quaternion.setFromRotationMatrix(this.basis);
     this.camera.rotateZ(roll);
     this.tunnel.update(sim.distance);
+    const previousPhase = this.phase;
+    this.phase = sim.phase;
 
     for (const [gate, visual] of this.visuals) {
       if (sim.visibleGates.includes(gate)) continue;
@@ -94,7 +97,10 @@ class VolumeScene {
 
     if (sim.phase === 'menu') {
       this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15);
-      return { focus: 46, locked: false };
+      return { focus: null, locked: false };
+    }
+    if (sim.phase === 'results' || (sim.phase === 'crash' && previousPhase === 'crash')) {
+      return { focus: null, locked: false };
     }
 
     const pulse = (1 - sim.beat % 1) ** 4;
@@ -105,10 +111,11 @@ class VolumeScene {
       this.hue = THREE.MathUtils.lerp(hue[index % hue.length], hue[(index + 1) % hue.length],
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
       this.tunnel.setHue((this.hue + 1) % 1);
-      this.tunnel.pulse(pulse * 0.55);
+      this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
-      if (sim.phase === 'playing') {
-        this.camera.fov = 76 + pulse * 3.4 + (sim.boosting ? 7 : 0) + Math.min(sim.speed, 56) * 0.045;
+      if (sim.phase === 'playing' || previousPhase === 'playing') {
+        this.camera.fov = 76 + pulse * 3.4
+          + (sim.phase === 'playing' ? (sim.boosting ? 7 : 0) + Math.min(sim.speed, 56) * 0.045 : 0);
         this.camera.updateProjectionMatrix();
       }
     }
@@ -168,11 +175,13 @@ export class Graphics {
   private deviceDpr = 1;
   private effectiveDpr = 1;
   private mobile: boolean;
+  private locked = false;
 
   constructor(canvas: HTMLCanvasElement, tier: QualityTier, mobile: boolean, private readonly flags: Diagnostics) {
     const gl = canvas.getContext('webgl2', {
       antialias: tier === 'high' || (tier === 'auto' && !mobile),
-      alpha: false,
+      // Match the context attributes Three r187 supplies in the A0 renderer.
+      alpha: true,
       powerPreference: 'high-performance',
       stencil: false,
     });
@@ -249,21 +258,29 @@ export class Graphics {
     this.volume?.restoreEnvironment(this.renderer, this.capabilities.halfFloat);
   }
 
-  draw(sim: Simulation, deterministic: boolean) {
-    if (!this.volume || this.gl.isContextLost()) return false;
-    const { scene, camera } = this.volume;
+  update(sim: Simulation, deterministic: boolean) {
+    if (!this.volume || this.gl.isContextLost()) return;
     const { locked, focus } = this.volume.update(sim, deterministic);
+    this.locked = locked;
+    if (focus !== null) {
+      this.post?.setFocus(THREE.MathUtils.clamp(focus * 1.05, 26, 130));
+      this.post?.setBoost(sim.boosting ? 1 : 0);
+    }
+  }
+
+  draw(sim: Simulation, deterministic: boolean, updateScene = true) {
+    if (!this.volume || this.gl.isContextLost()) return false;
+    if (updateScene) this.update(sim, deterministic);
+    const { scene, camera } = this.volume;
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
     if (this.post) {
-      this.post.setFocus(THREE.MathUtils.clamp(focus * 1.05, 26, 130));
-      this.post.setBoost(sim.boosting ? 1 : 0);
       this.post.render(scene, camera, sim.time);
     } else {
       this.renderer.setRenderTarget(null);
       this.renderer.render(scene, camera);
     }
-    return locked;
+    return this.locked;
   }
 
   metrics() {

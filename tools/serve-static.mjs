@@ -3,7 +3,11 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 
-const root = resolve(process.argv[2] ?? 'build/client');
+const argument = process.argv[2];
+if (argument === '--a0' && !process.env.A0_APP_ROOT) {
+  throw new Error('Set A0_APP_ROOT to the A0 baseline worktree before running the A0 tests.');
+}
+const root = resolve(argument === '--a0' ? process.env.A0_APP_ROOT : argument ?? 'build/client');
 const port = Number(process.argv[3] ?? 8080);
 const types = {
   '.html': 'text/html; charset=utf-8',

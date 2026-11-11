@@ -109,11 +109,11 @@ export function GameViewport() {
   }, [mount]);
 
   useEffect(() => {
-    if (!runtime || requested === snapshot.volumeId ||
+    if (!runtime || requested === snapshot.volumeId || snapshot.error?.kind === 'graphics' ||
       ['uninitialized', 'initializing', 'unsupported', 'error', 'disposed'].includes(snapshot.phase)) return;
     if (snapshot.phase !== 'menu' && snapshot.phase !== 'results') runtime.returnToMenu();
     void runtime.selectVolume(requested);
-  }, [runtime, requested, snapshot.volumeId, snapshot.phase]);
+  }, [runtime, requested, snapshot.volumeId, snapshot.phase, snapshot.error]);
 
   const [importError, setImportError] = useState<string | null>(null);
   const viewSnapshot: GameSnapshot = importError ? {
@@ -139,7 +139,8 @@ export function GameViewport() {
   }
 
   function tryAgain() {
-    if (viewSnapshot.phase === 'unsupported' || viewSnapshot.phase === 'error' || viewSnapshot.error?.kind === 'graphics') {
+    if (viewSnapshot.phase === 'unsupported' || viewSnapshot.phase === 'error' ||
+      (viewSnapshot.phase === 'menu' && viewSnapshot.error?.kind === 'graphics')) {
       setImportError(null);
       setRuntime(null);
       setMount(value => value + 1);

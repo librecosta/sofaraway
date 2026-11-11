@@ -566,7 +566,9 @@ test('@perf comparable frame, resource and restart samples', async ({ browser })
     try {
       const page = await context.newPage();
       const errors = await instrument(page);
+      const initBegin = performance.now();
       await boot(page, `vol=${vol}&q=${q}`);
+      const readyMs = performance.now() - initBegin;
       await page.locator('[data-act=start]').click();
       const result = await page.evaluate(async () => {
         const frames = [];
@@ -593,7 +595,14 @@ test('@perf comparable frame, resource and restart samples', async ({ browser })
       const menu = await page.evaluate(() => audit.sample());
       await page.locator('[data-act=start]').click();
       const restart = await page.evaluate(() => audit.sample());
-      console.log(JSON.stringify({ browser: browser.version(), vol, q, width, height, dpr, mobile, ...result, menu, restart, errors }));
+      await page.keyboard.press('Escape');
+      const switchBegin = performance.now();
+      await page.getByRole('button', { name: 'next volume' }).click();
+      await page.waitForURL(url => url.searchParams.get('vol') !== vol);
+      await expect.poll(() => page.evaluate(() => !!window.audit)).toBe(true);
+      const switchReadyMs = performance.now() - switchBegin;
+      console.log(JSON.stringify({ browser: browser.version(), vol, q, width, height, dpr, mobile, ...result,
+        menu, restart, readyMs, switchReadyMs, errors }));
       expect(result.play.state).toBe('play');
       expect(menu.state).toBe('menu');
       expect(restart.state).toBe('play');

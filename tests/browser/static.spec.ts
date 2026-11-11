@@ -14,6 +14,35 @@ test('prerenders the page and hydrates one client canvas', async ({ request, pag
   expect(errors).toEqual([]);
 });
 
+test('the static soundtrack tool renders a WAV from the game synthesizer', async ({ page }) => {
+  await page.goto('/tools/render-audio.html?vol=orbit&secs=2');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'RENDER TO WAV' }).click();
+  expect((await download).suggestedFilename()).toBe('sofaraway-orbit.wav');
+  await expect(page.locator('#log')).toHaveText(/Done.*4\.0 s/);
+});
+
+test('development StrictMode effect replay initializes a single WebGL canvas', async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    const contexts = new Set<HTMLCanvasElement>();
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      value(this: HTMLCanvasElement, type: string, ...args: unknown[]) {
+        if (type === 'webgl2') contexts.add(this);
+        document.documentElement.dataset.testContexts = String(contexts.size);
+        return Reflect.apply(original, this, [type, ...args]);
+      },
+    });
+  });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('http://127.0.0.1:8091/?q=low');
+  await expect(page.locator('[data-act=start]')).toBeEnabled();
+  await expect(page.locator('html')).toHaveAttribute('data-test-contexts', '1');
+  await expect(page.locator('canvas#gl')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
 test('volume navigation and preferences work without replacing the document or canvas', async ({ page }) => {
   await page.goto('/?vol=elsewhere&q=low');
   const start = page.locator('[data-act=start]');

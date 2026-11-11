@@ -14,5 +14,7 @@ export default defineConfig({
   webServer: [
     { command: 'node tools/serve-static.mjs build/client 8089', url: 'http://127.0.0.1:8089' },
     { command: 'node tools/serve-static.mjs build/harness 8090', url: 'http://127.0.0.1:8090' },
+    { command: 'node node_modules/@react-router/dev/bin.cjs dev --host 127.0.0.1 --port 8091 --strictPort',
+      url: 'http://127.0.0.1:8091', reuseExistingServer: !process.env.CI, stdout: 'pipe' },
   ],
 });

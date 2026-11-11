@@ -15,6 +15,7 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings }: P
   const reload = phase === 'error' || phase === 'unsupported';
   const title = reload ? 'GAME UNAVAILABLE' : phase === 'paused' ? 'PAUSED'
     : error?.kind === 'graphics' ? 'GRAPHICS INTERRUPTED' : 'AUDIO UNAVAILABLE';
+  const waitingForGraphics = error?.kind === 'graphics' && !reload && phase !== 'menu';
   const message = error?.message ?? (pauseReason === 'long-frame'
     ? 'Rendering fell behind. Resume when you are ready.' : 'Your run is paused.');
   return (
@@ -22,7 +23,9 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings }: P
       <div className={c('modal-inner')}>
         <div className={c('eyebrow')}><i /><span>{title}</span><i /></div>
         <p role={error ? 'alert' : 'status'}>{message}</p>
-        <button className={c('btn', 'tiny')} onClick={retry}>{phase === 'paused' ? 'RESUME' : 'TRY AGAIN'}</button>
+        <button className={c('btn', 'tiny')} disabled={waitingForGraphics} onClick={retry}>
+          {phase === 'paused' ? 'RESUME' : 'TRY AGAIN'}
+        </button>
         {error?.kind === 'audio' && <button className={c('btn', 'tiny')} onClick={startSilent}>PLAY WITH SOUND OFF</button>}
         {phase === 'paused' && <button className={c('btn', 'tiny')} onClick={settings}>SETTINGS</button>}
         {['paused', 'playing', 'crash', 'results'].includes(phase) &&

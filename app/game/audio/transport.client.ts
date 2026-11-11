@@ -29,6 +29,10 @@ export class AudioTransport {
     if (this.disposed) return false;
     this.stop();
     const generation = this.generation;
+    if (this.context?.state === 'closed') {
+      this.context.onstatechange = null;
+      this.context = this.master = this.buffers = undefined;
+    }
     const ctx = this.context ??= this.createContext();
     if (!ctx) return false;
 
@@ -54,7 +58,15 @@ export class AudioTransport {
       }
     };
     schedule();
-    this.timer = setInterval(schedule, 25);
+    this.timer = setInterval(() => {
+      try {
+        schedule();
+      } catch {
+        if (generation !== this.generation) return;
+        this.stop();
+        this.onInterrupt();
+      }
+    }, 25);
     return true;
   }
 
