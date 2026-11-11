@@ -12,6 +12,7 @@ const MENU_DISTANCE = START_DISTANCE + 140;
 const CRUISE_SPEED = 24;
 const SPEED_BONUS = 10;
 const BOOST_MULTIPLIER = 1.45;
+const GATE_PRELOAD_BEATS = 14;
 
 export function corridorLength(volume: VolumeDefinition) {
   return START_DISTANCE + volume.beats * 60 / volume.bpm
@@ -45,7 +46,7 @@ export class Simulation {
   result: RunResult | null = null;
   hitTime = -Infinity;
   camera = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
-  visibleGates: RunGate[] = [];
+  previewGates: RunGate[] = [];
   private chart: RunGate[] = [];
   private reveal = 0;
   private judged = 0;
@@ -80,7 +81,7 @@ export class Simulation {
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
     this.gatesPassed = this.gatesJudged = this.hits = this.reveal = this.judged = 0;
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
-    this.visibleGates = [];
+    this.previewGates = [];
     this.lives = this.maxLives = rules.lives;
     this.mult = rules.mult;
     this.distance = START_DISTANCE;
@@ -90,12 +91,13 @@ export class Simulation {
     this.message = '';
     this.result = null;
     this.camera = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
+    this.preloadGates();
     return true;
   }
 
   returnToMenu() {
     this.phase = 'menu';
-    this.visibleGates = [];
+    this.previewGates = [];
     this.distance = MENU_DISTANCE;
     this.time = this.beat = 0;
     this.boosting = false;
@@ -139,9 +141,7 @@ export class Simulation {
     this.distance += this.speed * elapsed;
     this.score += this.speed * elapsed * 0.35;
 
-    while (this.chart[this.reveal]?.beat <= this.beat + 9) {
-      this.visibleGates.push(this.chart[this.reveal++]);
-    }
+    this.preloadGates();
     [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt);
     const next = this.chart[this.judged];
     if (this.options.align && next && next.beat <= this.beat + 9) {
@@ -166,10 +166,18 @@ export class Simulation {
         break;
       }
     }
-    while (this.visibleGates[0]?.beat < this.beat - 0.35) this.visibleGates.shift();
+    while (this.previewGates[0]?.beat < this.beat - 0.35) this.previewGates.shift();
     if (this.phase === 'playing' && this.beat + 1e-9 >= this.volume.beats) {
       this.beat = this.volume.beats;
       this.finish('ESCAPED');
+    }
+  }
+
+  private preloadGates() {
+    // Give Graphics time to stage gate meshes before they start to fade in.
+    const throughBeat = this.beat + GATE_PRELOAD_BEATS;
+    while (this.chart[this.reveal]?.beat <= throughBeat) {
+      this.previewGates.push(this.chart[this.reveal++]);
     }
   }
 

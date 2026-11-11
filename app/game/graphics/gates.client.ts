@@ -232,13 +232,19 @@ export class GateVisual {
     }
   }
 
-  update(time: number, hue: number, distance: number, hit: boolean) {
+  update(time: number, hue: number, distance: number, beatsAway: number, hit: boolean) {
     const u = this.mat.uniforms;
     u.uTime.value = time;
     u.uHit.value = hit ? 0.8 : 0;
     u.uColor.value.setHSL((hue + 1) % 1, 0.72, 0.55);
-    // stays fully opaque right up to the moment it passes the lens, then fades out behind you
-    u.uFade.value = THREE.MathUtils.clamp((distance + 2.5) / 3.0, 0, 1);
+    // Fade in before the original 9-beat preview point. Boost changes
+    // position, so use beats to keep the fade advancing in one direction.
+    const fadeIn = 1 - THREE.MathUtils.smoothstep(beatsAway, 9, 12);
+    const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / 3.0, 0, 1);
+    u.uFade.value = fadeIn * fadeOut;
+    const visible = u.uFade.value > 0;
+    for (const mesh of this.meshes) mesh.visible = visible;
+    return visible;
   }
 
   dispose() {

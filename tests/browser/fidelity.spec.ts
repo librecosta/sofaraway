@@ -82,3 +82,43 @@ test('distant gates stay sharp while foreground depth of field remains active', 
   expect(regular.gate.equals(sharp.gate)).toBe(true);
   expect(regular.wall.equals(sharp.wall)).toBe(false);
 });
+
+test('the last ORBIT gate fades into view before reaching full brightness', async ({ page }) => {
+  await page.addInitScript(() => {
+    const gl = WebGL2RenderingContext.prototype;
+    const { getUniformLocation, uniform1f } = gl;
+    const fades = new WeakSet<WebGLUniformLocation>();
+    const samples: number[] = [];
+    gl.getUniformLocation = function (program, name) {
+      const location = getUniformLocation.call(this, program, name);
+      if (name === 'uFade' && location) fades.add(location);
+      return location;
+    };
+    gl.uniform1f = function (location, value) {
+      if (location && fades.has(location)) {
+        samples.push(value);
+        document.documentElement.dataset.gateFades = JSON.stringify(samples);
+      }
+      uniform1f.call(this, location, value);
+    };
+  });
+
+  const renderAt = async (beat: number, boost = false): Promise<number[]> => {
+    await page.goto(`/?vol=orbit&t=${beat * 0.6}&q=low&align=1&god=0&dbg=1&boost=${Number(boost)}`);
+    await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+    const samples = await page.locator('html').getAttribute('data-gate-fades');
+    return JSON.parse(samples ?? '[]');
+  };
+
+  // The last gate is at beat 316. Earlier gates in each capture are fully lit.
+  const early = Math.min(...await renderAt(304.45));
+  const midway = Math.min(...await renderAt(305.5));
+  const nearlyLit = Math.min(...await renderAt(306.75));
+  expect(early).toBeGreaterThan(0);
+  expect(early).toBeLessThan(0.1);
+  expect(midway).toBeGreaterThan(early);
+  expect(nearlyLit).toBeGreaterThan(midway);
+  expect(nearlyLit).toBeLessThan(1);
+  expect(Math.min(...await renderAt(307.5))).toBe(1);
+  expect(Math.min(...await renderAt(304.45, true))).toBeCloseTo(early);
+});

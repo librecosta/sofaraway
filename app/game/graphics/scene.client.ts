@@ -84,7 +84,7 @@ class VolumeScene {
     this.phase = sim.phase;
 
     for (const [gate, visual] of this.visuals) {
-      if (sim.visibleGates.includes(gate)) continue;
+      if (sim.previewGates.includes(gate)) continue;
       this.scene.remove(...visual.meshes);
       visual.dispose();
       this.visuals.delete(gate);
@@ -117,21 +117,22 @@ class VolumeScene {
 
     let focus = 46;
     let aimed: RunGate | undefined;
-    for (const gate of sim.visibleGates) {
+    for (const gate of sim.previewGates) {
       let visual = this.visuals.get(gate);
       if (!visual) {
         visual = new GateVisual(this.geometry, this.volume.obstacle, gate.open, gate.axis);
         this.visuals.set(gate, visual);
         this.scene.add(...visual.meshes);
       }
-      const distance = sim.speed * (gate.beat - sim.beat) * sim.secondsPerBeat;
+      const beatsAway = gate.beat - sim.beat;
+      const distance = sim.speed * beatsAway * sim.secondsPerBeat;
+      if (!visual.update(sim.time, this.hue, distance, beatsAway, gate.hit)) continue;
       for (const [index, mesh] of visual.meshes.entries()) {
         const f = this.path.sample(sim.distance + distance - index * THICKNESS, this.gateFrame);
         mesh.position.copy(f.p);
         mesh.up.copy(f.u);
         mesh.lookAt(this.gateTarget.copy(f.p).sub(f.f));
       }
-      visual.update(sim.time, this.hue, distance, gate.hit);
       if (distance > 1 && distance < focus) focus = distance;
       if (!aimed && distance > 3 && distance < 34) aimed = gate;
     }
