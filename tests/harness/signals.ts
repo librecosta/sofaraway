@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
-import { canPass, lanePoint, opening, WALL } from '../../app/game/core/collision';
+import { canPass, lanePoint, opening } from '../../app/game/core/collision';
 import type { Axis, Point } from '../../app/game/core/collision';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateKind } from '../../app/game/core/volumes';
 import type { VolumeId } from '../../app/game/contracts';
-import { GateVisual } from '../../app/game/graphics/gates.client';
+import { GateGeometries, GateVisual } from '../../app/game/graphics/gates.client';
 
 export function shaderMismatches(id: VolumeId) {
   const { obstacle } = volumeById(id);
@@ -13,11 +13,11 @@ export function shaderMismatches(id: VolumeId) {
   const target = new THREE.WebGLRenderTarget(3, 3);
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-0.001, 0.001, 0.001, -0.001, 0.1, 30);
-  const geometry = new THREE.PlaneGeometry(WALL.w, WALL.h);
+  const geometries = new GateGeometries();
   const pixel = new Uint8Array(4);
   const mismatches: { kind: GateKind; axis: Axis; open: number; x: number; y: number }[] = [];
   function check(kind: GateKind, open: number, axis: Axis, points: Point[]) {
-    const gate = new GateVisual(geometry, kind, open, axis);
+    const gate = new GateVisual(geometries, kind, open, axis);
     scene.add(gate.meshes[0]);
     for (const [x, y] of points) {
       if (Math.abs(x) > 3.4 || Math.abs(y) > 2.6 || Math.abs(x) + Math.abs(y) > 4.85) continue;
@@ -43,7 +43,11 @@ export function shaderMismatches(id: VolumeId) {
         for (const offset of [-0.396, -0.389, 0.389, 0.396]) {
           points.push([2 * Math.cos(angle + offset), 2 * Math.sin(angle + offset)]);
         }
-        for (const radius of [1.015, 1.025]) points.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
+        for (const radius of [1.015, 1.0195, 1.0205, 1.025]) {
+          for (const offset of [-0.21, 0, 0.21]) {
+            points.push([radius * Math.cos(angle + offset), radius * Math.sin(angle + offset)]);
+          }
+        }
       }
       check(obstacle, open, axis, points);
     }
@@ -70,7 +74,7 @@ export function shaderMismatches(id: VolumeId) {
   const glError = renderer.getContext().getError();
   renderer.setRenderTarget(null);
   target.dispose();
-  geometry.dispose();
+  geometries.dispose();
   renderer.dispose();
   renderer.forceContextLoss();
   return { mismatches, glError };

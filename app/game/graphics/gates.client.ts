@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import { DIAMOND_EXTENT, HOLE_R, HUB_R, lanePoint, SECTION, SQUARE_HALF, WALL } from '../core/collision';
+import { HOLE_R, lanePoint, SECTION, WALL } from '../core/collision';
 import type { Axis } from '../core/collision';
 import type { GateKind } from '../core/volumes';
+import { buildGlassGeometry, GLASS_THICKNESS, isOpticalGlass } from './glass-geometry';
+import type { GlassKind } from './glass-geometry';
+import { GLASS_FRAG, GLASS_VERT } from './glass-optics';
 
-export const THICKNESS = 0.38;
+export const THICKNESS = GLASS_THICKNESS;
 
-const styles: Record<GateKind, number> = { iris: 0, shutter: 1, lattice: 2, aperture: 3, square: 4, diamond: 5 };
+const styles = { iris: 0, square: 1, diamond: 2, shutter: 1, lattice: 2, aperture: 3 } as const;
 
 const VERT = /* glsl */`
 varying vec2 vUv;
@@ -30,47 +33,18 @@ uniform float uHit;
 uniform float uFade;
 uniform vec3  uHull;
 uniform vec2  uSize;
-uniform float uHub;
 uniform float uStyle;
 uniform float uAxis;
 uniform vec2  uHolePos;  // aperture centre in section units
-
-const float PI = 3.14159265;
-const float TAU = 6.28318531;
-const float STEP = 0.78539816;   // PI / 4
-
-float hash(float x){ return fract(sin(x * 127.1) * 43758.5453); }
 
 void main(){
   if (vDepth < 0.5) discard;
 
   vec2 p = (vUv - 0.5) * uSize;
-
   /* All gates span the steerable section, including above the canal lip. */
   float hullD = min(min(uHull.x - abs(p.x), uHull.y - abs(p.y)),
                     (uHull.x + uHull.y - uHull.z) - (abs(p.x) + abs(p.y)));
   if (hullD < 0.0) discard;
-
-  /* ---- centred glass: fixed square or diamond opening ---- */
-  if (uStyle > 3.5) {
-    vec2 q = abs(p);
-    bool diamond = uStyle > 4.5;
-    float edge = diamond ? q.x + q.y - ${DIAMOND_EXTENT} : max(q.x, q.y) - ${SQUARE_HALF};
-    if (edge < 0.0) discard;
-
-    float rim = exp(-edge * 20.0);
-    float frame = exp(-hullD * 20.0);
-    float braceDist = diamond ? min(q.x, q.y) : abs(q.x - q.y) * 0.7071;
-    float brace = 1.0 - smoothstep(0.0, 0.034, braceDist);
-    float scan = 0.5 + 0.5 * sin(vUv.y * 150.0 - uTime * 9.0);
-    float band = 0.5 + 0.5 * sin(vUv.y * 17.0 + uTime * 1.3);
-    vec3 glass = uColor * (0.50 + 0.80 * scan) * (0.60 + 0.70 * band);
-    vec3 col = glass + uColor * (1.7 * rim + 0.7 * frame + 0.45 * brace);
-    col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
-    float a = (0.10 + 0.08 * scan + 0.55 * rim + 0.26 * frame + 0.16 * brace) * uFade;
-    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
-    return;
-  }
 
   /* ---- aperture glass: one round hole in a full pane ---- */
   if (uStyle > 2.5) {
@@ -144,113 +118,71 @@ void main(){
     return;
   }
 
-  float r = length(p);
-  float angle = p.x == 0.0 ? sign(p.y) * PI * 0.5 : atan(p.y, p.x);
-  float t = mod(angle + TAU + PI / 8.0, TAU);
-
-  float sector = floor(t / STEP);
-  float inSector = mod(t, STEP);              // 0..STEP inside the wedge
-  float spoke = min(inSector, STEP - inSector); // angular distance to a seam
-
-  bool inHub = r < uHub;
-  bool isOpen = (!inHub) && (abs(sector - uOpen) < 0.5);
-
-  /* ---------------- the missing pane --------------------------------
-     nothing to draw: the gap is defined by the panes that remain       */
-  if (isOpen) discard;
-
-  // ---- seams: the fitted edges between panes ------------------------
-  float seamAng = (1.0 - smoothstep(0.0, 0.014, spoke * max(r, 0.40))) * step(uHub, r);
-  float seamHub = 1.0 - smoothstep(0.0, 0.022, abs(r - uHub));
-  float seamHull = 1.0 - smoothstep(0.0, 0.022, hullD);
-  float seam = max(max(seamAng, seamHub), seamHull);
-
-  // soft glow hanging off each seam
-  float seamGlow = exp(-abs(r - uHub) * 9.0) * 0.35
-                 + exp(-spoke * max(r, 0.35) * 34.0) * 0.45
-                 + exp(-hullD * 9.0) * 0.30;
-
-  // ---- per-pane variation -------------------------------------------
-  float id = inHub ? 9.9 : sector;
-  float tint = 0.72 + 0.55 * hash(id + 1.0);
-  float tilt = hash(id + 7.0);
-
-  // ---- moving scanlines ---------------------------------------------
-  float scan  = 0.5 + 0.5 * sin(vUv.y * 150.0 - uTime * 9.0);
-  float scan2 = 0.5 + 0.5 * sin(vUv.y * 17.0 + uTime * 1.3);
-  float grain = fract(sin(dot(floor(vUv * 220.0), vec2(12.9898, 78.233))) * 43758.5453);
-
-  // ---- glass body ----------------------------------------------------
-  vec3 glass = uColor * (0.50 + 0.80 * scan) * tint;
-  glass *= 0.60 + 0.70 * scan2;
-  glass *= mix(0.55, 1.30, vUv.y);          // lit from below
-  glass += vec3(0.03) * grain;
-
-  // the hub is denser, colder glass
-  if (inHub) glass *= 0.55 + 0.35 * smoothstep(0.0, 0.9, r);
-
-  // dark groove just inside every seam so the panes read as separate pieces
-  float groove = (1.0 - smoothstep(0.0, 0.055, spoke * max(r, 0.40))) * step(uHub, r);
-  groove = max(groove, (1.0 - smoothstep(0.0, 0.055, abs(r - uHub))) * 0.8);
-  glass *= 1.0 - groove * 0.62;
-
-  vec3 col = glass + uColor * seamGlow * 0.55;
-
-  // seams read as bright fitted edges
-  col = mix(col, mix(uColor * 1.7, vec3(1.0), 0.18), seam * 0.42);
-
-  // ---- alpha ---------------------------------------------------------
-  float a = 0.100 + 0.080 * scan;
-  a *= 0.55 + 0.60 * scan2;
-  a *= mix(0.8, 1.15, tilt);
-  a += seamGlow * 0.14;
-  a += seam * 0.30;
-  a += grain * 0.015;
-  a *= uFade;
-
-  if (inHub) a *= 1.25;
-
-  col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
-
-  gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+  discard;
 }
 `;
+
+/** Owned by the volume (or a preview). Individual gates only own their material. */
+export class GateGeometries {
+  private readonly cache = new Map<GlassKind | number, THREE.BufferGeometry>();
+  private plane?: THREE.PlaneGeometry;
+
+  get(kind: GateKind, open: number) {
+    if (!isOpticalGlass(kind)) return this.plane ??= new THREE.PlaneGeometry(WALL.w, WALL.h);
+    const key = kind === 'iris' ? open : kind;
+    let geometry = this.cache.get(key);
+    if (!geometry) {
+      geometry = buildGlassGeometry(kind, open);
+      this.cache.set(key, geometry);
+    }
+    return geometry;
+  }
+
+  dispose() {
+    this.plane?.dispose();
+    this.plane = undefined;
+    for (const geometry of this.cache.values()) geometry.dispose();
+    this.cache.clear();
+  }
+}
 
 export class GateVisual {
   readonly mat: THREE.ShaderMaterial;
   readonly meshes: THREE.Mesh[] = [];
 
-  constructor(geometry: THREE.PlaneGeometry, obstacle: GateKind, open: number, axis: Axis) {
+  constructor(geometries: GateGeometries, obstacle: GateKind, open: number, axis: Axis) {
+    const glass = isOpticalGlass(obstacle);
+    const geometry = geometries.get(obstacle, open);
     this.mat = new THREE.ShaderMaterial({
-      vertexShader: VERT,
-      fragmentShader: FRAG,
+      vertexShader: glass ? GLASS_VERT : VERT,
+      fragmentShader: glass ? GLASS_FRAG : FRAG,
       uniforms: {
         uOpen: { value: open },
         uColor: { value: new THREE.Color(0xffffff) },
         uTime: { value: 0 },
         uHit: { value: 0 },
         uFade: { value: 1 },
-        uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
-        uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
-        uHub: { value: HUB_R },
         uStyle: { value: styles[obstacle] },
-        uAxis: { value: axis },
-        uHolePos: { value: new THREE.Vector2(...lanePoint(obstacle, open, axis)) },
+        ...(!glass && {
+          uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
+          uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
+          uAxis: { value: axis },
+          uHolePos: { value: new THREE.Vector2(...lanePoint(obstacle, open, axis)) },
+        }),
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       depthTest: true,
       side: THREE.DoubleSide,
+      forceSinglePass: glass,
       toneMapped: false,
     });
 
-    this.meshes = [];
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < (glass ? 1 : 2); i++) {
       const m = new THREE.Mesh(geometry, this.mat);
       m.frustumCulled = false;
       m.renderOrder = 6;
-      m.userData.offset = i * THICKNESS;
       this.meshes.push(m);
     }
   }

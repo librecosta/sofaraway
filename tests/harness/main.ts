@@ -27,6 +27,7 @@ const harness = {
   stoppedRunSignal,
   inspectJunction: async () => (await import('./branch')).inspectJunction(),
   inspectHologram: async () => (await import('./branch')).inspectHologram(),
+  inspectGlassOptics: async () => (await import('./glass-optics')).inspectGlassOptics(),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');

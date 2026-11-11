@@ -44,6 +44,30 @@ for (const [index, volume] of VOLUMES.entries()) {
   });
 }
 
+test('ELSEWHERE glass separates optical tiers, filters subpixel lines and has beveled sidewalls', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const result = await page.evaluate(() => window.b0Harness.inspectGlassOptics());
+  console.log('GLASS_OPTICS', JSON.stringify(result));
+  expect(result.glError).toBe(0);
+  expect(result.rim).toBeGreaterThan(result.seam);
+  expect(result.seam).toBeGreaterThan(result.outer);
+  expect(result.halo).toBeGreaterThan(result.body);
+  expect(result.hub.every(delta => Math.abs(delta) <= 2)).toBe(true);
+  expect(result.microContrast[0]).toBeGreaterThan(5);
+  expect(result.microContrast[1]).toBeLessThanOrEqual(2);
+  expect(result.irisWalls.flat().every(pixel => pixel > 0)).toBe(true);
+  for (const [i, expected] of result.expectedThroat.entries()) {
+    const throat = result.throatAndBevel[0][i];
+    const bevel = result.throatAndBevel[1][i];
+    expect(throat).not.toBeNull();
+    expect(throat!).toBeCloseTo(expected, 3);
+    expect(bevel!).toBeGreaterThan(expected + 0.01);
+  }
+  expect(result.unique).toBe(2);
+  expect(result.releasedByGate).toBe(0);
+  expect(result.released).toBe(3);
+});
+
 test('disconnecting a run isolates its dry signal and reverb from the next run', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   const [before, gap, after] = await page.evaluate(() => window.b0Harness.stoppedRunSignal());

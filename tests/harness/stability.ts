@@ -2,7 +2,12 @@ import type { Object3D, WebGLRenderer } from 'three';
 import { PMREMGenerator } from 'three';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { GameOptions, VolumeId, QualityTier } from '../../app/game/contracts';
-import { FixedStepClock } from '../../app/game/core/clock';
+import { FixedStepClock, STEP } from '../../app/game/core/clock';
+import { idleInput } from '../../app/game/core/input';
+import { Simulation } from '../../app/game/core/simulation';
+import type { RunGate } from '../../app/game/core/simulation';
+import { volumeById } from '../../app/game/core/volumes';
+import type { GateVisual } from '../../app/game/graphics/gates.client';
 import { Path } from '../../app/game/graphics/path';
 import { PostFX } from '../../app/game/graphics/post.client';
 import { Graphics } from '../../app/game/graphics/scene.client';
@@ -181,7 +186,8 @@ function end() {
   const cpuStats = summarize(cpu);
   const frameStats = stats(frames);
   return {
-    cpu: { ...cpuStats, chunk: stats(cpu.chunk), pathStep: stats(cpu.pathStep), renderer: stats(cpu.rendererFrame), longTask: cpuStats.longTask ??
+    cpu: { ...cpuStats, frame: stats(cpu.frame), chunk: stats(cpu.chunk), pathStep: stats(cpu.pathStep),
+      renderer: stats(cpu.rendererFrame), longTask: cpuStats.longTask ??
       (PerformanceObserver.supportedEntryTypes?.includes('longtask') ? stats() : null) },
     frame: frameStats, fps: frameStats.total ? 1000 * frames.length / frameStats.total : null,
     over50ms: frames.filter(ms => ms > 50).length, playingFrames,
@@ -254,6 +260,56 @@ const stability = {
     measuring = false;
     await new Promise(resolve => setTimeout(resolve, 120));
     return end();
+  },
+  async fixedGlass(beat: number, quality: QualityTier) {
+    const definition = volumeById('elsewhere');
+    const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
+      boost: false, mobileQuality: false, post: true, record: false, debug: false, branchSide: 'left' };
+    const output = document.createElement('canvas');
+    document.body.prepend(output);
+    const surface = new Graphics(output, quality, false, diagnostics);
+    const sim = new Simulation(definition, diagnostics);
+    try {
+      instrumentRenderer(surface);
+      surface.resize(960, 540, 1);
+      surface.load(definition);
+      surface.prepare();
+      sim.start('normal', 0);
+      while (sim.beat + 1e-9 < beat && sim.phase === 'playing') sim.step(STEP, idleInput);
+      surface.warmSurface(sim, true);
+      const draw = () => new Promise<void>((resolve, reject) => requestAnimationFrame(now => {
+        try {
+          if (measuring && frameAt) frames.push(now - frameAt);
+          frameAt = now;
+          elapsed('frame', () => surface.draw(sim, true));
+          resolve();
+        } catch (error) { reject(error); }
+      }));
+      for (let i = 0; i < 24; i++) await draw();
+      begin();
+      for (let i = 0; i < 480; i++) await draw();
+      measuring = false;
+      await new Promise(resolve => setTimeout(resolve, 120));
+      const trace = end();
+      const { gl } = surface;
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      const volume = Reflect.get(surface, 'volume') as { visuals: Map<RunGate, GateVisual> };
+      const visible = Array.from(volume.visuals).filter(([, gate]) => gate.meshes[0].visible);
+      const meshes = visible.flatMap(([, gate]) => gate.meshes);
+      return { beat: sim.beat, route: sim.route, phase: sim.phase, trace, metrics: surface.metrics(),
+        gateCount: visible.length, gateKinds: visible.map(([gate]) => gate.kind), gateMeshes: meshes.length,
+        gateGeometries: new Set(meshes.map(mesh => mesh.geometry)).size,
+        renderer: gl.getParameter(info?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) as string,
+        webgl: gl.getParameter(gl.VERSION) as string, glError: gl.getError() };
+    } finally {
+      measuring = false;
+      pollGpu(true);
+      longTasks?.disconnect();
+      surface.dispose();
+      graphics = undefined;
+      timing = null;
+      output.remove();
+    }
   },
   stream(id: VolumeId) {
     begin();

@@ -167,7 +167,7 @@ test('benchmark WebKit mobile compositor at DPR 2 and 3', async () => {
   } finally { await browser.close(); }
 });
 
-test('fixed-time visual comparison across four volumes', async ({ browser }) => {
+test('fixed-time visual comparison across four volumes @glass', async ({ browser }, info) => {
   if (!haveReference) { log('visual', { status: 'REFERENCE_NOT_CONFIGURED' }); return; }
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   try {
@@ -179,12 +179,53 @@ test('fixed-time visual comparison across four volumes', async ({ browser }) => 
         await page.goto(`${build.client}/?vol=${id}&q=high&t=${seconds}&align=1&ui=0&dbg=1`);
         await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
         await page.addStyleTag({ content: '#errbox { display: none; }' });
-        images.push(await page.locator('#gl').screenshot());
+        const path = id === 'elsewhere' ? info.outputPath(`iris-far-${build.label}.png`) : undefined;
+        images.push(await page.locator('#gl').screenshot({ path }));
+        if (path) await info.attach(`iris-far-${build.label}`, { path, contentType: 'image/png' });
       }
-      expect(images[1].equals(images[0]), `${id} at t=${seconds}`).toBe(true);
-      log('visual', { id, seconds, status: 'IDENTICAL' });
+      const identical = images[1].equals(images[0]);
+      if (id !== 'elsewhere') expect(identical, `${id} at t=${seconds}`).toBe(true);
+      log('visual', { id, seconds, status: identical ? 'IDENTICAL' : 'CHANGED' });
+    }
+    for (const [name, beat] of [['iris-near', 79.1], ['square', 107.2], ['diamond', 168.2], ['score', 333.5]] as const) {
+      for (const build of [reference, candidate]) {
+        await page.goto(`${build.client}/?vol=elsewhere&q=high&t=${beat * 60 / 128}&route=left&align=1&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        if (name === 'score') await expect(page.locator('#hud-route')).toHaveText('BONUS');
+        const path = info.outputPath(`${name}-${build.label}.png`);
+        await page.locator('#gl').screenshot({ path });
+        await info.attach(`${name}-${build.label}`, { path, contentType: 'image/png' });
+      }
     }
   } finally { await page.close(); }
+});
+
+test('fixed ELSEWHERE frames and dense Score gates @glass', async ({ browser }) => {
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [beat, quality] of [[76.8, 'high'], [333.5, 'high'], [333.5, 'low']] as const) {
+        const result = await page.evaluate(([beat, quality]) => window.stability.fixedGlass(beat, quality), [beat, quality] as const);
+        log('glass', { sample, build: build.label, browser: browser.version(), quality, ...result });
+        expect(result.phase).toBe('playing');
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(480);
+        if (beat === 333.5) {
+          expect(result.route).toBe('score');
+          expect(result.gateCount).toBeGreaterThanOrEqual(10);
+          expect(new Set(result.gateKinds)).toEqual(new Set(['square', 'diamond']));
+        }
+        if (build === candidate) {
+          expect(result.gateMeshes).toBe(result.gateCount);
+          expect(result.gateGeometries).toBeLessThanOrEqual(8);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });
 
 test('repeated volume prewarming releases every compiled shader handle', async ({ page }) => {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { branchDistance, REJOIN_BEAT } from '../core/branches';
-import { canPass, clampSection, WALL } from '../core/collision';
+import { canPass, clampSection } from '../core/collision';
 import { PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_PREVIEW_BEATS } from '../core/pickups';
 import { corridorLength } from '../core/simulation';
 import type { RunGate, Simulation } from '../core/simulation';
@@ -9,7 +9,7 @@ import type { Diagnostics, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { BranchPath } from './branch-path';
 import { makeEnvMap, makeSky } from './environment.client';
-import { GateVisual, THICKNESS } from './gates.client';
+import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { buildPath } from './path';
 import { PickupVisual } from './pickup.client';
 import { PostFX } from './post.client';
@@ -34,7 +34,7 @@ class VolumeScene {
   readonly path: ReturnType<typeof buildPath>;
   readonly hologram?: RouteHologram;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
-  private readonly geometry = new THREE.PlaneGeometry(WALL.w, WALL.h);
+  private readonly gateGeometries = new GateGeometries();
   private readonly visuals = new Map<RunGate, GateVisual>();
   private sky?: THREE.CanvasTexture | null;
   private readonly cameraFrame = frame();
@@ -68,7 +68,7 @@ class VolumeScene {
   }
 
   prepare(renderer: THREE.WebGLRenderer) {
-    const gate = new GateVisual(this.geometry, this.volume.obstacle, 0, 0);
+    const gate = new GateVisual(this.gateGeometries, this.volume.obstacle, 0, 0);
     this.scene.add(gate.meshes[0]);
     try {
       if (this.volume.id === 'elsewhere' && !this.disposeJunctionPrograms) {
@@ -147,7 +147,7 @@ class VolumeScene {
     for (const gate of previews) {
       let visual = this.visuals.get(gate);
       if (!visual) {
-        visual = new GateVisual(this.geometry, gate.kind, gate.open, gate.axis);
+        visual = new GateVisual(this.gateGeometries, gate.kind, gate.open, gate.axis);
         this.visuals.set(gate, visual);
         this.scene.add(...visual.meshes);
       }
@@ -226,7 +226,7 @@ class VolumeScene {
     this.disposeJunctionPrograms?.();
     for (const visual of this.visuals.values()) visual.dispose();
     this.visuals.clear();
-    this.geometry.dispose();
+    this.gateGeometries.dispose();
     this.tunnel?.dispose();
     this.sky?.dispose();
     this.scene.clear();
