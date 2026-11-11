@@ -11,6 +11,8 @@ export interface Metrics {
   targets: [number, number, number][];
   dpr: number;
   dof: boolean;
+  colorTarget: 'rgba16f' | 'rgba8' | null;
+  postFailure: string | null;
   geometries: number;
   textures: number;
   programs: number;

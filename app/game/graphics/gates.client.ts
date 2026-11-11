@@ -122,7 +122,8 @@ void main(){
   }
 
   float r = length(p);
-  float t = mod(atan(p.y, p.x) + TAU + PI / 8.0, TAU);
+  float angle = p.x == 0.0 ? sign(p.y) * PI * 0.5 : atan(p.y, p.x);
+  float t = mod(angle + TAU + PI / 8.0, TAU);
 
   float sector = floor(t / STEP);
   float inSector = mod(t, STEP);              // 0..STEP inside the wedge
@@ -136,9 +137,9 @@ void main(){
   if (isOpen) discard;
 
   // ---- seams: the fitted edges between panes ------------------------
-  float seamAng = smoothstep(0.014, 0.0, spoke * max(r, 0.40)) * step(uHub, r);
-  float seamHub = smoothstep(0.022, 0.0, abs(r - uHub));
-  float seamHull = smoothstep(0.022, 0.0, hullD);
+  float seamAng = (1.0 - smoothstep(0.0, 0.014, spoke * max(r, 0.40))) * step(uHub, r);
+  float seamHub = 1.0 - smoothstep(0.0, 0.022, abs(r - uHub));
+  float seamHull = 1.0 - smoothstep(0.0, 0.022, hullD);
   float seam = max(max(seamAng, seamHub), seamHull);
 
   // soft glow hanging off each seam
@@ -166,8 +167,8 @@ void main(){
   if (inHub) glass *= 0.55 + 0.35 * smoothstep(0.0, 0.9, r);
 
   // dark groove just inside every seam so the panes read as separate pieces
-  float groove = smoothstep(0.055, 0.0, spoke * max(r, 0.40)) * step(uHub, r);
-  groove = max(groove, smoothstep(0.055, 0.0, abs(r - uHub)) * 0.8);
+  float groove = (1.0 - smoothstep(0.0, 0.055, spoke * max(r, 0.40))) * step(uHub, r);
+  groove = max(groove, (1.0 - smoothstep(0.0, 0.055, abs(r - uHub))) * 0.8);
   glass *= 1.0 - groove * 0.62;
 
   vec3 col = glass + uColor * seamGlow * 0.55;

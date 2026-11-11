@@ -79,7 +79,7 @@ export class Runtime implements GameRuntime {
         options.diagnostics.cursor);
       if (options.diagnostics.record) this.toggleRecorder();
       this.attach(canvas);
-      this.resize();
+      this.resizeGraphics();
       this.audio.setLevel(options.volume, options.muted);
       this.loadVolume(options.volumeId);
       this.initMs = performance.now() - begin;
@@ -113,8 +113,14 @@ export class Runtime implements GameRuntime {
     this.noticeUntil = 0;
     this.clock.reset();
     this.silent = silent;
-    this.anchorSilent();
     sim.start(this.snapshot.difficulty);
+    try {
+      if (silent) this.graphics?.warmSurface(sim, false);
+    } catch (error) {
+      this.fail(error);
+      return;
+    }
+    this.anchorSilent();
     this.publishRun({ phase: 'playing', pauseReason: null, error: null });
   }
 
@@ -412,11 +418,27 @@ export class Runtime implements GameRuntime {
     }
   }
 
-  private resize = () => {
+  private resizeGraphics() {
     if (this.contextLost) return;
     this.graphics?.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
     if (this.simulation && this.options?.diagnostics.fixedTime != null) this.draw(this.simulation, performance.now());
+  }
+
+  private resize = () => {
+    try {
+      this.resizeGraphics();
+    } catch (error) {
+      this.fail(error);
+    }
   };
+
+  private watchDpr() {
+    const query = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    query.addEventListener('change', () => {
+      this.resize();
+      if (!this.events.signal.aborted) this.watchDpr();
+    }, { once: true, signal: this.events.signal });
+  }
 
   private surfaceChanged = () => {
     this.lastFrame = 0;
@@ -436,19 +458,25 @@ export class Runtime implements GameRuntime {
   private attach(canvas: HTMLCanvasElement) {
     const { signal } = this.events;
     window.addEventListener('resize', this.resize, { signal });
+    this.watchDpr();
     document.addEventListener('visibilitychange', this.surfaceChanged, { signal });
     canvas.addEventListener('webglcontextlost', event => {
       event.preventDefault();
       this.contextLost = true;
       this.surfaceChanged();
+      // Detach Three's disposal callbacks before the restored context owns new GL handles.
+      this.graphics?.releaseSurface();
       this.publish({ error: Object.freeze({ kind: 'graphics', message: 'Graphics were interrupted. Waiting for WebGL to recover.' }) });
     }, { signal });
     canvas.addEventListener('webglcontextrestored', () => {
       try {
-        this.graphics?.restore();
+        const sim = this.simulation;
+        if (!sim) return;
+        this.graphics?.restore(sim.volume);
         this.contextLost = false;
+        this.resizeGraphics();
+        this.graphics?.warmSurface(sim, this.options?.diagnostics.fixedTime != null);
         this.publish({ error: null });
-        this.resize();
         this.surfaceChanged();
       } catch (error) {
         this.fail(error);
@@ -476,7 +504,7 @@ export class Runtime implements GameRuntime {
   private keydown = (key: string, event: KeyboardEvent) => {
     if (this.view.key?.(key, event)) return true;
     if (event.repeat || event.target instanceof HTMLInputElement) return false;
-    if (key === ' ' || (key === 'enter' && !(event.target instanceof HTMLButtonElement))) {
+    if ((key === ' ' || key === 'enter') && !(event.target instanceof HTMLButtonElement)) {
       if (this.canConfigure()) {
         event.preventDefault();
         void this.start();

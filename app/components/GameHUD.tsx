@@ -36,6 +36,8 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
       <div className={c('hint', snapshot.hint && 'show')} id="hint"><b>HOLD TO BOOST</b><span>MOVE TO STEER</span></div>
       <div className={c('boost', snapshot.boosting && 'on')} id="hud-boost">BOOST</div>
       <div className={c('center-msg', !!snapshot.message && 'show')} id="center-msg">{snapshot.message}</div>
+      {snapshot.phase === 'playing' && <button type="button" className={c('btn', 'tiny', 'touch-pause')}
+        aria-label="Pause" onClick={() => runtime?.pause('user')}>PAUSE</button>}
     </section>
   );
 });

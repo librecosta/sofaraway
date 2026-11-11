@@ -9,6 +9,7 @@ import { GateVisual, THICKNESS } from './gates.client';
 import { buildPath } from './path';
 import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
+import type { QualityProfile } from './quality';
 import { buildTextures } from './textures.client';
 import { Tunnel } from './tunnel.client';
 
@@ -17,6 +18,8 @@ const frame = () => ({
 });
 
 export class UnsupportedGraphics extends Error {}
+
+class ShaderFailure extends Error {}
 
 class VolumeScene {
   readonly scene = new THREE.Scene();
@@ -47,17 +50,12 @@ class VolumeScene {
       this.scene.add(this.tunnel.group);
       this.sky = makeSky(volume);
       this.scene.background = this.sky;
-      this.restoreEnvironment(renderer, halfFloat);
+      this.environment = halfFloat ? makeEnvMap(renderer) : undefined;
+      this.scene.environment = this.environment?.texture ?? null;
     } catch (error) {
       this.dispose();
       throw error;
     }
-  }
-
-  restoreEnvironment(renderer: THREE.WebGLRenderer, halfFloat: boolean) {
-    this.environment?.dispose();
-    this.environment = halfFloat ? makeEnvMap(renderer) : undefined;
-    this.scene.environment = this.environment?.texture ?? null;
   }
 
   prepare(renderer: THREE.WebGLRenderer) {
@@ -168,6 +166,7 @@ export class Graphics {
   private capabilities: ReturnType<typeof readCapabilities>;
   private volume?: VolumeScene;
   private post?: PostFX;
+  private postFailure: string | null = null;
   private quality: QualityTier;
   private dropped = false;
   private width = 1;
@@ -189,9 +188,16 @@ export class Graphics {
     this.gl = gl;
     this.quality = tier;
     this.mobile = mobile;
-    this.capabilities = readCapabilities(gl);
+    this.capabilities = this.readDeviceCapabilities();
     THREE.ColorManagement.enabled = false;
     this.renderer = new THREE.WebGLRenderer({ canvas, context: gl });
+    this.renderer.debug.onShaderError = (context, program, vertex, fragment) => {
+      if (context.isContextLost()) return;
+      const compiled = context.getShaderParameter(vertex, context.COMPILE_STATUS) &&
+        context.getShaderParameter(fragment, context.COMPILE_STATUS);
+      const log = context.getProgramInfoLog(program);
+      throw new ShaderFailure(`WebGL shader could not ${compiled ? 'link' : 'compile'}.`, { cause: log });
+    };
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.setClearColor(0, 1);
@@ -208,26 +214,32 @@ export class Graphics {
   load(definition: VolumeDefinition) {
     this.volume?.dispose();
     this.volume = undefined;
-    this.volume = new VolumeScene(definition, this.renderer, this.capabilities.halfFloat);
+    this.volume = this.withCoreShaders(() => new VolumeScene(definition, this.renderer, this.capabilities.halfFloat));
     this.sizeCamera();
   }
 
-  prepare() { this.volume?.prepare(this.renderer); }
+  prepare() {
+    this.withCoreShaders(() => this.volume?.prepare(this.renderer));
+    // Three links materials during compile(), but normally checks the result on first use.
+    const gl = this.gl;
+    for (const { program } of this.renderer.info.programs ?? []) {
+      if (!gl.isContextLost() && !gl.getProgramParameter(program as WebGLProgram, gl.LINK_STATUS)) {
+        throw new UnsupportedGraphics('A core WebGL shader could not compile or link.');
+      }
+    }
+  }
 
   configure(tier: QualityTier, mobile: boolean) {
     this.quality = tier;
     this.mobile = mobile;
     this.dropped = false;
-    this.post?.dispose();
-    this.post = this.flags.post ? new PostFX(this.renderer, selectProfile(tier, mobile, this.capabilities)) : undefined;
-    if (this.post && this.flags.dof) {
-      this.post.dofMat.uniforms.uAperture.value = this.flags.dof[0];
-      if (this.flags.dof[1] !== undefined) this.post.dofMat.uniforms.uMaxBlur.value = this.flags.dof[1];
-    }
+    this.clearPost(null);
     this.resize(this.width, this.height, this.deviceDpr);
+    this.buildPost(selectProfile(tier, mobile, this.capabilities));
   }
 
   resize(width: number, height: number, deviceDpr: number) {
+    if (this.gl.isContextLost()) return;
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     this.deviceDpr = deviceDpr;
@@ -237,7 +249,64 @@ export class Graphics {
     if (this.renderer.getPixelRatio() !== this.effectiveDpr) this.renderer.setPixelRatio(this.effectiveDpr);
     this.renderer.setSize(this.width, this.height, false);
     this.sizeCamera();
-    this.post?.setSize(this.width, this.height, this.effectiveDpr);
+    const post = this.post;
+    if (!post) return;
+    const targetWidth = Math.max(2, Math.floor(this.width * this.effectiveDpr));
+    const targetHeight = Math.max(2, Math.floor(this.height * this.effectiveDpr));
+    if (post.rtScene.width === targetWidth && post.rtScene.height === targetHeight) return;
+    post.setSize(this.width, this.height, this.effectiveDpr);
+    if (!post.hasCompleteTargets(this.gl)) {
+      this.clearPost('PostFX framebuffer incomplete after resizing.');
+      this.buildPost(post.quality, true);
+    }
+  }
+
+  private clearPost(reason: string | null) {
+    this.renderer.setRenderTarget(null);
+    this.post?.dispose();
+    this.post = undefined;
+    this.postFailure = reason;
+  }
+
+  private buildPost(profile: QualityProfile, skipFirst = false) {
+    if (!this.flags.post || this.gl.isContextLost()) return;
+    if (!profile.halfFloat && !this.capabilities.rgba8) {
+      this.postFailure = 'No complete color framebuffer is available.';
+      return;
+    }
+    const candidates = [profile];
+    if (profile.samples) candidates.push({ ...profile, samples: 0 });
+    if (profile.halfFloat && this.capabilities.rgba8) {
+      candidates.push({ ...profile, halfFloat: false, dof: false, samples: 0 });
+    }
+    for (const candidate of candidates.slice(skipFirst ? 1 : 0)) {
+      const post = new PostFX(this.renderer, candidate);
+      try {
+        post.setSize(this.width, this.height, this.effectiveDpr);
+        if (!post.hasCompleteTargets(this.gl)) {
+          this.postFailure = 'PostFX framebuffer incomplete.';
+          continue;
+        }
+        const dof = this.flags.dof;
+        if (dof) {
+          post.dofMat.uniforms.uAperture.value = dof[0];
+          if (dof[1] !== undefined) post.dofMat.uniforms.uMaxBlur.value = dof[1];
+        }
+        this.post = post;
+        return;
+      } finally {
+        if (this.post !== post) post.dispose();
+      }
+    }
+  }
+
+  private withCoreShaders<T>(action: () => T): T {
+    try {
+      return action();
+    } catch (error) {
+      if (error instanceof ShaderFailure) throw new UnsupportedGraphics(error.message, { cause: error });
+      throw error;
+    }
   }
 
   private sizeCamera() {
@@ -246,16 +315,39 @@ export class Graphics {
     this.camera.updateProjectionMatrix();
   }
 
+  private readDeviceCapabilities() {
+    const capabilities = readCapabilities(this.gl);
+    // ORBIT's procedural sky uses a 1024px-wide texture.
+    if (capabilities.maxTextureSize < 1024 || capabilities.maxSize < 2) {
+      throw new UnsupportedGraphics('WebGL2 limits are too low for the procedural scene.');
+    }
+    return capabilities;
+  }
+
   reduceResolution() {
     if (this.effectiveDpr <= 1) return;
     this.dropped = true;
     this.resize(this.width, this.height, this.deviceDpr);
   }
 
-  restore() {
-    this.capabilities = readCapabilities(this.gl);
+  releaseSurface() {
+    this.volume?.dispose();
+    this.volume = undefined;
+    this.post?.dispose();
+    this.post = undefined;
+  }
+
+  restore(volume: VolumeDefinition) {
+    this.capabilities = this.readDeviceCapabilities();
     this.configure(this.quality, this.mobile);
-    this.volume?.restoreEnvironment(this.renderer, this.capabilities.halfFloat);
+    this.load(volume);
+    this.prepare();
+  }
+
+  warmSurface(sim: Simulation, deterministic: boolean) {
+    this.draw(sim, deterministic);
+    // Finish the first uploads and post passes before the transport is re-anchored.
+    this.gl.finish();
   }
 
   update(sim: Simulation, deterministic: boolean) {
@@ -275,10 +367,18 @@ export class Graphics {
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
     if (this.post) {
-      this.post.render(scene, camera, sim.time);
-    } else {
+      try {
+        this.post.render(scene, camera, sim.time);
+      } catch (error) {
+        if (!(error instanceof ShaderFailure)) throw error;
+        this.clearPost(error.message);
+        this.renderer.resetState();
+        this.renderer.info.reset();
+      }
+    }
+    if (!this.post) {
       this.renderer.setRenderTarget(null);
-      this.renderer.render(scene, camera);
+      this.withCoreShaders(() => this.renderer.render(scene, camera));
     }
     return this.locked;
   }
@@ -293,14 +393,14 @@ export class Graphics {
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
       dof: this.post?.quality.dof ?? false,
+      colorTarget: this.post ? (this.post.quality.halfFloat ? 'rgba16f' : 'rgba8') : null,
+      postFailure: this.postFailure,
+      capabilities: this.capabilities,
     };
   }
 
   dispose() {
-    this.volume?.dispose();
-    this.volume = undefined;
-    this.post?.dispose();
-    this.post = undefined;
+    this.releaseSurface();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }

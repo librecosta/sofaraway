@@ -56,21 +56,30 @@ export class InputController {
     document.addEventListener('pointerenter', () => { this.pointer.visible = true; }, { signal });
     canvas.addEventListener('pointerdown', e => {
       if (!playing() || !e.isPrimary || e.button !== 0) return;
-      canvas.setPointerCapture(e.pointerId);
+      try {
+        if (!canvas.hasPointerCapture(e.pointerId)) canvas.setPointerCapture(e.pointerId);
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+      }
       this.pointer.down = true;
       this.pointer.visible = true;
       if (e.pointerType === 'touch') this.touch = { id: e.pointerId, x: e.clientX, y: e.clientY };
       else this.boostPointer = e.pointerId;
     }, { signal });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
-      canvas.addEventListener(type, e => {
+      window.addEventListener(type, e => {
         if (e.pointerId === this.boostPointer) this.boostPointer = null;
-        if (e.pointerId === this.touch?.id) this.touch = null;
+        if (e.pointerId === this.touch?.id) {
+          this.touch = null;
+          if (type !== 'pointerup') this.dragX = this.dragY = 0;
+        }
         this.pointer.down = this.boostPointer !== null || this.touch !== null;
       }, { signal });
     }
     window.addEventListener('keydown', event => {
       const key = event.key.toLowerCase();
+      if (key !== 'escape' && event.target instanceof Element &&
+        event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (command(key, event)) return;
       if (playing()) {
         if (key.startsWith('arrow') || key === ' ') event.preventDefault();

@@ -48,6 +48,11 @@ npm test
 npm run test:perf
 ```
 
+For the C0-A browser matrix, install the matching browser engines with
+`npx playwright install chromium firefox webkit`, then run `npm run test:compat`.
+`COMPAT_CHROMIUM_CHANNEL=chrome` selects installed Chrome for both Chromium
+projects. See the [C0-A compatibility report](docs/audits/C0-A-compatibility-report.md).
+
 Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome for a comparable GPU
 sample. To rerun the original suite against the A0 baseline, run
 `git worktree add --detach ../sofaraway-a0 88a4adb`, set `A0_APP_ROOT` to the
@@ -62,9 +67,9 @@ baseline worktree's absolute path, then run `npm run test:a0` and
 | Mouse / touch drag | Steer — the reticle follows your hand across the whole window |
 | Arrow keys / WASD | Steer |
 | Hold left button / `Shift` | Boost on desktop |
-| `Space` | Start · retry |
+| `Space` / `Enter` | Start · retry |
 | `M` | Mute |
-| `P` | Pause or resume |
+| `P` / touch Pause button | Pause or resume |
 | `Esc` | Back to menu |
 | `R` | Flight recorder overlay · `Shift+R` downloads the log |
 

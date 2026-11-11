@@ -164,7 +164,7 @@ void main(){
 
   col *= uExposure;
 
-  float vig = smoothstep(0.95, 0.15, r2 * 1.35);
+  float vig = 1.0 - smoothstep(0.15, 0.95, r2 * 1.35);
   col *= mix(1.0, vig, uVignette);
 
   float sl = 0.5 + 0.5 * sin(uv.y * uRes.y * 3.14159265);
@@ -317,6 +317,29 @@ export class PostFX {
     this._bw = bw; this._bh = bh;
   }
 
+  hasCompleteTargets(gl: WebGL2RenderingContext) {
+    const targets = [this.rtScene, this.rtA, this.rtB];
+    if (this.quality.dof) targets.push(this.rtDepth, this.rtDof);
+    try {
+      return targets.every(target => {
+        this.renderer.setRenderTarget(target);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) return false;
+        const samples = target.samples;
+        if (!samples) return true;
+        // Check the texture framebuffer used when resolving the multisampled color.
+        try {
+          target.samples = 0;
+          this.renderer.setRenderTarget(target);
+          return gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+        } finally {
+          target.samples = samples;
+        }
+      });
+    } finally {
+      this.renderer.setRenderTarget(null);
+    }
+  }
+
   dispose() {
     for (const target of [this.rtScene, this.rtDof, this.rtDepth, this.rtA, this.rtB]) target.dispose();
     for (const material of [this.depthMat, this.dofMat, this.brightMat, this.blurMat, this.compMat]) material.dispose();
@@ -356,11 +379,14 @@ export class PostFX {
       });
       const prevOverride = scene.overrideMaterial;
       scene.overrideMaterial = this.depthMat;
-      r.setRenderTarget(this.rtDepth);
-      r.clear();
-      r.render(scene, camera);
-      scene.overrideMaterial = prevOverride;
-      for (const o of gateVis) o.visible = true;
+      try {
+        r.setRenderTarget(this.rtDepth);
+        r.clear();
+        r.render(scene, camera);
+      } finally {
+        scene.overrideMaterial = prevOverride;
+        for (const o of gateVis) o.visible = true;
+      }
     }
 
     // 2. scene colour

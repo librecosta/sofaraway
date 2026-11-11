@@ -38,6 +38,7 @@ export function GameViewport() {
   const cursor = useRef<HTMLDivElement>(null);
   const flash = useRef<HTMLDivElement>(null);
   const debug = useRef<HTMLPreElement>(null);
+  const panelReturnFocus = useRef<HTMLElement | null>(null);
   const keys = useRef<(key: string, event: KeyboardEvent) => boolean>(() => false);
 
   function stepVolume(direction: number) {
@@ -47,6 +48,22 @@ export function GameViewport() {
     params.set('vol', next.id);
     setSearch(params, { preventScrollReset: true });
   }
+
+  function openPanel(value: 'settings' | 'credits') {
+    const focused = document.activeElement;
+    panelReturnFocus.current = focused instanceof HTMLElement && focused !== document.body
+      ? focused : viewport.current?.querySelector<HTMLElement>(`[data-act=${value}]`) ?? null;
+    setPanel(value);
+  }
+
+  useEffect(() => {
+    if (panel) {
+      viewport.current?.querySelector<HTMLElement>('[role="dialog"] button:not(:disabled)')?.focus();
+    } else {
+      panelReturnFocus.current?.focus();
+      panelReturnFocus.current = null;
+    }
+  }, [panel]);
 
   useEffect(() => {
     keys.current = (key, event) => {
@@ -120,6 +137,7 @@ export function GameViewport() {
     ...snapshot, phase: 'error', error: { kind: 'runtime', message: importError },
   } : snapshot;
   const menuVisible = ['uninitialized', 'initializing', 'menu', 'starting', 'unsupported', 'error'].includes(viewSnapshot.phase);
+  const modalOpen = !!panel || !!viewSnapshot.error || viewSnapshot.phase === 'paused';
   const returnToMenu = () => runtime?.returnToMenu();
 
   function setDifficulty(value: Difficulty) {
@@ -177,14 +195,16 @@ export function GameViewport() {
           <i className={c('fc', 'tl')} /><i className={c('fc', 'tr')} />
           <i className={c('fc', 'bl')} /><i className={c('fc', 'br')} />
         </div>
-        <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} stepVolume={stepVolume}
-          start={() => void runtime?.start()} settings={() => setPanel('settings')} credits={() => setPanel('credits')}
-          share={() => void share()} fullscreen={fullscreen} />
-        <GameHUD runtime={runtime} />
-        <ResultsScreen snapshot={snapshot} restart={() => void runtime?.start()} menu={returnToMenu} />
+        <div inert={modalOpen}>
+          <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} stepVolume={stepVolume}
+            start={() => void runtime?.start()} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
+            share={() => void share()} fullscreen={fullscreen} />
+          <GameHUD runtime={runtime} />
+          <ResultsScreen snapshot={snapshot} restart={() => void runtime?.start()} menu={returnToMenu} />
+        </div>
         <div id="flash" ref={flash} />
         <div id="shade" />
-        {!panel && <GameFallback snapshot={viewSnapshot} retry={tryAgain} menu={returnToMenu} settings={() => setPanel('settings')}
+        {!panel && <GameFallback snapshot={viewSnapshot} retry={tryAgain} menu={returnToMenu} settings={() => openPanel('settings')}
           startSilent={() => { if (snapshot.phase === 'paused') void runtime?.resume(true); else void runtime?.start(true); }} />}
         {panel === 'credits' && (
           <section id="panel" className={c('modal')} role="dialog" aria-label="Credits" aria-modal="true">

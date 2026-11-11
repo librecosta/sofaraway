@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { GameSnapshot } from '../game/contracts';
 import { classes as c } from '../styles/classes';
 
@@ -11,6 +12,10 @@ interface Props {
 
 export function GameFallback({ snapshot, retry, startSilent, menu, settings }: Props) {
   const { phase, error, pauseReason } = snapshot;
+  const dialog = useRef<HTMLElement>(null);
+  useEffect(() => {
+    dialog.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+  }, [phase, error]);
   if (!error && phase !== 'paused') return null;
   const reload = phase === 'error' || phase === 'unsupported';
   const title = reload ? 'GAME UNAVAILABLE' : phase === 'paused' ? 'PAUSED'
@@ -19,7 +24,7 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings }: P
   const message = error?.message ?? (pauseReason === 'long-frame'
     ? 'Rendering fell behind. Resume when you are ready.' : 'Your run is paused.');
   return (
-    <section className={c('modal')} role="dialog" aria-modal="true" aria-label={title}>
+    <section ref={dialog} className={c('modal')} role="dialog" aria-modal="true" aria-label={title}>
       <div className={c('modal-inner')}>
         <div className={c('eyebrow')}><i /><span>{title}</span><i /></div>
         <p role={error ? 'alert' : 'status'}>{message}</p>
