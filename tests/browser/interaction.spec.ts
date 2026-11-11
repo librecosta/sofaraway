@@ -26,7 +26,7 @@ test('desktop input, focus loss, termination and restart', async ({ page }) => {
   await expect(page.locator('#over-title')).toHaveText('TERMINATED', { timeout: 20_000 });
   await expect(page.locator('#over-acc')).toHaveText('0%');
   await page.locator('[data-act=restart]').click();
-  await expect(page.locator('#hud-gates')).toHaveText('0/144');
+  await expect(page.locator('#hud-gates')).toHaveText('0/133');
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
 });
@@ -155,5 +155,5 @@ test('disabled storage still allows configuration and play', async ({ page }) =>
   await expect(page.locator('#set-volume')).toHaveValue('37');
   await page.keyboard.press('Escape');
   await page.locator('[data-act=start]').click();
-  await expect(page.locator('#hud-gates')).toHaveText('0/144');
+  await expect(page.locator('#hud-gates')).toHaveText('0/133');
 });

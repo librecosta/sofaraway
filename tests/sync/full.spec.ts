@@ -3,8 +3,8 @@ import { STEP } from '../../app/game/core/clock';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [107726, 23928, 119039, 65069];
-const gateCounts = [144, 40, 158, 91];
+const normalScores = [105326, 23928, 119039, 65069];
+const gateCounts = [141, 40, 158, 91];
 
 for (const [index, volume] of VOLUMES.entries()) {
   test(`${volume.id} completes the full song on real audio time`, async ({ page, browser }) => {
@@ -49,7 +49,9 @@ for (const [index, volume] of VOLUMES.entries()) {
     expect(data.end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: false });
     expect(result).toMatchObject({ beat: volume.beats, passed: gateCounts[index], judged: gateCounts[index],
       total: gateCounts[index], score: normalScores[index], lives: volume.lives.normal, scheduler: false, runBus: false });
-    expect(await page.evaluate(() => window.b0Harness.snapshot().result)).toEqual({ title: 'ESCAPED', rank: 'S', accuracy: 1 });
+    expect(await page.evaluate(() => window.b0Harness.snapshot().result)).toEqual({
+      title: 'ESCAPED', rank: 'S', accuracy: 1, ...(volume.id === 'elsewhere' ? { route: 'main' } : {}),
+    });
     expect(errors).toEqual([]);
   });
 }

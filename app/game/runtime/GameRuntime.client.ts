@@ -1,6 +1,7 @@
 import { initialSnapshot } from '../contracts';
 import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, QualityTier, VolumeId } from '../contracts';
 import { FixedStepClock, MAX_STEPS, STEP } from '../core/clock';
+import { BRANCH_PREVIEW_BEAT } from '../core/branches';
 import { clamp } from '../core/collision';
 import { idleInput } from '../core/input';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
@@ -170,7 +171,7 @@ export class Runtime implements GameRuntime {
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
-      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0 });
+      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, route: null, routeHint: null });
   }
 
   async selectVolume(id: VolumeId) {
@@ -370,10 +371,10 @@ export class Runtime implements GameRuntime {
 
   private step(sim: Simulation) {
     const input = this.input?.read() ?? idleInput;
-    const { lives, pickup } = sim;
+    const { lives, pickup, branch } = sim;
     sim.step(STEP, input);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty);
-    if (lives !== sim.lives || pickup !== sim.pickup) this.publishRun();
+    if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch) this.publishRun();
   }
 
   private draw(sim: Simulation, now: number, updateScene = true) {
@@ -405,6 +406,7 @@ export class Runtime implements GameRuntime {
       this.nextDebug = now + 80;
       this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
+        branch: sim.branch, trackDistance: sim.trackDistance,
         initMs: this.initMs, switchMs: this.switchMs }));
     }
   }
@@ -539,6 +541,9 @@ export class Runtime implements GameRuntime {
       speed: sim.speed, progress: sim.progress, section: sim.section, result: sim.result,
       boosting: this.snapshot.phase === 'playing' && sim.boosting,
       shield: sim.shield, resonance: sim.resonance,
+      route: sim.route,
+      routeHint: sim.phase === 'playing' && sim.beat >= BRANCH_PREVIEW_BEAT && sim.branch && !sim.branch.side
+        ? sim.branch.layout : null,
       message: performance.now() < this.noticeUntil ? this.notice : sim.message,
       hint: this.snapshot.phase === 'playing' && sim.beat < 15, ...patch });
   }

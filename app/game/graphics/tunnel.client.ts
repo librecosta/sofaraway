@@ -66,6 +66,7 @@ export class Tunnel {
   private hue: number | undefined;
   private readonly lightFrame = frame();
   private readonly ringFrames: PathFrame[] = [];
+  private junction?: { start: number; end: number };
 
   constructor(tex: ReturnType<typeof buildTextures>, private readonly path: Path, private readonly topology: Topology) {
     this.group = new THREE.Group();
@@ -347,6 +348,31 @@ export class Tunnel {
     }
   }
 
+  get junctionShell() { return this.shellMat; }
+
+  setJunction(junction?: { start: number; end: number }, behindCamera = false) {
+    if (this.junction === junction) return;
+    // Preserve the streaming intervals even where the junction owns the shell.
+    const old = this.junction;
+    this.junction = junction;
+    if (behindCamera) return;
+    for (let i = 0; i < this.chunks.length; i++) {
+      const chunk = this.chunks[i];
+      if (![old, junction].some(cut => cut && chunk.s0 < cut.end && chunk.s1 > cut.start)) continue;
+      this._disposeChunk(chunk);
+      this.chunks[i] = this.streamChunk(chunk.s0, chunk.s1);
+    }
+  }
+
+  private streamChunk(s0: number, s1: number): Chunk {
+    const gap = this.junction;
+    if (!gap || s1 <= gap.start || s0 >= gap.end) return this._buildChunk(s0, s1);
+    const meshes: THREE.Mesh[] = [];
+    if (s0 < gap.start) meshes.push(...this._buildChunk(s0, gap.start).meshes);
+    if (s1 > gap.end) meshes.push(...this._buildChunk(gap.end, s1).meshes);
+    return { s0, s1, meshes };
+  }
+
   dispose() {
     for (const chunk of this.chunks) this._disposeChunk(chunk);
     this.chunks.length = 0;
@@ -381,7 +407,7 @@ export class Tunnel {
       const a = Math.max(0, hi);
       const b = Math.min(this.path.length, a + CHUNK);
       if (b - a < 1) break;
-      this.chunks.push(this._buildChunk(a, b));
+      this.chunks.push(this.streamChunk(a, b));
       hi = b;
     }
 
@@ -392,7 +418,7 @@ export class Tunnel {
       const b = Math.min(this.path.length, lo);
       const a = Math.max(0, b - CHUNK);
       if (b - a < 1) break;
-      this.chunks.push(this._buildChunk(a, b));
+      this.chunks.push(this.streamChunk(a, b));
       lo = a;
     }
   }

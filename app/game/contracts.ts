@@ -1,3 +1,5 @@
+import type { BranchLayout, RouteKind, RouteSide } from './core/branches';
+
 export type VolumeId = 'elsewhere' | 'drift' | 'descent' | 'orbit';
 export const difficulties = ['easy', 'normal', 'hard'] as const;
 export type Difficulty = typeof difficulties[number];
@@ -11,6 +13,7 @@ export interface RunResult {
   readonly title: 'ESCAPED' | 'TERMINATED';
   readonly accuracy: number;
   readonly rank: 'S' | 'A' | 'B' | 'C';
+  readonly route?: RouteKind;
 }
 
 export interface GameError {
@@ -41,6 +44,8 @@ export interface GameSnapshot {
   readonly boosting: boolean;
   readonly shield: boolean;
   readonly resonance: number;
+  readonly route: RouteKind | null;
+  readonly routeHint: BranchLayout | null;
   readonly hint: boolean;
   readonly message: string;
 }
@@ -68,6 +73,7 @@ export interface Diagnostics {
   debug: boolean;
   dof?: [aperture: number, maxBlur?: number];
   cursor?: [x: number, y: number];
+  branchSide?: RouteSide;
 }
 
 export interface GameRuntime {
@@ -109,6 +115,8 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   boosting: false,
   shield: false,
   resonance: 0,
+  route: null,
+  routeHint: null,
   hint: false,
   message: '',
 });

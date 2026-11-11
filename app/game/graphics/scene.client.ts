@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { branchDistance, REJOIN_BEAT } from '../core/branches';
 import { canPass, clampSection, WALL } from '../core/collision';
 import { PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { corridorLength } from '../core/simulation';
 import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
 import type { Diagnostics, QualityTier } from '../contracts';
+import { BranchVisual, prepareJunctionPrograms } from './branch.client';
+import { BranchPath } from './branch-path';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateVisual, THICKNESS } from './gates.client';
 import { buildPath } from './path';
@@ -41,6 +44,8 @@ class VolumeScene {
   private hue: number;
   private phase?: Simulation['phase'];
   private pickup?: PickupVisual;
+  private junction?: BranchVisual;
+  private disposeJunctionPrograms?: () => void;
 
   constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures>,
     environment: THREE.Texture | null) {
@@ -63,7 +68,11 @@ class VolumeScene {
     const gate = new GateVisual(this.geometry, this.volume.obstacle, 0, 0);
     this.scene.add(gate.meshes[0]);
     try {
-      renderer.compile(this.scene, this.camera);
+      if (this.volume.id === 'elsewhere' && !this.disposeJunctionPrograms) {
+        this.disposeJunctionPrograms = prepareJunctionPrograms(renderer, this.scene, this.camera);
+      } else {
+        renderer.compile(this.scene, this.camera);
+      }
       // Keep the shared shader program alive through the first real gate.
       this.preparedGate?.dispose();
       this.preparedGate = gate;
@@ -77,8 +86,13 @@ class VolumeScene {
 
   update(sim: Simulation, deterministic: boolean) {
     const { x, y, roll } = sim.camera;
-    this.tunnel.update(sim.distance, sim.phase === 'menu');
-    const cameraFrame = this.path.sample(sim.distance, this.cameraFrame);
+    const distance = sim.trackDistance;
+    this.updateJunction(sim);
+    this.tunnel.update(distance, sim.phase === 'menu');
+    const junction = this.junction;
+    const cameraFrame = junction && sim.branch?.side
+      ? junction.path.sample(distance, sim.branch.side, this.cameraFrame)
+      : this.path.sample(distance, this.cameraFrame);
     const [cx, cy] = clampSection(x * 0.88, y * 0.88, 0.62);
     this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
     this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
@@ -87,8 +101,11 @@ class VolumeScene {
     const previousPhase = this.phase;
     this.phase = sim.phase;
 
+    const previews = junction && sim.branch && !sim.branch.side && sim.branchGates
+      ? [...sim.previewGates, sim.branchGates.main[0], sim.branchGates.challenge[0], sim.branchGates.score[0]]
+      : sim.previewGates;
     for (const [gate, visual] of this.visuals) {
-      if (sim.previewGates.includes(gate)) continue;
+      if (previews.includes(gate)) continue;
       this.scene.remove(...visual.meshes);
       visual.dispose();
       this.visuals.delete(gate);
@@ -122,7 +139,7 @@ class VolumeScene {
 
     let focus = 46;
     let aimed: RunGate | undefined;
-    for (const gate of sim.previewGates) {
+    for (const gate of previews) {
       let visual = this.visuals.get(gate);
       if (!visual) {
         visual = new GateVisual(this.geometry, gate.kind, gate.open, gate.axis);
@@ -130,16 +147,24 @@ class VolumeScene {
         this.scene.add(...visual.meshes);
       }
       const beatsAway = gate.beat - sim.beat;
-      const distance = sim.speed * beatsAway * sim.secondsPerBeat;
-      if (!visual.update(sim.time, this.hue, distance, beatsAway, gate.hit)) continue;
+      const regular = sim.speed * beatsAway * sim.secondsPerBeat;
+      const along = gate.route && junction ? junction.path.distanceAt(gate.beat)
+        : sim.branch?.anchor ? sim.projectTrack(gate.beat) : distance + regular;
+      const ahead = sim.branch?.anchor ? along - distance : regular;
+      const side = gate.route && junction
+        ? (gate.route === 'main' ? 'center' : junction.layout.left === gate.route ? 'left' : 'right') : null;
+      if (!visual.update(sim.time, this.hue, ahead, beatsAway, gate.hit)) continue;
       for (const [index, mesh] of visual.meshes.entries()) {
-        const f = this.path.sample(sim.distance + distance - index * THICKNESS, this.gateFrame);
+        const s = along - index * THICKNESS;
+        const f = side && junction ? junction.path.sample(s, side, this.gateFrame) : this.path.sample(s, this.gateFrame);
         mesh.position.copy(f.p);
         mesh.up.copy(f.u);
         mesh.lookAt(this.gateTarget.copy(f.p).sub(f.f));
       }
-      if (distance > 1 && distance < focus) focus = distance;
-      if (!aimed && distance > 3 && distance < 34) aimed = gate;
+      if (!gate.route || gate.route === sim.route) {
+        if (ahead > 1 && ahead < focus) focus = ahead;
+        if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
+      }
     }
     if (!deterministic) {
       const shake = Math.max(0, 1 - (sim.time - sim.hitTime) * 2.2) ** 2;
@@ -149,6 +174,24 @@ class VolumeScene {
     return { focus, locked: sim.phase === 'playing' && !!aimed
       && canPass(aimed.kind, aimed.open, aimed.axis, x, y) };
   }
+
+  private updateJunction(sim: Simulation) {
+    const { anchor, layout } = sim.branch ?? {};
+    const past = anchor && sim.trackDistance > branchDistance(anchor, REJOIN_BEAT) + 95;
+    if (anchor && layout && !past) {
+      if (this.junction?.path.anchor === anchor) return;
+      this.junction?.dispose();
+      this.junction = new BranchVisual(new BranchPath(this.path, anchor), layout, this.tunnel.junctionShell);
+      this.scene.add(this.junction.group);
+      this.tunnel.setJunction(this.junction.path);
+    } else if (this.junction) {
+      this.junction.dispose();
+      this.junction = undefined;
+      this.tunnel.setJunction(undefined, !!past);
+    }
+  }
+
+  get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
 
   private updatePickup(sim: Simulation) {
     const beatsAway = PICKUP_BEAT - sim.beat;
@@ -173,6 +216,8 @@ class VolumeScene {
   dispose() {
     this.preparedGate?.dispose();
     this.pickup?.dispose();
+    this.junction?.dispose();
+    this.disposeJunctionPrograms?.();
     for (const visual of this.visuals.values()) visual.dispose();
     this.visuals.clear();
     this.geometry.dispose();
@@ -422,6 +467,7 @@ export class Graphics {
       calls: render.calls, triangles: render.triangles,
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
+      junctionMeshes: this.volume?.junctionMeshes ?? 0,
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
       dof: this.post?.quality.dof ?? false,

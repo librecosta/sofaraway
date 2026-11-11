@@ -1,0 +1,53 @@
+import type { ChartGate } from './chart';
+import { runRandomWord } from './run-seed';
+
+export const BRANCH_PREVIEW_BEAT = 315;
+export const SPLIT_BEAT = 320;
+export const ROUTE_BEAT = 324;
+export const MERGE_BEAT = 348;
+export const REJOIN_BEAT = 352;
+export const ROUTE_STREAM = 0x524f5554;
+export const ROUTE_GATE_MULTIPLIERS = { main: 1, challenge: 2, score: 0.65 } as const;
+export type RouteKind = keyof typeof ROUTE_GATE_MULTIPLIERS;
+export type RouteSide = 'left' | 'center' | 'right';
+export type BranchLayout = Readonly<Record<RouteSide, RouteKind>>;
+export const routeSides = ['left', 'center', 'right'] as const;
+
+export function branchLayout(seed: number): BranchLayout {
+  return runRandomWord(seed, ROUTE_STREAM) % 2 === 0
+    ? { left: 'challenge', center: 'main', right: 'score' }
+    : { left: 'score', center: 'main', right: 'challenge' };
+}
+
+export function selectSide(x: number): RouteSide {
+  return x <= -1.25 ? 'left' : x >= 1.25 ? 'right' : 'center';
+}
+
+export interface BranchAnchor {
+  readonly distance: number;
+  readonly unitsPerBeat: number;
+}
+
+export interface BranchRun {
+  readonly layout: BranchLayout;
+  readonly side: RouteSide | null;
+  readonly anchor: BranchAnchor | null;
+  readonly exit: BranchAnchor | null;
+}
+
+export function branchDistance(anchor: BranchAnchor, beat: number) {
+  return anchor.distance + (beat - BRANCH_PREVIEW_BEAT) * anchor.unitsPerBeat;
+}
+
+export function routeCharts(replaced: readonly ChartGate[]): Record<RouteKind, ChartGate[]> {
+  const challengeKinds = ['iris', 'iris', 'iris', 'square', 'iris', 'iris',
+    'iris', 'diamond', 'iris', 'iris', 'iris', 'iris'] as const;
+  const directions = [0, 1, 2, 0, 4, 5, 6, 0, 7, 0, 1, 2];
+  return {
+    main: replaced.slice(0, 8).map((gate, i) => ({ ...gate, beat: ROUTE_BEAT + i * 3 })),
+    challenge: challengeKinds.map((kind, i) => ({ beat: ROUTE_BEAT + i * 2, kind, sector: directions[i], section: 'A2' })),
+    score: Array.from({ length: 24 }, (_, i) => ({
+      beat: ROUTE_BEAT + i, kind: i % 2 === 0 ? 'square' : 'diamond', sector: 0, section: 'A2',
+    })),
+  };
+}

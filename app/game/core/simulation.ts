@@ -1,5 +1,9 @@
 import type { Difficulty, RunResult } from '../contracts';
+import { branchDistance, branchLayout, BRANCH_PREVIEW_BEAT, REJOIN_BEAT,
+  ROUTE_GATE_MULTIPLIERS, routeCharts, selectSide, SPLIT_BEAT } from './branches';
+import type { BranchRun, RouteKind, RouteSide } from './branches';
 import { chartFor, difficultySettings } from './chart';
+import type { ChartGate } from './chart';
 import { canPass, clamp, lanePoint, opening } from './collision';
 import type { Axis } from './collision';
 import { steer } from './input';
@@ -28,6 +32,7 @@ export interface RunGate {
   readonly kind: GateKind;
   readonly open: number;
   readonly axis: Axis;
+  readonly route?: RouteKind;
   judged: boolean;
   hit: boolean;
 }
@@ -54,6 +59,8 @@ export class Simulation {
   pickupTime = -Infinity;
   shield = false;
   resonance = 0;
+  branch: BranchRun | null = null;
+  branchGates: Readonly<Record<RouteKind, readonly RunGate[]>> | null = null;
   camera = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
   previewGates: RunGate[] = [];
   private chart: RunGate[] = [];
@@ -69,12 +76,35 @@ export class Simulation {
 
   constructor(
     readonly volume: VolumeDefinition,
-    private readonly options: { align?: boolean; god?: boolean } = {},
+    private readonly options: { align?: boolean; god?: boolean; branchSide?: RouteSide } = {},
   ) {
     this.secondsPerBeat = 60 / volume.bpm;
   }
 
   get gatesTotal() { return this.chart.length; }
+  get route() { return this.branch?.side ? this.branch.layout[this.branch.side] : null; }
+  get trackDistance() {
+    const { anchor, exit } = this.branch ?? {};
+    if (!anchor) return this.distance;
+    if (!exit) {
+      // Crash/recoil is physical even if the authoritative beat stops inside the junction.
+      return branchDistance(anchor, this.beat) + (this.phase === 'playing' ? 0 : this.distance - this.crashDistance);
+    }
+    const t = Math.max(0, this.beat - REJOIN_BEAT);
+    const u = Math.min(1, t / 4);
+    return branchDistance(anchor, REJOIN_BEAT) + this.distance - exit.distance
+      + (anchor.unitsPerBeat - exit.unitsPerBeat) * t * (1 - u * u * (3 - 2 * u));
+  }
+  projectTrack(beat: number) {
+    const { anchor, exit } = this.branch ?? {};
+    if (anchor && !exit) return branchDistance(anchor, beat);
+    const t = Math.max(0, this.beat - REJOIN_BEAT);
+    const u = Math.min(1, t / 4);
+    const correction = anchor && exit
+      ? (anchor.unitsPerBeat - exit.unitsPerBeat) * (1 - u * u * (3 - 2 * u) - u * 6 * u * (1 - u)) : 0;
+    return this.trackDistance + (this.speed * this.secondsPerBeat + correction) * (beat - this.beat);
+  }
+  private crashDistance = 0;
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
 
@@ -82,14 +112,31 @@ export class Simulation {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
-    this.chart = chartFor(this.volume, difficulty, rules.seed).map(({ beat, kind, sector }) => {
+    const makeGate = ({ beat, kind, sector }: ChartGate, axis: Axis, route?: RouteKind): RunGate =>
+      ({ beat, kind, open: opening(kind, sector), axis, judged: false, hit: false, ...(route ? { route } : {}) });
+    const authored = chartFor(this.volume, difficulty, rules.seed);
+    const gates = authored.map(gate => {
       let axis: Axis = 0;
-      if (kind !== 'square' && kind !== 'diamond') {
+      if (gate.kind !== 'square' && gate.kind !== 'diamond') {
         rng = (rng * 1103515245 + 12345) & 0x7fffffff;
         axis = rng / 0x7fffffff < 0.5 ? 0 : 1;
       }
-      return { beat, kind, open: opening(kind, sector), axis, judged: false, hit: false };
+      return makeGate(gate, axis);
     });
+    const elsewhere = this.volume.id === 'elsewhere';
+    this.branch = elsewhere ? { layout: branchLayout(runSeed), side: null, anchor: null, exit: null } : null;
+    if (elsewhere) {
+      const { main, challenge, score } = routeCharts(authored.filter(gate => gate.beat >= SPLIT_BEAT && gate.beat < REJOIN_BEAT));
+      this.branchGates = {
+        main: main.map(gate => makeGate(gate, 0, 'main')),
+        challenge: challenge.map(gate => makeGate(gate, 0, 'challenge')),
+        score: score.map(gate => makeGate(gate, 0, 'score')),
+      };
+      this.chart = gates.filter(gate => gate.beat < SPLIT_BEAT || gate.beat >= REJOIN_BEAT);
+    } else {
+      this.branchGates = null;
+      this.chart = gates;
+    }
     this.phase = 'playing';
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
     this.gatesPassed = this.gatesJudged = this.hits = this.reveal = this.judged = 0;
@@ -100,6 +147,7 @@ export class Simulation {
     this.pickupTime = -Infinity;
     this.shield = false;
     this.resonance = 0;
+    this.crashDistance = 0;
     this.lives = this.maxLives = rules.lives;
     this.mult = rules.mult;
     this.distance = START_DISTANCE;
@@ -124,6 +172,8 @@ export class Simulation {
     this.pickupTime = -Infinity;
     this.shield = false;
     this.resonance = 0;
+    this.branch = null;
+    this.branchGates = null;
     this.message = '';
   }
 
@@ -154,6 +204,8 @@ export class Simulation {
     }
 
     const previousBeat = this.beat;
+    const previousDistance = this.distance;
+    const previousSpeed = this.speed;
     this.beat = Math.min(this.volume.beats, this.beat + dt / this.secondsPerBeat);
     const elapsed = (this.beat - previousBeat) * this.secondsPerBeat;
     this.boosting = input.boosting;
@@ -163,17 +215,44 @@ export class Simulation {
     this.distance += this.speed * elapsed;
     this.score += this.speed * elapsed * 0.35;
 
-    this.preloadGates();
     [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt);
     const next = this.chart[this.judged];
-    if (this.options.align && next && next.beat <= this.beat + 9) {
-      [camera.tx, camera.ty] = lanePoint(next.kind, next.open, next.axis);
+    if (this.options.align && next) {
+      if (this.branch && !this.branch.side && next.beat >= REJOIN_BEAT) {
+        const side = this.options.branchSide;
+        [camera.tx, camera.ty] = [side === 'left' ? -2.15 : side === 'right' ? 2.15 : 0, 0];
+      } else if (next.beat <= this.beat + 9) {
+        [camera.tx, camera.ty] = lanePoint(next.kind, next.open, next.axis);
+      }
     }
     const { x, y } = camera;
     const damp = 1 - Math.exp(-dt * 20);
     camera.x += (camera.tx - camera.x) * damp;
     camera.y += (camera.ty - camera.y) * damp;
     camera.roll += (-camera.x * 0.028 - camera.roll) * (1 - Math.exp(-dt * 8));
+
+    if (this.branch && ((!this.branch.anchor && this.beat + 1e-9 >= BRANCH_PREVIEW_BEAT) ||
+      (!this.branch.side && this.beat + 1e-9 >= SPLIT_BEAT) || (!this.branch.exit && this.beat + 1e-9 >= REJOIN_BEAT))) {
+      const at = (beat: number) => clamp((beat - previousBeat) / (this.beat - previousBeat), 0, 1);
+      const anchorAt = (beat: number) => {
+        const k = at(beat);
+        return { distance: previousDistance + (this.distance - previousDistance) * k,
+          unitsPerBeat: (previousSpeed + (this.speed - previousSpeed) * k) * this.secondsPerBeat };
+      };
+      if (!this.branch.anchor && this.beat + 1e-9 >= BRANCH_PREVIEW_BEAT) {
+        this.branch = { ...this.branch, anchor: anchorAt(BRANCH_PREVIEW_BEAT) };
+      }
+      if (!this.branch.side && this.beat + 1e-9 >= SPLIT_BEAT) {
+        const side = selectSide(x + (camera.x - x) * at(SPLIT_BEAT));
+        const gates = this.branchGates![this.branch.layout[side]];
+        this.chart.splice(this.judged, 0, ...gates);
+        this.branch = { ...this.branch, side };
+      }
+      if (!this.branch.exit && this.beat + 1e-9 >= REJOIN_BEAT) {
+        this.branch = { ...this.branch, exit: anchorAt(REJOIN_BEAT) };
+      }
+    }
+    this.preloadGates();
 
     // The pickup is over a second from either gate, outside the same fixed step.
     if (this.pickup?.status === 'pending' && this.beat + 1e-9 >= PICKUP_BEAT) {
@@ -237,11 +316,12 @@ export class Simulation {
       this.gatesPassed++;
       this.combo++;
       this.maxCombo = Math.max(this.maxCombo, this.combo);
-      const gatePoints = 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05);
+      const routeMult = gate.route ? ROUTE_GATE_MULTIPLIERS[gate.route] : 1;
+      const gatePoints = 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05) * routeMult;
       this.score += gatePoints;
       let cleanPoints = 0;
       if (Math.hypot(x - lx, y - ly) < 0.42 * 2.2) {
-        cleanPoints = 150 * this.mult;
+        cleanPoints = 150 * this.mult * routeMult;
         this.score += cleanPoints;
         this.message = 'CLEAN ×' + this.combo;
         this.messageUntil = this.time + 0.6;
@@ -271,7 +351,8 @@ export class Simulation {
     const rank = this.lives > 0
       ? accuracy >= 0.985 ? 'S' : accuracy >= 0.93 ? 'A' : accuracy >= 0.82 ? 'B' : 'C'
       : accuracy >= 0.93 ? 'B' : 'C';
-    this.result = Object.freeze({ title, accuracy, rank });
+    this.result = Object.freeze({ title, accuracy, rank, ...(this.route ? { route: this.route } : {}) });
+    this.crashDistance = this.distance;
     this.phase = 'crash';
     this.settleAt = this.time + 0.7;
     this.recoil = title === 'ESCAPED' ? 0 : 0.55;

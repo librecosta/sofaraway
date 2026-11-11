@@ -1,11 +1,15 @@
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { Diagnostics, GameOptions } from '../../app/game/contracts';
+import { STEP } from '../../app/game/core/clock';
+import type { FixedStepClock } from '../../app/game/core/clock';
 import { corridorLength } from '../../app/game/core/simulation';
+import type { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { buildPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
+import type { Graphics } from '../../app/game/graphics/scene.client';
 import { sectionSignals, shaderMismatches, stoppedRunSignal } from './signals';
 
 const flags: Diagnostics = {
@@ -21,6 +25,24 @@ const harness = {
   sectionSignals,
   shaderMismatches,
   stoppedRunSignal,
+  inspectJunction: async () => (await import('./branch')).inspectJunction(),
+  branchState() {
+    const sim: Simulation = Reflect.get(runtime!, 'simulation');
+    const graphics: Graphics = Reflect.get(runtime!, 'graphics');
+    return { branch: sim.branch, route: sim.route, metrics: graphics.metrics() };
+  },
+  advanceAndPause(beat: number) {
+    const sim: Simulation = Reflect.get(runtime!, 'simulation');
+    const clock: FixedStepClock = Reflect.get(runtime!, 'clock');
+    const step = Reflect.get(runtime!, 'step') as (sim: Simulation) => void;
+    while (sim.beat + 1e-9 < beat && sim.phase === 'playing') {
+      clock.consume(clock.elapsed + STEP, () => step.call(runtime, sim));
+    }
+    const graphics: Graphics = Reflect.get(runtime!, 'graphics');
+    graphics.draw(sim, true);
+    runtime!.pause('user');
+    return harness.branchState();
+  },
   streamResources(id: GameOptions['volumeId']) {
     const volume = volumeById(id);
     const textures = buildTextures();

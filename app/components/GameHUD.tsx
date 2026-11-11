@@ -25,7 +25,15 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
             {snapshot.shield ? 'SHIELD ×1' : `RESONANCE ×${snapshot.resonance}`}
           </div>
         )}
+        {snapshot.route && <div className={c('route-status')} id="hud-route">{snapshot.route.toUpperCase()}</div>}
       </div>
+      {snapshot.routeHint && (
+        <div className={c('route-hint')} id="route-hint">
+          <div>STEER TO CHOOSE</div>
+          <div><span>← {snapshot.routeHint.left.toUpperCase()}</span><span>MAIN</span>
+            <span>{snapshot.routeHint.right.toUpperCase()} →</span></div>
+        </div>
+      )}
       <div className={c('hud-tr')}>
         <div className={c('label')}>GATES</div>
         <div className={c('value', 'dim')} id="hud-gates">{snapshot.gatesPassed}/{snapshot.gatesTotal}</div>

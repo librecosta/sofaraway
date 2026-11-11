@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { difficulties } from '../../app/game/contracts';
+import { REJOIN_BEAT, routeCharts, SPLIT_BEAT } from '../../app/game/core/branches';
 import { chartFor } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, DIAMOND_EXTENT, HUB_R, lanePoint, opening, SQUARE_HALF } from '../../app/game/core/collision';
@@ -75,7 +76,10 @@ test('ELSEWHERE cycles the authored sections and keeps types at the same beats a
 
 test.each(difficulties)('%s clears ELSEWHERE using keyboard input after a 150 ms reaction delay', difficulty => {
   const sim = new Simulation(elsewhere);
-  const chart = chartFor(elsewhere, difficulty);
+  const original = chartFor(elsewhere, difficulty);
+  const chart = [...original.filter(gate => gate.beat < SPLIT_BEAT),
+    ...routeCharts(original.filter(gate => gate.beat >= SPLIT_BEAT && gate.beat < REJOIN_BEAT)).main,
+    ...original.filter(gate => gate.beat >= REJOIN_BEAT)];
   const transitions = new Set<string>();
   const irisSectors = new Set<number>();
   let sectionChange = false;
@@ -90,7 +94,7 @@ test.each(difficulties)('%s clears ELSEWHERE using keyboard input after a 150 ms
     const previous = chart[index - 1];
     let input = idleInput;
     if (gate && (!previous || (sim.beat - previous.beat) * sim.secondsPerBeat + 1e-9 >= reaction)) {
-      const [x, y] = lanePoint(gate.kind, gate.sector, 0);
+      const [x, y] = !sim.branch?.side && gate.beat >= SPLIT_BEAT ? [0, 0] : lanePoint(gate.kind, gate.sector, 0);
       input = { ...idleInput, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) };
     }
     sim.step(STEP, input);
@@ -115,5 +119,5 @@ test.each(difficulties)('%s clears ELSEWHERE using keyboard input after a 150 ms
     .toEqual([chart.length, chart.length, 0, elsewhere.lives[difficulty]]);
   for (let n = 0; n < Math.ceil(0.8 / STEP); n++) sim.step(STEP, idleInput);
   expect(sim.phase).toBe('results');
-  expect(sim.result).toEqual({ title: 'ESCAPED', rank: 'S', accuracy: 1 });
+  expect(sim.result).toEqual({ title: 'ESCAPED', rank: 'S', accuracy: 1, route: 'main' });
 });

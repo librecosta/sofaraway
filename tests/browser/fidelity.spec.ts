@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test';
 import { difficulties } from '../../app/game/contracts';
 import { VOLUMES } from '../../app/game/core/volumes';
 
-const expectedCounts = [[143, 144, 144], [40, 40, 40], [158, 158, 158], [91, 91, 91]];
-// Final scoreboard values captured from A0 with the same fixed-time query.
-const expectedScores = [[67701, 107726, 160426], [15468, 23928, 35208],
+const expectedCounts = [[140, 141, 141], [40, 40, 40], [158, 158, 158], [91, 91, 91]];
+// ELSEWHERE defaults to Main; the other three retain their A0 scores.
+const expectedScores = [[66201, 105326, 156826], [15468, 23928, 35208],
   [75314, 119039, 177339], [41444, 65069, 96569]];
 
 for (const [index, volume] of VOLUMES.entries()) {

@@ -84,7 +84,7 @@ test('prerender, four volumes, a live run and restart', async ({ browser, page, 
   await expect(startButton(page)).toBeEnabled();
   if (!hasTouch) await page.locator('#gl').click({ position: { x: 80, y: 140 } });
   await startRun(page, info, hasTouch ? 'tap' : 'Space');
-  await expect(page.locator('#hud-gates')).toHaveText('0/144');
+  await expect(page.locator('#hud-gates')).toHaveText('0/133');
   expect(await canvas!.evaluate((el: HTMLCanvasElement) => el.getContext('webgl2')!.getError())).toBe(0);
   expect(errors).toEqual([]);
   record(info, initial.dof ? 'PASS' : 'DEGRADED', 'Four volumes, live input, pause, resume, exit and restart',

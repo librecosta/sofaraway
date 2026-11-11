@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import { difficulties } from '../../app/game/contracts';
 import type { Difficulty } from '../../app/game/contracts';
+import { branchLayout, routeSides } from '../../app/game/core/branches';
+import type { RouteSide } from '../../app/game/core/branches';
 import { chartFor, difficultySettings } from '../../app/game/core/chart';
 import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { lanePoint } from '../../app/game/core/collision';
@@ -16,7 +18,7 @@ const volume = volumeById('elsewhere');
 const kinds = ['shield', 'resonance', 'lumen'] as const;
 const previousGate = 303.99;
 const nextGate = 309.32;
-const scores = { easy: 67701, normal: 107726, hard: 160426 };
+const scores = { easy: 66201, normal: 105326, hard: 156826 };
 const lumen = { easy: 2500, normal: 5000, hard: 7500 };
 
 function seedFor(kind: PickupKind) {
@@ -31,7 +33,7 @@ function advance(sim: Simulation, beat: number, input: InputFrame = idleInput) {
 }
 
 function start(kind: PickupKind, difficulty: Difficulty = 'normal', boost = false) {
-  const flags = { align: true };
+  const flags: { align: boolean; branchSide?: RouteSide } = { align: true };
   const sim = new Simulation(volume, flags);
   sim.start(difficulty, seedFor(kind));
   const input = { ...idleInput, boosting: boost };
@@ -138,7 +140,8 @@ test('Shield saves one life, breaks Combo, counts the misses and starts normal i
     .toEqual([lives - 1, 1, gatesPassed, gatesJudged + 3]);
   flags.align = true;
   advance(sim, volume.beats, input);
-  expect(sim.result?.accuracy).toBe((chart.length - 3) / chart.length);
+  const total = chart.length - 3; // Main replaces 11 gates with 8.
+  expect(sim.result?.accuracy).toBe((total - 3) / total);
 });
 
 test('a miss already covered by immunity leaves the Shield ready', () => {
@@ -150,6 +153,32 @@ test('a miss already covered by immunity leaves the Shield ready', () => {
   Reflect.set(sim, 'invulnUntil', nextGate + 0.1);
   advance(sim, nextGate, { ...input, target: [0, 0] });
   expect([sim.shield, sim.lives, sim.combo, sim.gatesJudged - sim.gatesPassed]).toEqual([true, lives, 0, 1]);
+});
+
+test('Shield protects a failed Challenge gate without changing the selected chart', () => {
+  const run = start('shield');
+  const { sim, flags, input } = run;
+  collect(run);
+  const layout = branchLayout(seedFor('shield'));
+  flags.branchSide = routeSides.find(side => layout[side] === 'challenge');
+  flags.align = true;
+  advance(sim, 320, input);
+  const { lives, gatesJudged, gatesPassed } = sim;
+  flags.align = false;
+  advance(sim, 324, { ...input, target: [0, 0] });
+  expect([sim.route, sim.gatesTotal, sim.lives, sim.shield, sim.combo, sim.gatesJudged, sim.gatesPassed])
+    .toEqual(['challenge', 145, lives, false, 0, gatesJudged + 1, gatesPassed]);
+});
+
+test('Lumen adds the same fixed amount on the Score route', () => {
+  const run = start('lumen');
+  const { sim, flags, input } = run;
+  collect(run);
+  const layout = branchLayout(seedFor('lumen'));
+  flags.branchSide = routeSides.find(side => layout[side] === 'score');
+  flags.align = true;
+  advance(sim, volume.beats, input);
+  expect([sim.route, sim.gatesPassed, Math.floor(sim.score)]).toEqual(['score', 157, 111406 + 5000]);
 });
 
 test('Resonance adds 25% to eight successful gate awards, including Boost and CLEAN only when earned', () => {
@@ -172,10 +201,14 @@ test('Resonance adds 25% to eight successful gate awards, including Boost and CL
   expect(sim.resonance).toBe(7);
   expect(scoreTo(314.65, { ...input, target: [2.6, 0] })).toBeCloseTo(0, 8);
   expect([sim.resonance, sim.combo, sim.gatesJudged - sim.gatesPassed]).toEqual([7, 0, 1]);
+  const layout = branchLayout(seedFor('resonance'));
+  flags.branchSide = routeSides.find(side => layout[side] === 'challenge');
   flags.align = true;
+  advance(sim, 320, input);
+  expect(sim.route).toBe('challenge');
   for (let passed = 1; passed <= 8; passed++) {
-    const earned = scoreTo(chart[sim.gatesJudged].beat, input);
-    const normal = (100 * 1.5 * (1 + passed * 0.05) + 150) * mult;
+    const earned = scoreTo(324 + 2 * (passed - 1), input);
+    const normal = (100 * 1.5 * (1 + passed * 0.05) + 150) * mult * 2;
     expect(earned).toBeCloseTo(normal * (passed <= 7 ? 1.25 : 1), 8);
     expect(sim.resonance).toBe(Math.max(7 - passed, 0));
   }
@@ -212,8 +245,8 @@ test.each(difficulties.flatMap(difficulty => kinds.map(kind => ({ difficulty, ki
     const bonus = kind === 'lumen' ? lumen[difficulty]
       : kind === 'resonance' ? 1000 * difficultySettings(volume, difficulty).mult : 0;
     expect(Math.floor(sim.score)).toBe(scores[difficulty] + bonus);
-    expect(sim.gatesPassed).toBe(chartFor(volume, difficulty).length);
-    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S' });
+    expect(sim.gatesPassed).toBe(chartFor(volume, difficulty).length - 3);
+    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S', route: 'main' });
     expect([sim.phase, sim.shield, sim.resonance]).toEqual(['results', false, 0]);
     expect(sim.start(difficulty, seedFor('lumen'))).toBe(true);
     expect([sim.pickup, sim.score, sim.shield, sim.resonance]).toEqual([

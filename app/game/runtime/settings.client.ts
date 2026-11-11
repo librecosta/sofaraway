@@ -23,6 +23,7 @@ export function readOptions(params: URLSearchParams): GameOptions {
   const pair = (name: string) => params.get(name)?.split(',').map(Number) ?? [];
   const [x, y] = pair('cur');
   const [aperture, blur] = pair('dof');
+  const branchSide = fixedTime !== null ? params.get('route') : null;
   return {
     volumeId: volumeById(params.get('vol')).id,
     difficulty: difficulties.includes(selectedDifficulty as Difficulty) ? selectedDifficulty as Difficulty : 'normal',
@@ -37,6 +38,7 @@ export function readOptions(params: URLSearchParams): GameOptions {
       post: params.get('post') !== '0', record: params.get('rec') === '1', debug: params.get('dbg') === '1',
       cursor: Number.isFinite(x) && Number.isFinite(y) ? [x, y] : undefined,
       dof: Number.isFinite(aperture) ? [aperture, Number.isFinite(blur) ? blur : undefined] : undefined,
+      branchSide: branchSide === 'left' || branchSide === 'right' || branchSide === 'center' ? branchSide : undefined,
     },
   };
 }

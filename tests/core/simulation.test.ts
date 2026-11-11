@@ -31,10 +31,12 @@ describe.each(VOLUMES.map((volume, index) => ({ volume, baseline: baselines[inde
     const frames = Math.ceil((volume.beats * sim.secondsPerBeat + 0.8) / STEP);
     for (let n = 0; n < frames; n++) sim.step(STEP, idleInput);
     expect(sim.phase).toBe('results');
+    const count = volume.id === 'elsewhere' ? chart.length - 3 : chart.length;
     expect([sim.gatesPassed, sim.gatesJudged, sim.maxCombo, sim.hits, sim.lives]).toEqual([
-      chart.length, chart.length, chart.length, 0, volume.lives[difficulty],
+      count, count, count, 0, volume.lives[difficulty],
     ]);
-    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S' });
+    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S',
+      ...(volume.id === 'elsewhere' ? { route: 'main' } : {}) });
     expect(sim.distance + 420).toBeLessThan(corridorLength(volume));
   });
 });
