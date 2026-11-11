@@ -33,7 +33,9 @@
     "dev": "react-router dev",
     "build": "react-router build",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "build:harness": "vite build tests/harness --outDir ../../build/harness --emptyOutDir",
+    "test:b0": "playwright test --config playwright.b0.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

@@ -11,8 +11,8 @@ export default defineConfig({
     launchOptions: { args: ['--enable-unsafe-swiftshader'] },
     viewport: { width: 960, height: 540 },
   },
-  webServer: {
-    command: 'node tools/serve-static.mjs build/client 8089',
-    url: 'http://127.0.0.1:8089',
-  },
+  webServer: [
+    { command: 'node tools/serve-static.mjs build/client 8089', url: 'http://127.0.0.1:8089' },
+    { command: 'node tools/serve-static.mjs build/harness 8090', url: 'http://127.0.0.1:8090' },
+  ],
 });
