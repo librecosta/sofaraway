@@ -56,7 +56,7 @@ test('fixed time reproduces the junction view and all route results', async ({ p
   }
 });
 
-test('three extruded holograms stay in the lower view through the portal', async ({ page }) => {
+test('three horizontal holograms keep their outlines while their interiors move', async ({ page }) => {
   await page.goto(harnessUrl);
   const checks = await page.evaluate(() => window.b0Harness.inspectHologram());
   for (const { frames, glError, released } of checks) {
@@ -67,9 +67,17 @@ test('three extruded holograms stay in the lower view through the portal', async
     expect(frames[2].selected).toBe('right');
     expect(frames[2].gatesJudged).toBe(94);
     expect(frames[2].pixels).toBeGreaterThan(100);
+    expect(frames[2].movingPixels).toBeGreaterThan(50);
+    expect(frames[2].stablePixels).toBeGreaterThan(100);
     expect(frames[2].bounds).toHaveLength(6);
-    expect(frames[2].bounds.every(bound => bound.minX > -1 && bound.maxX < 1 &&
-      bound.minY > -1 && bound.maxY < 0 && bound.thickness > 0.08)).toBe(true);
+    for (const { minX, maxX, minY, maxY, thickness, up } of frames[2].bounds) {
+      expect(minX).toBeGreaterThan(-0.98);
+      expect(maxX).toBeLessThan(0.98);
+      expect(minY).toBeGreaterThan(-1);
+      expect(maxY).toBeLessThan(0);
+      expect(thickness).toBeGreaterThan(0.08);
+      expect(up).toBeGreaterThan(0.999);
+    }
     expect(glError).toBe(0);
     expect(released).toBe(6);
   }

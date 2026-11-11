@@ -5,6 +5,18 @@ import { routeGlyphs } from './route-glyphs';
 
 const colors = { main: '#76fadc', challenge: '#ffc27d', score: '#c7aeff' } satisfies Record<RouteKind, string>;
 const depth = 8;
+const lookDown = THREE.MathUtils.degToRad(13);
+
+function extrude(shapes: THREE.Shape | THREE.Shape[], options: THREE.ExtrudeGeometryOptions) {
+  const geometry = new THREE.ExtrudeGeometry(shapes, options);
+  // Three puts the bevel and walls in group 1. Mark them in the same draw as the cap.
+  const rim = new Float32Array(geometry.getAttribute('position').count);
+  for (const group of geometry.groups) {
+    if (group.materialIndex === 1) rim.fill(1, group.start, group.start + group.count);
+  }
+  geometry.setAttribute('rim', new THREE.BufferAttribute(rim, 1));
+  return geometry;
+}
 
 function arrow(side: RouteSide) {
   const shape = new THREE.Shape();
@@ -22,7 +34,7 @@ function arrow(side: RouteSide) {
     line(31, 48); curve(31, 37, 25, 28, 13, 23); line(3, 33);
   }
   shape.closePath();
-  return new THREE.ExtrudeGeometry(shape, { depth: 0.14, bevelThickness: 0.024, bevelSize: 0.026,
+  return extrude(shape, { depth: 0.09, bevelThickness: 0.017, bevelSize: 0.052,
     bevelSegments: 2, curveSegments: 8 });
 }
 
@@ -48,7 +60,7 @@ function label(word: string) {
     shapes.push(...path.toShapes());
     advance += width + 26;
   }
-  const geometry = new THREE.ExtrudeGeometry(shapes, { depth: 0.088, bevelThickness: 0.006, bevelSize: 0.007,
+  const geometry = extrude(shapes, { depth: 0.064, bevelThickness: 0.012, bevelSize: 0.014,
     bevelSegments: 1, curveSegments: 4 });
   geometry.computeBoundingBox();
   const { min, max } = geometry.boundingBox!;
@@ -58,28 +70,37 @@ function label(word: string) {
 
 function material() {
   return new THREE.ShaderMaterial({
-    uniforms: { tint: { value: new THREE.Color() }, emphasis: { value: 0 } },
+    uniforms: { tint: { value: new THREE.Color() }, emphasis: { value: 0 }, time: { value: 0 } },
     transparent: true,
     vertexShader: `
+      attribute float rim;
       varying vec3 surface;
       varying float modelY;
+      varying float solid;
       void main() {
         surface = normalize(normalMatrix * normal);
         modelY = position.y;
+        solid = rim;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }`,
     fragmentShader: `
       varying vec3 surface;
       varying float modelY;
+      varying float solid;
       uniform vec3 tint;
       uniform float emphasis;
+      uniform float time;
       void main() {
-        vec3 normal = normalize(surface);
-        float face = smoothstep(0.48, 0.92, normal.z);
-        float edge = 0.26 + 0.23 * max(0.0, normal.y);
-        float bands = 0.85 + 0.15 * smoothstep(0.15, 0.63, fract(modelY * 19.0));
-        vec3 lit = mix(tint * edge, mix(tint, vec3(0.92, 1.0, 1.0), 0.22 + 0.28 * emphasis), face);
-        gl_FragColor = vec4(lit * mix(1.0, bands, face), 0.76 + 0.21 * emphasis);
+        float phase = modelY * 3.5 - time * 0.76;
+        float gap = abs(fract(phase) - 0.5);
+        float aa = clamp(fwidth(phase) * 0.5, 0.005, 0.09);
+        float line = 1.0 - smoothstep(0.044, 0.044 + aa, gap);
+        float halo = 1.0 - smoothstep(0.066, 0.15 + aa, gap);
+        vec3 bright = mix(tint, vec3(0.93, 1.0, 1.0), 0.18 + 0.24 * emphasis);
+        float edgeLight = 0.5 + 0.42 * max(0.0, normalize(surface).y);
+        vec3 outline = bright * edgeLight * (0.77 + 0.23 * emphasis);
+        float fill = 0.055 + 0.09 * halo + (0.34 + 0.25 * emphasis) * line;
+        gl_FragColor = vec4(mix(bright, outline, solid), mix(fill, 1.0, solid));
       }`,
   });
 }
@@ -89,13 +110,14 @@ export class RouteHologram {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 16);
   private readonly labels = { main: label('main'), challenge: label('challenge'), score: label('score') };
-  private readonly markers = routeSides.map((side, i) => {
+  private readonly markers = routeSides.map(side => {
     const root = new THREE.Group();
     const surface = material();
     const arrowMesh = new THREE.Mesh(arrow(side), surface);
     const word = new THREE.Mesh(this.labels.main, surface);
-    word.position.set(0, -0.88, 0.04);
-    root.rotation.set(0.24, (1 - i) * 0.33, 0);
+    word.position.set(0, -0.99, 0.031);
+    word.scale.y = 1.3;
+    root.rotation.x = -Math.PI / 2;
     root.add(arrowMesh, word);
     this.scene.add(root);
     return { root, surface, arrowMesh, word };
@@ -103,26 +125,32 @@ export class RouteHologram {
 
   resize(aspect: number) {
     this.camera.aspect = aspect;
+    this.camera.rotation.x = -lookDown;
     this.camera.updateProjectionMatrix();
     const halfY = depth * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     const halfX = halfY * aspect;
-    const spacing = Math.min(1.94, halfX * 0.60);
-    const size = Math.min(0.86, halfX * 0.29);
+    const spacing = Math.min(1.94, halfX * 0.55);
+    const size = Math.min(0.86, halfX * 0.26);
+    // Place the center on a ray in the lower view. The markers themselves lie in XZ.
+    const lowerY = -halfY * 0.55;
+    const floorY = lowerY * Math.cos(lookDown) - depth * Math.sin(lookDown);
+    const floorZ = -depth * Math.cos(lookDown) - lowerY * Math.sin(lookDown);
     for (const [index, { root }] of this.markers.entries()) {
-      root.position.set((index - 1) * spacing, -halfY * 0.62 + 0.12 * size, -depth);
-      root.scale.setScalar(size);
+      root.position.set((index - 1) * spacing, floorY, floorZ);
+      root.scale.set(size, size * 1.45, size);
     }
   }
 
   prepare(renderer: THREE.WebGLRenderer) { renderer.compile(this.scene, this.camera); }
 
-  render(renderer: THREE.WebGLRenderer, layout: BranchLayout, selected: RouteSide | null, locked: boolean) {
+  render(renderer: THREE.WebGLRenderer, layout: BranchLayout, selected: RouteSide | null, locked: boolean, time: number) {
     for (const [index, { surface, word }] of this.markers.entries()) {
       const side = routeSides[index];
       const route = layout[side];
       word.geometry = this.labels[route];
       surface.uniforms.tint.value.set(colors[route]);
       surface.uniforms.emphasis.value = selected === side ? 1 : locked ? 0.16 : 0.42;
+      surface.uniforms.time.value = time;
     }
     const autoClear = renderer.autoClear;
     try {

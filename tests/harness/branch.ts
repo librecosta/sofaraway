@@ -49,22 +49,36 @@ export function inspectHologram() {
           const corners = [min.x, max.x].flatMap(x => [min.y, max.y].flatMap(y => [min.z, max.z].map(z =>
             new THREE.Vector3(x, y, z).applyMatrix4(mesh.matrixWorld).project(hologram.camera))));
           return { minX: Math.min(...corners.map(p => p.x)), maxX: Math.max(...corners.map(p => p.x)),
-            minY: Math.min(...corners.map(p => p.y)), maxY: Math.max(...corners.map(p => p.y)), thickness: max.z - min.z };
+            minY: Math.min(...corners.map(p => p.y)), maxY: Math.max(...corners.map(p => p.y)), thickness: max.z - min.z,
+            up: new THREE.Vector3(0, 0, 1).transformDirection(mesh.matrixWorld).y };
         }));
         let pixels = 0;
+        let movingPixels = 0;
+        let stablePixels = 0;
         if (beat === 322.4) {
           const on = read();
           const render = hologram.render;
           try {
+            hologram.render = (renderer, layout, selected, locked, time) =>
+              render.call(hologram, renderer, layout, selected, locked, time + 0.47);
+            graphics.draw(sim, true);
+            const shifted = read();
             hologram.render = () => {};
             graphics.draw(sim, true);
             const off = read();
+            const difference = (a: Uint8Array, b: Uint8Array, i: number) =>
+              Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
             for (let i = 0; i < on.length; i += 4) {
-              if (Math.abs(on[i] - off[i]) + Math.abs(on[i + 1] - off[i + 1]) + Math.abs(on[i + 2] - off[i + 2]) > 32) pixels++;
+              const visible = difference(on, off, i) > 32;
+              const moved = difference(on, shifted, i);
+              if (visible) pixels++;
+              if (moved > 32 && (visible || difference(shifted, off, i) > 32)) movingPixels++;
+              if (visible && moved < 4) stablePixels++;
             }
           } finally { hologram.render = render; }
         }
-        return { holograms: visible.length, labels: words, bounds, selected: sim.routeSide, gatesJudged: sim.gatesJudged, pixels };
+        return { holograms: visible.length, labels: words, bounds, selected: sim.routeSide,
+          gatesJudged: sim.gatesJudged, pixels, movingPixels, stablePixels };
       });
       const glError = gl.getError();
       graphics.releaseSurface();

@@ -465,7 +465,7 @@ export class Graphics {
       this.withCoreShaders(() => this.renderer.render(scene, camera));
     }
     const routeGuide = sim.routeGuide;
-    if (routeGuide) this.volume.hologram?.render(this.renderer, routeGuide, sim.routeSide, !!sim.route);
+    if (routeGuide) this.volume.hologram?.render(this.renderer, routeGuide, sim.routeSide, !!sim.route, sim.time);
     return this.locked;
   }
 
