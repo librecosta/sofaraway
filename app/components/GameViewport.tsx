@@ -6,6 +6,7 @@ import { volumeById, VOLUMES } from '../game/core/volumes';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import { readOptions, saveSetting } from '../game/runtime/settings.client';
 import { classes as c } from '../styles/classes';
+import { DecodeButton } from './DecodeButton';
 import { GameFallback } from './GameFallback';
 import { GameHUD } from './GameHUD';
 import { MainMenu } from './MainMenu';
@@ -188,10 +189,14 @@ export function GameViewport() {
     <main ref={viewport} className={c(customCursor && 'custom-cursor')}>
       <div ref={host} />
       <div id="cursor" ref={cursor} aria-hidden="true" hidden={!customCursor}>
-        <span className={c('c-ring')} />
-        <span className={c('c-tick', 't')} /><span className={c('c-tick', 'b')} />
-        <span className={c('c-tick', 'l')} /><span className={c('c-tick', 'r')} />
-        <span className={c('c-dot')} />
+        <svg viewBox="-26 -26 52 52" width="52" height="52">
+          <circle className={c('c-ring')} r="9.5" />
+          <path className={c('c-tick', 't')} d="M0 -18v5" />
+          <path className={c('c-tick', 'b')} d="M0 13v5" />
+          <path className={c('c-tick', 'l')} d="M-18 0h5" />
+          <path className={c('c-tick', 'r')} d="M13 0h5" />
+          <circle className={c('c-dot')} r="1.5" />
+        </svg>
       </div>
       <div id="ui" style={{ display: hideUi ? 'none' : undefined }}>
         <div className={c('frame')} aria-hidden="true">
@@ -222,7 +227,7 @@ export function GameViewport() {
                 <b>INSPIRATION</b><br />
                 Mechanism inspired by HelloRun (HelloEnjoy, 2013).
               </div>
-              <button className={c('btn', 'tiny')} data-act="closepanel" onClick={() => setPanel(null)}><span>CLOSE</span></button>
+              <DecodeButton className={c('btn', 'tiny')} data-act="closepanel" onClick={() => setPanel(null)} label="CLOSE" />
             </div>
           </section>
         )}

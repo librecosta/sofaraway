@@ -73,13 +73,13 @@ class VolumeScene {
 
   update(sim: Simulation, deterministic: boolean) {
     const { x, y, roll } = sim.camera;
+    this.tunnel.update(sim.distance, sim.phase === 'menu');
     const cameraFrame = this.path.sample(sim.distance, this.cameraFrame);
     const [cx, cy] = clampSection(x * 0.88, y * 0.88, 0.62);
     this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
     this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
     this.camera.quaternion.setFromRotationMatrix(this.basis);
     this.camera.rotateZ(roll);
-    this.tunnel.update(sim.distance);
     const previousPhase = this.phase;
     this.phase = sim.phase;
 

@@ -2,6 +2,7 @@ import { difficulties } from '../game/contracts';
 import type { Difficulty, GameSnapshot } from '../game/contracts';
 import { volumeById } from '../game/core/volumes';
 import { classes as c } from '../styles/classes';
+import { DecodeButton } from './DecodeButton';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -22,8 +23,8 @@ export function MainMenu(props: Props) {
   return (
     <section id="menu" className={c('screen', !props.visible && 'hidden')}>
       <div className={c('top')}>
-        <button className={c('btn', 'tiny')} data-act="credits" onClick={props.credits}><span>CREDITS</span></button>
-        <button className={c('btn', 'tiny')} data-act="share" onClick={props.share}><span>SHARE</span></button>
+        <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label="CREDITS" />
+        <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label="SHARE" />
       </div>
       <div className={c('center')}>
         <div className={c('eyebrow')}><i /><span>{volume.subtitle} &nbsp;/&nbsp; PROCEDURAL&nbsp;RUNNER</span><i /></div>
@@ -38,21 +39,24 @@ export function MainMenu(props: Props) {
           <button className={c('vol-nav')} data-vol-step="1" disabled={!ready} aria-label="next volume" onClick={() => props.stepVolume(1)}>›</button>
         </div>
         <div className={c('diff')} id="diff">
-          {difficulties.map(difficulty => (
-            <button key={difficulty} className={c('diff-btn', snapshot.difficulty === difficulty && 'active')}
-              data-diff={difficulty} aria-pressed={snapshot.difficulty === difficulty}
-              disabled={!ready} onClick={() => props.chooseDifficulty(difficulty)}>
-              {difficulty.toUpperCase()}<em>{volume.lives[difficulty]} {volume.lives[difficulty] === 1 ? 'LIFE' : 'LIVES'}</em>
-            </button>
-          ))}
+          {difficulties.map(difficulty => {
+            const label = difficulty.toUpperCase();
+            const lives = `${volume.lives[difficulty]} ${volume.lives[difficulty] === 1 ? 'LIFE' : 'LIVES'}`;
+            return (
+              <DecodeButton key={difficulty} className={c('diff-btn', snapshot.difficulty === difficulty && 'active')}
+                label={label} aria-label={`${label} ${lives}`} data-diff={difficulty} aria-pressed={snapshot.difficulty === difficulty}
+                disabled={!ready} onClick={() => props.chooseDifficulty(difficulty)}>
+                <em>{lives}</em>
+              </DecodeButton>
+            );
+          })}
         </div>
       </div>
       <div className={c('bottom')}>
-        <button className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings}><span>SETTINGS</span></button>
-        <button className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}>
-          <span>{ready ? 'PRESS SPACE TO START' : 'LOADING'}</span>
-        </button>
-        <button className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen}><span>FULL SCREEN</span></button>
+        <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label="SETTINGS" />
+        <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}
+          label={ready ? 'PRESS SPACE TO START' : 'LOADING'} />
+        <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen} label="FULL SCREEN" />
       </div>
       <div className={c('center-msg', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
       <div className={c('musicbadge')}><span className={c('mb-k')}>MUSIC</span><span className={c('mb-v')}>SYNTHESIZED</span></div>

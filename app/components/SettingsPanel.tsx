@@ -1,6 +1,7 @@
 import { qualities } from '../game/contracts';
 import type { GameSnapshot, QualityTier } from '../game/contracts';
 import { classes as c } from '../styles/classes';
+import { DecodeButton } from './DecodeButton';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -20,11 +21,9 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
           <span>QUALITY</span>
           <div className={c('seg')} id="seg-quality">
             {qualities.map(quality => (
-              <button key={quality} className={c(quality === snapshot.quality && 'on')} data-q={quality}
+              <DecodeButton key={quality} className={c(quality === snapshot.quality && 'on')} data-q={quality}
                 aria-pressed={quality === snapshot.quality}
-                disabled={snapshot.phase === 'paused'} onClick={() => chooseQuality(quality)}>
-                {quality.toUpperCase()}
-              </button>
+                disabled={snapshot.phase === 'paused'} onClick={() => chooseQuality(quality)} label={quality.toUpperCase()} />
             ))}
           </div>
         </div>
@@ -37,7 +36,7 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
           <label htmlFor="set-muted">MUTE</label>
           <input id="set-muted" type="checkbox" checked={snapshot.muted} onChange={event => setMuted(event.target.checked)} />
         </div>
-        <button className={c('panel-close')} data-act="closesettings" onClick={close}>CLOSE</button>
+        <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label="CLOSE" />
       </div>
     </div>
   );

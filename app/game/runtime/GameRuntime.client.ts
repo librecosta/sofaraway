@@ -388,7 +388,8 @@ export class Runtime implements GameRuntime {
     }
     if (!paused) {
       const hit = Math.max(0, 1 - (sim.time - sim.hitTime) / 0.38);
-      const end = clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1);
+      const end = sim.phase === 'playing' || sim.phase === 'crash'
+        ? clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1) : 0;
       const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
       const opacity = sim.phase === 'results' ? 0 : Math.max(hit * 0.9, end * 0.95, start * 0.9);
       this.view.flash(opacity, hit ? '#ff5a5a' : '#fff');

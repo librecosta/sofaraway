@@ -357,11 +357,11 @@ export class Tunnel {
     }
   }
 
-  update(s: number) {
-    this.moveLights(s);
-
+  update(s: number, menu = false) {
     const need0 = s - KEEP_BEHIND;
     const need1 = s + KEEP_AHEAD;
+    if (menu) this.path.extendMenu(need1 + CHUNK, need0 - CHUNK);
+    this.moveLights(s);
 
     for (let i = this.chunks.length - 1; i >= 0; i--) {
       const c = this.chunks[i];

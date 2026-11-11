@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { GameSnapshot } from '../game/contracts';
 import { classes as c } from '../styles/classes';
+import { DecodeButton } from './DecodeButton';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -29,13 +30,12 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings }: P
         <div className={c('eyebrow')}><i /><span>{title}</span><i /></div>
         <p role={error ? 'alert' : 'status'}>{message}</p>
         <div className={c('fallback-actions')}>
-          <button className={c('btn', 'tiny')} disabled={waitingForGraphics} onClick={retry}>
-            {phase === 'paused' ? 'RESUME' : 'TRY AGAIN'}
-          </button>
-          {error?.kind === 'audio' && <button className={c('btn', 'tiny')} onClick={startSilent}>PLAY WITH SOUND OFF</button>}
-          {phase === 'paused' && <button className={c('btn', 'tiny')} onClick={settings}>SETTINGS</button>}
+          <DecodeButton className={c('btn', 'tiny')} disabled={waitingForGraphics} onClick={retry}
+            label={phase === 'paused' ? 'RESUME' : 'TRY AGAIN'} />
+          {error?.kind === 'audio' && <DecodeButton className={c('btn', 'tiny')} onClick={startSilent} label="PLAY WITH SOUND OFF" />}
+          {phase === 'paused' && <DecodeButton className={c('btn', 'tiny')} onClick={settings} label="SETTINGS" />}
           {['paused', 'playing', 'crash', 'results'].includes(phase) &&
-            <button className={c('btn', 'tiny')} onClick={menu}>BACK TO MENU</button>}
+            <DecodeButton className={c('btn', 'tiny')} onClick={menu} label="BACK TO MENU" />}
         </div>
       </div>
     </section>

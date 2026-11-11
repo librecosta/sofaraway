@@ -23,8 +23,11 @@ export class Path {
   private f: THREE.Vector3;
   private r: THREE.Vector3;
   private u: THREE.Vector3;
+  private directions: Direction[] = ['left', 'right', 'up', 'down'];
+  private bends = 0;
+  private runPath?: { frames: number; segments: number };
 
-  constructor() {
+  constructor(private readonly straightLen: number, private readonly radius: number, topology: Topology) {
     this.frames = [];
     this.length = 0;
     this.segments = [];
@@ -35,6 +38,32 @@ export class Path {
     this.u = new THREE.Vector3(0, 1, 0);
 
     this._push();
+    if (topology === 'shaft') {
+      this.straight(60);
+      this.bend('down', radius);
+      this.directions = ['down', 'left', 'down', 'right'];
+    }
+  }
+
+  extend(through: number) {
+    while (this.length < through) {
+      this.straight(this.straightLen);
+      this.bend(this.directions[this.bends % this.directions.length], this.radius);
+      if (++this.bends % 4 === 0) this.directions.push(this.directions.shift()!);
+    }
+  }
+
+  extendMenu(through: number, keepFrom: number) {
+    if (through <= this.length) return;
+    const run = this.runPath ??= { frames: this.frames.length, segments: this.segments.length };
+    this.extend(through);
+    // Retain the original run path and one sample before the live streaming window.
+    let frame = run.frames;
+    while (frame + 1 < this.frames.length && this.frames[frame + 1].s < keepFrom) frame++;
+    this.frames.splice(run.frames, frame - run.frames);
+    let segment = run.segments;
+    while (this.segments[segment].s1 < keepFrom) segment++;
+    this.segments.splice(run.segments, segment - run.segments);
   }
 
   _push() {
@@ -137,25 +166,7 @@ export class Path {
  *  enough to hold a handful of bulkheads; turns are the breathing room.
  * ------------------------------------------------------------------ */
 export function buildPath(totalLength: number, straightLen = 150, radius = 46, topology: Topology = 'conduit') {
-  const path = new Path();
-  let dirs: Direction[] = ['left', 'right', 'up', 'down'];
-  let di = 0;
-
-  // a shaft plunges first, then keeps turning on the way down
-  if (topology === 'shaft') {
-    path.straight(60);
-    path.bend('down', radius);
-    dirs = ['down', 'left', 'down', 'right'];
-  }
-
-  while (path.length < totalLength) {
-    path.straight(straightLen);
-    // never turn twice the same way, and bias away from pure up/down repeats
-    path.bend(dirs[di % dirs.length], radius);
-    di++;
-    if (di % 4 === 0) {
-      dirs = dirs.slice(1).concat(dirs[0]);
-    }
-  }
+  const path = new Path(straightLen, radius, topology);
+  path.extend(totalLength);
   return path;
 }

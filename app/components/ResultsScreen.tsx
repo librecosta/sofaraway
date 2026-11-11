@@ -1,5 +1,6 @@
 import type { GameSnapshot } from '../game/contracts';
 import { classes as c } from '../styles/classes';
+import { DecodeButton } from './DecodeButton';
 
 export function ResultsScreen({ snapshot, restart, menu }: {
   snapshot: GameSnapshot; restart(): void; menu(): void;
@@ -15,8 +16,8 @@ export function ResultsScreen({ snapshot, restart, menu }: {
           <div><b id="over-combo">{snapshot.maxCombo}</b><span>MAX LINK</span></div>
           <div><b id="over-acc">{Math.round((snapshot.result?.accuracy ?? 0) * 100)}%</b><span>ACCURACY</span></div>
         </div>
-        <button className={c('btn', 'start')} data-act="restart" onClick={restart}><span>SPACE TO RUN AGAIN</span></button>
-        <button className={c('btn', 'tiny')} data-act="menu" onClick={menu}><span>BACK TO MENU</span></button>
+        <DecodeButton className={c('btn', 'start')} data-act="restart" onClick={restart} label="SPACE TO RUN AGAIN" />
+        <DecodeButton className={c('btn', 'tiny')} data-act="menu" onClick={menu} label="BACK TO MENU" />
       </div>
     </section>
   );
