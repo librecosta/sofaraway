@@ -23,7 +23,10 @@ for (const [index, volume] of VOLUMES.entries()) {
       await expect(page.locator('#over-combo')).toHaveText(String(count));
       await expect(page.locator('#over-acc')).toHaveText('100%');
       await expect(page.locator('#over-score')).toHaveText(String(expectedScores[index][i]));
-      expect(await page.locator('#errbox').evaluate(el => JSON.parse(el.textContent!).hitCount)).toBe(0);
+      const debug = await page.locator('#errbox').evaluate(el => JSON.parse(el.textContent!));
+      expect(debug.hitCount).toBe(0);
+      // Gate align aims at the next Iris, outside the pickup radius, preserving the no-pickup baseline.
+      expect(debug.pickup).toEqual(volume.id === 'elsewhere' ? { kind: expect.any(String), status: 'missed' } : null);
     }
     expect(errors).toEqual([]);
   });
@@ -49,17 +52,19 @@ test('disconnecting a run isolates its dry signal and reverb from the next run',
   expect(after.rms).toBeGreaterThan(0.001);
 });
 
-test('reloading a fixed-time capture reproduces the same pixels', async ({ page }) => {
-  await page.goto('/?vol=elsewhere&t=24.4&align=1&god=0&q=high&ui=0&dbg=1');
-  const capture = async () => {
-    await expect(page.locator('#errbox')).toHaveText(/"phase":"playing"/);
-    await page.addStyleTag({ content: '#errbox { display: none; }' });
-    return page.screenshot();
-  };
-  const first = await capture();
-  await page.reload();
-  expect((await capture()).equals(first)).toBe(true);
-});
+for (const { name, time } of [{ name: 'an early gate', time: 24.4 }, { name: 'the approaching pickup', time: 142.9 }]) {
+  test(`reloading a fixed-time capture of ${name} reproduces the same pixels`, async ({ page }) => {
+    await page.goto(`/?vol=elsewhere&t=${time}&align=1&god=0&q=high&ui=0&dbg=1`);
+    const capture = async () => {
+      await expect(page.locator('#errbox')).toHaveText(/"phase":"playing".*"pickup":\{"kind":".+?","status":"pending"\}/);
+      await page.addStyleTag({ content: '#errbox { display: none; }' });
+      return page.screenshot();
+    };
+    const first = await capture();
+    await page.reload();
+    expect((await capture()).equals(first)).toBe(true);
+  });
+}
 
 test('distant gates stay sharp while foreground depth of field remains active', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });

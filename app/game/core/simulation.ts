@@ -4,6 +4,10 @@ import { canPass, clamp, lanePoint, opening } from './collision';
 import type { Axis } from './collision';
 import { steer } from './input';
 import type { InputFrame } from './input';
+import { LUMEN_POINTS, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_RADIUS,
+  pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
+import type { RunPickup } from './pickups';
+import { CAPTURE_RUN_SEED } from './run-seed';
 import { sectionAt } from './volumes';
 import type { GateKind, VolumeDefinition } from './volumes';
 
@@ -46,6 +50,10 @@ export class Simulation {
   message = '';
   result: RunResult | null = null;
   hitTime = -Infinity;
+  pickup: RunPickup | null = null;
+  pickupTime = -Infinity;
+  shield = false;
+  resonance = 0;
   camera = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
   previewGates: RunGate[] = [];
   private chart: RunGate[] = [];
@@ -56,6 +64,7 @@ export class Simulation {
   private recoil = 0;
   private messageUntil = 0;
   private mult = 1;
+  private difficulty: Difficulty = 'normal';
   readonly secondsPerBeat: number;
 
   constructor(
@@ -69,7 +78,7 @@ export class Simulation {
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
 
-  start(difficulty: Difficulty) {
+  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED) {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
@@ -86,6 +95,11 @@ export class Simulation {
     this.gatesPassed = this.gatesJudged = this.hits = this.reveal = this.judged = 0;
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
     this.previewGates = [];
+    this.difficulty = difficulty;
+    this.pickup = this.volume.id === 'elsewhere' ? { kind: pickupForSeed(runSeed), status: 'pending' } : null;
+    this.pickupTime = -Infinity;
+    this.shield = false;
+    this.resonance = 0;
     this.lives = this.maxLives = rules.lives;
     this.mult = rules.mult;
     this.distance = START_DISTANCE;
@@ -106,6 +120,10 @@ export class Simulation {
     this.time = this.beat = 0;
     this.boosting = false;
     this.hitTime = -Infinity;
+    this.pickup = null;
+    this.pickupTime = -Infinity;
+    this.shield = false;
+    this.resonance = 0;
     this.message = '';
   }
 
@@ -157,6 +175,11 @@ export class Simulation {
     camera.y += (camera.ty - camera.y) * damp;
     camera.roll += (-camera.x * 0.028 - camera.roll) * (1 - Math.exp(-dt * 8));
 
+    // The pickup is over a second from either gate, outside the same fixed step.
+    if (this.pickup?.status === 'pending' && this.beat + 1e-9 >= PICKUP_BEAT) {
+      const fraction = clamp((PICKUP_BEAT - previousBeat) / (this.beat - previousBeat), 0, 1);
+      this.resolvePickup(this.pickup, x + (camera.x - x) * fraction, y + (camera.y - y) * fraction);
+    }
     while (this.chart[this.judged]?.beat <= this.beat + 1e-9) {
       const gate = this.chart[this.judged++];
       const fraction = clamp((gate.beat - previousBeat) / (this.beat - previousBeat), 0, 1);
@@ -177,6 +200,27 @@ export class Simulation {
     }
   }
 
+  private resolvePickup(pickup: RunPickup, x: number, y: number) {
+    if (Math.hypot(x - PICKUP_LOCAL_X, y - PICKUP_LOCAL_Y) > PICKUP_RADIUS) {
+      this.pickup = { kind: pickup.kind, status: 'missed' };
+      return;
+    }
+    this.pickup = { kind: pickup.kind, status: 'collected' };
+    this.pickupTime = this.time;
+    if (pickup.kind === 'shield') {
+      this.shield = true;
+      this.message = 'PRISM SHIELD';
+    } else if (pickup.kind === 'resonance') {
+      this.resonance = RESONANCE_CHARGES;
+      this.message = 'RESONANCE ×' + this.resonance;
+    } else {
+      const points = LUMEN_POINTS[this.difficulty];
+      this.score += points;
+      this.message = 'LUMEN +' + points;
+    }
+    this.messageUntil = this.time + 1.1;
+  }
+
   private preloadGates() {
     // Give Graphics time to stage gate meshes before they start to fade in.
     const throughBeat = this.beat + GATE_PRELOAD_BEATS;
@@ -193,18 +237,29 @@ export class Simulation {
       this.gatesPassed++;
       this.combo++;
       this.maxCombo = Math.max(this.maxCombo, this.combo);
-      this.score += 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05);
+      const gatePoints = 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05);
+      this.score += gatePoints;
+      let cleanPoints = 0;
       if (Math.hypot(x - lx, y - ly) < 0.42 * 2.2) {
-        this.score += 150 * this.mult;
+        cleanPoints = 150 * this.mult;
+        this.score += cleanPoints;
         this.message = 'CLEAN ×' + this.combo;
         this.messageUntil = this.time + 0.6;
+      }
+      if (this.resonance > 0) {
+        this.score += (gatePoints + cleanPoints) * RESONANCE_BONUS;
+        this.resonance--;
       }
     } else {
       this.combo = 0;
       if (gate.beat >= this.invulnUntil) {
+        this.invulnUntil = gate.beat + 1.4 / this.secondsPerBeat;
+        if (this.shield) {
+          this.shield = false;
+          return;
+        }
         this.lives--;
         this.hits++;
-        this.invulnUntil = gate.beat + 1.4 / this.secondsPerBeat;
         this.hitTime = this.time;
         gate.hit = true;
       }
@@ -221,5 +276,7 @@ export class Simulation {
     this.settleAt = this.time + 0.7;
     this.recoil = title === 'ESCAPED' ? 0 : 0.55;
     this.boosting = false;
+    this.shield = false;
+    this.resonance = 0;
   }
 }

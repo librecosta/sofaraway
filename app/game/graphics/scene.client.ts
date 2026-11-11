@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { canPass, clampSection, WALL } from '../core/collision';
+import { PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { corridorLength } from '../core/simulation';
 import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
@@ -7,6 +8,7 @@ import type { Diagnostics, QualityTier } from '../contracts';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateVisual, THICKNESS } from './gates.client';
 import { buildPath } from './path';
+import { PICKUP_PREVIEW_BEATS, PickupVisual } from './pickup.client';
 import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
 import type { QualityProfile } from './quality';
@@ -32,11 +34,13 @@ class VolumeScene {
   private sky?: THREE.CanvasTexture | null;
   private readonly cameraFrame = frame();
   private readonly gateFrame = frame();
+  private readonly pickupFrame = frame();
   private readonly backwards = new THREE.Vector3();
   private readonly gateTarget = new THREE.Vector3();
   private readonly basis = new THREE.Matrix4();
   private hue: number;
   private phase?: Simulation['phase'];
+  private pickup?: PickupVisual;
 
   constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures>,
     environment: THREE.Texture | null) {
@@ -89,6 +93,7 @@ class VolumeScene {
       visual.dispose();
       this.visuals.delete(gate);
     }
+    this.updatePickup(sim);
 
     if (sim.phase === 'menu') {
       this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15);
@@ -145,8 +150,29 @@ class VolumeScene {
       && canPass(aimed.kind, aimed.open, aimed.axis, x, y) };
   }
 
+  private updatePickup(sim: Simulation) {
+    const beatsAway = PICKUP_BEAT - sim.beat;
+    if (sim.phase !== 'playing' || sim.pickup?.status !== 'pending' || beatsAway > PICKUP_PREVIEW_BEATS) {
+      this.pickup?.dispose();
+      this.pickup = undefined;
+      return;
+    }
+    if (!this.pickup) {
+      this.pickup = new PickupVisual(sim.pickup.kind);
+      this.scene.add(this.pickup.group);
+    }
+    const distance = sim.distance + sim.speed * beatsAway * sim.secondsPerBeat;
+    const { p, r, u, f } = this.path.sample(distance, this.pickupFrame);
+    const group = this.pickup.group;
+    group.position.copy(p).addScaledVector(r, PICKUP_LOCAL_X).addScaledVector(u, PICKUP_LOCAL_Y);
+    this.basis.makeBasis(r, u, this.backwards.copy(f).negate());
+    group.quaternion.setFromRotationMatrix(this.basis);
+    this.pickup.update(sim.beat, beatsAway);
+  }
+
   dispose() {
     this.preparedGate?.dispose();
+    this.pickup?.dispose();
     for (const visual of this.visuals.values()) visual.dispose();
     this.visuals.clear();
     this.geometry.dispose();

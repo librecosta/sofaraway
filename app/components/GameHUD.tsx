@@ -20,6 +20,11 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
         <div className={c('lives')} id="hud-lives">
           {Array.from({ length: snapshot.maxLives }, (_, i) => <i key={i} className={c(i < snapshot.lives && 'on')} />)}
         </div>
+        {(snapshot.shield || snapshot.resonance > 0) && (
+          <div className={c('pickup-status')} id="hud-pickup">
+            {snapshot.shield ? 'SHIELD ×1' : `RESONANCE ×${snapshot.resonance}`}
+          </div>
+        )}
       </div>
       <div className={c('hud-tr')}>
         <div className={c('label')}>GATES</div>

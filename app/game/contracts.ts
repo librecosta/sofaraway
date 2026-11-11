@@ -39,6 +39,8 @@ export interface GameSnapshot {
   readonly result: RunResult | null;
   readonly speed: number;
   readonly boosting: boolean;
+  readonly shield: boolean;
+  readonly resonance: number;
   readonly hint: boolean;
   readonly message: string;
 }
@@ -50,6 +52,7 @@ export interface GameOptions {
   volume: number;
   muted: boolean;
   best: number;
+  runSeed?: number;
   diagnostics: Diagnostics;
 }
 
@@ -104,6 +107,8 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   result: null,
   speed: 24,
   boosting: false,
+  shield: false,
+  resonance: 0,
   hint: false,
   message: '',
 });

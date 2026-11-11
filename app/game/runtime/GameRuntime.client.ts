@@ -3,6 +3,7 @@ import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, Pau
 import { FixedStepClock, MAX_STEPS, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
 import { idleInput } from '../core/input';
+import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
 import { AudioTransport } from '../audio/transport.client';
@@ -110,7 +111,7 @@ export class Runtime implements GameRuntime {
     this.noticeUntil = 0;
     this.clock.reset();
     this.silent = silent;
-    sim.start(this.snapshot.difficulty);
+    sim.start(this.snapshot.difficulty, this.options?.runSeed ?? createRunSeed());
     try {
       if (silent) this.graphics?.warmSurface(sim, false);
     } catch (error) {
@@ -169,7 +170,7 @@ export class Runtime implements GameRuntime {
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
-      pauseReason: null, result: null, hint: false, boosting: false });
+      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0 });
   }
 
   async selectVolume(id: VolumeId) {
@@ -277,7 +278,7 @@ export class Runtime implements GameRuntime {
     const sim = this.simulation!;
     const flags = this.options!.diagnostics;
     const graphics = this.graphics!;
-    sim.start(this.snapshot.difficulty);
+    sim.start(this.snapshot.difficulty, this.options?.runSeed ?? CAPTURE_RUN_SEED);
     const time = Math.min(seconds, sim.volume.beats * sim.secondsPerBeat + 10);
     const steps = Math.floor(time / STEP);
     const input = flags.boost ? { ...idleInput, boosting: true } : idleInput;
@@ -369,10 +370,10 @@ export class Runtime implements GameRuntime {
 
   private step(sim: Simulation) {
     const input = this.input?.read() ?? idleInput;
-    const lives = sim.lives;
+    const { lives, pickup } = sim;
     sim.step(STEP, input);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty);
-    if (lives !== sim.lives) this.publishRun();
+    if (lives !== sim.lives || pickup !== sim.pickup) this.publishRun();
   }
 
   private draw(sim: Simulation, now: number, updateScene = true) {
@@ -391,8 +392,10 @@ export class Runtime implements GameRuntime {
       const end = sim.phase === 'playing' || sim.phase === 'crash'
         ? clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1) : 0;
       const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
-      const opacity = sim.phase === 'results' ? 0 : Math.max(hit * 0.9, end * 0.95, start * 0.9);
-      this.view.flash(opacity, hit ? '#ff5a5a' : '#fff');
+      const pickup = Math.max(0, 1 - (sim.time - sim.pickupTime) / 0.24) * 0.13;
+      const flash = Math.max(hit * 0.9, end * 0.95, start * 0.9);
+      this.view.flash(sim.phase === 'results' ? 0 : Math.max(flash, pickup),
+        hit ? '#ff5a5a' : pickup > flash ? '#74ffdc' : '#fff');
     }
     if (this.recorder && graphics.camera) {
       this.recorder.sample(now / 1000, graphics.camera, sim, sim.camera);
@@ -401,7 +404,7 @@ export class Runtime implements GameRuntime {
     if (this.options?.diagnostics.debug && (fixed || now >= this.nextDebug)) {
       this.nextDebug = now + 80;
       this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
-        distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits,
+        distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
         initMs: this.initMs, switchMs: this.switchMs }));
     }
   }
@@ -535,6 +538,7 @@ export class Runtime implements GameRuntime {
       gatesPassed: sim.gatesPassed, gatesTotal: sim.gatesTotal, combo: sim.combo, maxCombo: sim.maxCombo,
       speed: sim.speed, progress: sim.progress, section: sim.section, result: sim.result,
       boosting: this.snapshot.phase === 'playing' && sim.boosting,
+      shield: sim.shield, resonance: sim.resonance,
       message: performance.now() < this.noticeUntil ? this.notice : sim.message,
       hint: this.snapshot.phase === 'playing' && sim.beat < 15, ...patch });
   }
