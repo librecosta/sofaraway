@@ -53,6 +53,10 @@ For the C0-A browser matrix, install the matching browser engines with
 `COMPAT_CHROMIUM_CHANNEL=chrome` selects installed Chrome for both Chromium
 projects. See the [C0-A compatibility report](docs/audits/C0-A-compatibility-report.md).
 
+Run `npm run test:stability` for the frame benchmark and the full-song soak.
+The [C0-B performance report](docs/audits/C0-B-performance-report.md) documents
+the browser requirements and the reference-build comparison.
+
 Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome for a comparable GPU
 sample. To rerun the original suite against the A0 baseline, run
 `git worktree add --detach ../sofaraway-a0 88a4adb`, set `A0_APP_ROOT` to the

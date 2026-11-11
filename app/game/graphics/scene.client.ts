@@ -29,9 +29,7 @@ class VolumeScene {
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly geometry = new THREE.PlaneGeometry(WALL.w, WALL.h);
   private readonly visuals = new Map<RunGate, GateVisual>();
-  private textures?: ReturnType<typeof buildTextures>;
   private sky?: THREE.CanvasTexture | null;
-  private environment?: THREE.WebGLRenderTarget;
   private readonly cameraFrame = frame();
   private readonly gateFrame = frame();
   private readonly backwards = new THREE.Vector3();
@@ -40,18 +38,17 @@ class VolumeScene {
   private hue: number;
   private phase?: Simulation['phase'];
 
-  constructor(private readonly volume: VolumeDefinition, renderer: THREE.WebGLRenderer, halfFloat: boolean) {
+  constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures>,
+    environment: THREE.Texture | null) {
     this.hue = volume.hue[0];
     this.scene.fog = this.fog;
     try {
       this.path = buildPath(corridorLength(volume), 150, 46, volume.topology);
-      this.textures = buildTextures();
-      this.tunnel = new Tunnel(this.textures, this.path, volume.topology);
+      this.tunnel = new Tunnel(textures, this.path, volume.topology);
       this.scene.add(this.tunnel.group);
       this.sky = makeSky(volume);
       this.scene.background = this.sky;
-      this.environment = halfFloat ? makeEnvMap(renderer) : undefined;
-      this.scene.environment = this.environment?.texture ?? null;
+      this.scene.environment = environment;
     } catch (error) {
       this.dispose();
       throw error;
@@ -154,8 +151,6 @@ class VolumeScene {
     this.geometry.dispose();
     this.tunnel?.dispose();
     this.sky?.dispose();
-    this.environment?.dispose();
-    for (const texture of Object.values(this.textures ?? {})) texture.dispose();
     this.scene.clear();
   }
 }
@@ -165,6 +160,8 @@ export class Graphics {
   readonly gl: WebGL2RenderingContext;
   private capabilities: ReturnType<typeof readCapabilities>;
   private volume?: VolumeScene;
+  private textures?: ReturnType<typeof buildTextures>;
+  private environment?: THREE.WebGLRenderTarget;
   private post?: PostFX;
   private postFailure: string | null = null;
   private quality: QualityTier;
@@ -214,19 +211,23 @@ export class Graphics {
   load(definition: VolumeDefinition) {
     this.volume?.dispose();
     this.volume = undefined;
-    this.volume = this.withCoreShaders(() => new VolumeScene(definition, this.renderer, this.capabilities.halfFloat));
+    this.volume = this.withCoreShaders(() => {
+      this.textures ??= buildTextures();
+      if (this.capabilities.halfFloat) this.environment ??= makeEnvMap(this.renderer);
+      return new VolumeScene(definition, this.textures, this.environment?.texture ?? null);
+    });
     this.sizeCamera();
   }
 
   prepare() {
-    this.withCoreShaders(() => this.volume?.prepare(this.renderer));
-    // Three links materials during compile(), but normally checks the result on first use.
-    const gl = this.gl;
-    for (const { program } of this.renderer.info.programs ?? []) {
-      if (!gl.isContextLost() && !gl.getProgramParameter(program as WebGLProgram, gl.LINK_STATUS)) {
-        throw new UnsupportedGraphics('A core WebGL shader could not compile or link.');
+    this.withCoreShaders(() => {
+      this.volume?.prepare(this.renderer);
+      if (this.gl.isContextLost()) return;
+      // Complete Three's first-use checks and shader deletion even for programs that never draw.
+      for (const program of this.renderer.info.programs ?? []) {
+        program.getUniforms();
       }
-    }
+    });
   }
 
   configure(tier: QualityTier, mobile: boolean) {
@@ -333,6 +334,10 @@ export class Graphics {
   releaseSurface() {
     this.volume?.dispose();
     this.volume = undefined;
+    this.environment?.dispose();
+    this.environment = undefined;
+    if (this.textures) for (const texture of Object.values(this.textures)) texture.dispose();
+    this.textures = undefined;
     this.post?.dispose();
     this.post = undefined;
   }

@@ -64,8 +64,8 @@ export class Tunnel {
   private ambient!: THREE.AmbientLight;
   private lights: THREE.PointLight[] = [];
   private hue: number | undefined;
-  private _boltGeo?: THREE.CylinderGeometry;
-  private _boltMat?: THREE.MeshStandardMaterial;
+  private readonly lightFrame = frame();
+  private readonly ringFrames: PathFrame[] = [];
 
   constructor(tex: ReturnType<typeof buildTextures>, private readonly path: Path, private readonly topology: Topology) {
     this.group = new THREE.Group();
@@ -90,9 +90,6 @@ export class Tunnel {
       envMapIntensity: 1.0,
       emissive: 0x000000,
     });
-    tex.hullMap.repeat.set(3, 3);
-    tex.hullNormal.repeat.set(3, 3);
-
     this.ribMat = new THREE.MeshStandardMaterial({
       color: 0x151a20, metalness: 0.8, roughness: 0.38,
       side: THREE.DoubleSide, envMapIntensity: 1.4,
@@ -128,7 +125,7 @@ export class Tunnel {
   }
 
   moveLights(s: number) {
-    const fr = frame();
+    const fr = this.lightFrame;
     for (const l of this.lights) {
       this.path.sample(s + l.userData.d, fr);
       l.position.copy(fr.p);
@@ -136,20 +133,6 @@ export class Tunnel {
   }
 
   /* ---------------- one chunk ---------------- */
-  get boltGeo() {
-    if (!this._boltGeo) {
-      const g = new THREE.CylinderGeometry(0.040, 0.044, 0.028, 6);
-      g.rotateX(Math.PI / 2);
-      this._boltGeo = g;
-      this._boltMat = new THREE.MeshStandardMaterial({
-        color: 0x4a545e, roughness: 0.42, metalness: 0.9,
-      });
-    }
-    return this._boltGeo;
-  }
-
-  get boltMat() { return this._boltMat; }
-
   _buildChunk(s0: number, s1: number): Chunk {
     const PR = profile(this.topology);
     const P = PR.pts;
@@ -166,6 +149,8 @@ export class Tunnel {
     const rings = [];
     for (let s = s0; s < s1; s += RING) rings.push(s);
     rings.push(s1);
+    const ringFrames = this.ringFrames;
+    for (let i = 0; i < rings.length; i++) this.path.sample(rings[i], ringFrames[i] ??= frame());
 
     const ghost = this.topology === 'orbit';   // light frame only, no hull
     const shell = { pos: [] as number[], nor: [] as number[], uv: [] as number[], idx: [] as number[] };
@@ -174,11 +159,10 @@ export class Tunnel {
     const strip = { pos: [] as number[], idx: [] as number[] };
     const brace = { pos: [] as number[], nor: [] as number[], idx: [] as number[] };
 
-    const A = frame();
-    const B = frame();
     const C = frame();
     const D = frame();
     const v3 = new THREE.Vector3();
+    const nWall = new THREE.Vector3();
 
     const put = (arr: GeometryData, fr: PathFrame, px: number, py: number) => {
       v3.copy(fr.p).addScaledVector(fr.r, px).addScaledVector(fr.u, py);
@@ -186,10 +170,9 @@ export class Tunnel {
     };
 
     /* ---- shell: quad strips between consecutive rings ---- */
-    for (let k = 0; k < rings.length - 1; k++) {
+    for (let k = 0; !ghost && k < rings.length - 1; k++) {
       const sA = rings[k], sB = rings[k + 1];
-      this.path.sample(sA, A);
-      this.path.sample(sB, B);
+      const A = ringFrames[k], B = ringFrames[k + 1];
       // absolute V, so the plating is continuous across chunk seams
       // one texture repeat per bay, so the plating lines up with the recesses
       const vA = sA / RING;
@@ -204,7 +187,7 @@ export class Tunnel {
       this.path.sample(sA + CH, C);
       this.path.sample(sB - CH, D);
 
-      for (let i = 0; i < edges && !ghost; i++) {
+      for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         const ex = p1[0] - p0[0], ey = p1[1] - p0[1];
         const el = Math.hypot(ex, ey) || 1;
@@ -226,7 +209,7 @@ export class Tunnel {
           shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         };
 
-        const nWall = v3.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2).clone();
+        nWall.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2);
         const inner = 1 - DEPTH;
         const SEAM = 0.012;                 // half-width of the rib between plates
         const um = (u0 + u1) * 0.5;
@@ -244,8 +227,8 @@ export class Tunnel {
 
     /* ---- ribs + glowing rim, a flange at every ring ---- */
     const R = 1.055, IN = 0.955, RIMW = 0.948;
-    for (const s of rings) {
-      this.path.sample(s, A);
+    for (let k = 0; k < rings.length; k++) {
+      const A = ringFrames[k];
       for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
         const addRing = (target: typeof rib, a: number, b: number) => {
@@ -274,8 +257,7 @@ export class Tunnel {
 
       const INSET = 0.972;      // sit inside the hull, not through it
       for (let k = 0; k < rings.length - 1; k++) {
-        this.path.sample(rings[k], A);
-        this.path.sample(rings[k + 1], B);
+        const A = ringFrames[k], B = ringFrames[k + 1];
         const base = strip.pos.length / 3;
         for (const fr of [A, B]) {
           for (const sgn of [-1, 1]) {
@@ -291,8 +273,7 @@ export class Tunnel {
       const W = 0.13;    // how far in from the corner
       const H = 0.085;   // half-width across the corner
       for (let k = 0; k < rings.length - 1; k++) {
-        this.path.sample(rings[k], A);
-        this.path.sample(rings[k + 1], B);
+        const A = ringFrames[k], B = ringFrames[k + 1];
         for (let i = 0; i < edges; i++) {
           const pt = P[i];
           const L = Math.hypot(pt[0], pt[1]) || 1;
@@ -329,36 +310,6 @@ export class Tunnel {
       }
     }
 
-    /* ---- bolts: an instanced disc at every profile corner of every ring ---- */
-    const boltMats: THREE.Mesh[] = [];
-    {
-      const dummy = new THREE.Object3D();
-      const list = [];
-      for (const sPos of rings) {
-        this.path.sample(sPos, A);
-        for (let i = 0; i < edges; i++) {
-          const pt = P[i];
-          const px = pt[0] * 0.975, py = pt[1] * 0.975;
-          v3.copy(A.p).addScaledVector(A.r, px).addScaledVector(A.u, py);
-          dummy.position.copy(v3);
-          dummy.lookAt(
-            v3.x - A.r.x * pt[0] - A.u.x * pt[1],
-            v3.y - A.r.y * pt[0] - A.u.y * pt[1],
-            v3.z - A.r.z * pt[0] - A.u.z * pt[1],
-          );
-          dummy.updateMatrix();
-          list.push(dummy.matrix.clone());
-        }
-      }
-      if (list.length) {
-        const inst = new THREE.InstancedMesh(this.boltGeo, this.boltMat!, list.length);
-        for (let i = 0; i < list.length; i++) inst.setMatrixAt(i, list[i]);
-        inst.instanceMatrix.needsUpdate = true;
-        inst.frustumCulled = false;
-        boltMats.push(inst);
-      }
-    }
-
     /* ---- build meshes ---- */
     const geoOf = (d: GeometryData) => {
       const g = new THREE.BufferGeometry();
@@ -369,21 +320,15 @@ export class Tunnel {
       return g;
     };
 
-    const meshes = boltMats.slice();
-    if (brace.pos.length) {
-      const bm = new THREE.Mesh(geoOf(brace), this.ribMat);
-      bm.frustumCulled = false;
-      meshes.push(bm);
-      this.group.add(bm);
-    }
+    const meshes: THREE.Mesh[] = [];
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
       const m = new THREE.Mesh(geo, mat);
-      m.frustumCulled = false;
       meshes.push(m);
       this.group.add(m);
     };
 
-    add(geoOf(shell), this.shellMat);
+    if (brace.pos.length) add(geoOf(brace), this.ribMat);
+    if (shell.pos.length) add(geoOf(shell), this.shellMat);
     add(geoOf(rib), this.ribMat);
     add(geoOf(rim), this.rimMat);
 
@@ -398,8 +343,7 @@ export class Tunnel {
   _disposeChunk(chunk: Chunk) {
     for (const mesh of chunk.meshes) {
       this.group.remove(mesh);
-      if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
-      else mesh.geometry.dispose();
+      mesh.geometry.dispose();
     }
   }
 
@@ -408,8 +352,7 @@ export class Tunnel {
     this.chunks.length = 0;
     this.group.clear();
     this.wire?.geometry.dispose();
-    this._boltGeo?.dispose();
-    for (const material of [this.shellMat, this.ribMat, this.rimMat, this.stripMat, this.wireMat, this._boltMat]) {
+    for (const material of [this.shellMat, this.ribMat, this.rimMat, this.stripMat, this.wireMat]) {
       material?.dispose();
     }
   }

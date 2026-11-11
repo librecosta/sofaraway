@@ -232,14 +232,5 @@ export function makeGlow(size = 128) {
  * ------------------------------------------------------------------ */
 export function buildTextures() {
   const hull = makeHull();
-  const hullMap = finish(hull.map, 1, 1);
-  const hullNormal = finish(hull.normal, 1, 1);
-
-  const grating = finish(makeGrating(), 1, 1);
-  const emissive = finish(makeEmissive(), 1, 1);
-
-  const glow = new THREE.CanvasTexture(makeGlow());
-  glow.colorSpace = THREE.NoColorSpace;
-
-  return { hullMap, hullNormal, grating, emissive, glow };
+  return { hullMap: finish(hull.map, 3, 3), hullNormal: finish(hull.normal, 3, 3) };
 }

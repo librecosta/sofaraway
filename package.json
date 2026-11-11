@@ -30,6 +30,7 @@
     "test": "npm run test:unit && npm run build && npm run build:harness && npm run test:b0",
     "test:perf": "npm run build && npm run build:harness && playwright test --config playwright.b0.config.ts --grep @perf",
     "test:compat": "npm run build && npm run build:harness && playwright test --config playwright.compat.config.ts",
+    "test:stability": "npm run build && npm run build:harness && playwright test --config playwright.stability.config.ts",
     "test:a0": "playwright test --config playwright.config.js --grep-invert @perf",
     "test:a0:perf": "playwright test --config playwright.config.js --grep @perf",
     "dev": "react-router dev",

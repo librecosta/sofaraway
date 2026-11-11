@@ -75,3 +75,4 @@ declare global {
 }
 
 window.b0Harness = harness;
+if (new URLSearchParams(location.search).has('stability')) void import('./stability');

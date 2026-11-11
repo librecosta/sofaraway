@@ -7,7 +7,9 @@ const argument = process.argv[2];
 if (argument === '--a0' && !process.env.A0_APP_ROOT) {
   throw new Error('Set A0_APP_ROOT to the A0 baseline worktree before running the A0 tests.');
 }
-const root = resolve(argument === '--a0' ? process.env.A0_APP_ROOT : argument ?? 'build/client');
+const stability = argument === '--stability-client' ? 'client' : argument === '--stability-harness' ? 'harness' : null;
+const root = stability ? resolve(process.env.STABILITY_REFERENCE_DIR, stability)
+  : resolve(argument === '--a0' ? process.env.A0_APP_ROOT : argument ?? 'build/client');
 const port = Number(process.argv[3] ?? 8080);
 const types = {
   '.html': 'text/html; charset=utf-8',
@@ -24,6 +26,9 @@ createServer(async (request, response) => {
     const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
     const file = resolve(root, '.' + (pathname.endsWith('/') ? pathname + 'index.html' : pathname));
     if (!file.startsWith(root + sep) || !(await stat(file)).isFile()) throw new Error('Not found');
+    if (process.env.STABILITY_HTTP_CACHE === '1' && pathname.startsWith('/assets/')) {
+      response.setHeader('Cache-Control', 'public, max-age=600, immutable');
+    }
     response.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream' });
     if (request.method === 'HEAD') response.end();
     else createReadStream(file).on('error', () => response.destroy()).pipe(response);
