@@ -43,8 +43,12 @@ uniform float uFar;
 uniform float uFocus;     // world units
 uniform float uAperture;  // how fast CoC grows
 uniform float uMaxBlur;   // max radius, fraction of screen height
+uniform bool  uKeepDistantSharp;
 
 float coc(float lin){
+  // Gates don't write depth. Use the surface behind them, or the clear
+  // depth-pass color (zero) for gates against the sky.
+  if (uKeepDistantSharp && (lin <= 0.0 || lin >= uFocus)) return 0.0;
   float rel = abs(lin - uFocus) / max(uFocus, 1.0);
   return clamp(rel * uAperture, 0.0, 1.0) * uMaxBlur;
 }
@@ -257,6 +261,7 @@ export class PostFX {
         uFocus: { value: 40.0 },
         uAperture: { value: 0.30 },
         uMaxBlur: { value: 0.005 },
+        uKeepDistantSharp: { value: false },
       },
       depthTest: false, depthWrite: false,
     });
@@ -365,7 +370,7 @@ export class PostFX {
     this.renderer.render(this.scene, this.cam);
   }
 
-  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, time: number) {
+  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, time: number, keepDistantSharp: boolean) {
     const r = this.renderer;
 
     if (this.quality.dof) {
@@ -378,13 +383,16 @@ export class PostFX {
         }
       });
       const prevOverride = scene.overrideMaterial;
+      const background = scene.background;
       scene.overrideMaterial = this.depthMat;
+      if (keepDistantSharp) scene.background = null;
       try {
         r.setRenderTarget(this.rtDepth);
         r.clear();
         r.render(scene, camera);
       } finally {
         scene.overrideMaterial = prevOverride;
+        scene.background = background;
         for (const o of gateVis) o.visible = true;
       }
     }
@@ -401,6 +409,7 @@ export class PostFX {
       this.dofMat.uniforms.tDepth.value = this.rtDepth.texture;
       this.dofMat.uniforms.uNear.value = camera.near;
       this.dofMat.uniforms.uFar.value = camera.far;
+      this.dofMat.uniforms.uKeepDistantSharp.value = keepDistantSharp;
       this._pass(this.dofMat, this.rtDof);
       color = this.rtDof.texture;
     }

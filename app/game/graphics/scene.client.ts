@@ -373,7 +373,7 @@ export class Graphics {
     this.renderer.info.reset();
     if (this.post) {
       try {
-        this.post.render(scene, camera, sim.time);
+        this.post.render(scene, camera, sim.time, sim.phase === 'playing');
       } catch (error) {
         if (!(error instanceof ShaderFailure)) throw error;
         this.clearPost(error.message);

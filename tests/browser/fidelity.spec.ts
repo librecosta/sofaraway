@@ -60,3 +60,25 @@ test('reloading a fixed-time capture reproduces the same pixels', async ({ page 
   await page.reload();
   expect((await capture()).equals(first)).toBe(true);
 });
+
+test('distant gates stay sharp while foreground depth of field remains active', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  // At 36 s a distant iris gate fills the centre, with tunnel wall in the upper left.
+  const gate = { x: 900, y: 515, width: 120, height: 85 };
+  const wall = { x: 30, y: 160, width: 220, height: 220 };
+  const capture = async (query: string) => {
+    await page.goto('/?vol=elsewhere&t=36&q=high&ui=0&dbg=1' + query);
+    await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+    await expect(page.locator('#errbox')).toContainText('"dof":true');
+    await page.addStyleTag({ content: '#errbox, #cursor { display: none; }' });
+    return {
+      gate: await page.screenshot({ clip: gate }),
+      wall: await page.screenshot({ clip: wall }),
+    };
+  };
+
+  const regular = await capture('');
+  const sharp = await capture('&dof=0');
+  expect(regular.gate.equals(sharp.gate)).toBe(true);
+  expect(regular.wall.equals(sharp.wall)).toBe(false);
+});
