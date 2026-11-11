@@ -15,10 +15,10 @@ export function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-export function clampSection(x: number, y: number, margin: number): Point {
-  const ax = SECTION.a - margin;
+export function clampSection(x: number, y: number, margin: number, extraWidth = 0): Point {
+  const ax = SECTION.a - margin + extraWidth;
   const ay = SECTION.b - margin;
-  const diagonal = SECTION.a + SECTION.b - SECTION.ch - margin * 1.9;
+  const diagonal = SECTION.a + extraWidth + SECTION.b - SECTION.ch - margin * 1.9;
   const px = clamp(x, -ax, ax);
   const py = clamp(y, -ay, ay);
   const d = Math.abs(px) + Math.abs(py);

@@ -9,6 +9,7 @@ const noSubscribe = () => () => {};
 export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime | null }) {
   const snapshot = useSyncExternalStore(runtime?.subscribe ?? noSubscribe, runtime?.getSnapshot ?? fallback, fallback);
   const visible = ['playing', 'paused', 'crash'].includes(snapshot.phase);
+  const routeHint = snapshot.routeHint;
   const speed = Math.max(0, Math.min(1, (snapshot.speed - 24) / 34)) * 100;
   return (
     <section id="hud" className={c('screen', !visible && 'hidden')}>
@@ -27,11 +28,10 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
         )}
         {snapshot.route && <div className={c('route-status')} id="hud-route">{snapshot.route.toUpperCase()}</div>}
       </div>
-      {snapshot.routeHint && (
-        <div className={c('route-hint')} id="route-hint">
-          <div>STEER TO CHOOSE</div>
-          <div><span>← {snapshot.routeHint.left.toUpperCase()}</span><span>MAIN</span>
-            <span>{snapshot.routeHint.right.toUpperCase()} →</span></div>
+      {snapshot.phase === 'playing' && routeHint && (
+        <div className={c('sr-only')} id="route-hint" role="status">
+          {snapshot.route ? `Entering ${snapshot.route} route.`
+            : `Steer left for ${routeHint.left}, straight for main, or right for ${routeHint.right}.`}
         </div>
       )}
       <div className={c('hud-tr')}>

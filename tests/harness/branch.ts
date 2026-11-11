@@ -9,8 +9,69 @@ import type { RunGate } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import type { BranchVisual } from '../../app/game/graphics/branch.client';
 import type { GateVisual } from '../../app/game/graphics/gates.client';
+import type { RouteHologram } from '../../app/game/graphics/route-hologram.client';
 import { Graphics } from '../../app/game/graphics/scene.client';
 import type { Tunnel } from '../../app/game/graphics/tunnel.client';
+
+export function inspectHologram() {
+  return ([[960, 540, true], [360, 800, false]] as const).map(([width, height, post]) => {
+    const volume = volumeById('elsewhere');
+    const diagnostics: Diagnostics = { fixedTime: null, autoplay: false, god: false, align: true, boost: false,
+      mobileQuality: false, post, record: false, debug: false, branchSide: 'right' };
+    const graphics = new Graphics(document.createElement('canvas'), 'high', false, diagnostics);
+    const sim = new Simulation(volume, diagnostics);
+    graphics.resize(width, height, 1);
+    graphics.load(volume);
+    graphics.prepare();
+    const { hologram } = Reflect.get(graphics, 'volume') as { hologram: RouteHologram };
+    const labels = Reflect.get(hologram, 'labels') as Record<string, THREE.BufferGeometry>;
+    let released = 0;
+    for (const geo of Object.values(labels)) geo.addEventListener('dispose', () => released++);
+    for (const root of hologram.scene.children) (root.children[0] as THREE.Mesh).geometry.addEventListener('dispose', () => released++);
+    const { gl } = graphics;
+    const read = () => {
+      const rows = Math.ceil(gl.drawingBufferHeight * 0.46);
+      const buffer = new Uint8Array(gl.drawingBufferWidth * rows * 4);
+      gl.readPixels(0, 0, gl.drawingBufferWidth, rows, gl.RGBA, gl.UNSIGNED_BYTE, buffer);
+      return buffer;
+    };
+    sim.start('normal', 0);
+    try {
+      const frames = [314.8, 318, 322.4, 323.2].map(beat => {
+        while (sim.beat < beat && sim.phase === 'playing') sim.step(STEP, { ...idleInput, boosting: true });
+        graphics.draw(sim, true);
+        const visible = sim.routeGuide ? hologram.scene.children : [];
+        const words = visible.map(root => Object.keys(labels).find(key => labels[key] === (root.children[1] as THREE.Mesh).geometry));
+        const bounds = visible.flatMap(root => root.children.map(object => {
+          const mesh = object as THREE.Mesh;
+          mesh.geometry.computeBoundingBox();
+          const { min, max } = mesh.geometry.boundingBox!;
+          const corners = [min.x, max.x].flatMap(x => [min.y, max.y].flatMap(y => [min.z, max.z].map(z =>
+            new THREE.Vector3(x, y, z).applyMatrix4(mesh.matrixWorld).project(hologram.camera))));
+          return { minX: Math.min(...corners.map(p => p.x)), maxX: Math.max(...corners.map(p => p.x)),
+            minY: Math.min(...corners.map(p => p.y)), maxY: Math.max(...corners.map(p => p.y)), thickness: max.z - min.z };
+        }));
+        let pixels = 0;
+        if (beat === 322.4) {
+          const on = read();
+          const render = hologram.render;
+          try {
+            hologram.render = () => {};
+            graphics.draw(sim, true);
+            const off = read();
+            for (let i = 0; i < on.length; i += 4) {
+              if (Math.abs(on[i] - off[i]) + Math.abs(on[i + 1] - off[i + 1]) + Math.abs(on[i + 2] - off[i + 2]) > 32) pixels++;
+            }
+          } finally { hologram.render = render; }
+        }
+        return { holograms: visible.length, labels: words, bounds, selected: sim.routeSide, gatesJudged: sim.gatesJudged, pixels };
+      });
+      const glError = gl.getError();
+      graphics.releaseSurface();
+      return { frames, glError, released };
+    } finally { graphics.dispose(); }
+  });
+}
 
 export function inspectJunction() {
   const volume = volumeById('elsewhere');
@@ -72,7 +133,7 @@ export function inspectJunction() {
         }).map(sign => sign.name);
         previewBeforeChoice.push({ beat: sim.beat, visible });
       }
-      advance(325);
+      advance(327);
       graphics.draw(sim, true);
       const during = graphics.metrics();
       const activeSide = sim.branch?.side!;

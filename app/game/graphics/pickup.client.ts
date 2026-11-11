@@ -1,7 +1,7 @@
 import * as THREE from 'three';
+import { PICKUP_PREVIEW_BEATS } from '../core/pickups';
 import type { PickupKind } from '../core/pickups';
 
-export const PICKUP_PREVIEW_BEATS = 8;
 const colors = { shield: '#64d8ff', resonance: '#ff84e1', lumen: '#ffe680' } as const;
 
 export class PickupVisual {
@@ -37,8 +37,7 @@ export class PickupVisual {
 
   update(beat: number, beatsAway: number) {
     this.material.opacity = 0.88 * (1 - THREE.MathUtils.smoothstep(beatsAway, 6, PICKUP_PREVIEW_BEATS));
-    this.group.rotateZ(beat * 0.45);
-    this.group.rotateY(Math.sin(beat * 0.5) * 0.35);
+    this.group.rotation.set(0, Math.sin(beat * 0.5) * 0.35, beat * 0.45);
   }
 
   dispose() {

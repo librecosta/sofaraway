@@ -102,12 +102,13 @@ export class InputController {
     return frame;
   }
 
-  moveReticle(input: InputFrame, x: number, y: number) {
+  moveReticle(input: InputFrame, x: number, y: number, extraWidth = 0) {
+    const rangeX = RANGE_X + extraWidth;
     if (input.dragX || input.dragY) {
-      this.pointer.x = (0.5 + x / RANGE_X * 0.31) * window.innerWidth;
+      this.pointer.x = (0.5 + x / rangeX * 0.31) * window.innerWidth;
       this.pointer.y = (0.5 - y / RANGE_Y * 0.31) * window.innerHeight - 64;
     } else if (input.axisX || input.axisY) {
-      this.pointer.x = (x / RANGE_X + 1) * window.innerWidth / 2;
+      this.pointer.x = (x / rangeX + 1) * window.innerWidth / 2;
       this.pointer.y = (1 - y / RANGE_Y) * window.innerHeight / 2;
     }
   }

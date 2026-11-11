@@ -26,10 +26,11 @@ const harness = {
   shaderMismatches,
   stoppedRunSignal,
   inspectJunction: async () => (await import('./branch')).inspectJunction(),
+  inspectHologram: async () => (await import('./branch')).inspectHologram(),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
-    return { branch: sim.branch, route: sim.route, metrics: graphics.metrics() };
+    return { branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
   },
   advanceAndPause(beat: number) {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');

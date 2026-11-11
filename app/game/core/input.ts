@@ -14,9 +14,10 @@ export const idleInput: InputFrame = {
   axisX: 0, axisY: 0, target: null, dragX: 0, dragY: 0, boosting: false,
 };
 
-export function steer(input: InputFrame, tx: number, ty: number, dt: number): Point {
-  const x = input.target?.[0] ?? tx;
+export function steer(input: InputFrame, tx: number, ty: number, dt: number, extraWidth = 0): Point {
+  const rangeX = RANGE_X + extraWidth;
+  const x = input.target ? input.target[0] * (rangeX / RANGE_X) : tx;
   const y = input.target?.[1] ?? ty;
-  return clampSection(x + input.dragX * RANGE_X * 2 / 0.62 + input.axisX * 6.2 * dt,
-    y - input.dragY * RANGE_Y * 2 / 0.62 + input.axisY * 6.2 * dt, 0.34);
+  return clampSection(x + input.dragX * rangeX * 2 / 0.62 + input.axisX * 6.2 * (1 + extraWidth / 18) * dt,
+    y - input.dragY * RANGE_Y * 2 / 0.62 + input.axisY * 6.2 * dt, 0.34, extraWidth);
 }

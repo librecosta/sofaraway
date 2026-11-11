@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { branchDistance, REJOIN_BEAT } from '../core/branches';
 import { canPass, clampSection, WALL } from '../core/collision';
-import { PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
+import { PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_PREVIEW_BEATS } from '../core/pickups';
 import { corridorLength } from '../core/simulation';
 import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
@@ -11,10 +11,11 @@ import { BranchPath } from './branch-path';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateVisual, THICKNESS } from './gates.client';
 import { buildPath } from './path';
-import { PICKUP_PREVIEW_BEATS, PickupVisual } from './pickup.client';
+import { PickupVisual } from './pickup.client';
 import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
 import type { QualityProfile } from './quality';
+import { RouteHologram } from './route-hologram.client';
 import { buildTextures } from './textures.client';
 import { Tunnel } from './tunnel.client';
 
@@ -31,6 +32,7 @@ class VolumeScene {
   readonly camera = new THREE.PerspectiveCamera(76, 1, 0.1, 420);
   readonly tunnel: Tunnel;
   readonly path: ReturnType<typeof buildPath>;
+  readonly hologram?: RouteHologram;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly geometry = new THREE.PlaneGeometry(WALL.w, WALL.h);
   private readonly visuals = new Map<RunGate, GateVisual>();
@@ -58,6 +60,7 @@ class VolumeScene {
       this.sky = makeSky(volume);
       this.scene.background = this.sky;
       this.scene.environment = environment;
+      if (volume.id === 'elsewhere') this.hologram = new RouteHologram();
     } catch (error) {
       this.dispose();
       throw error;
@@ -73,6 +76,7 @@ class VolumeScene {
       } else {
         renderer.compile(this.scene, this.camera);
       }
+      this.hologram?.prepare(renderer);
       // Keep the shared shader program alive through the first real gate.
       this.preparedGate?.dispose();
       this.preparedGate = gate;
@@ -93,7 +97,8 @@ class VolumeScene {
     const cameraFrame = junction && sim.branch?.side
       ? junction.path.sample(distance, sim.branch.side, this.cameraFrame)
       : this.path.sample(distance, this.cameraFrame);
-    const [cx, cy] = clampSection(x * 0.88, y * 0.88, 0.62);
+    const width = sim.steeringWidth;
+    const [cx, cy] = clampSection(x * 0.88, y * 0.88, 0.62, width);
     this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
     this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
     this.camera.quaternion.setFromRotationMatrix(this.basis);
@@ -132,7 +137,7 @@ class VolumeScene {
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
       if (sim.phase === 'playing' || previousPhase === 'playing') {
         this.camera.fov = 76 + pulse * 3.4
-          + (sim.phase === 'playing' ? (sim.boosting ? 7 : 0) + Math.min(sim.speed, 56) * 0.045 : 0);
+          + (sim.phase === 'playing' ? (sim.boosting ? 7 : 0) + Math.min(sim.speed, 56) * 0.045 + width : 0);
         this.camera.updateProjectionMatrix();
       }
     }
@@ -216,6 +221,7 @@ class VolumeScene {
   dispose() {
     this.preparedGate?.dispose();
     this.pickup?.dispose();
+    this.hologram?.dispose();
     this.junction?.dispose();
     this.disposeJunctionPrograms?.();
     for (const visual of this.visuals.values()) visual.dispose();
@@ -386,6 +392,7 @@ export class Graphics {
     if (!this.camera) return;
     this.camera.aspect = this.width / this.height;
     this.camera.updateProjectionMatrix();
+    this.volume?.hologram?.resize(this.camera.aspect);
   }
 
   private readDeviceCapabilities() {
@@ -457,6 +464,8 @@ export class Graphics {
       this.renderer.setRenderTarget(null);
       this.withCoreShaders(() => this.renderer.render(scene, camera));
     }
+    const routeGuide = sim.routeGuide;
+    if (routeGuide) this.volume.hologram?.render(this.renderer, routeGuide, sim.routeSide, !!sim.route);
     return this.locked;
   }
 

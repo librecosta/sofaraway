@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { difficulties } from '../../app/game/contracts';
-import { branchDistance, branchLayout, BRANCH_PREVIEW_BEAT, MERGE_BEAT, REJOIN_BEAT,
+import { branchDistance, branchLayout, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SIDE_THRESHOLD, BRANCH_SPACING, MERGE_BEAT, REJOIN_BEAT,
   ROUTE_GATE_MULTIPLIERS, routeCharts, routeSides, selectSide, SPLIT_BEAT } from '../../app/game/core/branches';
 import type { RouteSide } from '../../app/game/core/branches';
 import { chartFor } from '../../app/game/core/chart';
@@ -11,7 +11,7 @@ import { pickupForSeed } from '../../app/game/core/pickups';
 import { corridorLength, Simulation } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
-import { BranchPath, BRANCH_OPEN_BEAT, BRANCH_SPACING } from '../../app/game/graphics/branch-path';
+import { BranchPath } from '../../app/game/graphics/branch-path';
 import { buildPath } from '../../app/game/graphics/path';
 
 const volume = volumeById('elsewhere');
@@ -20,9 +20,9 @@ const layoutSeeds = [
   Array.from({ length: 32 }, (_, i) => i).find(seed => branchLayout(seed).right === 'challenge')!,
 ];
 const routeBeats = {
-  main: [324, 327, 330, 333, 336, 339, 342, 345],
-  challenge: [324, 326, 328, 330, 332, 334, 336, 338, 340, 342, 344, 346],
-  score: Array.from({ length: 24 }, (_, i) => 324 + i),
+  main: [326, 329, 332, 335, 338, 341, 344, 347],
+  challenge: [326, 328, 330, 332, 334, 336, 338, 340, 342, 344, 346, 348],
+  score: Array.from({ length: 24 }, (_, i) => 326 + i),
 };
 const counts = { easy: [140, 144, 156], normal: [141, 145, 157], hard: [141, 145, 157] };
 const scores = { easy: [66201, 74201, 70001], normal: [105326, 118126, 111406], hard: [156826, 176026, 165946] };
@@ -56,7 +56,7 @@ test('one seed keeps both streams reproducible while layout varies independently
   }
 });
 
-test.each([[-1.25, 'left'], [-1.249, 'center'], [0, 'center'], [1.249, 'center'], [1.25, 'right']] as const)(
+test.each([[-2.4, 'left'], [-2.399, 'center'], [0, 'center'], [2.399, 'center'], [2.4, 'right']] as const)(
   'x=%s selects %s', (x, side) => expect(selectSide(x)).toBe(side),
 );
 
@@ -68,12 +68,36 @@ test('the split uses the position at the crossing, not the end of the tick', () 
   options.align = false;
   // Fractional initial offset makes the crossing internal to the tick.
   sim.beat = 319.988;
-  sim.camera.x = 1.22;
-  sim.step(STEP, { ...idleInput, target: [1.22 + 0.06 / (1 - Math.exp(-20 * STEP)), 0] });
-  expect(sim.camera.x).toBeCloseTo(1.28, 8);
+  sim.camera.x = 2.37;
+  sim.camera.tx = 2.37 + 0.06 / (1 - Math.exp(-20 * STEP));
+  sim.step(STEP, idleInput);
+  expect(sim.camera.x).toBeGreaterThan(BRANCH_SIDE_THRESHOLD);
   expect(sim.branch?.side).toBe('center');
   while (sim.beat < 322) sim.step(STEP, { ...idleInput, target: [-2.6, 0] });
   expect(sim.branch?.side).toBe('center');
+});
+
+test.each(['keyboard', 'mouse', 'touch'] as const)('%s can traverse the widened hall and transfers into a normal tunnel', control => {
+  const flags = { align: true };
+  const sim = new Simulation(volume, flags);
+  sim.start('hard', 0);
+  while (sim.beat < BRANCH_PREVIEW_BEAT) sim.step(STEP, idleInput);
+  flags.align = false;
+  expect(sim.camera.x).toBeCloseTo(0, 1);
+  while (sim.beat + STEP / sim.secondsPerBeat < SPLIT_BEAT) {
+    sim.step(STEP, { ...idleInput, axisX: control === 'keyboard' ? -1 : 0,
+      target: control === 'mouse' ? [-3.4, 0] : null, dragX: control === 'touch' ? -0.006 : 0 });
+  }
+  expect(sim.camera.x).toBeLessThan(-6);
+  while (sim.beat < BRANCH_OPEN_BEAT) {
+    const x = sim.camera.x;
+    sim.step(STEP, idleInput);
+    expect(Math.abs(sim.camera.x - x)).toBeLessThan(0.4);
+  }
+  expect(sim.branch?.side).toBe('left');
+  expect(Math.abs(sim.camera.x)).toBeLessThanOrEqual(SECTION.a - 0.34 + 1e-8);
+  expect(sim.steeringWidth).toBe(0);
+  expect(sim.gatesJudged).toBe(94);
 });
 
 test.each(difficulties.flatMap(difficulty => layoutSeeds.flatMap(seed => kinds.map(route => ({ difficulty, seed, route })))))(
@@ -100,7 +124,7 @@ test.each(difficulties.flatMap(difficulty => layoutSeeds.flatMap(seed => kinds.m
       let input = idleInput;
       if (next && (!last || (sim.beat - last.beat) * sim.secondsPerBeat >= 0.150 - 1e-9)) {
         const [x, y] = !sim.branch?.side && before >= prefix.length
-          ? [side === 'left' ? -2.15 : side === 'right' ? 2.15 : 0, 0] : lanePoint(next.kind, next.sector, 0);
+          ? [side === 'left' ? -3.2 : side === 'right' ? 3.2 : 0, 0] : lanePoint(next.kind, next.sector, 0);
         input = { ...idleInput, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) };
       }
       sim.step(STEP, input);
@@ -165,7 +189,7 @@ test.each(['cruise', 'boost', 'toggle'] as const)('%s keeps the camera path cont
   }
   const track = path!;
   expect(track.split).toBeCloseTo(branchDistance(sim.branch!.anchor!, SPLIT_BEAT), 8);
-  for (const beat of [BRANCH_OPEN_BEAT, 324, 336, MERGE_BEAT]) {
+  for (const beat of [BRANCH_OPEN_BEAT, 326, 336, MERGE_BEAT]) {
     const s = track.distanceAt(beat);
     const center = track.sample(s, 'center');
     const left = track.sample(s, 'left');

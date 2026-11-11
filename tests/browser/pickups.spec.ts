@@ -4,7 +4,8 @@ import type { GameOptions } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
-import { PICKUP_BEAT, pickupForSeed } from '../../app/game/core/pickups';
+import { PICKUP_APPEAR_BEAT, PICKUP_BEAT, pickupForSeed } from '../../app/game/core/pickups';
+import type {} from '../harness/main';
 import type { Simulation } from '../../app/game/core/simulation';
 import type { Graphics } from '../../app/game/graphics/scene.client';
 import type { Runtime } from '../../app/game/runtime/GameRuntime.client';
@@ -129,3 +130,36 @@ for (const { kind, boost, feedback, badge } of cases) {
     expect(errors).toEqual([]);
   });
 }
+
+test('ordinary restarts surface all three pickups per batch, even with repeated random words', async ({ page }) => {
+  const lumenSeed = Array.from({ length: 30 }, (_, i) => i).find(seed => pickupForSeed(seed) === 'lumen')!;
+  await page.addInitScript(seed => {
+    const random = Crypto.prototype.getRandomValues;
+    Crypto.prototype.getRandomValues = function <T extends ArrayBufferView<ArrayBuffer>>(array: T): T {
+      if (array instanceof Uint32Array && array.length === 1) { array[0] = seed; return array; }
+      return random.call(this, array) as T;
+    };
+  }, lumenSeed);
+  await page.goto('http://127.0.0.1:8090/');
+  const encountered = await page.evaluate(async appear => {
+    const game = window.b0Harness;
+    await game.mount({ quality: 'low', diagnostics: { fixedTime: null, autoplay: false, god: false,
+      align: true, boost: false, mobileQuality: false, post: true, record: false, debug: false } });
+    await game.start(true);
+    game.advanceAndPause(appear - 0.1);
+    game.returnToMenu();
+    const kinds = [];
+    for (let i = 0; i < 12; i++) {
+      await game.start(true);
+      const encounter = game.advanceAndPause(appear + 0.2);
+      kinds.push(encounter.pickup?.kind);
+      game.returnToMenu();
+    }
+    game.dispose();
+    return kinds;
+  }, PICKUP_APPEAR_BEAT);
+  expect(encountered[0]).toBe('lumen');
+  for (let i = 0; i < 12; i += 3) {
+    expect(encountered.slice(i, i + 3).sort()).toEqual(['lumen', 'resonance', 'shield']);
+  }
+});

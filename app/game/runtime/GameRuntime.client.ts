@@ -1,9 +1,9 @@
 import { initialSnapshot } from '../contracts';
 import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, QualityTier, VolumeId } from '../contracts';
 import { FixedStepClock, MAX_STEPS, STEP } from '../core/clock';
-import { BRANCH_PREVIEW_BEAT } from '../core/branches';
 import { clamp } from '../core/collision';
 import { idleInput } from '../core/input';
+import { PickupDeck, PICKUP_APPEAR_BEAT } from '../core/pickups';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
@@ -31,6 +31,8 @@ export class Runtime implements GameRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly events = new AbortController();
   private readonly clock = new FixedStepClock();
+  private readonly pickupDeck = new PickupDeck();
+  private pendingPickupDraw = false;
   private readonly audio = new AudioTransport(reason => this.pause(reason));
   private graphics?: Graphics;
   private simulation?: Simulation;
@@ -112,7 +114,10 @@ export class Runtime implements GameRuntime {
     this.noticeUntil = 0;
     this.clock.reset();
     this.silent = silent;
-    sim.start(this.snapshot.difficulty, this.options?.runSeed ?? createRunSeed());
+    const fixedSeed = this.options?.runSeed;
+    const seed = fixedSeed ?? createRunSeed();
+    this.pendingPickupDraw = fixedSeed === undefined && sim.volume.id === 'elsewhere';
+    sim.start(this.snapshot.difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined);
     try {
       if (silent) this.graphics?.warmSurface(sim, false);
     } catch (error) {
@@ -168,10 +173,12 @@ export class Runtime implements GameRuntime {
     this.resumePending = false;
     this.audio.stop();
     this.input?.clear();
+    this.pendingPickupDraw = false;
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
-      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, route: null, routeHint: null });
+      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0,
+      route: null, routeHint: null });
   }
 
   async selectVolume(id: VolumeId) {
@@ -373,8 +380,13 @@ export class Runtime implements GameRuntime {
     const input = this.input?.read() ?? idleInput;
     const { lives, pickup, branch } = sim;
     sim.step(STEP, input);
-    this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty);
-    if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch) this.publishRun();
+    this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty, sim.steeringWidth);
+    if (this.pendingPickupDraw && sim.phase === 'playing' && sim.pickup && sim.beat >= PICKUP_APPEAR_BEAT) {
+      this.pickupDeck.consume();
+      this.pendingPickupDraw = false;
+    }
+    if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch ||
+      sim.routeGuide !== this.snapshot.routeHint) this.publishRun();
   }
 
   private draw(sim: Simulation, now: number, updateScene = true) {
@@ -541,9 +553,7 @@ export class Runtime implements GameRuntime {
       speed: sim.speed, progress: sim.progress, section: sim.section, result: sim.result,
       boosting: this.snapshot.phase === 'playing' && sim.boosting,
       shield: sim.shield, resonance: sim.resonance,
-      route: sim.route,
-      routeHint: sim.phase === 'playing' && sim.beat >= BRANCH_PREVIEW_BEAT && sim.branch && !sim.branch.side
-        ? sim.branch.layout : null,
+      route: sim.route, routeHint: sim.routeGuide,
       message: performance.now() < this.noticeUntil ? this.notice : sim.message,
       hint: this.snapshot.phase === 'playing' && sim.beat < 15, ...patch });
   }

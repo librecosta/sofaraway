@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { MERGE_BEAT, routeSides } from '../core/branches';
+import { branchSpread, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SPACING, MERGE_BEAT, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { SECTION } from '../core/collision';
-import { BranchPath, hallSpread, BRANCH_OPEN_BEAT, BRANCH_SPACING, pathFrame } from './branch-path';
+import { BranchPath, pathFrame } from './branch-path';
 import type { PathFrame } from './path';
 
 const styles = {
-  main: { color: '#72ffda', spacing: 5.5, width: 0.037 },
-  challenge: { color: '#ffbd69', spacing: 3.2, width: 0.062 },
-  score: { color: '#cab0ff', spacing: 8.5, width: 0.047 },
-} satisfies Record<RouteKind, { color: string; spacing: number; width: number }>;
+  main: { color: '#72ffda', spacing: 5.5, width: 0.028, brightness: 0.48 },
+  challenge: { color: '#ffbd69', spacing: 4.3, width: 0.020, brightness: 0.22 },
+  score: { color: '#cab0ff', spacing: 8.5, width: 0.032, brightness: 0.50 },
+} satisfies Record<RouteKind, { color: string; spacing: number; width: number; brightness: number }>;
 
 const guideMaterial = () => new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, vertexColors: true, toneMapped: false });
 const signMaterial = (map: THREE.Texture, color = new THREE.Color(0xffffff)) =>
@@ -97,9 +97,9 @@ export class BranchVisual {
       const style = styles[layout[side]];
       const color = new THREE.Color(style.color);
       this.sweep(housing, side, entry, exit, false);
-      this.frames(rails, side, entry, exit, style.spacing, style.width, color);
-      this.guide(rails, side, path.split, entry, color);
-      this.guide(rails, side, exit, path.end, color);
+      this.frames(rails, side, entry, exit, style.spacing, style.width, color.clone().multiplyScalar(style.brightness));
+      this.guide(rails, side, path.split, entry, color.clone().multiplyScalar(0.65));
+      this.guide(rails, side, exit, path.end, color.clone().multiplyScalar(0.65));
       this.sign(side, layout[side], color);
     }
     const housingMesh = new THREE.Mesh(housing.geometry(), shell);
@@ -112,7 +112,7 @@ export class BranchVisual {
   }
 
   private sweep(target: Quads, side: RouteSide, from: number, through: number, wide: boolean) {
-    const width = (s: number) => a + (wide ? hallSpread(this.path.beatAt(s)) : 0);
+    const width = (s: number) => a + (wide ? branchSpread(this.path.beatAt(s), BRANCH_PREVIEW_BEAT) : 0);
     const count = Math.ceil((through - from) / 2.5);
     let last = from;
     let previous = profile(width(last));

@@ -165,7 +165,7 @@ test('Shield protects a failed Challenge gate without changing the selected char
   advance(sim, 320, input);
   const { lives, gatesJudged, gatesPassed } = sim;
   flags.align = false;
-  advance(sim, 324, { ...input, target: [0, 0] });
+  advance(sim, 326, { ...input, target: [0, 0] });
   expect([sim.route, sim.gatesTotal, sim.lives, sim.shield, sim.combo, sim.gatesJudged, sim.gatesPassed])
     .toEqual(['challenge', 145, lives, false, 0, gatesJudged + 1, gatesPassed]);
 });
@@ -207,7 +207,7 @@ test('Resonance adds 25% to eight successful gate awards, including Boost and CL
   advance(sim, 320, input);
   expect(sim.route).toBe('challenge');
   for (let passed = 1; passed <= 8; passed++) {
-    const earned = scoreTo(324 + 2 * (passed - 1), input);
+    const earned = scoreTo(326 + 2 * (passed - 1), input);
     const normal = (100 * 1.5 * (1 + passed * 0.05) + 150) * mult * 2;
     expect(earned).toBeCloseTo(normal * (passed <= 7 ? 1.25 : 1), 8);
     expect(sim.resonance).toBe(Math.max(7 - passed, 0));

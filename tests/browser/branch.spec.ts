@@ -33,15 +33,14 @@ test('the live junction has visible labelled mouths, route-local gates and bound
 test('fixed time reproduces the junction view and all route results', async ({ page }) => {
   await page.goto(fixed(319.9));
   const layout = branchLayout(0);
-  await expect(page.locator('#route-hint')).toContainText(`← ${layout.left.toUpperCase()}`);
-  await expect(page.locator('#route-hint')).toContainText(`${layout.right.toUpperCase()} →`);
+  await expect(page.locator('#route-hint')).toHaveText(`Steer left for ${layout.left}, straight for main, or right for ${layout.right}.`);
   const capture = async () => {
     await page.addStyleTag({ content: '#ui, #cursor, #errbox { display:none!important; }' });
     return page.locator('#gl').screenshot();
   };
   const image = await capture();
   await page.reload();
-  await expect(page.locator('#route-hint')).toBeVisible();
+  await expect(page.locator('#route-hint')).toHaveCount(1);
   expect((await capture()).equals(image)).toBe(true);
 
   const count = { main: 141, challenge: 145, score: 157 };
@@ -55,6 +54,30 @@ test('fixed time reproduces the junction view and all route results', async ({ p
     await expect(page.locator('#over-gates')).toHaveText(`${count[route]}/${count[route]}`);
     await expect(page.locator('#over-score')).toHaveText(String(scores[route]));
   }
+});
+
+test('three extruded holograms stay in the lower view through the portal', async ({ page }) => {
+  await page.goto(harnessUrl);
+  const checks = await page.evaluate(() => window.b0Harness.inspectHologram());
+  for (const { frames, glError, released } of checks) {
+    expect(frames.map(frame => frame.holograms)).toEqual([0, 3, 3, 0]);
+    expect(frames[1].labels).toEqual(['score', 'main', 'challenge']);
+    expect(frames[2].labels).toEqual(frames[1].labels);
+    expect(frames[1].bounds).toEqual(frames[2].bounds);
+    expect(frames[2].selected).toBe('right');
+    expect(frames[2].gatesJudged).toBe(94);
+    expect(frames[2].pixels).toBeGreaterThan(100);
+    expect(frames[2].bounds).toHaveLength(6);
+    expect(frames[2].bounds.every(bound => bound.minX > -1 && bound.maxX < 1 &&
+      bound.minY > -1 && bound.maxY < 0 && bound.thickness > 0.08)).toBe(true);
+    expect(glError).toBe(0);
+    expect(released).toBe(6);
+  }
+  await page.goto(fixed(322.4, 'right', true));
+  await expect(page.locator('#route-hint')).toHaveText('Entering challenge route.');
+  await page.goto(fixed(323.2, 'right', true));
+  await expect(page.locator('#hud-route')).toHaveText('CHALLENGE');
+  await expect(page.locator('#route-hint')).toHaveCount(0);
 });
 
 test('a locked branch survives pause, WebGL loss and BFCache then resets on restart', async ({ page }) => {

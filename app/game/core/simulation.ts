@@ -1,10 +1,10 @@
 import type { Difficulty, RunResult } from '../contracts';
-import { branchDistance, branchLayout, BRANCH_PREVIEW_BEAT, REJOIN_BEAT,
+import { branchDistance, branchLayout, branchSteeringWidth, BRANCH_GUIDANCE_END, BRANCH_PREVIEW_BEAT, BRANCH_SIDE_THRESHOLD, REJOIN_BEAT,
   ROUTE_GATE_MULTIPLIERS, routeCharts, selectSide, SPLIT_BEAT } from './branches';
 import type { BranchRun, RouteKind, RouteSide } from './branches';
 import { chartFor, difficultySettings } from './chart';
 import type { ChartGate } from './chart';
-import { canPass, clamp, lanePoint, opening } from './collision';
+import { canPass, clamp, lanePoint, opening, SECTION } from './collision';
 import type { Axis } from './collision';
 import { steer } from './input';
 import type { InputFrame } from './input';
@@ -83,6 +83,12 @@ export class Simulation {
 
   get gatesTotal() { return this.chart.length; }
   get route() { return this.branch?.side ? this.branch.layout[this.branch.side] : null; }
+  get routeGuide() {
+    return this.phase === 'playing' && this.beat + 1e-9 >= BRANCH_PREVIEW_BEAT && this.beat < BRANCH_GUIDANCE_END
+      ? this.branch?.layout ?? null : null;
+  }
+  get routeSide() { return this.routeGuide ? this.branch?.side ?? selectSide(this.camera.x) : null; }
+  get steeringWidth() { return this.branch ? branchSteeringWidth(this.beat) : 0; }
   get trackDistance() {
     const { anchor, exit } = this.branch ?? {};
     if (!anchor) return this.distance;
@@ -108,7 +114,7 @@ export class Simulation {
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
 
-  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED) {
+  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED, pickupKind = pickupForSeed(runSeed)) {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
@@ -143,7 +149,7 @@ export class Simulation {
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
     this.previewGates = [];
     this.difficulty = difficulty;
-    this.pickup = this.volume.id === 'elsewhere' ? { kind: pickupForSeed(runSeed), status: 'pending' } : null;
+    this.pickup = elsewhere ? { kind: pickupKind, status: 'pending' } : null;
     this.pickupTime = -Infinity;
     this.shield = false;
     this.resonance = 0;
@@ -204,6 +210,7 @@ export class Simulation {
     }
 
     const previousBeat = this.beat;
+    const previousWidth = this.steeringWidth;
     const previousDistance = this.distance;
     const previousSpeed = this.speed;
     this.beat = Math.min(this.volume.beats, this.beat + dt / this.secondsPerBeat);
@@ -215,21 +222,30 @@ export class Simulation {
     this.distance += this.speed * elapsed;
     this.score += this.speed * elapsed * 0.35;
 
-    [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt);
+    const width = this.steeringWidth;
+    const { x, y } = camera;
+    if (width < previousWidth) {
+      // Transfer the expanded position into the ordinary tunnel without snapping at the portal.
+      const limit = SECTION.a - 0.34;
+      const scale = (limit + width) / (limit + previousWidth);
+      camera.x *= scale;
+      camera.tx *= scale;
+    }
+    [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt, width);
     const next = this.chart[this.judged];
     if (this.options.align && next) {
       if (this.branch && !this.branch.side && next.beat >= REJOIN_BEAT) {
         const side = this.options.branchSide;
-        [camera.tx, camera.ty] = [side === 'left' ? -2.15 : side === 'right' ? 2.15 : 0, 0];
+        const aim = Math.min(SECTION.a - 0.34 + width, BRANCH_SIDE_THRESHOLD + 0.65);
+        [camera.tx, camera.ty] = [side === 'left' ? -aim : side === 'right' ? aim : 0, 0];
       } else if (next.beat <= this.beat + 9) {
         [camera.tx, camera.ty] = lanePoint(next.kind, next.open, next.axis);
       }
     }
-    const { x, y } = camera;
     const damp = 1 - Math.exp(-dt * 20);
     camera.x += (camera.tx - camera.x) * damp;
     camera.y += (camera.ty - camera.y) * damp;
-    camera.roll += (-camera.x * 0.028 - camera.roll) * (1 - Math.exp(-dt * 8));
+    camera.roll += (-camera.x * 0.028 * (SECTION.a / (SECTION.a + width)) - camera.roll) * (1 - Math.exp(-dt * 8));
 
     if (this.branch && ((!this.branch.anchor && this.beat + 1e-9 >= BRANCH_PREVIEW_BEAT) ||
       (!this.branch.side && this.beat + 1e-9 >= SPLIT_BEAT) || (!this.branch.exit && this.beat + 1e-9 >= REJOIN_BEAT))) {
