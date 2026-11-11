@@ -15,7 +15,6 @@ export interface RuntimeView {
   pointer(view: PointerView): void;
   flash(opacity: number, color: string): void;
   debug(text: string): void;
-  shake?(x: number, y: number): void;
   key?(key: string, event: KeyboardEvent): boolean;
   best?(score: number): void;
   muted?(value: boolean): void;
@@ -52,8 +51,6 @@ export class Runtime implements GameRuntime {
   private switchMs = 0;
   private notice = '';
   private noticeUntil = 0;
-  private shakeX = 0;
-  private shakeY = 0;
 
   constructor(private readonly view: RuntimeView) {}
 
@@ -134,6 +131,7 @@ export class Runtime implements GameRuntime {
     this.resumePending = false;
     this.audio.stop(true);
     this.input?.clear();
+    this.view.flash(0, '#fff');
     this.publishRun({ phase: 'paused', pauseReason: reason, error: reason === 'audio' ? audioError : null,
       boosting: false });
   }
@@ -170,7 +168,6 @@ export class Runtime implements GameRuntime {
     this.input?.clear();
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
-    this.view.shake?.(0, 0);
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
       pauseReason: null, result: null, hint: false, boosting: false });
   }
@@ -361,7 +358,7 @@ export class Runtime implements GameRuntime {
           this.nextPublish = now + 80;
           this.publishRun();
         }
-        this.trackFrame(dt);
+        if (this.snapshot.phase !== 'paused') this.trackFrame(dt);
       }
       if (!fixed) this.draw(sim, now);
       this.schedule();
@@ -375,29 +372,27 @@ export class Runtime implements GameRuntime {
     const lives = sim.lives;
     sim.step(STEP, input);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty);
-    if (lives !== sim.lives) {
-      this.shakeX = (Math.random() - 0.5) * 22;
-      this.shakeY = (Math.random() - 0.5) * 22;
-      this.publishRun();
-    }
+    if (lives !== sim.lives) this.publishRun();
   }
 
   private draw(sim: Simulation, now: number, updateScene = true) {
     const graphics = this.graphics;
     if (!graphics || this.contextLost) return;
     const fixed = this.options?.diagnostics.fixedTime != null;
-    const locked = graphics.draw(sim, fixed, updateScene);
+    // Leave the last frame in place behind the pause UI; keep servicing the pointer.
+    const paused = this.snapshot.phase === 'paused';
+    const locked = !paused && graphics.draw(sim, fixed, updateScene);
     if (this.input) {
       this.input.pointer.locked = locked && this.snapshot.phase === 'playing';
       this.view.pointer(this.input.pointer);
     }
-    const hit = Math.max(0, 1 - (sim.time - sim.hitTime) / 0.38);
-    const end = clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1);
-    const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
-    const opacity = sim.phase === 'results' ? 0 : Math.max(hit * 0.9, end * 0.95, start * 0.9);
-    this.view.flash(opacity, hit ? '#ff5a5a' : '#fff');
-    const shake = !fixed && sim.time - sim.hitTime < 0.09;
-    this.view.shake?.(shake ? this.shakeX : 0, shake ? this.shakeY : 0);
+    if (!paused) {
+      const hit = Math.max(0, 1 - (sim.time - sim.hitTime) / 0.38);
+      const end = clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1);
+      const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
+      const opacity = sim.phase === 'results' ? 0 : Math.max(hit * 0.9, end * 0.95, start * 0.9);
+      this.view.flash(opacity, hit ? '#ff5a5a' : '#fff');
+    }
     if (this.recorder && graphics.camera) {
       this.recorder.sample(now / 1000, graphics.camera, sim, sim.camera);
       this.recorder.draw();
@@ -428,6 +423,8 @@ export class Runtime implements GameRuntime {
   private resize = () => {
     try {
       this.resizeGraphics();
+      // A canvas resize clears the frozen frame, so draw it once at the new size.
+      if (!this.contextLost && this.simulation && this.snapshot.phase === 'paused') this.graphics?.draw(this.simulation, true);
     } catch (error) {
       this.fail(error);
     }

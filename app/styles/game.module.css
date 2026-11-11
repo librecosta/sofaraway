@@ -362,6 +362,11 @@ html,body{
 }
 :global(#panel-body) a{ color:var(--accent); text-decoration:none; }
 .modal-inner .btn{ margin-top:3.2vh; }
+.fallback-actions{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:8px 14px;
+  margin-top:3.2vh;
+}
+.fallback-actions .btn{ margin-top:0; }
 
 /* ================================================================== *
    WIREFRAME (menu) MODE

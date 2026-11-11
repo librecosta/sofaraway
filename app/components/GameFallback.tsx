@@ -28,13 +28,15 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings }: P
       <div className={c('modal-inner')}>
         <div className={c('eyebrow')}><i /><span>{title}</span><i /></div>
         <p role={error ? 'alert' : 'status'}>{message}</p>
-        <button className={c('btn', 'tiny')} disabled={waitingForGraphics} onClick={retry}>
-          {phase === 'paused' ? 'RESUME' : 'TRY AGAIN'}
-        </button>
-        {error?.kind === 'audio' && <button className={c('btn', 'tiny')} onClick={startSilent}>PLAY WITH SOUND OFF</button>}
-        {phase === 'paused' && <button className={c('btn', 'tiny')} onClick={settings}>SETTINGS</button>}
-        {['paused', 'playing', 'crash', 'results'].includes(phase) &&
-          <button className={c('btn', 'tiny')} onClick={menu}>BACK TO MENU</button>}
+        <div className={c('fallback-actions')}>
+          <button className={c('btn', 'tiny')} disabled={waitingForGraphics} onClick={retry}>
+            {phase === 'paused' ? 'RESUME' : 'TRY AGAIN'}
+          </button>
+          {error?.kind === 'audio' && <button className={c('btn', 'tiny')} onClick={startSilent}>PLAY WITH SOUND OFF</button>}
+          {phase === 'paused' && <button className={c('btn', 'tiny')} onClick={settings}>SETTINGS</button>}
+          {['paused', 'playing', 'crash', 'results'].includes(phase) &&
+            <button className={c('btn', 'tiny')} onClick={menu}>BACK TO MENU</button>}
+        </div>
       </div>
     </section>
   );

@@ -105,9 +105,6 @@ export function GameViewport() {
           flash.current.style.backgroundColor = color;
           flash.current.style.opacity = String(opacity);
         },
-        shake(x, y) {
-          if (viewport.current) viewport.current.style.transform = x || y ? `translate(${x}px,${y}px)` : '';
-        },
         debug(text) { if (debug.current) debug.current.textContent = text; },
         key: (key, event) => keys.current(key, event),
         best: score => saveSetting('best', score),
