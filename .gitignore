@@ -16,6 +16,7 @@ desktop.ini
 # Tooling
 node_modules/
 .react-router/
+.wrangler/
 build/
 test-results/
 playwright-report/

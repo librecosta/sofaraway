@@ -17,12 +17,12 @@ when it arrives.
 Four volumes. Each is a different corridor, a different kind of glass, and a
 different arrangement — but the same engine underneath.
 
-| | World | Glass | Music | Length | Gates |
+| | World | Glass | Music | Length | Gates (Normal) |
 |---|---|---|---|---|---|
 | **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing | techno · 128 | 3:30 | 144 |
 | **II · DRIFT** | open canal, sky above | **shutter** — one of three slats missing, horizontal or vertical | downtempo · 96 | 2:20 | 40 |
-| **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 4:10 | 158 |
-| **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:00 | 91 |
+| **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 3:38 | 158 |
+| **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:12 | 91 |
 
 The palette, the pulse and the gates are all driven by the same beat clock, so
 the world moves to the music rather than alongside it.
@@ -38,15 +38,21 @@ npm run dev
 
 For a production preview, run `npm run build` and `npm start`, then open
 <http://127.0.0.1:8080>. Any ordinary HTTP static server can serve `build/client`.
+Configure the host to return `404.html` with status 404 for unknown paths.
+See the [release readiness report](docs/audits/C0-D-release-readiness-report.md)
+for Cloudflare Workers Static Assets and EdgeOne Pages settings.
 
 ### Tests
 
 ```sh
 npx playwright install chromium
-npm run typecheck
+npm run test:release
 npm test
 npm run test:perf
 ```
+
+The release check runs the strict type check, production build and static-site
+smoke tests. Set `RELEASE_CHROMIUM_CHANNEL=chrome` to use installed Chrome.
 
 For the C0-A browser matrix, install the matching browser engines with
 `npx playwright install chromium firefox webkit`, then run `npm run test:compat`.
@@ -128,11 +134,10 @@ existing `post`, `dof`, `panel`, `auto`, and `q=mobile` diagnostics.
 
 ## Status
 
-Four volumes are playable end to end. Art pass 1 geometry remains in place.
-C0 covers cross-device engine stability, compatibility and real-device
-performance. D0 covers art, music and gameplay polish. The game generates
-environment geometry, textures and music at runtime. Screenshots in `shots/`
-are for documentation.
+`dev` is the engineering baseline. D0 covers art, music and gameplay polish.
+The game generates environment geometry, textures and music at runtime.
+Screenshots in `shots/` are for documentation. The release readiness report
+lists the remaining device, listening and publication checks.
 
 ## Credits
 
@@ -148,4 +153,6 @@ takes it somewhere else.
 
 ## License
 
-[MIT](LICENSE)
+This branch carries the [MIT license](LICENSE). The default `main` branch
+carries BSD-3-Clause. See the release readiness report for the pending
+maintainer decision and third-party notices.

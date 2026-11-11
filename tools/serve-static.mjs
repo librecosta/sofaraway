@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 
 const argument = process.argv[2];
@@ -19,20 +19,32 @@ const types = {
   '.json': 'application/json',
   '.woff2': 'font/woff2',
   '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.txt': 'text/plain; charset=utf-8',
 };
+const revalidate = 'public, max-age=0, must-revalidate';
+const fingerprinted = /^\/(?:tools\/)?assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
 
 createServer(async (request, response) => {
   try {
     const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
     const file = resolve(root, '.' + (pathname.endsWith('/') ? pathname + 'index.html' : pathname));
-    if (!file.startsWith(root + sep) || !(await stat(file)).isFile()) throw new Error('Not found');
-    if (process.env.STABILITY_HTTP_CACHE === '1' && pathname.startsWith('/assets/')) {
-      response.setHeader('Cache-Control', 'public, max-age=600, immutable');
+    if (!file.startsWith(root + sep)) throw new Error('Not found');
+    const body = await readFile(file);
+    const etag = '"' + createHash('sha256').update(body).digest('hex') + '"';
+    const immutable = fingerprinted.test(pathname);
+    const age = process.env.STABILITY_HTTP_CACHE === '1' ? 600 : 31536000;
+    response.setHeader('Cache-Control', immutable ? `public, max-age=${age}, immutable` : revalidate);
+    response.setHeader('ETag', etag);
+    if (request.headers['if-none-match']?.split(',').some(tag => ['*', etag].includes(tag.trim().replace(/^W\//, '')))) {
+      response.writeHead(304).end();
+      return;
     }
     response.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream' });
-    if (request.method === 'HEAD') response.end();
-    else createReadStream(file).on('error', () => response.destroy()).pipe(response);
+    response.end(request.method === 'HEAD' ? undefined : body);
   } catch {
-    response.writeHead(404).end('Not found');
+    const page = await readFile(resolve(root, '404.html')).catch(() => null);
+    response.writeHead(404, { 'Content-Type': page ? types['.html'] : types['.txt'], 'Cache-Control': revalidate });
+    response.end(request.method === 'HEAD' ? undefined : page ?? 'Not found');
   }
 }).listen(port, '127.0.0.1', () => console.log(`Serving ${root} on http://127.0.0.1:${port}`));

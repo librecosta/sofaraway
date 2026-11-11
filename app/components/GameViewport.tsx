@@ -14,7 +14,7 @@ import { SettingsPanel } from './SettingsPanel';
 
 const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
-const menuFields = ['phase', 'volumeId', 'difficulty', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result'] as const;
+const menuFields = ['phase', 'volumeId', 'difficulty', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result', 'message'] as const;
 
 function useMenuSnapshot(runtime: GameRuntime | null) {
   const previous = useRef<GameSnapshot>(initialSnapshot);
@@ -138,6 +138,8 @@ export function GameViewport() {
   } : snapshot;
   const menuVisible = ['uninitialized', 'initializing', 'menu', 'starting', 'unsupported', 'error'].includes(viewSnapshot.phase);
   const modalOpen = !!panel || !!viewSnapshot.error || viewSnapshot.phase === 'paused';
+  const customCursor = !['uninitialized', 'initializing', 'unsupported', 'error', 'disposed'].includes(viewSnapshot.phase)
+    && viewSnapshot.error?.kind !== 'graphics';
   const returnToMenu = () => runtime?.returnToMenu();
 
   function setDifficulty(value: Difficulty) {
@@ -176,15 +178,19 @@ export function GameViewport() {
     }
   }
 
-  function fullscreen() {
-    const change = document.fullscreenElement ? document.exitFullscreen?.() : document.documentElement.requestFullscreen?.();
-    void change?.catch(() => runtime?.showMessage('FULL SCREEN UNAVAILABLE'));
+  async function fullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      runtime?.showMessage('FULL SCREEN UNAVAILABLE');
+    }
   }
 
   return (
-    <main ref={viewport}>
+    <main ref={viewport} className={c(customCursor && 'custom-cursor')}>
       <div ref={host} />
-      <div id="cursor" ref={cursor} aria-hidden="true">
+      <div id="cursor" ref={cursor} aria-hidden="true" hidden={!customCursor}>
         <span className={c('c-ring')} />
         <span className={c('c-tick', 't')} /><span className={c('c-tick', 'b')} />
         <span className={c('c-tick', 'l')} /><span className={c('c-tick', 'r')} />

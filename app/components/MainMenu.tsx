@@ -30,7 +30,8 @@ export function MainMenu(props: Props) {
         <h1 className={c('wordmark')}>SOFARAWAY</h1>
         <div className={c('rule')} />
         <div className={c('tagline')}>ANYWHERE BUT HERE</div>
-        <p className={c('sr-only')}>Thread the gates, ride the beat. A procedural rhythm runner by LibreCosta.</p>
+        <p className={c('sr-only', 'intro')}>Thread the gates, ride the beat. A procedural rhythm runner by LibreCosta.</p>
+        <noscript><p>Enable JavaScript and use a WebGL2-capable browser to play.</p></noscript>
         <div className={c('vols')} id="vols">
           <button className={c('vol-nav')} data-vol-step="-1" disabled={!ready} aria-label="previous volume" onClick={() => props.stepVolume(-1)}>‹</button>
           <span className={c('vol-name')} id="vol-name">{volume.subtitle.replace('VOL.', '').trim()} · {volume.name}</span>
@@ -51,8 +52,9 @@ export function MainMenu(props: Props) {
         <button className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}>
           <span>{ready ? 'PRESS SPACE TO START' : 'LOADING'}</span>
         </button>
-        <button className={c('btn', 'tiny')} data-act="fullscreen" onClick={props.fullscreen}><span>FULL SCREEN</span></button>
+        <button className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen}><span>FULL SCREEN</span></button>
       </div>
+      <div className={c('center-msg', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
       <div className={c('musicbadge')}><span className={c('mb-k')}>MUSIC</span><span className={c('mb-v')}>SYNTHESIZED</span></div>
     </section>
   );

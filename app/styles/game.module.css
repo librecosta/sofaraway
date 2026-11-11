@@ -53,8 +53,7 @@
 
 *{ box-sizing:border-box; }
 
-/* kill the native cursor everywhere — including the hand on buttons */
-*, *::before, *::after{ cursor:none !important; }
+.custom-cursor, .custom-cursor *, .custom-cursor *::before, .custom-cursor *::after{ cursor:none !important; }
 
 html,body{
   margin:0; padding:0; height:100%;
@@ -160,6 +159,14 @@ html,body{
 .center{
   flex:1; display:flex; flex-direction:column;
   align-items:center; justify-content:center; text-align:center;
+}
+
+@media (scripting: none){
+  :global(#menu) :is(.top, .bottom, .vols, .diff){ display:none; }
+  .intro{
+    position:static; width:auto; height:auto;
+    overflow:visible; clip-path:none; white-space:normal;
+  }
 }
 
 /* ================================================================== *
