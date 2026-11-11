@@ -15,8 +15,10 @@ export interface RuntimeView {
   pointer(view: PointerView): void;
   flash(opacity: number, color: string): void;
   debug(text: string): void;
+  shake?(x: number, y: number): void;
   key?(key: string, event: KeyboardEvent): boolean;
   best?(score: number): void;
+  muted?(value: boolean): void;
 }
 
 const audioError: GameError = Object.freeze({
@@ -48,6 +50,10 @@ export class Runtime implements GameRuntime {
   private cached = false;
   private initMs = 0;
   private switchMs = 0;
+  private notice = '';
+  private noticeUntil = 0;
+  private shakeX = 0;
+  private shakeY = 0;
 
   constructor(private readonly view: RuntimeView) {}
 
@@ -104,6 +110,7 @@ export class Runtime implements GameRuntime {
       return;
     }
     this.input?.clear();
+    this.noticeUntil = 0;
     this.clock.reset();
     this.silent = silent;
     this.anchorSilent();
@@ -157,6 +164,7 @@ export class Runtime implements GameRuntime {
     this.input?.clear();
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
+    this.view.shake?.(0, 0);
     this.publish({ phase: 'menu', error: null, pauseReason: null, result: null, hint: false, boosting: false });
   }
 
@@ -185,8 +193,10 @@ export class Runtime implements GameRuntime {
   }
 
   async setQuality(value: QualityTier) {
-    if (!this.canConfigure() || this.unavailable() || !this.graphics || this.snapshot.quality === value) return;
+    if (!this.canConfigure() || this.unavailable() || !this.graphics) return;
+    if (this.snapshot.quality === value && !this.options?.diagnostics.mobileQuality) return;
     try {
+      if (this.options) this.options.diagnostics.mobileQuality = false;
       this.graphics.configure(value, this.mobile());
       this.frameTimes = [];
       this.publish({ quality: value });
@@ -206,6 +216,13 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase === 'disposed') return;
     this.audio.setLevel(this.snapshot.volume, value);
     this.publish({ muted: value });
+    this.view.muted?.(value);
+  }
+
+  showMessage(message: string) {
+    this.notice = message;
+    this.noticeUntil = performance.now() + 1500;
+    this.publish({ message });
   }
 
   dispose() {
@@ -342,7 +359,11 @@ export class Runtime implements GameRuntime {
     const lives = sim.lives;
     sim.step(STEP, input);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty);
-    if (lives !== sim.lives) this.publishRun();
+    if (lives !== sim.lives) {
+      this.shakeX = (Math.random() - 0.5) * 22;
+      this.shakeY = (Math.random() - 0.5) * 22;
+      this.publishRun();
+    }
   }
 
   private draw(sim: Simulation, now: number) {
@@ -359,6 +380,8 @@ export class Runtime implements GameRuntime {
     const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
     const opacity = sim.phase === 'results' ? 0 : Math.max(hit * 0.9, end * 0.95, start * 0.9);
     this.view.flash(opacity, hit ? '#ff5a5a' : '#fff');
+    const shake = !fixed && sim.time - sim.hitTime < 0.09;
+    this.view.shake?.(shake ? this.shakeX : 0, shake ? this.shakeY : 0);
     if (this.recorder && graphics.camera) {
       this.recorder.sample(now / 1000, graphics.camera, sim, sim.camera);
       this.recorder.draw();
@@ -458,6 +481,7 @@ export class Runtime implements GameRuntime {
       return true;
     } else if (key === 'm') {
       this.setMuted(!this.snapshot.muted);
+      this.showMessage(this.snapshot.muted ? 'MUTED' : 'SOUND ON');
       return true;
     } else if (key === 'r') {
       if (event.shiftKey) this.recorder?.download();
@@ -473,7 +497,8 @@ export class Runtime implements GameRuntime {
     this.publish({ score: Math.floor(sim.score), lives: sim.lives, maxLives: sim.maxLives,
       gatesPassed: sim.gatesPassed, gatesTotal: sim.gatesTotal, combo: sim.combo, maxCombo: sim.maxCombo,
       speed: sim.speed, progress: sim.progress, section: sim.section, result: sim.result,
-      boosting: this.snapshot.phase === 'playing' && sim.boosting, message: sim.message,
+      boosting: this.snapshot.phase === 'playing' && sim.boosting,
+      message: performance.now() < this.noticeUntil ? this.notice : sim.message,
       hint: this.snapshot.phase === 'playing' && sim.beat < 15, ...patch });
   }
 
