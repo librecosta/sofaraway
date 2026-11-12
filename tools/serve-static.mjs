@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 
 const argument = process.argv[2];
@@ -23,14 +23,22 @@ const types = {
   '.txt': 'text/plain; charset=utf-8',
 };
 const revalidate = 'public, max-age=0, must-revalidate';
-const fingerprinted = /^\/(?:tools\/)?assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
+const fingerprinted = /^\/assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
 
 createServer(async (request, response) => {
   try {
-    const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+    const url = new URL(request.url, 'http://localhost');
+    const pathname = decodeURIComponent(url.pathname);
     const file = resolve(root, '.' + (pathname.endsWith('/') ? pathname + 'index.html' : pathname));
     if (!file.startsWith(root + sep)) throw new Error('Not found');
-    const body = await readFile(file);
+    const body = await readFile(file).catch(async error => {
+      if (!pathname.endsWith('/') && (await stat(resolve(file, 'index.html')).catch(() => null))?.isFile()) {
+        response.writeHead(308, { Location: url.pathname + '/' + url.search, 'Cache-Control': revalidate }).end();
+        return null;
+      }
+      throw error;
+    });
+    if (body === null) return;
     const etag = '"' + createHash('sha256').update(body).digest('hex') + '"';
     const immutable = fingerprinted.test(pathname);
     const age = process.env.STABILITY_HTTP_CACHE === '1' ? 600 : 31536000;

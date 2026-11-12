@@ -14,12 +14,14 @@ test('prerenders the page and hydrates one client canvas', async ({ request, pag
   expect(errors).toEqual([]);
 });
 
-test('the static soundtrack tool renders a WAV from the game synthesizer', async ({ page }) => {
+test('the old audio address leads to the unified WAV exporter', async ({ page }) => {
   await page.goto('/tools/render-audio.html?vol=orbit&secs=2');
+  await expect(page).toHaveURL(/\/debug\/\?vol=orbit&secs=2#audio$/);
+  await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('orbit');
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'RENDER TO WAV' }).click();
+  await page.getByRole('button', { name: 'Render to WAV' }).click();
   expect((await download).suggestedFilename()).toBe('sofaraway-orbit.wav');
-  await expect(page.locator('#log')).toHaveText(/Done.*4\.0 s/);
+  await expect(page.locator('#audio-status')).toHaveText(/Done.*4\.0 s/);
 });
 
 test('development StrictMode effect replay initializes a single WebGL canvas', async ({ page }) => {

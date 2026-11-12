@@ -225,7 +225,8 @@ export function GameViewport() {
                 Built with three.js r187 on WebGL2.<br />
                 Every material, shader, texture and note is generated at runtime.<br /><br />
                 <b>INSPIRATION</b><br />
-                Mechanism inspired by HelloRun (HelloEnjoy, 2013).
+                Mechanism inspired by HelloRun (HelloEnjoy, 2013).<br /><br />
+                <a href={`/debug/?vol=${snapshot.volumeId}`}>Debug overview</a>
               </div>
               <DecodeButton className={c('btn', 'tiny')} data-act="closepanel" onClick={() => setPanel(null)} label="CLOSE" />
             </div>

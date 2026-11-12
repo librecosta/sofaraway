@@ -101,8 +101,7 @@ can arrive at a different rate from simulation ticks.
 The graphics session samples a shared path for the camera, procedural tunnel
 chunks and GLSL gates. PostFX renders bloom, chromatic aberration, vignette and
 grain. High and supported auto profiles add depth of field. The soundtrack is
-synthesized in real time. The production preview also serves
-`/tools/render-audio.html?vol=orbit` for optional offline WAV export.
+synthesized in real time.
 
 ```text
 app/components/    React menu, HUD, settings and results
@@ -116,7 +115,14 @@ build/client/      generated static deployment directory
 
 See the [B0 architecture contract](docs/contracts/B0-application-game-runtime-architecture.md).
 
-## Debug parameters
+## Debug overview
+
+Open `/debug/` directly or follow **Debug overview** from **Credits**.
+The page renders all four worlds, every gate type, the floating pickups and
+individual procedural materials. **Soundtrack** exports a WAV for the selected
+volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
+
+### In-game debug parameters
 
 | Param | Effect |
 | --- | --- |

@@ -60,7 +60,7 @@ test('visibility and BFCache suspension preserve progress and obey audio recover
       if (event.persisted) document.documentElement.dataset.cachedRun = 'restored';
     });
   });
-  await page.goto('/tools/render-audio.html');
+  await page.goto('/debug/');
   await page.goBack({ waitUntil: 'commit', timeout: 8_000 });
   if (await page.locator('html').getAttribute('data-cached-run') === 'restored') {
     await expect(pause).toBeVisible();

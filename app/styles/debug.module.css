@@ -1,0 +1,96 @@
+@font-face {
+  font-family: "Chakra Petch";
+  src: url("../../css/fonts/chakra-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+body:has(.page) { margin: 0; background: #081014; }
+
+.page {
+  --surface: #101d22;
+  --rule: #2e4249;
+  --muted: #a8bdc4;
+  --text: #e6f2f0;
+  --accent: #74ffdc;
+  min-height: 100vh;
+  background: #081014;
+  color: var(--text);
+  font: 1rem/1.5 system-ui, sans-serif;
+}
+
+.page *, .page *::before, .page *::after { box-sizing: border-box; }
+.page a { color: var(--accent); text-underline-offset: .24em; }
+.page :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.page h1, .page h2, .page h3, .brand { font-family: "Chakra Petch", system-ui, sans-serif; }
+.page p { color: var(--muted); margin: 0; }
+.page h1, .page h2, .page h3, .page figure { margin: 0; }
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: .9rem max(1.25rem, calc((100vw - 1120px) / 2));
+  border-bottom: 1px solid var(--rule);
+}
+.header a { text-decoration: none; }
+.header a:hover { text-decoration: underline; }
+.header nav { display: flex; flex-wrap: wrap; gap: .35rem 1.15rem; }
+.header nav a { color: var(--muted); }
+.header .brand { color: var(--text); font-weight: 700; font-size: 1.25rem; }
+.back { white-space: nowrap; }
+
+.content { max-width: 1160px; margin: 0 auto; padding: 2.3rem 1.25rem 4rem; }
+.content h1 { font-size: clamp(2.2rem, 5vw, 3.65rem); line-height: 1.06; }
+.intro { padding-top: .55rem; max-width: 63ch; }
+.section { margin-top: 3.1rem; border-top: 1px solid var(--rule); padding-top: 1.1rem; }
+.section h2 { font-size: 1.65rem; line-height: 1.25; }
+.sectionHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem; }
+.angle { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; color: var(--muted); }
+.angle input { width: 7.5rem; accent-color: var(--accent); }
+.angle output { color: var(--text); width: 2.75rem; font-variant-numeric: tabular-nums; }
+
+.trio, .worlds, .swatches { display: grid; gap: 1rem; margin-top: .95rem; }
+.trio { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.worlds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.swatches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card, .pickup { overflow: hidden; background: var(--surface); border: 1px solid var(--rule); }
+.pickup { border-top: 2px solid var(--pickup-color); }
+.pickup h3 { color: var(--pickup-color); }
+.preview { display: block; width: 100%; height: auto; background: #081216; }
+.caption { border-top: 1px solid var(--rule); padding: .65rem .85rem .85rem; }
+.caption h3 { font-size: 1.14rem; }
+.caption p { font-size: .9rem; }
+.actions { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; margin-top: .6rem; font-size: .9rem; }
+.gateLibrary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1.3rem; }
+.gateGroupWide { grid-column: 1 / -1; }
+.gateLibrary > div { scroll-margin-top: 1rem; }
+.gateLibrary h3 { color: var(--muted); font-size: 1.05rem; }
+.gateLibrary .trio, .gateSingle { margin-top: .4rem; }
+.gateName { text-transform: capitalize; }
+
+.audioControls { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem 1rem; margin: .75rem 0 .6rem; }
+.audioField { display: grid; gap: .2rem; color: var(--muted); }
+.audioControls :is(select, button) {
+  padding: .65rem .8rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  font: inherit;
+  min-height: 44px;
+}
+.audioControls button { border-color: var(--accent); color: var(--accent); cursor: pointer; }
+.audioControls button:not(:disabled):hover { background: #193137; }
+.audioControls :disabled { opacity: .6; cursor: default; }
+
+@media (max-width: 760px) {
+  .header nav { order: 1; width: 100%; }
+  .trio, .swatches, .gateLibrary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .content { padding-top: 1.65rem; }
+  .section { margin-top: 2rem; }
+  .trio, .worlds, .gateLibrary { grid-template-columns: 1fr; }
+}

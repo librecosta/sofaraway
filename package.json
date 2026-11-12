@@ -36,7 +36,7 @@
     "test:a0": "playwright test --config playwright.config.js --grep-invert @perf",
     "test:a0:perf": "playwright test --config playwright.config.js --grep @perf",
     "dev": "react-router dev",
-    "build": "react-router build && node tools/build-audio.mjs && node tools/build-static.mjs",
+    "build": "react-router build && node tools/build-static.mjs",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test:unit": "vitest run",
     "build:harness": "vite build tests/harness --outDir ../../build/harness --emptyOutDir",

@@ -11,10 +11,9 @@ await Promise.all([
 
 // An exact asset list keeps missing chunks from receiving an immutable 404.
 const cache = 'public, max-age=31536000, immutable';
-const assets = (await Promise.all(['assets', 'tools/assets'].map(async dir =>
-  (await readdir(new URL(dir + '/', output)))
-    .filter(file => /^[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/.test(file))
-    .map(file => `/${dir}/${file}`)))).flat().sort();
+const assets = (await readdir(new URL('assets/', output)))
+  .filter(file => /^[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/.test(file))
+  .map(file => `/assets/${file}`).sort();
 const cloudflare = assets.map(path => `${path}\n  Cache-Control: ${cache}\n`).join('');
 const edgeone = { headers: assets.map(source => ({
   source,
