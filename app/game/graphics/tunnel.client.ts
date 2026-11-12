@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { SECTION } from '../core/collision';
+import type { RouteSide } from '../core/branches';
+import { placementIndex } from '../core/dressing';
+import type { Placement } from '../core/dressing';
 import type { Topology } from '../core/volumes';
+import type { BranchPath } from './branch-path';
 import type { Path, PathFrame } from './path';
 import type { buildTextures } from './textures.client';
 import { MaterialLibrary } from './materials/library.client';
@@ -22,8 +26,6 @@ const RING = 3.0;    // 3 units: dense enough to read, sparse enough not to stri
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
-const ELSEWHERE_RIM = 0.84;
-const ELSEWHERE_STRIP = 0.79;
 
 /* conduit: a closed octagon.  canal: an open U — floor, two low walls,
    nothing overhead — with a glazed side handled by the shell material. */
@@ -75,6 +77,7 @@ export class Tunnel {
   private hue: number | undefined;
   private readonly lightFrame = frame();
   private readonly ringFrames: PathFrame[] = [];
+  private readonly mainLight = new THREE.Color();
   private junction?: { start: number; end: number };
 
   constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path, private readonly topology: Topology) {
@@ -135,19 +138,23 @@ export class Tunnel {
     this.group.add(this.ambient);
 
     this.lights = [];
-    for (const d of [14, 52, 104, 170]) {
-      const l = new THREE.PointLight(0x44ffcc, 30, 100, 2);
+    const stations = this.surfaces ? [7, 20, 44, 86] : [14, 52, 104, 170];
+    for (const [i, d] of stations.entries()) {
+      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? [18, 23, 27, 0][i] : 30, this.surfaces && i === 3 ? 12 : 100, 2);
       l.userData.d = d;
       this.group.add(l);
       this.lights.push(l);
     }
   }
 
-  moveLights(s: number) {
+  moveLights(s: number, branch?: BranchPath, side?: RouteSide) {
     const fr = this.lightFrame;
-    for (const l of this.lights) {
-      this.path.sample(s + l.userData.d, fr);
+    for (let i = 0; i < this.lights.length; i++) {
+      const l = this.lights[i];
+      if (branch && side) branch.sample(s + l.userData.d, side, fr);
+      else this.path.sample(s + l.userData.d, fr);
       l.position.copy(fr.p);
+      if (this.surfaces) l.position.addScaledVector(fr.u, .52).addScaledVector(fr.r, i % 2 ? -.46 : .46);
     }
   }
 
@@ -447,11 +454,11 @@ export class Tunnel {
     }
   }
 
-  update(s: number, menu = false) {
+  update(s: number, menu = false, branch?: BranchPath, side?: RouteSide) {
     const need0 = s - KEEP_BEHIND;
     const need1 = s + KEEP_AHEAD;
     if (menu) this.path.extendMenu(need1 + CHUNK, need0 - CHUNK);
-    this.moveLights(s);
+    this.moveLights(s, branch, side);
 
     for (let i = this.chunks.length - 1; i >= 0; i--) {
       const c = this.chunks[i];
@@ -491,8 +498,8 @@ export class Tunnel {
   setHue(h: number) {
     this.hue = h;
     const c = new THREE.Color().setHSL(h, 1.0, 0.5);
-    this.stripMat.color.copy(c).multiplyScalar(this.surfaces ? ELSEWHERE_STRIP : 1);
-    this.rimMat.color.copy(c).multiplyScalar(0.55 * (this.surfaces ? ELSEWHERE_RIM : 1));
+    this.stripMat.color.copy(c);
+    this.rimMat.color.copy(c).multiplyScalar(0.55);
     for (const l of this.lights) l.color.copy(c);
     this.ambient.color.setHSL(h, this.surfaces ? 0.53 : 0.9, this.surfaces ? 0.27 : 0.22);
     this.hemi.color.setHSL(h, 0.75, 0.40);
@@ -507,9 +514,42 @@ export class Tunnel {
 
   pulse(p: number) {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
-    this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * (this.surfaces ? ELSEWHERE_STRIP : 1));
-    this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * (this.surfaces ? ELSEWHERE_RIM : 1));
+    this.stripMat.color.copy(c).multiplyScalar(1 + p * 1.3);
+    this.rimMat.color.copy(c).multiplyScalar(0.55 + p * 1.0);
   }
+
+  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, hue: number,
+    breath: number, station: number, placements: readonly Placement[]) {
+    this.ambient.color.copy(base); this.ambient.intensity = .74;
+    this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .68;
+    for (let i = 0; i < 3; i++) this.lights[i].color.copy(i === 1 ? sky : base);
+    this.mainLight.setHSL((hue + 1) % 1, 1, .5);
+    this.rimMat.color.copy(this.mainLight).multiplyScalar(.84 * (.55 + .19 * breath));
+    this.stripMat.color.copy(this.mainLight).multiplyScalar(.79 * (.96 + .28 * breath));
+    const accent = this.lights[3];
+    accent.intensity = 0;
+    let chosen: Placement | undefined;
+    let nearest = 16, second = 16;
+    for (let i = placementIndex(placements, station - 9); i < placements.length && placements[i].station <= station + 23; i++) {
+      const part = placements[i];
+      const d = Math.abs(part.station - station - 7);
+      if (d < nearest) { second = nearest; nearest = d; chosen = part; }
+      else second = Math.min(second, d);
+    }
+    if (!chosen) return;
+    const frame = this.path.sample(chosen.station, this.lightFrame);
+    const y = chosen.mount === 'ceiling' ? chosen.y - .65 : chosen.y + .30;
+    const x = chosen.x * .92;
+    accent.position.copy(frame.p).addScaledVector(frame.r, x).addScaledVector(frame.u, y);
+    accent.color.copy(chosen.kind === 'ventilation-assembly' ? sky : base);
+    // Fade out at a hand-off so two adjacent fixtures never produce a moving point of light.
+    accent.intensity = 11 * THREE.MathUtils.smoothstep(second - nearest, 0, 2.6)
+      * (1 - THREE.MathUtils.smoothstep(nearest, 5, 16));
+  }
+
+  get physicalLights() { return this.lights.length + 2; }
+  get activePhysicalLights() { return this.lights.filter(light => light.intensity > 0).length + 2; }
+  get scenicTone() { return { rim: this.rimMat.color.toArray(), strip: this.stripMat.color.toArray() }; }
 
   /* ---------------- menu wireframe ---------------- */
   _buildWire() {

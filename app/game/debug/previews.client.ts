@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import type { Diagnostics } from '../contracts';
 import { STEP } from '../core/clock';
-import { opening, SECTION } from '../core/collision';
-import { advanceProp, launchProp, propKinds, propShape, structureKinds } from '../core/dressing';
-import type { DressingKind, PropKind, PropPlacement } from '../core/dressing';
+import { opening } from '../core/collision';
+import { structureKinds } from '../core/dressing';
+import type { StructureKind } from '../core/dressing';
 import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
 import { makeEnvMap, makeSky } from '../graphics/environment.client';
-import { buildDressingModel } from '../graphics/dressing-kit.client';
+import { buildDressingModel, createKitLight } from '../graphics/dressing-kit.client';
 import { GateGeometries, GateVisual, THICKNESS } from '../graphics/gates.client';
 import { PickupVisual } from '../graphics/pickup.client';
 import { Graphics } from '../graphics/scene.client';
@@ -95,9 +95,9 @@ export class ModelPreviews {
   private scanning = false;
   private lastScan = 0;
   private film?: THREE.Group;
-  private readonly kit = new Map<DressingKind, { display: THREE.Group; body: THREE.Group; center: THREE.Vector3; scale: number }>();
+  private readonly kit = new Map<StructureKind, { display: THREE.Group; body: THREE.Group; center: THREE.Vector3; scale: number }>();
+  private readonly kitLight = createKitLight();
   private kitAngle = 28;
-  private demoFrame = 0;
   private lost = false;
 
   constructor(private readonly root: HTMLElement, private readonly materials: MaterialLibrary,
@@ -233,59 +233,25 @@ export class ModelPreviews {
   drawDressing(angle = this.kitAngle) {
     this.kitAngle = angle;
     if (this.lost) return;
-    cancelAnimationFrame(this.demoFrame);
-    for (const kind of [...structureKinds, ...propKinds]) {
+    for (const kind of structureKinds) {
       let view = this.kit.get(kind);
       if (!view) {
         const display = new THREE.Group(), body = new THREE.Group();
-        for (const { geometry, material } of buildDressingModel(kind, this.materials)) body.add(new THREE.Mesh(geometry, material));
+        for (const { geometry, material } of buildDressingModel(kind, this.materials, this.kitLight)) body.add(new THREE.Mesh(geometry, material));
         const bounds = new THREE.Box3().setFromObject(body);
         const center = bounds.getCenter(new THREE.Vector3());
         const size = bounds.getSize(new THREE.Vector3());
-        const prop = kind === 'tech-crate' || kind === 'utility-barrel';
-        const scale = prop ? 1.55 : Math.min(3.7 / size.x, 2.18 / size.y);
+        const scale = Math.min(3.7 / size.x, 2.18 / size.y);
         body.scale.setScalar(scale);
         display.add(body);
-        if (prop) {
-          const ground = new THREE.Mesh(new THREE.BoxGeometry(3.8, .08, 2.35), this.materials.get('floor-grip'));
-          ground.position.y = -propShape[kind].height / 2 * scale - .04;
-          display.add(ground);
-        }
         view = { display, body, center, scale };
         this.kit.set(kind, view);
       }
       view.body.position.copy(view.center).multiplyScalar(-view.scale);
       view.body.rotation.set(0, 0, 0, 'ZXY');
-      view.display.rotation.set(0.30, THREE.MathUtils.degToRad(angle), -0.035);
+      view.display.rotation.set(kind === 'overhead-assembly' ? -.33 : .30, THREE.MathUtils.degToRad(angle), -.035);
       this.renderLab(kind, view.display, 'model', 2.9);
     }
-  }
-
-  previewImpact(kind: PropKind) {
-    if (this.lost) return;
-    this.drawDressing();
-    const view = this.kit.get(kind)!;
-    const prop: PropPlacement = { id: 1, kind, station: 0, mount: 'floor', x: 0, y: -SECTION.b + propShape[kind].height / 2 };
-    const motion = launchProp(prop, -0.16, 0.08, 34);
-    const render = () => {
-      view.body.position.set(motion.x * .7, (motion.y - prop.y) * view.scale, -motion.along * .19);
-      view.body.rotation.set(motion.pitch, 0, motion.roll, 'ZXY');
-      this.renderLab(kind, view.display, 'model', 2.9);
-    };
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      for (let n = 0; n < 24; n++) advanceProp(prop, motion, STEP);
-      render();
-      return;
-    }
-    const start = performance.now();
-    let steps = 0, drawn = -2;
-    const tick = (now: number) => {
-      const through = Math.min(120, Math.floor((now - start) / (STEP * 1000)));
-      while (steps < through) { advanceProp(prop, motion, STEP); steps++; }
-      if (steps - drawn >= 2 && !document.hidden) { render(); drawn = steps; }
-      if (through < 120 && !this.lost) this.demoFrame = requestAnimationFrame(tick);
-    };
-    this.demoFrame = requestAnimationFrame(tick);
   }
 
   setScan(on: boolean) {
@@ -303,7 +269,6 @@ export class ModelPreviews {
     event.preventDefault();
     this.lost = true;
     cancelAnimationFrame(this.animation);
-    cancelAnimationFrame(this.demoFrame);
     this.onContext(false);
   };
 
@@ -324,7 +289,6 @@ export class ModelPreviews {
 
   dispose() {
     this.setScan(false);
-    cancelAnimationFrame(this.demoFrame);
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('webglcontextlost', this.contextLost);
     canvas.removeEventListener('webglcontextrestored', this.contextRestored);
@@ -334,6 +298,7 @@ export class ModelPreviews {
       if (object instanceof THREE.Mesh) object.geometry.dispose();
     });
     this.kit.clear();
+    this.kitLight.dispose();
     this.pickups.forEach(pickup => pickup.dispose());
     this.renderer.dispose();
     this.renderer.forceContextLoss();

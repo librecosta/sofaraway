@@ -1,15 +1,23 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { DressingKind } from '../core/dressing';
+import type { StructureKind } from '../core/dressing';
 import { surfacePresets } from './materials/presets';
 import type { EffectMaterialId, SurfaceMaterialId } from './materials/presets';
 import type { MaterialLibrary } from './materials/library.client';
 
-type Finish = SurfaceMaterialId | EffectMaterialId;
+type Finish = SurfaceMaterialId | EffectMaterialId | 'kit-lens';
 type XYZ = readonly [number, number, number];
-const satin = 'alloy-satin-dark', brushed = 'alloy-brushed-tech', panel = 'panel-recessed';
+const brushed = 'alloy-brushed-tech', panel = 'panel-recessed';
 const frame = 'panel-reinforced', rubber = 'utility-polymer', cyan = 'emissive-channel-cyan';
 const film = 'hologram-panel-cyan';
+const lensColors = {
+  amber: [1.03, .46, .11], pearl: [.86, .74, .50], ice: [.20, .73, 1.04], mint: [.17, .88, .67],
+} as const;
+type LensColor = keyof typeof lensColors;
+
+export const createKitLight = () => new THREE.MeshBasicMaterial({
+  name: 'kit-lens', vertexColors: true, toneMapped: false,
+});
 
 /** Part geometries are authored in world units. +Z is the exposed face of a wall assembly. */
 class Model {
@@ -63,13 +71,34 @@ class Model {
     this.part(film, new THREE.PlaneGeometry(width, height), at);
   }
 
-  finish(library: MaterialLibrary) {
+  private tint(geometry: THREE.BufferGeometry, tint: LensColor, power: number) {
+    const color = lensColors[tint], normal = geometry.getAttribute('normal');
+    const rgb = new Float32Array(normal.count * 3);
+    for (let i = 0; i < normal.count; i++) {
+      const glow = power * (.56 + .44 * Math.max(Math.abs(normal.getY(i)), Math.abs(normal.getZ(i))));
+      for (let k = 0; k < 3; k++) rgb[i * 3 + k] = color[k] * glow;
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(rgb, 3));
+    return geometry;
+  }
+
+  lens(tint: LensColor, size: XYZ, at: XYZ, power = 1, rotation?: XYZ) {
+    this.part('kit-lens', this.tint(new THREE.BoxGeometry(...size), tint, power), at, rotation);
+  }
+
+  lightArc(tint: LensColor, radius: number, thickness: number, arc: number, at: XYZ, rotation?: XYZ, power = 1, start = 0) {
+    const geometry = new THREE.TorusGeometry(radius, thickness, 6, 26, arc).rotateZ(start);
+    this.part('kit-lens', this.tint(geometry, tint, power), at, rotation);
+  }
+
+  finish(library: MaterialLibrary, light: THREE.MeshBasicMaterial) {
     return [...this.pieces].map(([id, parts]) => {
       const geometry = mergeGeometries(parts)!;
       for (const part of parts) part.dispose();
       geometry.computeBoundingBox();
       geometry.computeBoundingSphere();
-      const material = id in surfacePresets ? library.get(id as SurfaceMaterialId) : library.getEffect(id as EffectMaterialId);
+      const material = id === 'kit-lens' ? light
+        : id in surfacePresets ? library.get(id as SurfaceMaterialId) : library.getEffect(id as EffectMaterialId);
       return { geometry, material };
     });
   }
@@ -78,7 +107,7 @@ class Model {
 const axisZ = [Math.PI / 2, 0, 0] as const;
 const axisX = [0, 0, Math.PI / 2] as const;
 
-export function buildDressingModel(kind: DressingKind, library: MaterialLibrary) {
+export function buildDressingModel(kind: StructureKind, library: MaterialLibrary, light: THREE.MeshBasicMaterial) {
   const m = new Model();
   switch (kind) {
     case 'overhead-assembly':
@@ -87,6 +116,11 @@ export function buildDressingModel(kind: DressingKind, library: MaterialLibrary)
       for (const x of [-2.17, 2.17]) {
         m.slab(brushed, [0.46, 0.30, 0.87], [x, -0.18, 0], 0.035, [0, 0, x < 0 ? -0.22 : 0.22]);
         m.slab(brushed, [0.31, 0.16, 1.12], [x, -0.086, 0], 0.02);
+      }
+      for (const x of [-.91, .91]) {
+        m.slab(brushed, [1.36, .058, .24], [x, -.43, 0], .011);
+        m.lens('pearl', [1.19, .021, .115], [x, -.465, 0], .92);
+        m.lens('ice', [.15, .026, .119], [x + Math.sign(x) * .72, -.461, 0], .79);
       }
       break;
     case 'ventilation-assembly':
@@ -102,6 +136,9 @@ export function buildDressingModel(kind: DressingKind, library: MaterialLibrary)
       for (const y of [-0.34, 0, 0.34]) m.slab(brushed, [y ? 0.99 : 1.14, 0.045, 0.047], [-0.23, y, 0.391], 0.011);
       m.duct(frame, 0.127, [[0.47, 0.09, 0.14], [0.83, 0.09, 0.19], [1.05, 0.23, 0.19], [1.23, 0.41, 0.11]]);
       m.cylinder(brushed, 0.16, 0.085, [0.84, 0.1, 0.19], axisX);
+      m.lightArc('ice', .611, .024, 2.1, [-.23, 0, .365], [0, 0, .24], .93);
+      m.lightArc('mint', .611, .024, 1.20, [-.23, 0, .365], [0, 0, 3.10], .91);
+      m.lens('amber', [.19, .055, .031], [.46, -.43, .212]);
       break;
     case 'utility-conduits':
       m.duct(brushed, 0.102, [[-4, 0.22, 0.12], [-3.45, 0.22, 0.2], [-2.7, 0, 0.21], [2.95, 0, 0.21], [3.55, 0.35, 0.18], [4, 0.36, 0.12]]);
@@ -110,6 +147,8 @@ export function buildDressingModel(kind: DressingKind, library: MaterialLibrary)
       for (const x of [-2.4, 0.4, 2.4]) {
         m.slab(frame, [0.14, 0.77, 0.13], [x, -0.23, 0.09], 0.019);
         m.cylinder(brushed, 0.127, 0.075, [x, 0, 0.21], axisX);
+        m.lightArc(x > 0 ? 'amber' : 'mint', .123, .014, 3.25, [x + .048, 0, .21], [0, Math.PI / 2, -Math.PI / 2], .88);
+        m.lens('ice', [.35, .033, .026], [x, -.585, .123], .76);
       }
       break;
     case 'service-bay':
@@ -119,6 +158,9 @@ export function buildDressingModel(kind: DressingKind, library: MaterialLibrary)
       m.slab(panel, [1.35, 1.04, 0.115], [-0.30, 0, 0.119], 0.035, undefined, 0.10);
       m.slab(brushed, [0.10, 0.43, 0.073], [0.18, 0.04, 0.214], 0.015);
       for (const y of [-0.29, -0.02, 0.25]) m.slab(brushed, [0.41, 0.12, 0.078], [0.69, y, 0.12], 0.016);
+      m.lens('pearl', [1.63, .055, .032], [-.16, .698, .302], .89);
+      for (const y of [-.29, -.02, .25]) m.lens('mint', [.16, .039, .02], [.70, y, .176], .83);
+      m.lens('amber', [.039, .29, .019], [.18, .04, .262], .86);
       break;
     case 'holographic-service-door':
       // A closed wall installation: opaque backing remains visible through the thin display.
@@ -128,29 +170,12 @@ export function buildDressingModel(kind: DressingKind, library: MaterialLibrary)
       m.slab(frame, [0.99, 0.13, 0.074], [0, -0.84, 0.16], 0.019);
       m.slab(cyan, [0.42, 0.032, 0.026], [0, 0.981, 0.346], 0.008);
       m.panel([0, 0.105, 0.235], 1.32, 1.48);
-      break;
-    case 'tech-crate':
-      m.slab(panel, [0.94, 0.77, 0.76], [0, 0, 0], 0.065, undefined, 0.075);
-      for (const y of [-0.33, 0.33]) m.slab(rubber, [1.03, 0.18, 0.84], [0, y, 0], 0.052, undefined, 0.045);
-      for (const z of [-0.374, 0.374]) {
-        m.slab(panel, [0.72, 0.43, 0.074], [0, 0, z], 0.022, undefined, 0.055);
-        m.slab(brushed, [0.31, 0.087, 0.07], [0, 0.074, z * 1.08], 0.017);
-      }
-      for (const x of [-0.28, 0.28]) m.slab(brushed, [0.12, 0.072, 0.62], [x, 0.395, 0], 0.022);
-      break;
-    case 'utility-barrel':
-      m.cylinder(satin, 0.373, 0.88, [0, 0, 0], undefined, 0.376);
-      for (const y of [-0.445, 0.445]) {
-        m.cylinder(rubber, 0.427, 0.15, [0, y, 0]);
-        m.cylinder(brushed, 0.398, 0.052, [0, y * 0.80, 0]);
-      }
-      m.cylinder(satin, 0.348, 0.078, [0, 0.473, 0]);
-      m.cylinder(brushed, 0.105, 0.035, [-0.125, 0.496, 0.085]);
-      for (const angle of [0.25, 2.35, 4.44]) m.slab(satin, [0.073, 0.55, 0.046],
-        [Math.sin(angle) * 0.367, 0, Math.cos(angle) * 0.367], 0.013, [0, angle, 0]);
+      m.lens('mint', [.64, .05, .032], [-.12, .984, .361], .86);
+      m.lens('amber', [.045, .31, .028], [.843, -.21, .338], .86);
+      m.lens('ice', [.28, .04, .021], [-.38, -.839, .210], .77);
       break;
   }
-  return m.finish(library);
+  return m.finish(library, light);
 }
 
 export type DressingModel = ReturnType<typeof buildDressingModel>;

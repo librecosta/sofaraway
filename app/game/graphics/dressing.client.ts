@@ -1,109 +1,134 @@
 import * as THREE from 'three';
-import { isProp, placementIndex, propKinds, structureKinds } from '../core/dressing';
-import type { DressingKind, DressingRun, Placement, PropMotion } from '../core/dressing';
+import { placementIndex, structureKinds } from '../core/dressing';
+import type { StructureKind, Placement } from '../core/dressing';
+import type { ScenicPlan } from '../core/scenic-plan';
 import { pathFrame } from './branch-path';
-import { buildDressingModel } from './dressing-kit.client';
+import { buildDressingModel, createKitLight } from './dressing-kit.client';
 import type { MaterialLibrary } from './materials/library.client';
 import type { Path } from './path';
 
-const AHEAD = 128;
+export const DRESSING_AHEAD = 138;
 const BEHIND = 19;
-// A 150-unit straight can install each kind once. The view window spans at most two.
-const CAPACITY = 4;
 
 interface Batch {
   meshes: THREE.InstancedMesh[];
   count: number;
+  capacity: number;
+  planned: number;
+  overflow: number;
 }
 
 /** One template and bounded instance buffers per kind; streamed objects borrow M0 materials. */
 export class DressingVisuals {
   readonly group = new THREE.Group();
-  private readonly batches = new Map<DressingKind, Batch>();
+  private readonly batches = new Map<StructureKind, Batch>();
   private readonly rest = new Map<number, THREE.Matrix4>();
   private readonly frame = pathFrame();
   private readonly back = new THREE.Vector3();
   private readonly matrix = new THREE.Matrix4();
   private readonly rotation = new THREE.Matrix4();
-  private readonly angles = new THREE.Euler(0, 0, 0, 'ZXY');
   private readonly position = new THREE.Vector3();
   private readonly film: THREE.Material;
+  private readonly light = createKitLight();
   private from = -1;
   private through = -1;
-  private lastTime = -1;
-  private lastPhase = '';
-  private wasMoving = false;
+  private plan?: ScenicPlan;
   visible = 0;
 
   constructor(private readonly path: Path, library: MaterialLibrary) {
     this.group.name = 'elsewhere-dressing';
-    for (const kind of [...structureKinds, ...propKinds]) {
-      const meshes = buildDressingModel(kind, library).map(({ geometry, material }) => {
-        const mesh = new THREE.InstancedMesh(geometry, material, CAPACITY);
-        mesh.count = 0;
-        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        if (material instanceof THREE.MeshStandardMaterial) {
-          // The kit needs some separation from the dark tunnel. This adjusts only
-          // its reflected albedo; the shared material and its maps stay untouched.
-          const lift = kind === 'tech-crate' || kind === 'utility-barrel' ? 2.35 : 1.75;
-          const tint = new THREE.Color().setRGB(lift, lift, lift);
-          for (let slot = 0; slot < CAPACITY; slot++) mesh.setColorAt(slot, tint);
-        }
+    for (const kind of structureKinds) {
+      const meshes = buildDressingModel(kind, library, this.light).map(({ geometry, material }) => {
+        const mesh = this.instance(geometry, material, 4);
         mesh.name = kind + ':' + material.name;
         this.group.add(mesh);
         return mesh;
       });
-      this.batches.set(kind, { meshes, count: 0 });
+      this.batches.set(kind, { meshes, count: 0, capacity: 4, planned: 0, overflow: 0 });
     }
     this.film = library.getEffect('hologram-panel-cyan');
   }
 
-  private transform(placement: Placement, motion?: PropMotion): THREE.Matrix4 {
-    if (!motion && this.rest.has(placement.id)) return this.rest.get(placement.id)!;
+  private instance(geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number) {
+    const mesh = new THREE.InstancedMesh(geometry, material, capacity);
+    mesh.count = 0;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    if (material instanceof THREE.MeshStandardMaterial) {
+      const tint = new THREE.Color().setScalar(1.28);
+      for (let slot = 0; slot < capacity; slot++) mesh.setColorAt(slot, tint);
+    }
+    return mesh;
+  }
+
+  private configurePlan(plan: ScenicPlan) {
+    this.plan = plan;
+    this.rest.clear();
+    for (const [kind, batch] of this.batches) {
+      const members = plan.placements.filter(p => p.kind === kind);
+      batch.planned = members.length;
+      let lo = 0, peak = 0;
+      for (let hi = 0; hi < members.length; hi++) {
+        while (members[hi].station - members[lo].station > DRESSING_AHEAD + BEHIND) lo++;
+        peak = Math.max(peak, hi - lo + 1);
+      }
+      if (peak <= batch.capacity) continue;
+      const capacity = 2 ** Math.ceil(Math.log2(peak));
+      batch.meshes = batch.meshes.map(old => {
+        const mesh = this.instance(old.geometry, old.material as THREE.Material, capacity);
+        mesh.name = old.name;
+        this.group.remove(old);
+        old.dispose();
+        this.group.add(mesh);
+        return mesh;
+      });
+      batch.capacity = capacity;
+    }
+  }
+
+  counts() {
+    return Object.fromEntries([...this.batches].map(([kind, batch]) => [kind, {
+      planned: batch.planned, visible: batch.count, capacity: batch.capacity,
+      culled: batch.planned - batch.count, overflow: batch.overflow,
+    }]));
+  }
+
+  private transform(placement: Placement): THREE.Matrix4 {
+    const cached = this.rest.get(placement.id);
+    if (cached) return cached;
     const f = this.path.sample(placement.station, this.frame);
     const yaw = placement.mount === 'left' ? Math.PI / 2 : placement.mount === 'right' ? -Math.PI / 2 : 0;
-    this.position.copy(f.p).addScaledVector(f.r, motion?.x ?? placement.x)
-      .addScaledVector(f.u, motion?.y ?? placement.y).addScaledVector(f.f, motion?.along ?? 0);
-    this.angles.set(motion?.pitch ?? 0, yaw, motion?.roll ?? 0);
+    this.position.copy(f.p).addScaledVector(f.r, placement.x).addScaledVector(f.u, placement.y);
     this.matrix.makeBasis(f.r, f.u, this.back.copy(f.f).negate());
-    this.rotation.makeRotationFromEuler(this.angles);
+    this.rotation.makeRotationY(yaw);
     this.matrix.multiply(this.rotation).setPosition(this.position);
-    if (motion) return this.matrix;
     const baked = this.matrix.clone();
     this.rest.set(placement.id, baked);
     return baked;
   }
 
-  update(run: DressingRun, station: number, time: number, phase: string) {
-    const from = placementIndex(run.plan, station - BEHIND);
-    const through = placementIndex(run.plan, station + AHEAD);
-    if (this.batches.get('holographic-service-door')!.count && this.film instanceof THREE.ShaderMaterial) {
-      this.film.uniforms.uTime.value = time;
-    }
-    const moving = run.active > 0;
-    if (from === this.from && through === this.through && phase === this.lastPhase &&
-      (!(moving || this.wasMoving) || time === this.lastTime)) return;
-    const rangeChanged = from !== this.from || through !== this.through || phase !== this.lastPhase;
+  update(plan: ScenicPlan, station: number, time: number) {
+    if (this.film instanceof THREE.ShaderMaterial) this.film.uniforms.uTime.value = time;
+    const newPlan = this.plan !== plan;
+    if (newPlan) this.configurePlan(plan);
+    const from = placementIndex(plan.placements, station - BEHIND);
+    const through = placementIndex(plan.placements, station + DRESSING_AHEAD);
+    if (!newPlan && from === this.from && through === this.through) return;
     this.from = from;
     this.through = through;
-    this.lastPhase = phase;
-    this.lastTime = time;
-    this.wasMoving = moving;
-    for (const [kind, batch] of this.batches) {
-      if (rangeChanged || kind === 'tech-crate' || kind === 'utility-barrel') batch.count = 0;
-    }
+    for (const batch of this.batches.values()) { batch.count = 0; batch.overflow = 0; }
     for (let i = from; i < through; i++) {
-      const placement = run.plan[i];
-      if (!rangeChanged && !isProp(placement)) continue;
+      const placement = plan.placements[i];
       const batch = this.batches.get(placement.kind)!;
-      if (batch.count >= CAPACITY) continue;
-      const pose = this.transform(placement, run.motion.get(placement.id));
+      if (batch.count >= batch.capacity) {
+        batch.overflow++;
+        throw new Error('Scenic placement exceeded its measured window capacity: ' + placement.kind);
+      }
+      const pose = this.transform(placement);
       for (const mesh of batch.meshes) mesh.setMatrixAt(batch.count, pose);
       batch.count++;
     }
     this.visible = through - from;
-    for (const [kind, { meshes, count }] of this.batches) {
-      if (!rangeChanged && kind !== 'tech-crate' && kind !== 'utility-barrel') continue;
+    for (const { meshes, count } of this.batches.values()) {
       for (const mesh of meshes) {
         mesh.visible = count > 0;
         if (!mesh.count && !count) continue;
@@ -122,6 +147,7 @@ export class DressingVisuals {
       mesh.dispose();
     }
     this.batches.clear();
+    this.light.dispose();
     this.rest.clear();
     this.group.clear();
   }

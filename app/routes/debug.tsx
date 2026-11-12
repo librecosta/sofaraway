@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { VolumeId } from '../game/contracts';
+import { lightCues, lightPatterns } from '../game/core/lighting-score';
+import type { LightPattern } from '../game/core/lighting-score';
 import { PICKUP_BEAT } from '../game/core/pickups';
 import { volumeById } from '../game/core/volumes';
-import { catalog, environmentCards, gateNotes, pickupCards, propCards, structureCards } from '../game/debug/catalog';
+import { catalog, environmentCards, gateNotes, pickupCards, structureCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
+import { scenicExamples } from '../game/debug/scenic-catalog';
+import type { ScenicPreview } from '../game/debug/scenic-preview.client';
 import { channelNames, effectIds, effectPresets, surfaceChannels, surfaceIds, surfacePresets } from '../game/graphics/materials/presets';
 import type { SurfaceChannel, SurfaceMaterialId } from '../game/graphics/materials/presets';
 import s from '../styles/debug.module.css';
@@ -74,6 +78,120 @@ function Soundtrack() {
       <p role="status" id="audio-status">{status}</p>
     </section>
   );
+}
+
+const patternLabels: Record<LightPattern, string> = {
+  steady: 'Steady / base fill', breath: 'Breath', beat: 'Beat pulse', chase: 'Chase',
+  alternate: 'Left / right', build: 'Build-up', sparse: 'Sparse', 'all-on': 'All on',
+  'partial-blackout': 'Partial blackout', 'dual-color': 'Warm / cool', symbol: 'Ceiling pattern',
+};
+
+function LightingStudio({ available }: { available: boolean }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const viewer = useRef<ScenicPreview>(null);
+  const [open, setOpen] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [example, setExample] = useState(0);
+  const [section, setSection] = useState(0);
+  const [pattern, setPattern] = useState<'chapter' | LightPattern>('chapter');
+  const [beat, setBeat] = useState(4);
+  const [angle, setAngle] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [actualSeconds, setActualSeconds] = useState<number>();
+  const [status, setStatus] = useState('');
+  const cue = lightCues[section];
+  const scene = scenicExamples[example];
+  useEffect(() => {
+    if (!open) return;
+    let stale = false;
+    void import('../game/debug/scenic-preview.client').then(({ ScenicPreview }) => {
+      if (stale || !canvas.current) return;
+      viewer.current = new ScenicPreview(canvas.current, restored => {
+        setPlaying(false);
+        setReady(restored);
+        setStatus(restored ? '' : 'WebGL interrupted. Waiting to restore this scene.');
+      });
+      setReady(true);
+      setStatus('');
+    }).catch(() => { if (!stale) setStatus('The live lighting preview needs a working WebGL2 renderer.'); });
+    return () => {
+      stale = true;
+      viewer.current?.dispose();
+      viewer.current = null;
+    };
+  }, [open]);
+  useEffect(() => { if (ready) setActualSeconds(viewer.current?.select(scene)); }, [ready, scene]);
+  useEffect(() => {
+    if (!ready) return;
+    const draw = (value: number) => viewer.current?.draw({
+      beat: value, pattern: pattern === 'chapter' ? undefined : pattern, yaw: angle * Math.PI / 180,
+    });
+    draw(beat);
+    if (!playing) return;
+    const start = performance.now();
+    let frame = 0;
+    let last = start;
+    const tick = (now: number) => {
+      if (now - last >= 32) {
+        const value = Math.min(cue.end - .001, beat + (now - start) * 128 / 60000);
+        draw(value);
+        last = now;
+        if (value >= cue.end - .001) { setPlaying(false); setBeat(value); return; }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [ready, scene, cue, pattern, angle, beat, playing]);
+  const installed = new URLSearchParams({
+    vol: 'elsewhere', t: (actualSeconds ?? scene.beat * 60 / 128).toFixed(5), q: 'high', align: '1',
+    ...(scene.side ? { route: scene.side } : {}),
+    ...(scene.mode ? { mode: scene.mode } : {}),
+    ...(scene.boost ? { boost: '1' } : {}),
+  });
+  function toggle() {
+    if (playing) setBeat(Number(canvas.current?.dataset.lightBeat ?? beat));
+    else if (beat >= cue.end - .01) setBeat(cue.start);
+    setPlaying(!playing);
+  }
+  return <section id="lighting" className={s.section}>
+    <h2>Lighting &amp; scenic composition</h2>
+    <p>Hold the camera at one station while the light score plays. The structures and glass stay in place.</p>
+    <div className={s.scenicDesk}>
+      <div className={s.scenicView}>
+        {!open && <button className={s.scan} type="button" disabled={!available} onClick={() => {
+          setStatus('Loading the live corridor…'); setOpen(true);
+        }}>Open live scene</button>}
+        {open && <canvas className={s.preview} ref={canvas} role="img" aria-label="Live ELSEWHERE lighting"
+          width={800} height={450} data-preview="scenic-live" />}
+        {status && <p role="status">{status}</p>}
+      </div>
+      <div className={s.scenicControls}>
+        <label>Scene station <select value={example} onChange={e => setExample(Number(e.currentTarget.value))}>
+          {scenicExamples.map((x, i) => <option key={x.label} value={i}>{x.label}</option>)}
+        </select></label>
+        <label>Score chapter <select value={section} onChange={e => {
+          const i = Number(e.currentTarget.value);
+          setSection(i); setBeat(lightCues[i].start + .85); setPlaying(false);
+        }}>
+          {lightCues.map((x, i) => <option key={x.name} value={i}>{x.name} · {x.start}–{x.end}</option>)}
+        </select></label>
+        <label>Lighting pattern <select value={pattern} onChange={e => setPattern(e.currentTarget.value as typeof pattern)}>
+          <option value="chapter">Follow the score</option>
+          {lightPatterns.map(x => <option key={x} value={x}>{patternLabels[x]}</option>)}
+        </select></label>
+        <label>Score beat <input type="range" min={cue.start} max={cue.end - .001} step=".025" value={beat}
+          onChange={e => { setPlaying(false); setBeat(e.currentTarget.valueAsNumber); }} /></label>
+        <label>Look angle <input type="range" min="-36" max="36" value={angle}
+          onChange={e => setAngle(e.currentTarget.valueAsNumber)} /></label>
+        <button className={s.scan} type="button" disabled={!ready} onClick={toggle}>{playing ? 'Pause lights' : 'Play lights'}</button>
+        <a href={'/?' + installed}>Open this view in game</a>
+      </div>
+    </div>
+    <div className={s.lightLegend} aria-label="Light families">
+      <span>Fill</span><span>Structural</span><span>Rhythm</span><span>Functional</span><span>Hero</span><span>Gate markers</span>
+    </div>
+  </section>;
 }
 
 export default function DebugOverview() {
@@ -152,8 +270,8 @@ export default function DebugOverview() {
         <a href="/" className={s.brand}>SoFaraway</a>
         <nav aria-label="Debug sections">
           <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#gates">Gates</a>
-          <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#structure">Structure</a>
-          <a href="#props">Props</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
+          <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#lighting">Lighting</a><a href="#structure">Structure</a>
+          <a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
         <a href="/" className={s.back}>Back to game</a>
       </header>
@@ -283,6 +401,8 @@ export default function DebugOverview() {
           </div>
         </section>
 
+        <LightingStudio available={modelReady} />
+
         <section id="structure" className={s.section}>
           <div className={s.sectionHead}>
             <div><h2>Structural kit</h2><p>ELSEWHERE · ceiling and wall assemblies</p></div>
@@ -302,20 +422,6 @@ export default function DebugOverview() {
             {structureCards.map(({ id, name, detail }) => <figure key={id} className={s.card}>
               <Preview id={id} label={`${name} 3D model`} />
               <figcaption className={s.caption}><h3>{name}</h3><p>{detail}</p></figcaption>
-            </figure>)}
-          </div>
-        </section>
-
-        <section id="props" className={s.section}>
-          <h2>Loose props</h2>
-          <p>Floor objects tumble on contact without interrupting the run.</p>
-          <div className={s.worlds}>
-            {propCards.map(({ id, name, detail }) => <figure key={id} className={s.card}>
-              <Preview id={id} label={`${name} 3D model`} />
-              <figcaption className={s.caption}><h3>{name}</h3><p>{detail}</p>
-                <button className={s.scan} type="button" disabled={!modelReady} aria-label={`Preview ${name} impact`}
-                  onClick={() => models.current?.previewImpact(id)}>Preview impact</button>
-              </figcaption>
             </figure>)}
           </div>
         </section>

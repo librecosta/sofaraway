@@ -2,6 +2,7 @@ import type { Object3D, WebGLRenderer } from 'three';
 import { PMREMGenerator } from 'three';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
+import type { RouteSide } from '../../app/game/core/branches';
 import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
@@ -261,10 +262,11 @@ const stability = {
     await new Promise(resolve => setTimeout(resolve, 120));
     return end();
   },
-  async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard') {
+  async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard',
+    side: RouteSide = 'left', iterations = 480, animateLights = false) {
     const definition = volumeById('elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
-      boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: 'left' };
+      boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: side };
     const output = document.createElement('canvas');
     document.body.prepend(output);
     const surface = new Graphics(output, quality, false, diagnostics);
@@ -279,17 +281,20 @@ const stability = {
       const input = boost ? { ...idleInput, boosting: true } : idleInput;
       while (sim.phase === 'playing' && (boost ? sim.trackDistance < station : sim.beat + 1e-9 < beat)) sim.step(STEP, input);
       surface.warmSurface(sim, true);
+      const frozenBeat = sim.beat;
+      let tick = 0;
       const draw = () => new Promise<void>((resolve, reject) => requestAnimationFrame(now => {
         try {
           if (measuring && frameAt) frames.push(now - frameAt);
           frameAt = now;
+          if (animateLights) sim.beat = Math.min(definition.beats, frozenBeat + tick++ * STEP / sim.secondsPerBeat);
           elapsed('frame', () => surface.draw(sim, true));
           resolve();
         } catch (error) { reject(error); }
       }));
       for (let i = 0; i < 24; i++) await draw();
       begin();
-      for (let i = 0; i < 480; i++) await draw();
+      for (let i = 0; i < iterations; i++) await draw();
       measuring = false;
       await new Promise(resolve => setTimeout(resolve, 120));
       const trace = end();
@@ -298,7 +303,7 @@ const stability = {
       const volume = Reflect.get(surface, 'volume') as { visuals: Map<RunGate, GateVisual> };
       const visible = Array.from(volume.visuals).filter(([, gate]) => gate.meshes[0].visible);
       const meshes = visible.flatMap(([, gate]) => gate.meshes);
-      return { beat: sim.beat, speed: sim.speed, route: sim.route, phase: sim.phase, trace, metrics: surface.metrics(),
+      return { beat: frozenBeat, speed: sim.speed, route: sim.route, phase: sim.phase, trace, metrics: surface.metrics(),
         gateCount: visible.length, gateKinds: visible.map(([gate]) => gate.kind), gateMeshes: meshes.length,
         gateGeometries: new Set(meshes.map(mesh => mesh.geometry)).size,
         renderer: gl.getParameter(info?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) as string,

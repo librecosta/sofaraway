@@ -81,6 +81,26 @@ body:has(.page) { margin: 0; background: #081014; }
 .channelControls button[aria-pressed=true], .scan[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
 .channelControls button:not(:disabled), .scan:not(:disabled) { cursor: pointer; }
 .scan { margin-top: .65rem; }
+.scenicDesk { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+  align-items: start; border: 1px solid var(--rule); background: var(--surface); margin-top: .9rem; }
+.scenicView { display: grid; place-items: center; background: #081216; min-height: 14rem; }
+.scenicView p { padding: .55rem .85rem; }
+.scenicControls { display: grid; gap: .65rem; padding: .9rem; border-left: 1px solid var(--rule); }
+.scenicControls label { display: grid; gap: .15rem; color: var(--muted); font-size: .88rem; }
+.scenicControls select { width: 100%; min-height: 2.3rem; background: #081014; color: var(--text);
+  border: 1px solid var(--rule); padding: .3rem .42rem; font: inherit; }
+.scenicControls input { width: 100%; accent-color: #f2d992; }
+.scenicControls a { font-size: .87rem; }
+.scenicControls button { margin-top: 0; }
+.lightLegend { display: flex; flex-wrap: wrap; gap: .45rem 1rem; margin-top: .55rem;
+  color: var(--muted); font-size: .82rem; }
+.lightLegend span { border-top: 2px solid #a5d7f5; padding-top: .2rem; }
+.lightLegend span:nth-child(3n+1) { border-color: #f2d992; }
+.lightLegend span:nth-child(3n+2) { border-color: #f0f1ec; }
+@media (max-width: 650px) {
+  .scenicDesk { grid-template-columns: 1fr; }
+  .scenicControls { border-left: 0; border-top: 1px solid var(--rule); }
+}
 
 .audioControls { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem 1rem; margin: .75rem 0 .6rem; }
 .audioField { display: grid; gap: .2rem; color: var(--muted); }

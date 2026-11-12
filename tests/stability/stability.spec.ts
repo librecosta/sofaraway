@@ -344,13 +344,12 @@ test('ELSEWHERE structure and light balance across the run @kit-visual', async (
       });
       const start = performance.now();
       await page.goto(`${build.client}/debug/`);
-      await expect(page.locator('canvas[data-ready=true]')).toHaveCount(build === candidate ? 31 : 24);
+      const count = build === candidate ? 29 : await page.locator('#props').count() ? 31 : 24;
+      await expect(page.locator('canvas[data-ready=true]')).toHaveCount(count);
       const contexts = Number(await page.locator('html').getAttribute('data-kit-contexts'));
       expect(contexts).toBeLessThanOrEqual(2);
       log('kit-debug', { build: build.label, readyMs: performance.now() - start, contexts });
-      if (build === candidate) for (const section of ['structure', 'props']) {
-        await page.locator('#' + section).screenshot({ path: info.outputPath(`debug-${section}.png`) });
-      }
+      if (build === candidate) await page.locator('#structure').screenshot({ path: info.outputPath('debug-structure.png') });
     }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -379,6 +378,112 @@ test('ELSEWHERE instanced dressing keeps rendering cost bounded @kit-perf', asyn
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+const scenicCases = [
+  ['intro', 5.6, 'high', false, 'standard', 'center'],
+  ['a', 61, 'high', false, 'standard', 'center'],
+  ['b', 113.67, 'low', false, 'standard', 'center'],
+  ['build', 176, 'high', false, 'standard', 'center'],
+  ['drop', 193, 'high', false, 'standard', 'center'],
+  ['break', 297, 'high', false, 'standard', 'center'],
+  ['main', 333.5, 'high', false, 'standard', 'center'],
+  ['challenge', 333.5, 'high', false, 'standard', 'right'],
+  ['bonus', 333.5, 'high', false, 'standard', 'left'],
+  ['finale', 401, 'high', false, 'standard', 'center'],
+  ['cruise', 229.23, 'high', false, 'standard', 'center'],
+  ['boost', 229.23, 'high', true, 'standard', 'center'],
+  ['sightseeing', 24, 'high', false, 'sightseeing', 'center'],
+] as const;
+
+test('ELSEWHERE scenic score, routes and mode capacity across a full composition @scenic-perf', async ({ browser }) => {
+  const focus = process.env.STABILITY_SCENES?.split(',').map(name => name.trim()).filter(Boolean);
+  const scenes = focus?.length ? scenicCases.filter(([name]) => focus.includes(name)) : scenicCases;
+  expect(scenes.length).toBeGreaterThan(0);
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [name, beat, quality, boost, mode, side] of scenes) {
+        const result = await page.evaluate(([beat, quality, boost, mode, side]) =>
+          window.stability.fixedGlass(beat, quality, boost, mode, side, 240, true), [beat, quality, boost, mode, side] as const);
+        log('scenic-frame', { name, sample, build: build.label, browser: browser.version(), ...result });
+        expect(result.phase).toBe('playing');
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(240);
+        if (name === 'main' || name === 'challenge' || name === 'bonus') {
+          expect(result.route).toBe(name === 'bonus' ? 'score' : name);
+        }
+        if (build === candidate) {
+          expect(result.metrics.scenicLights?.point).toBe(4);
+          const instances = Object.values(result.metrics.scenicInstances!);
+          for (const { planned, visible, capacity, culled, overflow } of instances) {
+            expect(visible).toBeLessThanOrEqual(capacity);
+            expect(visible + culled).toBe(planned);
+            expect(overflow).toBe(0);
+          }
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('fixed chapter frames lift surfaces while preserving glass and other-volume pixels @scenic-visual', async ({ browser }, info) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  try {
+    const all = [...scenicCases.map(([name, beat, quality, boost, mode, side]) =>
+      ['elsewhere', name, beat * 60 / 128, quality, boost, mode, side] as const),
+    ...(['drift', 'descent', 'orbit'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
+    for (const [id, name, time, quality, boost, mode, side] of all) {
+      const captured: Buffer[] = [];
+      const brightness: { shadow: number; middle: number; glare: number; mean: number; total: number }[] = [];
+      for (const build of haveReference ? [reference, candidate] : [candidate]) {
+        const query = `/?vol=${id}&t=${time.toFixed(6)}&q=${quality}&mode=${mode}&boost=${Number(boost)}&route=${side}&align=1&ui=0&dbg=1`;
+        await page.goto(build.client + query);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox, #cursor { display: none; }' });
+        const shot = await page.locator('#gl').screenshot({
+          path: id === 'elsewhere' ? info.outputPath(`${name}-${build.label}.png`) : undefined,
+        });
+        captured.push(shot);
+        if (id !== 'elsewhere') continue;
+        const sample = await page.evaluate(async png => {
+          const data = await (await fetch('data:image/png;base64,' + png)).blob();
+          const image = await createImageBitmap(data);
+          const canvas = new OffscreenCanvas(image.width, image.height);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(image, 0, 0);
+          const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          let shadow = 0, middle = 0, glare = 0, sum = 0, warm = 0, cool = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]];
+            const luma = r * .2126 + g * .7152 + b * .0722;
+            sum += luma;
+            if (luma < 12) shadow++;
+            if (luma >= 24 && luma < 150) middle++;
+            if (luma >= 210) glare++;
+            if (luma >= 20 && r > b * 1.07) warm++;
+            if (luma >= 20 && b > r * 1.07) cool++;
+          }
+          image.close();
+          return { shadow, middle, glare, warm, cool, mean: sum / (pixels.length / 4), total: pixels.length / 4 };
+        }, shot.toString('base64'));
+        brightness.push(sample);
+        log('scenic-image', { name, build: build.label, ...sample });
+      }
+      if (haveReference && id !== 'elsewhere') expect(captured[0].equals(captured[1]), id).toBe(true);
+      if (haveReference && (name === 'intro' || name === 'b' || name === 'break')) {
+        expect(brightness[1].mean - brightness[0].mean, name).toBeGreaterThan(1);
+        expect(brightness[1].mean - brightness[0].mean, name).toBeLessThan(13);
+        expect(brightness[1].shadow / brightness[1].total, name).toBeGreaterThan(.53);
+        expect(brightness[1].glare / brightness[1].total, name).toBeLessThan(.03);
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 test('Score Boost and Sightseeing stay readable across pixel ratios @glass', async ({ browser }, info) => {

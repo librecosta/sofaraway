@@ -1,18 +1,35 @@
 import * as THREE from 'three';
 import { BRANCH_SPACING, ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
+import { fixtureLevel, tunnelBreath } from '../core/lighting-score';
+import type { LightingState } from '../core/lighting-score';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
 import type { PathFrame } from './path';
 import { surfaceUV } from './materials/uv';
+import { linearSwatch } from './scenic-lighting.client';
 
 const styles = {
-  main: { color: '#72ffda', spacing: 5.5, width: 0.028, brightness: 0.48 },
-  challenge: { color: '#ffbd69', spacing: 4.3, width: 0.020, brightness: 0.22 },
-  score: { color: '#cab0ff', spacing: 8.5, width: 0.032, brightness: 0.50 },
+  main: { color: '#DDEAF3', spacing: 6.8, width: 0.018, brightness: 0.54 },
+  challenge: { color: '#F0AC6B', spacing: 4.3, width: 0.020, brightness: 0.58 },
+  score: { color: '#C4EAF4', spacing: 8.5, width: 0.025, brightness: 0.65 },
 } satisfies Record<RouteKind, { color: string; spacing: number; width: number; brightness: number }>;
+const routeColors = {
+  main: linearSwatch(styles.main.color), challenge: linearSwatch(styles.challenge.color), score: linearSwatch(styles.score.color),
+};
 
-const guideMaterial = () => new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, vertexColors: true, toneMapped: false });
+const routeIndex = { main: 0, challenge: 1, score: 2 } satisfies Record<RouteKind, number>;
+function guideMaterial(level: THREE.Vector3, tint: THREE.Color[]) {
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, vertexColors: true, toneMapped: false });
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uRouteLevel = { value: level };
+    shader.uniforms.uRouteTint = { value: tint };
+    shader.vertexShader = 'attribute float routeLight; uniform vec3 uRouteLevel, uRouteTint[3];\n' +
+      shader.vertexShader.replace('#include <color_vertex>',
+        '#include <color_vertex>\n int lane = int(routeLight + 0.5); if (lane < 3) vColor.rgb *= uRouteLevel[lane] * uRouteTint[lane];');
+  };
+  return material;
+}
 const signMaterial = (map: THREE.Texture, color = new THREE.Color(0xffffff)) =>
   new THREE.MeshBasicMaterial({ map, color, side: THREE.DoubleSide, toneMapped: false });
 
@@ -20,10 +37,11 @@ const signMaterial = (map: THREE.Texture, color = new THREE.Color(0xffffff)) =>
 export function prepareJunctionPrograms(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
   const geometry = new THREE.PlaneGeometry(1, 1);
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(12).fill(1), 3));
+  geometry.setAttribute('routeLight', new THREE.Float32BufferAttribute(new Float32Array(4), 1));
   const pixel = document.createElement('canvas');
   pixel.width = pixel.height = 1;
   const texture = new THREE.CanvasTexture(pixel);
-  const guide = guideMaterial();
+  const guide = guideMaterial(new THREE.Vector3(1, 1, 1), Array.from({ length: 3 }, () => new THREE.Color(0xffffff)));
   const sign = signMaterial(texture);
   const meshes = [new THREE.Mesh(geometry, guide), new THREE.Mesh(geometry, sign)];
   const dispose = () => { guide.dispose(); sign.dispose(); texture.dispose(); };
@@ -60,8 +78,10 @@ class Quads {
   private readonly position: number[] = [];
   private readonly uv: number[] = [];
   private readonly color: number[] = [];
+  private readonly channels: number[] = [];
   private readonly indices: number[] = [];
   private readonly temp = new THREE.Vector3();
+  lane = 0;
 
   quad(first: PathFrame, last: PathFrame, p: Point, q: Point, r: Point, s: Point,
     uvStart = 0, uvEnd = 1, color?: THREE.Color, mapped?: readonly number[]) {
@@ -69,7 +89,7 @@ class Quads {
     for (const [frame, [x, y]] of [[first, p], [first, q], [last, r], [last, s]] as const) {
       this.temp.copy(frame.p).addScaledVector(frame.r, x).addScaledVector(frame.u, y);
       this.position.push(this.temp.x, this.temp.y, this.temp.z);
-      if (color) this.color.push(color.r, color.g, color.b);
+      if (color) { this.color.push(color.r, color.g, color.b); this.channels.push(this.lane); }
     }
     this.uv.push(...(mapped ?? [0, uvStart, 1, uvStart, 1, uvEnd, 0, uvEnd]));
     this.indices.push(n, n + 1, n + 2, n, n + 2, n + 3);
@@ -79,7 +99,10 @@ class Quads {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(this.position, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    if (this.color.length) geo.setAttribute('color', new THREE.Float32BufferAttribute(this.color, 3));
+    if (this.color.length) {
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(this.color, 3));
+      geo.setAttribute('routeLight', new THREE.Float32BufferAttribute(this.channels, 1));
+    }
     geo.setIndex(this.indices);
     geo.computeVertexNormals();
     return geo;
@@ -92,6 +115,9 @@ export class BranchVisual {
   private readonly textures: THREE.Texture[] = [];
   private readonly near = pathFrame();
   private readonly far = pathFrame();
+  private readonly level = new THREE.Vector3(1, 1, 1);
+  private readonly tint = Array.from({ length: 3 }, () => new THREE.Color(0xffffff));
+  private readonly gateAccent = new THREE.Color();
 
   constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material) {
     this.group.name = 'elsewhere-junction';
@@ -104,21 +130,51 @@ export class BranchVisual {
     this.dividers(housing, path.openBeat);
     this.dividers(housing, path.mergeBeat);
     for (const side of routeSides) {
-      const style = styles[layout[side]];
-      const color = new THREE.Color(style.color);
+      const route = layout[side], style = styles[route];
+      const color = routeColors[route];
+      rails.lane = routeIndex[route];
       this.sweep(housing, side, entry, exit, false);
-      this.frames(rails, side, entry, exit, style.spacing, style.width, color.clone().multiplyScalar(style.brightness));
+      this.frames(rails, side, entry, exit, style.spacing, style.width, new THREE.Color().setScalar(style.brightness));
+      rails.lane = 3; // Entry markings and physical signs retain their route identity.
       this.guide(rails, side, path.split, entry, color.clone().multiplyScalar(0.65));
       this.guide(rails, side, exit, path.end, color.clone().multiplyScalar(0.65));
-      this.sign(side, layout[side], color);
+      rails.lane = routeIndex[route];
+      // A longer roof ribbon marks the open Bonus route; Challenge keeps short alternating units.
+      if (route !== 'main') {
+        const step = route === 'score' ? 8 : 5.2;
+        for (let s = entry + 1; s + step * .7 < exit; s += step) {
+          const first = path.sample(s, side, this.near);
+          const last = path.sample(s + step * (route === 'score' ? .68 : .35), side, this.far);
+          const x = route === 'score' ? -.9 : (Math.floor((s - entry) / step) % 2 ? 1.3 : -1.3);
+          rails.quad(first, last, [x - .065, b - .08], [x + .065, b - .08],
+            [x + .065, b - .08], [x - .065, b - .08], 0, 1, new THREE.Color().setScalar(.45));
+        }
+      }
+      this.sign(side, route, color);
     }
     const housingMesh = new THREE.Mesh(housing.geometry(), shell);
     housingMesh.name = 'junction-shell';
-    const glow = guideMaterial();
+    const glow = guideMaterial(this.level, this.tint);
     this.materials.push(glow);
     const railMesh = new THREE.Mesh(rails.geometry(), glow);
     railMesh.name = 'junction-guides';
     this.group.add(housingMesh, railMesh);
+  }
+
+  updateLighting(state: LightingState, reduced: boolean, hue: number, preview: boolean) {
+    this.gateAccent.setHSL((hue + 1) % 1, 1, .5);
+    if (!preview) {
+      this.level.setScalar(.74 + .26 * tunnelBreath(state.beat, reduced));
+      for (const tint of this.tint) tint.copy(this.gateAccent);
+      return;
+    }
+    const at = this.path.split;
+    this.level.set(.70 + fixtureLevel(state, 'structural', at, 2, reduced) * .41,
+      .63 + fixtureLevel(state, 'rhythm', at, 5, reduced) * .41,
+      .63 + fixtureLevel(state, 'hero', at, 2, reduced) * .41);
+    for (const route of ['main', 'challenge', 'score'] as const) {
+      this.tint[routeIndex[route]].copy(routeColors[route]).lerp(this.gateAccent, .22);
+    }
   }
 
   private sweep(target: Quads, side: RouteSide, from: number, through: number, wide: boolean) {

@@ -3,9 +3,6 @@ import { initialSnapshot } from '../../app/game/contracts';
 import type { Diagnostics, GameOptions, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
-import { lanePoint } from '../../app/game/core/collision';
-import { advanceProp } from '../../app/game/core/dressing';
-import { idleInput } from '../../app/game/core/input';
 import { corridorLength } from '../../app/game/core/simulation';
 import type { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
@@ -35,35 +32,6 @@ const harness = {
   inspectGlassOptics: async () => (await import('./glass-optics')).inspectGlassOptics(),
   inspectMaterials: async () => (await import('./materials')).inspectMaterials(),
   inspectCameraAndGates: async () => (await import('./camera-gates')).inspectCameraAndGates(),
-  dressingState() {
-    const sim: Simulation = Reflect.get(runtime!, 'simulation');
-    const graphics: Graphics = Reflect.get(runtime!, 'graphics');
-    return { motions: [...(sim.dressing?.motion ?? [])], active: sim.dressing?.active ?? 0,
-      plan: sim.dressing?.plan ?? [], metrics: graphics.metrics() };
-  },
-  bumpFirstProp(boosting: boolean) {
-    const sim: Simulation = Reflect.get(runtime!, 'simulation');
-    const graphics: Graphics = Reflect.get(runtime!, 'graphics');
-    const prop = sim.dressing!.props[0];
-    const start = performance.now();
-    let steps = 0;
-    while (sim.phase === 'playing' && sim.trackDistance < prop.station + 2) {
-      const gate = sim.previewGates.find(g => !g.judged);
-      const target = sim.trackDistance > prop.station - 11 ? [prop.x / .88, -2.59] as [number, number]
-        : gate ? lanePoint(gate.kind, gate.open, gate.axis) : null;
-      sim.step(STEP, { ...idleInput, target, boosting });
-      steps++;
-    }
-    const cpuMs = performance.now() - start;
-    const pose = sim.dressing!.motion.get(prop.id);
-    const poses = pose ? Array.from({ length: 4096 }, () => ({ ...pose })) : [];
-    const motionStart = performance.now();
-    for (const sample of poses) advanceProp(prop, sample, STEP);
-    const activeUs = poses.length ? (performance.now() - motionStart) * 1000 / poses.length : null;
-    graphics.draw(sim, true);
-    runtime!.pause('user');
-    return { ...harness.dressingState(), prop, speed: sim.speed, steps, cpuMs, activeUs, time: sim.time };
-  },
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');

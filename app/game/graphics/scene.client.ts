@@ -1,17 +1,21 @@
 import * as THREE from 'three';
 import { canPass, playerViewOffset } from '../core/collision';
+import { tunnelBreath } from '../core/lighting-score';
 import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { modeScale } from '../core/reference-track';
+import { makeScenicPlan } from '../core/scenic-plan';
+import type { ScenicPlan } from '../core/scenic-plan';
 import { corridorLength } from '../core/simulation';
 import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
-import type { Diagnostics, QualityTier } from '../contracts';
+import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { DressingVisuals } from './dressing.client';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
 import { MaterialLibrary } from './materials/library.client';
+import { surfaceIds } from './materials/presets';
 import { buildPath } from './path';
 import type { Path } from './path';
 import { PickupVisual } from './pickup.client';
@@ -19,6 +23,8 @@ import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
 import type { QualityProfile } from './quality';
 import { RouteHologram } from './route-hologram.client';
+import { ScenicLighting } from './scenic-lighting.client';
+import type { LightingPreview } from './scenic-lighting.client';
 import { buildTextures } from './textures.client';
 import { Tunnel } from './tunnel.client';
 
@@ -37,7 +43,9 @@ class VolumeScene {
   readonly tunnel: Tunnel;
   readonly hologram?: RouteHologram;
   readonly dressing?: DressingVisuals;
-  activeProps = 0;
+  readonly scenic?: ScenicLighting;
+  private readonly scenicSurfaces: THREE.MeshStandardMaterial[] = [];
+  private readonly scenicPlans = new Map<PlayMode, ScenicPlan>();
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly gateGeometries = new GateGeometries();
   private readonly visuals = new Map<RunGate, GateVisual>();
@@ -67,11 +75,20 @@ class VolumeScene {
       this.scene.background = this.sky;
       this.scene.environment = environment;
       if (volume.id === 'elsewhere') {
-        // The new albedos are decoded from sRGB. Keep broad metal faces readable
-        // under the existing chapter lights with a little more neutral reflection.
-        this.scene.environmentIntensity = 1.7;
+        // Keep the existing PMREM and temper its contribution under the new local rig.
+        this.scene.environmentIntensity = 1.56;
         this.dressing = new DressingVisuals(path, this.surfaceLibrary!);
         this.scene.add(this.dressing.group);
+        this.scenic = new ScenicLighting(path);
+        this.scene.add(this.scenic.group);
+        for (const id of surfaceIds) {
+          const material = this.surfaceLibrary!.get(id);
+          // Reuse the same sRGB albedo to give unlit metal a restrained diffuse floor.
+          // This is a scene-local response; M0's maps and inspection materials do not change.
+          material.emissiveMap = material.map;
+          material.emissiveIntensity = id === 'floor-grip' ? .26 : id === 'utility-polymer' ? .42 : .36;
+          this.scenicSurfaces.push(material);
+        }
         this.hologram = new RouteHologram();
       }
     } catch (error) {
@@ -108,14 +125,28 @@ class VolumeScene {
 
   private preparedGate?: GateVisual;
 
-  update(sim: Simulation, deterministic: boolean) {
+  update(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
     const { x, y, roll } = sim.camera;
     const distance = sim.trackDistance;
     this.updateJunction(sim);
-    this.tunnel.update(distance, sim.phase === 'menu');
-    if (sim.dressing) {
-      this.dressing?.update(sim.dressing, distance, sim.time, sim.phase);
-      this.activeProps = sim.dressing.active;
+    this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
+    if (this.scenic) {
+      let plan = this.scenicPlans.get(sim.mode);
+      if (!plan) {
+        plan = makeScenicPlan(this.volume, this.path, sim.mode);
+        this.scenicPlans.set(sim.mode, plan);
+      }
+      this.dressing?.update(plan, distance, sim.time);
+      const lightBeat = lighting?.beat ?? sim.beat;
+      const part = lightBeat / 32, index = Math.floor(part), hues = this.volume.hue;
+      const hue = THREE.MathUtils.lerp(hues[index % hues.length], hues[(index + 1) % hues.length],
+        THREE.MathUtils.smoothstep(part - index, .78, 1));
+      const state = this.scenic.update(plan, distance, lightBeat, hue, !!lighting, lighting?.pattern);
+      const { base, sky, ground, reducedMotion } = this.scenic;
+      this.tunnel.setScenic(base, sky, ground, hue, tunnelBreath(lightBeat, reducedMotion), distance, plan.placements);
+      this.fog.color.copy(this.scenic.fog);
+      for (const material of this.scenicSurfaces) material.emissive.copy(base);
+      this.junction?.updateLighting(state, reducedMotion, hue, !!lighting);
     }
     const junction = this.junction;
     const cameraFrame = junction && sim.branch?.side
@@ -127,6 +158,7 @@ class VolumeScene {
     this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
     this.camera.quaternion.setFromRotationMatrix(this.basis);
     this.camera.rotateZ(roll);
+    if (lighting?.yaw) this.camera.rotateY(lighting.yaw);
     const previousPhase = this.phase;
     this.phase = sim.phase;
 
@@ -147,7 +179,7 @@ class VolumeScene {
     }
     if (sim.phase === 'menu') {
       this.setFov(BASE_FOV);
-      this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15);
+      if (!this.scenic) this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15);
       return { focus: null, locked: false };
     }
     if (sim.phase === 'results' || (sim.phase === 'crash' && previousPhase === 'crash')) {
@@ -161,9 +193,11 @@ class VolumeScene {
       const hue = this.volume.hue;
       this.hue = THREE.MathUtils.lerp(hue[index % hue.length], hue[(index + 1) % hue.length],
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
-      this.tunnel.setHue((this.hue + 1) % 1);
-      this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
-      this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
+      if (!this.scenic) {
+        this.tunnel.setHue((this.hue + 1) % 1);
+        this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
+        this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
+      }
     }
 
     let focus = 46;
@@ -255,6 +289,7 @@ class VolumeScene {
     this.gateGeometries.dispose();
     this.tunnel?.dispose();
     this.dressing?.dispose();
+    this.scenic?.dispose();
     this.surfaceLibrary?.dispose();
     this.sky?.dispose();
     this.scene.clear();
@@ -465,9 +500,9 @@ export class Graphics {
     this.gl.finish();
   }
 
-  update(sim: Simulation, deterministic: boolean) {
+  update(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return;
-    const { locked, focus } = this.volume.update(sim, deterministic);
+    const { locked, focus } = this.volume.update(sim, deterministic, lighting);
     this.locked = locked;
     if (focus !== null) {
       this.post?.setFocus(THREE.MathUtils.clamp(focus * 1.05, 26, 130));
@@ -475,9 +510,9 @@ export class Graphics {
     }
   }
 
-  draw(sim: Simulation, deterministic: boolean, updateScene = true) {
+  draw(sim: Simulation, deterministic: boolean, updateScene = true, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return false;
-    if (updateScene) this.update(sim, deterministic);
+    if (updateScene) this.update(sim, deterministic, lighting);
     const { scene, camera } = this.volume;
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
@@ -508,7 +543,11 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
-      dressing: this.volume?.dressing?.visible ?? 0, activeProps: this.volume?.activeProps ?? 0,
+      dressing: this.volume?.dressing?.visible ?? 0,
+      scenicInstances: this.volume?.dressing?.counts(),
+      scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: 4,
+        active: this.volume.tunnel.activePhysicalLights,
+        fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups, ...this.volume.tunnel.scenicTone } : undefined,
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
       dof: this.post?.quality.dof ?? false,

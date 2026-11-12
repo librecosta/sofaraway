@@ -124,8 +124,10 @@ Open `/debug/` directly or follow **Debug overview** from **Credits**.
 The page renders all four worlds, every gate type and the floating pickups.
 **Surface Materials** shows six lit ELSEWHERE samples and their raw channels;
 **Effect Materials** shows the cyan light channel and hologram film.
-**Structural Kit** and **Loose Props** show the installed models, with an angle
-control and a replayable impact for each prop.
+**Structural Kit** shows the installed models and their built-in lights, with
+an adjustable viewing angle.
+**Lighting & Scenic Composition** holds a real corridor view in place while
+you compare chapters and patterns, or play the lighting score.
 **Soundtrack** exports a WAV for the selected
 volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
 

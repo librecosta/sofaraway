@@ -6,7 +6,6 @@ import { chartFor, difficultySettings } from './chart';
 import type { ChartGate } from './chart';
 import { canPass, clamp, lanePoint, opening, SECTION } from './collision';
 import type { Axis } from './collision';
-import { DressingRun, makeDressingPlan } from './dressing';
 import { steer } from './input';
 import type { InputFrame } from './input';
 import { LUMEN_POINTS, PICKUP_APPEAR_BEAT, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_RADIUS,
@@ -91,7 +90,6 @@ export class Simulation {
   private difficulty: Difficulty = 'normal';
   private playMode: PlayMode = 'standard';
   readonly reference;
-  readonly dressing?: DressingRun;
   private readonly junctions = new Map<PlayMode, BranchPath>();
   private suffixBySide?: Record<RouteSide, RunGate[]>;
   private referenceProgress = 0;
@@ -104,10 +102,6 @@ export class Simulation {
   ) {
     this.secondsPerBeat = 60 / volume.bpm;
     this.reference = referenceFor(volume);
-    if (volume.id === 'elsewhere') {
-      const path = this.worldPath ??= buildPath(corridorLength(volume), 150, 46, volume.topology);
-      this.dressing = new DressingRun(makeDressingPlan(volume, path), path);
-    }
   }
 
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
@@ -196,7 +190,6 @@ export class Simulation {
       };
     }
     this.phase = 'playing';
-    this.dressing?.reset();
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
     this.gatesPassed = this.gatesJudged = this.gatesNeutralized = this.hits = this.reveal = this.judged = 0;
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
@@ -223,7 +216,6 @@ export class Simulation {
   }
 
   returnToMenu() {
-    this.dressing?.reset();
     this.phase = 'menu';
     this.previewGates = [];
     this.distance = MENU_DISTANCE;
@@ -258,14 +250,12 @@ export class Simulation {
     }
     if (this.phase === 'results') {
       this.distance += 3 * dt;
-      this.dressing?.advance(dt, this.trackDistance);
       return;
     }
     if (this.phase === 'crash') {
       const recoil = Math.min(dt, this.recoil);
       this.recoil -= recoil;
       this.distance -= 26 * recoil;
-      this.dressing?.advance(dt, this.trackDistance);
       if (this.time + 1e-9 >= this.settleAt) this.phase = 'results';
       return;
     }
@@ -273,7 +263,6 @@ export class Simulation {
     const previousBeat = this.beat;
     const previousWidth = this.steeringWidth;
     const previousDistance = this.distance;
-    const previousStation = this.dressing ? this.trackDistance : 0;
     const tickStart = this.time - dt;
     this.beat = Math.min(this.volume.beats, this.beat + dt / this.secondsPerBeat);
     const elapsed = (this.beat - previousBeat) * this.secondsPerBeat;
@@ -340,7 +329,6 @@ export class Simulation {
         break;
       }
     }
-    this.dressing?.step(elapsed, previousStation, this.trackDistance, x, y, camera.x, camera.y, this.speed, !neutralize);
     this.preloadGates();
     while (this.previewGates[0]?.routeStation < this.distance - GATE_RELEASE_BEHIND) this.previewGates.shift();
     if (this.phase === 'playing' && this.beat + 1e-9 >= this.volume.beats) {

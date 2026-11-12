@@ -1,7 +1,7 @@
 import { chartFor } from '../core/chart';
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
-import type { PropKind, StructureKind } from '../core/dressing';
+import type { StructureKind } from '../core/dressing';
 
 const sceneTimes = { elsewhere: 36, drift: 32, descent: 45, orbit: 38 };
 
@@ -42,8 +42,3 @@ export const structureCards = [
   { id: 'service-bay', name: 'Service bay', detail: 'Recessed maintenance panel with modular connections.' },
   { id: 'holographic-service-door', name: 'Holographic service door', detail: 'A wall-mounted access panel with a translucent display.' },
 ] as const satisfies readonly { id: StructureKind; name: string; detail: string }[];
-
-export const propCards = [
-  { id: 'tech-crate', name: 'Tech crate', detail: 'Beveled alloy case with protective collars.' },
-  { id: 'utility-barrel', name: 'Utility barrel', detail: 'Metal drum with protective rings and a sealed cap.' },
-] as const satisfies readonly { id: PropKind; name: string; detail: string }[];
