@@ -143,7 +143,14 @@ test('actual gate shader pixels agree with collision on this engine', async ({ p
     const result = await page.evaluate(id => window.b0Harness.shaderMismatches(id), id);
     expect(result, id).toEqual({ mismatches: [], glError: 0 });
   }
-  record(info, 'PASS', 'All six gate kinds match collision at measured openings and seams');
+  const optics = await page.evaluate(() => window.b0Harness.inspectGlassOptics());
+  expect(optics.glError).toBe(0);
+  expect(optics.protectedPixels[1]).toEqual(optics.protectedPixels[0]);
+  for (const readings of optics.readability) {
+    expect(readings[0].fast.range).toBeLessThan(readings[0].full.range);
+    expect(readings.at(-1)!.fast.range).toBeLessThanOrEqual(2);
+  }
+  record(info, 'PASS', 'All six gate kinds match collision; optical glass retains the rim and filters fine lines');
 });
 
 for (const scope of ['core', 'post'] as const) {

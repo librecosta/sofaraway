@@ -163,7 +163,7 @@ export class GateVisual {
         uHit: { value: 0 },
         uFade: { value: 1 },
         uStyle: { value: styles[obstacle] },
-        ...(!glass && {
+        ...(glass ? { uMicroContrast: { value: 1 } } : {
           uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
           uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
           uAxis: { value: axis },
@@ -187,10 +187,11 @@ export class GateVisual {
     }
   }
 
-  update(time: number, hue: number, distance: number, modeScale: number, hit: boolean) {
+  update(time: number, hue: number, distance: number, modeScale: number, hit: boolean, microContrast = 1) {
     const u = this.mat.uniforms;
     u.uTime.value = time;
     u.uHit.value = hit ? 0.8 : 0;
+    if (u.uMicroContrast) u.uMicroContrast.value = microContrast;
     u.uColor.value.setHSL((hue + 1) % 1, 0.72, 0.55);
     const fadeIn = 1 - THREE.MathUtils.smoothstep(distance, 140 * modeScale, 190 * modeScale);
     const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / 3.0, 0, 1);

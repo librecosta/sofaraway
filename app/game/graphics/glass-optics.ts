@@ -1,5 +1,10 @@
 import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
 
+export function glassMicroContrast(speed: number) {
+  const t = Math.max(0, Math.min(1, (speed - 28) / (43 - 28)));
+  return 1 - 0.20 * t * t * (3 - 2 * t);
+}
+
 export const GLASS_VERT = /* glsl */`
 attribute float aWall;
 varying vec2 vLocal;
@@ -25,6 +30,7 @@ uniform float uHit;
 uniform float uFade;
 uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond
 uniform float uOpen;
+uniform float uMicroContrast;
 
 const float A = ${SECTION.a};
 const float B = ${SECTION.b};
@@ -77,6 +83,17 @@ vec2 glow(float d, float core, float halo, float pixel) {
 // smoothly remove the remaining contrast as the period becomes unresolved.
 float lineIntegral(float x) { return floor(x) * 0.18 + min(fract(x), 0.18); }
 
+// Slow value noise in the pane's own coordinates, independent of time.
+float surfaceVariation(vec2 p) {
+  vec2 cell = p * 0.85 + vec2(3.27, 8.19);
+  vec2 f = fract(cell);
+  f = f * f * (3.0 - 2.0 * f);
+  vec4 h = fract((dot(floor(cell), vec2(17.0, 59.0)) + vec4(0.0, 17.0, 59.0, 76.0)) * 0.1031);
+  h *= h + 33.33;
+  h = fract(2.0 * h * h);
+  return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
+}
+
 void main() {
   vec2 p = vLocal;
   vec2 q = abs(p);
@@ -124,6 +141,11 @@ void main() {
   vec2 l3 = glow(outer, 0.007, 0.022, pixel);
   float emission = dot(l1, vec2(1.65, 0.48)) + dot(l2, vec2(0.58, 0.16)) + dot(l3, vec2(0.31, 0.09));
   float energy = dot(l1, vec2(0.34, 0.12)) + dot(l2, vec2(0.14, 0.04)) + dot(l3, vec2(0.08, 0.025));
+  // Only the zero-mean fine lines in the pane body are modulated. Preserve
+  // the existing line response within the bright rim, seams and halo.
+  float bodyWeight = 1.0 - smoothstep(0.005, 0.035, energy);
+  float surface = 1.0 + 0.06 * (2.0 * surfaceVariation(p) - 1.0);
+  micro *= mix(1.0, surface * uMicroContrast, bodyWeight);
   float paneLight = mix(0.63, 1.05, clamp(p.y / (2.0 * B) + 0.5, 0.0, 1.0));
   float pane = paneLight * (hub ? 0.55 : 0.76) + micro * (hub ? 0.09 : 0.29);
   vec3 col = uColor * (pane + emission + vWall * 0.12) + vec3(0.09) * l1.x;

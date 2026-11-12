@@ -64,9 +64,9 @@ export function inspectCameraAndGates() {
           const visual = scene.visuals.get(gate)!;
           const update = visual.update.bind(visual);
           let ahead = 0;
-          visual.update = (time, hue, distance, beatsAway, hit) => {
+          visual.update = (time, hue, distance, scale, hit, microContrast) => {
             ahead = distance;
-            return update(time, hue, distance, beatsAway, hit);
+            return update(time, hue, distance, scale, hit, microContrast);
           };
           graphics.update(sim, true);
           const mesh = visual.meshes[0];
@@ -80,6 +80,10 @@ export function inspectCameraAndGates() {
           const cameraSeams = [];
           let crossingError = 0;
           let previousAhead = ahead;
+          const readContrast = () => visual.mat.uniforms.uMicroContrast?.value as number | undefined;
+          let lastContrast = readContrast();
+          let minContrast = lastContrast ?? null;
+          let contrastStep = 0;
           let cameraPosition = graphics.camera!.position.clone();
           let cameraRotation = graphics.camera!.quaternion.clone();
           for (let tick = 0; !gate.judged && tick < 600; tick++) {
@@ -88,6 +92,12 @@ export function inspectCameraAndGates() {
             const previousTrack = sim.trackDistance;
             sim.step(STEP, { ...idleInput, boosting: part === 'press' });
             graphics.update(sim, true);
+            const contrast = readContrast();
+            if (contrast !== undefined && lastContrast !== undefined) {
+              contrastStep = Math.max(contrastStep, Math.abs(contrast - lastContrast));
+              minContrast = Math.min(minContrast!, contrast);
+            }
+            lastContrast = contrast;
             const camera = graphics.camera!;
             for (const seam of [SPLIT_BEAT, REJOIN_BEAT]) {
               if (previousTrack < station(seam) && sim.trackDistance >= station(seam)) {
@@ -125,7 +135,7 @@ export function inspectCameraAndGates() {
             }
           }
           spatial.push({ volume: volume.id, mode, stage, gate: gate.beat, visible, judged: gate.judged,
-            peak, travel, maxPathError, maxAheadIncrease, crossingError, fadeDrift, fadeFrames, cameraSeams });
+            peak, travel, maxPathError, maxAheadIncrease, crossingError, fadeDrift, fadeFrames, cameraSeams, minContrast, contrastStep });
         }
       }
     }

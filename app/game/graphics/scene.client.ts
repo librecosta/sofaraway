@@ -9,6 +9,7 @@ import type { Diagnostics, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
+import { glassMicroContrast } from './glass-optics';
 import { buildPath } from './path';
 import type { Path } from './path';
 import { PickupVisual } from './pickup.client';
@@ -143,6 +144,8 @@ class VolumeScene {
 
     let focus = 46;
     let aimed: RunGate | undefined;
+    const scale = modeScale(sim.mode);
+    const microContrast = this.volume.id === 'elsewhere' ? glassMicroContrast(sim.speed) : 1;
     for (const gate of previews) {
       let visual = this.visuals.get(gate);
       if (!visual) {
@@ -159,7 +162,7 @@ class VolumeScene {
         this.scene.add(...visual.meshes);
       }
       const ahead = gate.routeStation - sim.distance;
-      if (!visual.update(sim.time, this.hue, ahead, modeScale(sim.mode), gate.hit)) continue;
+      if (!visual.update(sim.time, this.hue, ahead, scale, gate.hit, microContrast)) continue;
       if (!gate.route || gate.route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;

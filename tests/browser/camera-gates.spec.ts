@@ -28,6 +28,13 @@ test('the lens is steady on the beat and glass stays aligned during speed change
     expect(sample.peak.idle, context).toBeLessThan(1e-5);
     expect(sample.peak.press, context).toBeLessThan(1e-5);
     expect(sample.peak.release, context).toBeLessThan(1e-5);
+    if (sample.volume !== 'elsewhere') expect(sample.minContrast, context).toBeNull();
+    else if (sample.mode === 'sightseeing') expect(sample.minContrast, context).toBe(1);
+    else {
+      expect(sample.minContrast, context).toBeGreaterThanOrEqual(0.8);
+      expect(sample.minContrast, context).toBeLessThan(0.97);
+      expect(sample.contrastStep, context).toBeLessThan(0.04);
+    }
     if (sample.stage === 'entry' || sample.stage === 'merge') {
       expect(sample.cameraSeams).toHaveLength(1);
       expect(sample.cameraSeams[0].step).toBeLessThan(0.9);

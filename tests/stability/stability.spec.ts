@@ -1,6 +1,9 @@
 import { devices, expect, test, webkit } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
 import { VOLUMES } from '../../app/game/core/volumes';
+import { STEP } from '../../app/game/core/clock';
+import { idleInput } from '../../app/game/core/input';
+import { Simulation } from '../../app/game/core/simulation';
 import type { QualityTier, VolumeId } from '../../app/game/contracts';
 import type {} from '../harness/stability';
 
@@ -197,7 +200,43 @@ test('fixed-time visual comparison across four volumes @glass', async ({ browser
         await info.attach(`${name}-${build.label}`, { path, contentType: 'image/png' });
       }
     }
+    for (const build of [reference, candidate]) {
+      await page.goto(build.harness);
+      const result = await page.evaluate(() => window.b0Harness.inspectGlassOptics?.());
+      if (result?.readability) log('optical-readback', { build: build.label,
+        readability: result.readability, protectedPixels: result.protectedPixels, surface: result.surface });
+    }
   } finally { await page.close(); }
+});
+
+test('Score Boost and Sightseeing stay readable across pixel ratios @glass', async ({ browser }, info) => {
+  const sim = new Simulation(VOLUMES[0], { align: true, branchSide: 'left' });
+  sim.start('normal', 0);
+  const station = sim.reference.station(333.5, 'standard');
+  while (sim.phase === 'playing' && sim.trackDistance < station) sim.step(STEP, { ...idleInput, boosting: true });
+  for (const { name, seconds, mode, boost } of [
+    { name: 'score-boost', seconds: sim.time, mode: 'standard', boost: 1 },
+    { name: 'score-sightseeing', seconds: 333.5 * 60 / 128, mode: 'sightseeing', boost: 0 },
+  ]) for (const { dpr, quality } of [{ dpr: 1, quality: 'low' }, { dpr: 2, quality: 'high' }]) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: dpr });
+    try {
+      for (const build of haveReference ? [reference, candidate] : [candidate]) {
+        await page.goto(`${build.client}/?vol=elsewhere&q=${quality}&t=${seconds.toFixed(7)}&mode=${mode}&boost=${boost}&route=left&align=1&ui=0&dbg=1`);
+        const debug = page.locator('#errbox');
+        await expect(debug).toContainText('"phase":"playing"');
+        const { speed, canvas } = JSON.parse((await debug.textContent())!);
+        if (boost) expect(speed).toBeGreaterThan(43);
+        else expect(speed).toBeLessThan(12);
+        expect(canvas).toEqual(dpr === 1 ? [960, 540] : [1536, 864]);
+        await expect(page.locator('#hud-route')).toHaveText('BONUS');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        const path = info.outputPath(`${name}-${quality}-${build.label}.png`);
+        await page.locator('#gl').screenshot({ path });
+        await info.attach(`${name}-${quality}-${build.label}`, { path, contentType: 'image/png' });
+        log('visual-motion', { name, seconds, dpr, quality, build: build.label, speed, canvas });
+      }
+    } finally { await page.close(); }
+  }
 });
 
 test('fixed ELSEWHERE frames and dense Score gates @glass', async ({ browser }) => {
@@ -206,9 +245,10 @@ test('fixed ELSEWHERE frames and dense Score gates @glass', async ({ browser }) 
     const errors = captureErrors(page);
     try {
       await openHarness(page, build);
-      for (const [beat, quality] of [[76.8, 'high'], [333.5, 'high'], [333.5, 'low']] as const) {
-        const result = await page.evaluate(([beat, quality]) => window.stability.fixedGlass(beat, quality), [beat, quality] as const);
-        log('glass', { sample, build: build.label, browser: browser.version(), quality, ...result });
+      for (const [beat, quality, boost] of [[76.8, 'high', false], [333.5, 'high', false], [333.5, 'low', false], [333.5, 'high', true]] as const) {
+        const result = await page.evaluate(([beat, quality, boost]) => window.stability.fixedGlass(beat, quality, boost),
+          [beat, quality, boost] as const);
+        log('glass', { sample, build: build.label, browser: browser.version(), quality, boost, ...result });
         expect(result.phase).toBe('playing');
         expect(result.glError).toBe(0);
         expect(result.trace.cpu.frame.n).toBe(480);
@@ -217,6 +257,7 @@ test('fixed ELSEWHERE frames and dense Score gates @glass', async ({ browser }) 
           expect(result.gateCount).toBeGreaterThanOrEqual(10);
           expect(new Set(result.gateKinds)).toEqual(new Set(['square', 'diamond']));
         }
+        if (boost) expect(result.speed).toBeGreaterThan(43);
         if (build === candidate) {
           expect(result.gateMeshes).toBe(result.gateCount);
           expect(result.gateGeometries).toBeLessThanOrEqual(8);

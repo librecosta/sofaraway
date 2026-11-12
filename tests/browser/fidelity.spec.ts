@@ -58,6 +58,15 @@ test('ELSEWHERE glass separates optical tiers, filters subpixel lines and has be
   expect(result.hub.every(delta => Math.abs(delta) <= 2)).toBe(true);
   expect(result.microContrast[0]).toBeGreaterThan(5);
   expect(result.microContrast[1]).toBeLessThanOrEqual(2);
+  expect(result.protectedPixels[1]).toEqual(result.protectedPixels[0]);
+  for (const readings of result.readability) {
+    for (const { width, full, fast } of readings) {
+      expect(Math.abs(fast.mean - full.mean)).toBeLessThan(full.mean * 0.02);
+      if (width <= 0.003) expect(fast.range).toBeLessThan(full.range * 0.9);
+      else expect(fast.range).toBeLessThanOrEqual(full.range);
+    }
+    expect(readings.at(-1)!.fast.range).toBeLessThanOrEqual(2);
+  }
   expect(result.irisWalls.flat().every(pixel => pixel > 0)).toBe(true);
   for (const [i, expected] of result.expectedThroat.entries()) {
     const throat = result.throatAndBevel[0][i];
