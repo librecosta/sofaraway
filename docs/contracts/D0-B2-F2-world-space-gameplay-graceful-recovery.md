@@ -1,21 +1,27 @@
-# D0-B2-F2 — World-space Gameplay & Graceful Recovery
+# D0-B2-F2 — World-space gameplay and graceful recovery
 
-冻结基准 `dev@9d8d4629bb7c22d1f2480939fb42c37c5403f058`。本阶段交付至 `origin/dev`，沿用 BSD-3-Clause。
+This decision replaces beat-locked gate collision and pause-on-late-scheduler behavior. The implementation baseline was `9d8d4629bb7c22d1f2480939fb42c37c5403f058`. See the [validation report](../audits/D0-B2-F2-validation-report.md) for the comparison and test evidence.
 
-音乐决定谱面的空间节奏。歌曲时间 `t` 决定编排拍点 `b = t × BPM / 60`，持续驱动音乐、灯光、色相、章节和终幕。沿路弧长 `s` 决定玩家何时穿越空间事件，主路站位 `u` 用于采样道路。四卷的歌曲、BPM、时长、门谱、碰撞开口、玻璃材质、难度及横向控制沿用现有内容。
+## Reference trajectory
 
-参考轨迹以 Normal 完整谱面为基础，ELSEWHERE 分路段采用 Main 谱面。每个 60 Hz 步以步开始前已出现的参考门数 `N` 计算目标速度 `24 + min(0.22 × N, 10)`，以 `min(1, 1.6 × dt)` 更新速度，然后积分距离。由初始速度 24、初始站位 4200 得到单调表 `S_ref(b)`，任意拍点在相邻步间插值。观光站位为 `4200 + (S_ref(b) − 4200) / 3`，生命为 5。
+Song time `t` defines `b = t × BPM / 60`, which drives music, lighting, sections and the ending. The main-path station `u` places world geometry. The player's travelled arc length `s` determines when events occur.
 
-实际推进以主路站位 `u` 越过的参考门数计算自然加速。目标速度为 `modeScale × [24 + min(0.22 × N_space(u), 10)] × boost`。Standard 的比例为 1，Sightseeing 为 ⅓。Boost 倍率为 1.45，进入响应为 4，常速响应为 1.6。更新速度后按 `s ← s + v × dt` 前进。成功过门数、所选路线额外门数、道具和分数均不参与自然加速。
+The full Normal chart is the reference, with Main used for the ELSEWHERE branch. A deterministic table integrates speed at 60 Hz from initial speed `24` and station `4200`. For the number `N` of reference gates before a step, use target `24 + min(0.22 × N, 10)` and update speed with response `min(1, 1.6 × dt)` before integrating distance. Interpolate between adjacent entries for any authored beat. Sightseeing uses `4200 + (S_ref(b) − 4200) / 3` and five lives.
 
-每道门在开局时确定 `worldStation = S_mode(b)` 和 `routeStation = L_route(worldStation)`。普通门的世界坐标是 `Path.sample(worldStation)`，支路门用侧路曲线采样。门、拾取及选路按 `s0 < station ≤ s1` 遍历，按距离顺序处理同一步内所有事件，以 `α = (station − s0) / (s1 − s0)` 插值横纵坐标，玻璃通行继续调用 `canPass`。实际穿越时间 `t0 + α × dt` 是 1.4 秒无敌期的锚点。生成、渐显、剔除、对准与 DOF 都采用空间距离。
+For actual travel, the count `N_space(u)` is the number of reference stations passed. The target is `modeScale × [24 + min(0.22 × N_space(u), 10)] × boost`. The scale is `1` in Standard and `1/3` in Sightseeing. Boost uses a `1.45` multiplier and response `4`, with response `1.6` at cruise. Integrate `s ← s + v × dt` after the speed update. Score, successful crossings, additional branch gates and pickups do not determine acceleration. [`reference-track.ts`](../../app/game/core/reference-track.ts) defines the concrete values.
 
-ELSEWHERE 将 Preview 315、Split 320、Route 326、Rejoin 352 转换成固定站位。左右身份由原种子确定，玩家在 Split 截面按插值横向位置锁定。侧路采用 `P±(u) = P0(u) ± w(u)R0(u)`，其中 `w = 10.5 × E(a) × [1 − E(c)]`、`E(x) = 6x⁵ − 15x⁴ + 10x³`，`a/c` 分别为夹紧后的入口、出口归一化距离。两侧以不超过 0.25 单位的采样间距预计算 `L_r(u) = L_r(split) + ∫||dP_r/du||du`，运行中用 `u = L_r⁻¹(s)` 采样。汇合后的同一主路保留累计弧长差，选路、导引和门位不受 Boost 改写。道具站位来自第 306.66 拍，局部位置为 (0, 1)，半径 0.7，原有三种道具效果与抽取保持。
+## Spatial events
 
-歌曲结束仍是整局时间边界。提前过完可继续飞行，未遇见的门不触发碰撞或奖励。结算提供 planned、encountered、passed、unreached、neutralized，准确率为 passed / planned。保留原得分、CLEAN、Combo、路线及 Boost 奖励规则，技术中立的门不产生奖励、扣命、无敌或 Combo 变化，不消耗 Shield 或 Resonance。观光与发生技术中立的 Standard 均不能写入 Standard Best。
+Fix gate positions at run start. Map authored beat to `worldStation = S_mode(b)` and then to `routeStation = L_route(worldStation)`. Use the same path and station for rendering and collision. For each step, process all crossings in distance order over `s0 < station ≤ s1`. With `α = (station − s0) / (s1 − s0)`, interpolate local steering coordinates and call the existing `canPass`. Real crossing time `t0 + α × dt` anchors the 1.4-second invulnerability window. Preview, fade, culling, auto-align and focus use spatial distance.
 
-唯一 Run Timeline 使用单调时钟，扣除用户暂停、后台和 WebGL 中断时间。音频以同一运行起点和 60 ms 启动提前量调度。调度网格 `anchor + step × 15 / BPM` 固定。Scheduler 晚到时丢弃已过期事件，记录缺口并调度仍在未来的事件，保留已开始音符的去重。音频中断先尝试恢复，失败后游戏以无声继续并提供手势重试。
+The branch's authored beats define fixed preview, split, route and rejoin stations. Lock the route from the interpolated lateral position at the split. The side paths are `P±(u) = P0(u) ± w(u)R0(u)`, with `w = 10.5 × E(a) × [1 − E(c)]` and `E(x) = 6x⁵ − 15x⁴ + 10x³`. Here `a` and `c` are clamped distances normalized across the opening and merge windows. Precompute the arc map at intervals of at most 0.25 world units, invert it for camera travel and retain each side's length offset after the merge. [`BranchPath`](../../app/game/graphics/branch-path.ts) defines the mode-specific windows. The pickup uses the fixed station derived from beat `306.66`, with local center `(0, 1)` and radius `0.7`.
 
-固定步保留 60 Hz，每帧最多推进 12 步，余量分帧处理，补算时可略过中间画面。约 150 ms 以上确认不可操作的窗口，以固定步精度标记受影响的门。超过 2 s 的积压继续分批，显示简短恢复状态。普通卡顿与调度延迟不暂停。WebGL 丢失保留运行状态并尝试自动恢复，无法恢复时提供清晰错误。
+The song duration remains the run's time limit. Early clears can keep flying. Unreached gates yield neither hits nor points. Results distinguish planned, encountered, passed, unreached and neutralized gates, with accuracy `passed / planned`. A technical neutralization carries no reward or penalty and leaves Combo, Shield and Resonance untouched. Sightseeing and Standard runs with a neutralized gate are ineligible to update the Standard best score.
 
-验收包括固定世界坐标、真实 Boost 到达时间、两种布局下三条路线的连续性与全曲通关、CPU/GPU 开口一致性、时间及音频恢复、技术中立和成绩隔离、SSG、资源释放与浏览器回归。
+## Timeline and recovery
+
+Use one monotonic run timeline for simulation and audio anchoring. Account for the 60 ms start lead and freeze the timeline during deliberate pause, background suspension and graphics interruption. Keep the scheduling grid `anchor + step × 15 / BPM`. Skip expired events after a stall, continue future events on the same grid and avoid replaying notes that already started. Try to recover interrupted audio at the current offset. If the attempt fails, continue silently and offer a gesture to restore playback.
+
+The simulation can process up to 12 fixed steps per frame and carries the remaining debt forward. It may skip draws while catching up. A confirmed unobservable window around 150 ms or longer can neutralize its affected gates. Longer backlogs still drain in batches. WebGL loss suspends drawing, retains the run and attempts restoration. If graphics recovery fails, surface the error to the player.
+
+Validate fixed world coordinates, earlier arrivals with Boost, all branch layouts and play modes, CPU/GPU opening parity, audio and lifecycle recovery, score isolation and static build. Keep the four soundtracks and the existing gate geometry.

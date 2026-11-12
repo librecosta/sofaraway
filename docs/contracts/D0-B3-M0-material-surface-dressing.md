@@ -11,7 +11,7 @@ M0 establishes a clean industrial palette: graphite, titanium and blue-black sub
 | `panel-recessed` | Side wall plates | 1.5 × 1.5, fit whole modules across a face | 0.65 | 0.64 |
 | `panel-reinforced` | Existing support ribs and future load-bearing surfaces | 1.5 × 3.0 | 0.75 | 0.55 |
 | `floor-grip` | Flat floor and maintenance surfaces | 0.75 × 1.5, fit whole modules across a face | 0.55 | 0.78 |
-| `utility-polymer` | Matte dielectric for future equipment and wraps; Debug only in M0 | 0.6 × 0.6 | 0.02 | 0.82 |
+| `utility-polymer` | Matte dielectric for equipment housings and protective edges | 0.6 × 0.6 | 0.02 | 0.82 |
 
 - `emissive-channel-cyan`: restrained cyan luminous insert, reusable in future fixtures and optionally tinted by chapter. No additional bloom pass.
 - `hologram-panel-cyan`: light transparent film with sparse analytic scan lines and a soft rim; less visual weight than playable glass. No decorative text or symbols.
@@ -22,6 +22,6 @@ The geometry owns the UV transform. World mapping uses cumulative distance acros
 
 The volume owns its material library. Chunks and junction meshes borrow its materials and release only owned geometry or other private resources. The library reuses one generated texture set per preset and disposes materials and textures on teardown. Context restore uses the existing rebuild path. Debug has independent ownership and reuses a renderer for the object and material samples.
 
-`/debug/` contains Floating Pickups, Volumes, Gate Library, Surface Materials, Effect Materials, Environment and Soundtrack. Six consistent lit beveled samples show the runtime surfaces; the raw inspector offers only actual channels. Two specimens use the runtime effect definitions. Without WebGL2, clearly labeled color swatches and raw channels remain available. Canal Sky and Starfield stay in Environment with their original generators.
+In `/debug/`, Surface Materials shows six lit beveled samples of the runtime surfaces and exposes their generated raw channels. Effect Materials shows two specimens that use the runtime effect definitions. Without WebGL2, clearly labeled color swatches and raw channels remain available. Canal Sky and Starfield are listed under Environment.
 
-Acceptance requires mathematical seams and normal checks, a GPU color-space readback, resource ownership and context restore checks, comparable old/new CPU and GPU metrics, fixed views of the tunnel and branch, and pixel parity checks for DRIFT, DESCENT and ORBIT. Maintain F2 world-space play, Boost, Sightseeing, B1 glass, branch, pickups and soundtrack. M0 does not add physical props, fans, pipes, architecture, collisions, baked assets, graphics systems or a material editor; real dressing and interaction belong to D0-B3-A0. Deliver to `dev` with an ordinary push and verify the remote SHA.
+Changes to this material system require seam and normal checks, a GPU color-space readback, resource ownership and context restore checks, comparable CPU and GPU metrics, fixed views of the tunnel and branch, and pixel parity checks for DRIFT, DESCENT and ORBIT. The current installation and lighting rules are documented in the [architectural order contract](D0-B3-A1-F1-architectural-order-rhythmic-color.md).
