@@ -1,26 +1,45 @@
 import { expect, test } from '@playwright/test';
 
-test('lighting studio holds the scene station while the score changes and recovers its own context', async ({ page }) => {
+test('lighting studio starts from the game score and isolates the dual-color comparison at the same station', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/debug/');
   const studio = page.locator('#lighting');
   await studio.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE lighting' });
-  await expect(canvas).toHaveAttribute('data-ready', 'true');
-  await studio.getByLabel('Scene station').selectOption({ label: 'Wall service corridor' });
+  await expect(canvas).toHaveAttribute('data-zone', 'structural-only');
+  const scene = studio.getByLabel('Scene station');
+  await scene.selectOption({ label: 'A · paired ceiling slots' });
+  await expect(canvas).toHaveAttribute('data-zone', 'ceiling-pair');
+  await expect(studio.locator('option[value=dual-color]')).toHaveAttribute('disabled', '');
+  await scene.selectOption({ label: 'BUILD · ordered chase' });
+  await expect(canvas).toHaveAttribute('data-zone', 'ordered-rhythm');
+  await expect(studio.getByLabel('Score chapter')).toHaveValue('3');
+
+  const href = (await studio.getByRole('link', { name: 'Open this station in game' }).getAttribute('href'))!;
+  const game = await page.context().newPage();
+  try {
+    await game.goto(href + '&dbg=1&ui=0');
+    await expect(game.locator('#errbox')).toContainText('"phase":"playing"');
+    const metrics = JSON.parse((await game.locator('#errbox').textContent())!);
+    expect(metrics.scenicLights.zone).toBe('ordered-rhythm');
+    expect(metrics.scenicLights.groups).toBe(2);
+    const previewRim: number[] = JSON.parse((await canvas.getAttribute('data-rim'))!);
+    previewRim.forEach((value, i) => expect(value).toBeCloseTo(metrics.scenicLights.rim[i], 6));
+    expect(Number(await canvas.getAttribute('data-hue'))).toBeCloseTo(metrics.scenicLights.hue, 6);
+  } finally { await game.close(); }
+
   const station = await canvas.getAttribute('data-station');
-  await studio.getByLabel('Score chapter').selectOption({ label: 'DROP · 192–288' });
-  await studio.getByLabel('Lighting pattern').selectOption({ label: 'All on' });
-  await expect(canvas).toHaveAttribute('data-light-beat', '192.850');
-  const bright = await canvas.screenshot();
-  await studio.getByLabel('Lighting pattern').selectOption({ label: 'Partial blackout' });
-  expect((await canvas.screenshot()).equals(bright)).toBe(false);
+  const sameBeat = await canvas.getAttribute('data-light-beat');
+  const single = await canvas.screenshot();
+  await studio.getByLabel('Lighting pattern').selectOption('dual-color');
+  await expect.poll(async () => (await canvas.screenshot()).equals(single)).toBe(false);
+  await expect(canvas).toHaveAttribute('data-light-beat', sameBeat!);
+  await expect(canvas).toHaveAttribute('data-station', station!);
   await studio.getByRole('button', { name: 'Play lights' }).click();
-  await expect.poll(async () => Number(await canvas.getAttribute('data-light-beat'))).toBeGreaterThan(193);
+  await expect.poll(async () => Number(await canvas.getAttribute('data-light-beat'))).toBeGreaterThan(Number(sameBeat));
   await studio.getByRole('button', { name: 'Pause lights' }).click();
   const beat = await canvas.getAttribute('data-light-beat');
-  await expect(canvas).toHaveAttribute('data-station', station!);
   const lost = await canvas.evaluate((el: HTMLCanvasElement) => {
     const extension = el.getContext('webgl2')?.getExtension('WEBGL_lose_context');
     if (!extension) return false;
@@ -34,7 +53,7 @@ test('lighting studio holds the scene station while the score changes and recove
   await expect(studio.getByRole('status')).toHaveCount(0);
   await expect(canvas).toHaveAttribute('data-station', station!);
   await expect(canvas).toHaveAttribute('data-light-beat', beat!);
-  await studio.getByLabel('Scene station').selectOption({ label: 'Challenge tunnel' });
+  await scene.selectOption({ label: 'Challenge tunnel' });
   await expect(canvas).toHaveAttribute('data-route', 'challenge');
   expect(errors).toEqual([]);
 });

@@ -1,6 +1,8 @@
 import type { Diagnostics } from '../contracts';
 import { STEP } from '../core/clock';
 import { idleInput } from '../core/input';
+import { makeScenicPlan } from '../core/scenic-plan';
+import { CAPTURE_RUN_SEED } from '../core/run-seed';
 import { volumeById } from '../core/volumes';
 import { Simulation } from '../core/simulation';
 import { Graphics } from '../graphics/scene.client';
@@ -36,22 +38,37 @@ export class ScenicPreview {
 
   select(example: ScenicExample) {
     const sim = new Simulation(volume, { align: true, branchSide: example.side }, this.graphics.path);
-    sim.start('normal', 0, undefined, example.mode ?? 'standard');
-    const station = sim.reference.station(example.beat, sim.mode);
+    sim.start('normal', CAPTURE_RUN_SEED, undefined, example.mode ?? 'standard');
+    let station = sim.reference.station(example.beat, sim.mode);
+    if (example.zone || example.wall) {
+      const plan = makeScenicPlan(volume, this.graphics.path!, sim.mode);
+      if (example.zone) {
+        const zone = plan.zones.find(zone => zone.kind === example.zone);
+        if (zone) station = zone.startStation + 2;
+      } else {
+        const wall = plan.placements.reduce<(typeof plan.placements)[number] | undefined>((best, part) =>
+          part.kind === example.wall && (!best || Math.abs(part.station - station) < Math.abs(best.station - station)) ? part : best, undefined);
+        if (wall) station = wall.station - 8;
+      }
+    }
     const input = example.boost ? { ...idleInput, boosting: true } : idleInput;
     while (sim.phase === 'playing' && sim.trackDistance < station) sim.step(STEP, input);
     this.sim = sim;
     this.canvas.dataset.station = sim.trackDistance.toFixed(6);
     this.canvas.dataset.route = sim.route ?? '';
-    return sim.time;
+    return { seconds: sim.time, beat: sim.beat };
   }
 
   draw(lighting: LightingPreview) {
     this.lighting = lighting;
     if (this.lost || !this.sim) return;
     this.graphics.draw(this.sim, true, true, lighting);
+    const light = this.graphics.metrics().scenicLights;
     this.canvas.dataset.ready = 'true';
     this.canvas.dataset.lightBeat = lighting.beat.toFixed(3);
+    this.canvas.dataset.zone = light?.zone ?? '';
+    this.canvas.dataset.hue = String(light?.hue ?? 0);
+    this.canvas.dataset.rim = JSON.stringify(light?.rim);
   }
 
   private onLost = (event: Event) => {

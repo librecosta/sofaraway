@@ -3,7 +3,7 @@ import { placementIndex, structureKinds } from '../core/dressing';
 import type { StructureKind, Placement } from '../core/dressing';
 import type { ScenicPlan } from '../core/scenic-plan';
 import { pathFrame } from './branch-path';
-import { buildDressingModel, createKitLight } from './dressing-kit.client';
+import { buildDressingModel } from './dressing-kit.client';
 import type { MaterialLibrary } from './materials/library.client';
 import type { Path } from './path';
 
@@ -28,8 +28,6 @@ export class DressingVisuals {
   private readonly matrix = new THREE.Matrix4();
   private readonly rotation = new THREE.Matrix4();
   private readonly position = new THREE.Vector3();
-  private readonly film: THREE.Material;
-  private readonly light = createKitLight();
   private from = -1;
   private through = -1;
   private plan?: ScenicPlan;
@@ -38,7 +36,7 @@ export class DressingVisuals {
   constructor(private readonly path: Path, library: MaterialLibrary) {
     this.group.name = 'elsewhere-dressing';
     for (const kind of structureKinds) {
-      const meshes = buildDressingModel(kind, library, this.light).map(({ geometry, material }) => {
+      const meshes = buildDressingModel(kind, library).map(({ geometry, material }) => {
         const mesh = this.instance(geometry, material, 4);
         mesh.name = kind + ':' + material.name;
         this.group.add(mesh);
@@ -46,7 +44,6 @@ export class DressingVisuals {
       });
       this.batches.set(kind, { meshes, count: 0, capacity: 4, planned: 0, overflow: 0 });
     }
-    this.film = library.getEffect('hologram-panel-cyan');
   }
 
   private instance(geometry: THREE.BufferGeometry, material: THREE.Material, capacity: number) {
@@ -106,8 +103,7 @@ export class DressingVisuals {
     return baked;
   }
 
-  update(plan: ScenicPlan, station: number, time: number) {
-    if (this.film instanceof THREE.ShaderMaterial) this.film.uniforms.uTime.value = time;
+  update(plan: ScenicPlan, station: number) {
     const newPlan = this.plan !== plan;
     if (newPlan) this.configurePlan(plan);
     const from = placementIndex(plan.placements, station - BEHIND);
@@ -147,7 +143,6 @@ export class DressingVisuals {
       mesh.dispose();
     }
     this.batches.clear();
-    this.light.dispose();
     this.rest.clear();
     this.group.clear();
   }

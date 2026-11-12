@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('the gameplay rims and corner strips breathe together in one chapter color', async ({ page }) => {
+test('the gameplay rim and strip share the scored hue and pulse at the beat', async ({ page }) => {
   const sample = async (beat: number) => {
     await page.goto(`/?vol=elsewhere&t=${beat * 60 / 128}&q=low&align=1&dbg=1`);
     await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
@@ -8,12 +8,14 @@ test('the gameplay rims and corner strips breathe together in one chapter color'
       rim: number[]; strip: number[];
     });
   };
-  const dark = await sample(4);
-  const bright = await sample(6);
+  const dark = await sample(202.5);
+  const bright = await sample(202);
+  const firstColor = await sample(192);
   const norm = (rgb: number[]) => rgb.map(channel => channel / Math.max(...rgb));
-  for (const candidate of [dark.strip, bright.rim, bright.strip]) {
-    norm(candidate).forEach((channel, i) => expect(channel).toBeCloseTo(norm(dark.rim)[i], 7));
+  for (const light of [dark, bright, firstColor]) {
+    norm(light.strip).forEach((channel, i) => expect(channel).toBeCloseTo(norm(light.rim)[i], 7));
   }
+  expect(norm(firstColor.rim)).not.toEqual(norm(bright.rim));
   expect(Math.max(...bright.rim)).toBeGreaterThan(Math.max(...dark.rim));
   expect(Math.max(...bright.strip)).toBeGreaterThan(Math.max(...dark.strip));
 });

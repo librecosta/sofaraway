@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { SECTION } from '../core/collision';
 import type { RouteSide } from '../core/branches';
 import { placementIndex } from '../core/dressing';
-import type { Placement } from '../core/dressing';
+import type { LightingState } from '../core/lighting-score';
+import { ARCH_RING, SLOT_LENGTH, SLOT_X, WALL_INSET, WALL_RECESS, socketHalf } from '../core/scenic-plan';
+import type { ScenicPlan } from '../core/scenic-plan';
 import type { Topology } from '../core/volumes';
 import type { BranchPath } from './branch-path';
 import type { Path, PathFrame } from './path';
@@ -22,7 +24,7 @@ interface Chunk { s0: number; s1: number; meshes: THREE.Mesh[] }
  *  behind it. Chunks are built a few hundred units ahead, so the next
  *  stretch — and the turn into it — is always already there.
  * ------------------------------------------------------------------ */
-const RING = 3.0;    // 3 units: dense enough to read, sparse enough not to stripe
+const RING = ARCH_RING;
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
@@ -79,6 +81,7 @@ export class Tunnel {
   private readonly ringFrames: PathFrame[] = [];
   private readonly mainLight = new THREE.Color();
   private junction?: { start: number; end: number };
+  private architecture?: ScenicPlan;
 
   constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path, private readonly topology: Topology) {
     this.group = new THREE.Group();
@@ -138,9 +141,9 @@ export class Tunnel {
     this.group.add(this.ambient);
 
     this.lights = [];
-    const stations = this.surfaces ? [7, 20, 44, 86] : [14, 52, 104, 170];
+    const stations = this.surfaces ? [7, 20, 44] : [14, 52, 104, 170];
     for (const [i, d] of stations.entries()) {
-      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? [18, 23, 27, 0][i] : 30, this.surfaces && i === 3 ? 12 : 100, 2);
+      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? [16, 21, 25][i] : 30, 100, 2);
       l.userData.d = d;
       this.group.add(l);
       this.lights.push(l);
@@ -192,8 +195,16 @@ export class Tunnel {
 
     const C = frame();
     const D = frame();
+    const capA = frame();
+    const capB = frame();
     const v3 = new THREE.Vector3();
     const nWall = new THREE.Vector3();
+    const across = new THREE.Vector3();
+    const wall = this.architecture?.placements;
+    const wallSockets = wall?.slice(placementIndex(wall, s0 - 6), placementIndex(wall, s1 + 6))
+      .filter(part => part.mount !== 'ceiling') ?? [];
+    const roofSlots = this.architecture?.lamps.filter(lamp => lamp.side === 0 &&
+      lamp.station + SLOT_LENGTH / 2 > s0 && lamp.station - SLOT_LENGTH / 2 < s1) ?? [];
 
     const put = (arr: GeometryData, fr: PathFrame, px: number, py: number) => {
       v3.copy(fr.p).addScaledVector(fr.r, px).addScaledVector(fr.u, py);
@@ -247,6 +258,54 @@ export class Tunnel {
 
         if (m0) {
           const panel = i === 0 ? 2 : i === 2 || i === 6 ? 1 : 0;
+          const mid = (sA + sB) * .5;
+          const socket = i === 2 || i === 6 ? wallSockets.find(part =>
+            part.mount === (i === 2 ? 'right' : 'left') && Math.abs(mid - part.station) < socketHalf(part.kind)) : undefined;
+          const slot = i === 4 ? roofSlots.find(lamp => Math.abs(mid - lamp.station) < SLOT_LENGTH * .5) : undefined;
+          if (socket || slot) {
+            // Replace this wall/ceiling skin, rather than embedding a model through intact panels.
+            const from = socket ? socket.station - socketHalf(socket.kind) : slot!.station - SLOT_LENGTH * .5;
+            const end = socket ? socket.station + socketHalf(socket.kind) : slot!.station + SLOT_LENGTH * .5;
+            const enters = Math.abs(sA - from) < 1e-6, exits = Math.abs(sB - end) < 1e-6;
+            const shape: [number, number][] = [[0, 0]];
+            if (socket) {
+              const [lo, lip, highLip, hi] = WALL_INSET;
+              shape.push([lo, 0], [lip, WALL_RECESS], [highLip, WALL_RECESS], [hi, 0]);
+            } else {
+              for (const x of [SLOT_X, -SLOT_X]) {
+                const t = (p0[0] - x) / el;
+                shape.push([t - .151 / el, 0], [t - .112 / el, .135], [t + .112 / el, .135], [t + .151 / el, 0]);
+              }
+            }
+            shape.push([1, 0]);
+            const write = (fa: PathFrame, sa: number, da: number, fb: PathFrame, sb: number, db: number) => {
+              const id = panel === 1 ? 'panel-recessed' : 'alloy-satin-dark';
+              for (let j = 1; j < shape.length; j++) {
+                const [t0, d0] = shape[j - 1], [t1, d1] = shape[j];
+                const base = shell.pos.length / 3;
+                for (const [fr, station, t, d] of [[fa, sa, t0, d0 * da], [fa, sa, t1, d1 * da],
+                  [fb, sb, t1, d1 * db], [fb, sb, t0, d0 * db]] as const) {
+                  put(shell, fr, p0[0] + ex * t - nx2 * d, p0[1] + ey * t - ny2 * d);
+                  shell.uv.push(...surfaceUV(id, perim[i], el, t, station));
+                }
+                const p = shell.pos, n = base * 3;
+                v3.set(p[n + 3] - p[n], p[n + 4] - p[n + 1], p[n + 5] - p[n + 2])
+                  .cross(across.set(p[n + 9] - p[n], p[n + 10] - p[n + 1], p[n + 11] - p[n + 2])).normalize();
+                if (v3.dot(nWall) < 0) v3.negate();
+                for (let q = 0; q < 4; q++) shell.nor.push(v3.x, v3.y, v3.z);
+                shellGroups[panel].push(base, base + 1, base + 2, base, base + 2, base + 3);
+              }
+            };
+            const bevel = Math.min(.21, (sB - sA) * .25);
+            if (enters) {
+              this.path.sample(sA + bevel, capA);
+              write(A, sA, 0, capA, sA + bevel, 1);
+            }
+            if (exits) this.path.sample(sB - bevel, capB);
+            write(enters ? capA : A, enters ? sA + bevel : sA, 1, exits ? capB : B, exits ? sB - bevel : sB, 1);
+            if (exits) write(capB, sB - bevel, 1, B, sB, 0);
+            continue;
+          }
           const mapQuad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number,
             sa: number, sb: number, group: number) => {
             const id: SurfaceMaterialId = group === 2 ? 'floor-grip' : group === 1 ? 'panel-recessed' : 'alloy-satin-dark';
@@ -276,6 +335,8 @@ export class Tunnel {
     /* ---- ribs + glowing rim, a flange at every ring ---- */
     const R = 1.055, IN = 0.955, RIMW = 0.948;
     for (let k = 0; k < rings.length; k++) {
+      // One owner per grid ring, including when two streamed chunks meet.
+      if (this.architecture && (k === rings.length - 1 || rings[k] % RING !== 0)) continue;
       const A = ringFrames[k];
       for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
@@ -295,7 +356,8 @@ export class Tunnel {
           }
           target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         };
-        addRing(rib, IN, R);
+        if (!wallSockets.some(part => Math.abs(rings[k] - part.station) < socketHalf(part.kind) &&
+          ((i === 2 && part.mount === 'right') || (i === 6 && part.mount === 'left')))) addRing(rib, IN, R);
         addRing(rim, RIMW, IN);
       }
     }
@@ -421,6 +483,13 @@ export class Tunnel {
 
   get surfaceMaterials() { return this.shellMaterials && [...this.shellMaterials, this.ribMat, this.braceMat]; }
 
+  setArchitecture(plan: ScenicPlan) {
+    if (this.architecture === plan) return;
+    this.architecture = plan;
+    for (const chunk of this.chunks) this._disposeChunk(chunk);
+    this.chunks.length = 0;
+  }
+
   setJunction(junction?: { start: number; end: number }, behindCamera = false) {
     if (this.junction === junction) return;
     // Preserve the streaming intervals even where the junction owns the shell.
@@ -470,7 +539,7 @@ export class Tunnel {
 
     let lo = Infinity, hi = -Infinity;
     for (const c of this.chunks) { lo = Math.min(lo, c.s0); hi = Math.max(hi, c.s1); }
-    if (!this.chunks.length) { lo = s; hi = s; }
+    if (!this.chunks.length) { lo = hi = this.architecture ? Math.floor(s / CHUNK) * CHUNK : s; }
 
     // build forward
     let guard = 0;
@@ -518,36 +587,17 @@ export class Tunnel {
     this.rimMat.color.copy(c).multiplyScalar(0.55 + p * 1.0);
   }
 
-  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, hue: number,
-    breath: number, station: number, placements: readonly Placement[]) {
-    this.ambient.color.copy(base); this.ambient.intensity = .74;
-    this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .68;
-    for (let i = 0; i < 3; i++) this.lights[i].color.copy(i === 1 ? sky : base);
-    this.mainLight.setHSL((hue + 1) % 1, 1, .5);
-    this.rimMat.color.copy(this.mainLight).multiplyScalar(.84 * (.55 + .19 * breath));
-    this.stripMat.color.copy(this.mainLight).multiplyScalar(.79 * (.96 + .28 * breath));
-    const accent = this.lights[3];
-    accent.intensity = 0;
-    let chosen: Placement | undefined;
-    let nearest = 16, second = 16;
-    for (let i = placementIndex(placements, station - 9); i < placements.length && placements[i].station <= station + 23; i++) {
-      const part = placements[i];
-      const d = Math.abs(part.station - station - 7);
-      if (d < nearest) { second = nearest; nearest = d; chosen = part; }
-      else second = Math.min(second, d);
-    }
-    if (!chosen) return;
-    const frame = this.path.sample(chosen.station, this.lightFrame);
-    const y = chosen.mount === 'ceiling' ? chosen.y - .65 : chosen.y + .30;
-    const x = chosen.x * .92;
-    accent.position.copy(frame.p).addScaledVector(frame.r, x).addScaledVector(frame.u, y);
-    accent.color.copy(chosen.kind === 'ventilation-assembly' ? sky : base);
-    // Fade out at a hand-off so two adjacent fixtures never produce a moving point of light.
-    accent.intensity = 11 * THREE.MathUtils.smoothstep(second - nearest, 0, 2.6)
-      * (1 - THREE.MathUtils.smoothstep(nearest, 5, 16));
+  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState) {
+    this.ambient.color.copy(base); this.ambient.intensity = .70;
+    this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .64;
+    for (const [i, light] of this.lights.entries()) light.color.copy(i === 1 ? sky : base);
+    this.mainLight.setHSL(state.hue, 1, .5);
+    this.rimMat.color.copy(this.mainLight).multiplyScalar(state.rim);
+    this.stripMat.color.copy(this.mainLight).multiplyScalar(state.strip);
   }
 
   get physicalLights() { return this.lights.length + 2; }
+  get pointLights() { return this.lights.length; }
   get activePhysicalLights() { return this.lights.filter(light => light.intensity > 0).length + 2; }
   get scenicTone() { return { rim: this.rimMat.color.toArray(), strip: this.stripMat.color.toArray() }; }
 

@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { canPass, playerViewOffset } from '../core/collision';
-import { tunnelBreath } from '../core/lighting-score';
 import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { modeScale } from '../core/reference-track';
 import { makeScenicPlan } from '../core/scenic-plan';
@@ -128,25 +127,26 @@ class VolumeScene {
   update(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
     const { x, y, roll } = sim.camera;
     const distance = sim.trackDistance;
-    this.updateJunction(sim);
-    this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.scenic) {
       let plan = this.scenicPlans.get(sim.mode);
       if (!plan) {
         plan = makeScenicPlan(this.volume, this.path, sim.mode);
         this.scenicPlans.set(sim.mode, plan);
       }
-      this.dressing?.update(plan, distance, sim.time);
+      this.tunnel.setArchitecture(plan);
+      this.dressing?.update(plan, distance);
+    }
+    this.updateJunction(sim);
+    this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
+    if (this.scenic) {
       const lightBeat = lighting?.beat ?? sim.beat;
-      const part = lightBeat / 32, index = Math.floor(part), hues = this.volume.hue;
-      const hue = THREE.MathUtils.lerp(hues[index % hues.length], hues[(index + 1) % hues.length],
-        THREE.MathUtils.smoothstep(part - index, .78, 1));
-      const state = this.scenic.update(plan, distance, lightBeat, hue, !!lighting, lighting?.pattern);
-      const { base, sky, ground, reducedMotion } = this.scenic;
-      this.tunnel.setScenic(base, sky, ground, hue, tunnelBreath(lightBeat, reducedMotion), distance, plan.placements);
+      const state = this.scenic.update(this.scenicPlans.get(sim.mode)!, distance, lightBeat, lighting?.pattern);
+      const { base, sky, ground } = this.scenic;
+      this.hue = state.hue;
+      this.tunnel.setScenic(base, sky, ground, state);
       this.fog.color.copy(this.scenic.fog);
       for (const material of this.scenicSurfaces) material.emissive.copy(base);
-      this.junction?.updateLighting(state, reducedMotion, hue, !!lighting);
+      this.junction?.updateLighting(state);
     }
     const junction = this.junction;
     const cameraFrame = junction && sim.branch?.side
@@ -187,17 +187,15 @@ class VolumeScene {
     }
 
     const pulse = (1 - sim.beat % 1) ** 4;
-    if (sim.phase === 'playing' || sim.phase === 'crash') {
+    if (!this.scenic && (sim.phase === 'playing' || sim.phase === 'crash')) {
       const phase = sim.beat / 32;
       const index = Math.floor(phase);
       const hue = this.volume.hue;
       this.hue = THREE.MathUtils.lerp(hue[index % hue.length], hue[(index + 1) % hue.length],
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
-      if (!this.scenic) {
-        this.tunnel.setHue((this.hue + 1) % 1);
-        this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
-        this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
-      }
+      this.tunnel.setHue((this.hue + 1) % 1);
+      this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
+      this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
     }
 
     let focus = 46;
@@ -545,9 +543,10 @@ export class Graphics {
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       dressing: this.volume?.dressing?.visible ?? 0,
       scenicInstances: this.volume?.dressing?.counts(),
-      scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: 4,
+      scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,
         active: this.volume.tunnel.activePhysicalLights,
-        fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups, ...this.volume.tunnel.scenicTone } : undefined,
+        fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups,
+        zone: this.volume.scenic.zone, hue: this.volume.scenic.hue, ...this.volume.tunnel.scenicTone } : undefined,
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
       dof: this.post?.quality.dof ?? false,

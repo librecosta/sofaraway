@@ -81,19 +81,19 @@ function Soundtrack() {
 }
 
 const patternLabels: Record<LightPattern, string> = {
-  steady: 'Steady / base fill', breath: 'Breath', beat: 'Beat pulse', chase: 'Chase',
-  alternate: 'Left / right', build: 'Build-up', sparse: 'Sparse', 'all-on': 'All on',
-  'partial-blackout': 'Partial blackout', 'dual-color': 'Warm / cool', symbol: 'Ceiling pattern',
+  'single-color': 'Game · single color',
+  'dual-color': 'Experiment · dual color in the BUILD slots',
 };
 
 function LightingStudio({ available }: { available: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<ScenicPreview>(null);
+  const followStation = useRef(true);
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [example, setExample] = useState(0);
   const [section, setSection] = useState(0);
-  const [pattern, setPattern] = useState<'chapter' | LightPattern>('chapter');
+  const [pattern, setPattern] = useState<LightPattern>('single-color');
   const [beat, setBeat] = useState(4);
   const [angle, setAngle] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -107,6 +107,7 @@ function LightingStudio({ available }: { available: boolean }) {
     void import('../game/debug/scenic-preview.client').then(({ ScenicPreview }) => {
       if (stale || !canvas.current) return;
       viewer.current = new ScenicPreview(canvas.current, restored => {
+        if (!restored && canvas.current?.dataset.lightBeat) setBeat(Number(canvas.current.dataset.lightBeat));
         setPlaying(false);
         setReady(restored);
         setStatus(restored ? '' : 'WebGL interrupted. Waiting to restore this scene.');
@@ -120,11 +121,20 @@ function LightingStudio({ available }: { available: boolean }) {
       viewer.current = null;
     };
   }, [open]);
-  useEffect(() => { if (ready) setActualSeconds(viewer.current?.select(scene)); }, [ready, scene]);
+  useEffect(() => {
+    if (!ready) return;
+    const selected = viewer.current?.select(scene);
+    if (!selected) return;
+    setActualSeconds(selected.seconds);
+    if (!followStation.current) return;
+    followStation.current = false;
+    setSection(Math.max(0, lightCues.findIndex(c => c.start <= selected.beat && selected.beat < c.end)));
+    setBeat(selected.beat);
+  }, [ready, scene]);
   useEffect(() => {
     if (!ready) return;
     const draw = (value: number) => viewer.current?.draw({
-      beat: value, pattern: pattern === 'chapter' ? undefined : pattern, yaw: angle * Math.PI / 180,
+      beat: value, pattern, yaw: angle * Math.PI / 180,
     });
     draw(beat);
     if (!playing) return;
@@ -144,7 +154,7 @@ function LightingStudio({ available }: { available: boolean }) {
     return () => cancelAnimationFrame(frame);
   }, [ready, scene, cue, pattern, angle, beat, playing]);
   const installed = new URLSearchParams({
-    vol: 'elsewhere', t: (actualSeconds ?? scene.beat * 60 / 128).toFixed(5), q: 'high', align: '1',
+    vol: 'elsewhere', t: (actualSeconds ?? scene.beat * 60 / 128).toFixed(10), q: 'high', align: '1',
     ...(scene.side ? { route: scene.side } : {}),
     ...(scene.mode ? { mode: scene.mode } : {}),
     ...(scene.boost ? { boost: '1' } : {}),
@@ -156,7 +166,7 @@ function LightingStudio({ available }: { available: boolean }) {
   }
   return <section id="lighting" className={s.section}>
     <h2>Lighting &amp; scenic composition</h2>
-    <p>Hold the camera at one station while the light score plays. The structures and glass stay in place.</p>
+    <p>Each station opens with its in-game lighting. Scrub the music independently to inspect the hue changes, beat pulse and four- or eight-beat breathing. The camera, glass and fixtures stay in place.</p>
     <div className={s.scenicDesk}>
       <div className={s.scenicView}>
         {!open && <button className={s.scan} type="button" disabled={!available} onClick={() => {
@@ -167,7 +177,11 @@ function LightingStudio({ available }: { available: boolean }) {
         {status && <p role="status">{status}</p>}
       </div>
       <div className={s.scenicControls}>
-        <label>Scene station <select value={example} onChange={e => setExample(Number(e.currentTarget.value))}>
+        <label>Scene station <select value={example} onChange={e => {
+          followStation.current = true;
+          setPlaying(false); setPattern('single-color'); setAngle(0);
+          setExample(Number(e.currentTarget.value));
+        }}>
           {scenicExamples.map((x, i) => <option key={x.label} value={i}>{x.label}</option>)}
         </select></label>
         <label>Score chapter <select value={section} onChange={e => {
@@ -176,20 +190,19 @@ function LightingStudio({ available }: { available: boolean }) {
         }}>
           {lightCues.map((x, i) => <option key={x.name} value={i}>{x.name} · {x.start}–{x.end}</option>)}
         </select></label>
-        <label>Lighting pattern <select value={pattern} onChange={e => setPattern(e.currentTarget.value as typeof pattern)}>
-          <option value="chapter">Follow the score</option>
-          {lightPatterns.map(x => <option key={x} value={x}>{patternLabels[x]}</option>)}
+        <label>Lighting pattern <select value={pattern} onChange={e => setPattern(e.currentTarget.value as LightPattern)}>
+          {lightPatterns.map(x => <option key={x} value={x} disabled={x === 'dual-color' && scene.zone !== 'ordered-rhythm'}>{patternLabels[x]}</option>)}
         </select></label>
         <label>Score beat <input type="range" min={cue.start} max={cue.end - .001} step=".025" value={beat}
           onChange={e => { setPlaying(false); setBeat(e.currentTarget.valueAsNumber); }} /></label>
         <label>Look angle <input type="range" min="-36" max="36" value={angle}
           onChange={e => setAngle(e.currentTarget.valueAsNumber)} /></label>
         <button className={s.scan} type="button" disabled={!ready} onClick={toggle}>{playing ? 'Pause lights' : 'Play lights'}</button>
-        <a href={'/?' + installed}>Open this view in game</a>
+        <a href={'/?' + installed}>Open this station in game</a>
       </div>
     </div>
-    <div className={s.lightLegend} aria-label="Light families">
-      <span>Fill</span><span>Structural</span><span>Rhythm</span><span>Functional</span><span>Hero</span><span>Gate markers</span>
+    <div className={s.lightLegend} aria-label="Lighting zones">
+      <span>Structural ceiling</span><span>Continuous edge</span><span>Paired slots</span><span>Ordered rhythm</span>
     </div>
   </section>;
 }

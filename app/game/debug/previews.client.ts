@@ -8,7 +8,7 @@ import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
 import { makeEnvMap, makeSky } from '../graphics/environment.client';
-import { buildDressingModel, createKitLight } from '../graphics/dressing-kit.client';
+import { buildDressingModel } from '../graphics/dressing-kit.client';
 import { GateGeometries, GateVisual, THICKNESS } from '../graphics/gates.client';
 import { PickupVisual } from '../graphics/pickup.client';
 import { Graphics } from '../graphics/scene.client';
@@ -96,7 +96,6 @@ export class ModelPreviews {
   private lastScan = 0;
   private film?: THREE.Group;
   private readonly kit = new Map<StructureKind, { display: THREE.Group; body: THREE.Group; center: THREE.Vector3; scale: number }>();
-  private readonly kitLight = createKitLight();
   private kitAngle = 28;
   private lost = false;
 
@@ -237,7 +236,7 @@ export class ModelPreviews {
       let view = this.kit.get(kind);
       if (!view) {
         const display = new THREE.Group(), body = new THREE.Group();
-        for (const { geometry, material } of buildDressingModel(kind, this.materials, this.kitLight)) body.add(new THREE.Mesh(geometry, material));
+        for (const { geometry, material } of buildDressingModel(kind, this.materials)) body.add(new THREE.Mesh(geometry, material));
         const bounds = new THREE.Box3().setFromObject(body);
         const center = bounds.getCenter(new THREE.Vector3());
         const size = bounds.getSize(new THREE.Vector3());
@@ -298,7 +297,6 @@ export class ModelPreviews {
       if (object instanceof THREE.Mesh) object.geometry.dispose();
     });
     this.kit.clear();
-    this.kitLight.dispose();
     this.pickups.forEach(pickup => pickup.dispose());
     this.renderer.dispose();
     this.renderer.forceContextLoss();

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { BRANCH_SPACING, ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
-import { fixtureLevel, tunnelBreath } from '../core/lighting-score';
 import type { LightingState } from '../core/lighting-score';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
@@ -138,18 +137,6 @@ export class BranchVisual {
       rails.lane = 3; // Entry markings and physical signs retain their route identity.
       this.guide(rails, side, path.split, entry, color.clone().multiplyScalar(0.65));
       this.guide(rails, side, exit, path.end, color.clone().multiplyScalar(0.65));
-      rails.lane = routeIndex[route];
-      // A longer roof ribbon marks the open Bonus route; Challenge keeps short alternating units.
-      if (route !== 'main') {
-        const step = route === 'score' ? 8 : 5.2;
-        for (let s = entry + 1; s + step * .7 < exit; s += step) {
-          const first = path.sample(s, side, this.near);
-          const last = path.sample(s + step * (route === 'score' ? .68 : .35), side, this.far);
-          const x = route === 'score' ? -.9 : (Math.floor((s - entry) / step) % 2 ? 1.3 : -1.3);
-          rails.quad(first, last, [x - .065, b - .08], [x + .065, b - .08],
-            [x + .065, b - .08], [x - .065, b - .08], 0, 1, new THREE.Color().setScalar(.45));
-        }
-      }
       this.sign(side, route, color);
     }
     const housingMesh = new THREE.Mesh(housing.geometry(), shell);
@@ -161,20 +148,10 @@ export class BranchVisual {
     this.group.add(housingMesh, railMesh);
   }
 
-  updateLighting(state: LightingState, reduced: boolean, hue: number, preview: boolean) {
-    this.gateAccent.setHSL((hue + 1) % 1, 1, .5);
-    if (!preview) {
-      this.level.setScalar(.74 + .26 * tunnelBreath(state.beat, reduced));
-      for (const tint of this.tint) tint.copy(this.gateAccent);
-      return;
-    }
-    const at = this.path.split;
-    this.level.set(.70 + fixtureLevel(state, 'structural', at, 2, reduced) * .41,
-      .63 + fixtureLevel(state, 'rhythm', at, 5, reduced) * .41,
-      .63 + fixtureLevel(state, 'hero', at, 2, reduced) * .41);
-    for (const route of ['main', 'challenge', 'score'] as const) {
-      this.tint[routeIndex[route]].copy(routeColors[route]).lerp(this.gateAccent, .22);
-    }
+  updateLighting(state: LightingState) {
+    this.gateAccent.setHSL(state.hue, 1, .5);
+    this.level.setScalar(state.branch);
+    for (const tint of this.tint) tint.copy(this.gateAccent);
   }
 
   private sweep(target: Quads, side: RouteSide, from: number, through: number, wide: boolean) {

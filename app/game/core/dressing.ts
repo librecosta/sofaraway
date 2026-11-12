@@ -10,12 +10,6 @@ export interface Placement {
   readonly x: number;
   readonly y: number;
 }
-export function scenicWord(id: number) {
-  let n = Math.imul(id ^ 0x54e72bb3, 0x9e3779b1);
-  n = Math.imul(n ^ (n >>> 16), 0x7feb352d);
-  return (n ^ (n >>> 15)) >>> 0;
-}
-
 export function placementIndex<T extends Placement>(placements: readonly T[], station: number) {
   let lo = 0, hi = placements.length;
   while (lo < hi) {

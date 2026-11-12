@@ -36,9 +36,9 @@ export const environmentCards = [
 ] as const;
 
 export const structureCards = [
-  { id: 'overhead-assembly', name: 'Overhead assembly', detail: 'Ceiling beam with angled plates and short hangers.' },
-  { id: 'ventilation-assembly', name: 'Ventilation assembly', detail: 'Wall fan, grille and a short exhaust duct.' },
-  { id: 'utility-conduits', name: 'Utility conduits', detail: 'Bent pipework, branch line and cable tray.' },
+  { id: 'overhead-assembly', name: 'Overhead assembly', detail: 'A non-emissive beam with an inset shoulder and rolled edges.' },
+  { id: 'ventilation-assembly', name: 'Ventilation assembly', detail: 'Fan and grille fitted to a shallow wall recess.' },
+  { id: 'utility-conduits', name: 'Utility conduits', detail: 'Pipework and a cable tray fitted inside a two-bay recess.' },
   { id: 'service-bay', name: 'Service bay', detail: 'Recessed maintenance panel with modular connections.' },
-  { id: 'holographic-service-door', name: 'Holographic service door', detail: 'A wall-mounted access panel with a translucent display.' },
+  { id: 'holographic-service-door', name: 'Holographic service door', detail: 'Inactive dark access panel on a recessed backplate.' },
 ] as const satisfies readonly { id: StructureKind; name: string; detail: string }[];

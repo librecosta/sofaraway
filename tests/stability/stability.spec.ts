@@ -344,7 +344,8 @@ test('ELSEWHERE structure and light balance across the run @kit-visual', async (
       });
       const start = performance.now();
       await page.goto(`${build.client}/debug/`);
-      const count = build === candidate ? 29 : await page.locator('#props').count() ? 31 : 24;
+      const count = build === candidate ? 29 : await page.locator('#props').count() ? 31
+        : await page.locator('#lighting').count() ? 29 : 24;
       await expect(page.locator('canvas[data-ready=true]')).toHaveCount(count);
       const contexts = Number(await page.locator('html').getAttribute('data-kit-contexts'));
       expect(contexts).toBeLessThanOrEqual(2);
@@ -383,8 +384,10 @@ test('ELSEWHERE instanced dressing keeps rendering cost bounded @kit-perf', asyn
 const scenicCases = [
   ['intro', 5.6, 'high', false, 'standard', 'center'],
   ['a', 61, 'high', false, 'standard', 'center'],
+  ['ceiling-pair', 43, 'high', false, 'standard', 'center'],
   ['b', 113.67, 'low', false, 'standard', 'center'],
   ['build', 176, 'high', false, 'standard', 'center'],
+  ['ordered-rhythm', 174, 'high', false, 'standard', 'center'],
   ['drop', 193, 'high', false, 'standard', 'center'],
   ['break', 297, 'high', false, 'standard', 'center'],
   ['main', 333.5, 'high', false, 'standard', 'center'],
@@ -399,6 +402,8 @@ const scenicCases = [
 test('ELSEWHERE scenic score, routes and mode capacity across a full composition @scenic-perf', async ({ browser }) => {
   const focus = process.env.STABILITY_SCENES?.split(',').map(name => name.trim()).filter(Boolean);
   const scenes = focus?.length ? scenicCases.filter(([name]) => focus.includes(name)) : scenicCases;
+  const frames = Number(process.env.STABILITY_SCENIC_FRAMES ?? 240);
+  expect(Number.isInteger(frames) && frames >= 240 && frames <= 1200).toBe(true);
   expect(scenes.length).toBeGreaterThan(0);
   for (const [sample, build] of builds.entries()) {
     const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
@@ -406,17 +411,17 @@ test('ELSEWHERE scenic score, routes and mode capacity across a full composition
     try {
       await openHarness(page, build);
       for (const [name, beat, quality, boost, mode, side] of scenes) {
-        const result = await page.evaluate(([beat, quality, boost, mode, side]) =>
-          window.stability.fixedGlass(beat, quality, boost, mode, side, 240, true), [beat, quality, boost, mode, side] as const);
+        const result = await page.evaluate(([beat, quality, boost, mode, side, frames]) =>
+          window.stability.fixedGlass(beat, quality, boost, mode, side, frames, true), [beat, quality, boost, mode, side, frames] as const);
         log('scenic-frame', { name, sample, build: build.label, browser: browser.version(), ...result });
         expect(result.phase).toBe('playing');
         expect(result.glError).toBe(0);
-        expect(result.trace.cpu.frame.n).toBe(240);
+        expect(result.trace.cpu.frame.n).toBe(frames);
         if (name === 'main' || name === 'challenge' || name === 'bonus') {
           expect(result.route).toBe(name === 'bonus' ? 'score' : name);
         }
         if (build === candidate) {
-          expect(result.metrics.scenicLights?.point).toBe(4);
+          expect(result.metrics.scenicLights?.point).toBe(3);
           const instances = Object.values(result.metrics.scenicInstances!);
           for (const { planned, visible, capacity, culled, overflow } of instances) {
             expect(visible).toBeLessThanOrEqual(capacity);
@@ -430,7 +435,7 @@ test('ELSEWHERE scenic score, routes and mode capacity across a full composition
   }
 });
 
-test('fixed chapter frames lift surfaces while preserving glass and other-volume pixels @scenic-visual', async ({ browser }, info) => {
+test('fixed chapter frames preserve a low key, legible ELSEWHERE and other-volume pixels @scenic-visual', async ({ browser }, info) => {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   const errors = captureErrors(page);
   try {
@@ -476,9 +481,8 @@ test('fixed chapter frames lift surfaces while preserving glass and other-volume
       }
       if (haveReference && id !== 'elsewhere') expect(captured[0].equals(captured[1]), id).toBe(true);
       if (haveReference && (name === 'intro' || name === 'b' || name === 'break')) {
-        expect(brightness[1].mean - brightness[0].mean, name).toBeGreaterThan(1);
-        expect(brightness[1].mean - brightness[0].mean, name).toBeLessThan(13);
-        expect(brightness[1].shadow / brightness[1].total, name).toBeGreaterThan(.53);
+        expect(brightness[1].mean - brightness[0].mean, name).toBeLessThan(4);
+        expect(brightness[1].shadow / brightness[1].total, name).toBeGreaterThan(.68);
         expect(brightness[1].glare / brightness[1].total, name).toBeLessThan(.03);
       }
     }
