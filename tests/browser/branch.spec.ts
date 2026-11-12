@@ -82,12 +82,12 @@ test('three horizontal holograms keep their outlines while their interiors move'
     expect(glError).toBe(0);
     expect(released).toBe(6);
   }
-  await page.goto(fixed(322.4, 'right', true));
+  await page.goto(fixed(322.4, 'right'));
   await expect(page.locator('#route-hint')).toHaveText('Entering challenge route.');
-  await page.goto(fixed(322.4, 'left', true));
+  await page.goto(fixed(322.4, 'left'));
   await expect(page.locator('#route-hint')).toHaveText('Entering bonus route.');
   await expect(page.locator('#hud-route')).toHaveText('BONUS');
-  await page.goto(fixed(323.2, 'right', true));
+  await page.goto(fixed(324, 'right'));
   await expect(page.locator('#hud-route')).toHaveText('CHALLENGE');
   await expect(page.locator('#route-hint')).toHaveCount(0);
 });

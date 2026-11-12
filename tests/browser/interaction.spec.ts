@@ -27,7 +27,7 @@ test('desktop input, focus loss, termination and restart', async ({ page }) => {
   await expect(page.locator('#over-title')).toHaveText('TERMINATED', { timeout: 20_000 });
   await expect(page.locator('#over-acc')).toHaveText('0%');
   await page.locator('[data-act=restart]').click();
-  await expect(page.locator('#hud-gates')).toHaveText('0/133');
+  await expect(page.locator('#hud-gates')).toHaveText('0/141');
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
 });
@@ -138,7 +138,8 @@ test('the pause dialog preserves a run while waiting for graphics to restore', a
   });
   expect(supported).toBe(true);
   const resume = fallback.getByRole('button', { name: 'RESUME' });
-  await expect(resume).toBeDisabled();
+  await expect(fallback).toHaveCount(0);
+  await expect(page.getByRole('status').filter({ hasText: 'Waiting for WebGL' })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('b0:restore-webgl')));
   await expect(resume).toBeEnabled();
   await resume.click();
@@ -156,5 +157,5 @@ test('disabled storage still allows configuration and play', async ({ page }) =>
   await expect(page.locator('#set-volume')).toHaveValue('37');
   await page.keyboard.press('Escape');
   await page.locator('[data-act=start]').click();
-  await expect(page.locator('#hud-gates')).toHaveText('0/133');
+  await expect(page.locator('#hud-gates')).toHaveText('0/141');
 });

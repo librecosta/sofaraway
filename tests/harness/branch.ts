@@ -37,8 +37,10 @@ export function inspectHologram() {
     };
     sim.start('normal', 0);
     try {
-      const frames = [314.8, 318, 322.4, 323.2].map(beat => {
-        while (sim.beat < beat && sim.phase === 'playing') sim.step(STEP, { ...idleInput, boosting: true });
+      const frames = [313.8, 318, 322.4, 323.2].map(beat => {
+        while (sim.trackDistance < sim.reference.station(beat, sim.mode) && sim.phase === 'playing') {
+          sim.step(STEP, { ...idleInput, boosting: true });
+        }
         graphics.draw(sim, true);
         const visible = sim.routeGuide ? hologram.scene.children : [];
         const words = visible.map(root => Object.keys(labels).find(key => labels[key] === (root.children[1] as THREE.Mesh).geometry));
@@ -113,9 +115,11 @@ export function inspectJunction(mode: PlayMode = 'standard') {
       diagnostics.branchSide = side;
       sim.start('normal', seed, undefined, mode);
       const advance = (beat: number) => {
-        while (sim.beat + 1e-9 < beat && sim.phase === 'playing') sim.step(STEP, { ...idleInput, boosting: boost });
+        while (sim.trackDistance + 1e-8 < sim.reference.station(beat, mode) && sim.phase === 'playing') {
+          sim.step(STEP, { ...idleInput, boosting: boost });
+        }
       };
-      advance(BRANCH_PREVIEW_BEAT - 0.1);
+      advance(BRANCH_PREVIEW_BEAT - (mode === 'sightseeing' ? 24 : 9));
       graphics.warmSurface(sim, true);
       const before = graphics.metrics();
       advance(BRANCH_PREVIEW_BEAT);
@@ -156,7 +160,7 @@ export function inspectJunction(mode: PlayMode = 'standard') {
       for (const [gate, visual] of scene.visuals) {
         if (!gate.route || !visual.meshes[0].visible) continue;
         activeGates.push(gate.route);
-        const pos = junction.path.sample(junction.path.distanceAt(gate.beat), activeSide).p;
+        const pos = junction.path.sample(gate.worldStation, activeSide).p;
         gateErrors.push(pos.distanceTo(visual.meshes[0].position));
       }
       advance(mode === 'sightseeing' ? 375 : 361);

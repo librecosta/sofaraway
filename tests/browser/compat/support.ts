@@ -12,8 +12,6 @@ export const fallback = (page: Page) => page.getByRole('dialog', { name: 'GAME U
 export async function resumeRun(page: Page, info: TestInfo, action: 'click' | 'tap' = 'click') {
   const pause = page.getByRole('dialog', { name: 'PAUSED' });
   if (!await pause.isVisible()) return;
-  const longFrame = await pause.getByText('Rendering fell behind', { exact: false }).isVisible();
-  if (longFrame) record(info, 'PASS', 'Long-frame protection retained the run for a user-gesture resume');
   await pause.getByRole('button', { name: 'RESUME', exact: true })[action]({ timeout: 8_000 });
   await expect(pause).toBeHidden();
 }

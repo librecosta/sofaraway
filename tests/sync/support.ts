@@ -20,6 +20,7 @@ export async function openSync(page: Page) {
       ['silent', () => window.b0Harness.start(true)],
       ['resume', () => window.b0Harness.resume()],
       ['silent-resume', () => window.b0Harness.resume(true)],
+      ['restore-audio', () => window.b0Harness.enableAudio()],
     ] as const) {
       const button = document.createElement('button');
       button.id = id;

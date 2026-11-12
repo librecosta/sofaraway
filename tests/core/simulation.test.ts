@@ -35,7 +35,7 @@ describe.each(VOLUMES.map((volume, index) => ({ volume, baseline: baselines[inde
     expect([sim.gatesPassed, sim.gatesJudged, sim.maxCombo, sim.hits, sim.lives]).toEqual([
       count, count, count, 0, volume.lives[difficulty],
     ]);
-    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S',
+    expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, rank: 'S', unreached: 0,
       ...(volume.id === 'elsewhere' ? { route: 'main' } : {}) });
     expect(sim.distance + 420).toBeLessThan(corridorLength(volume));
   });
@@ -62,12 +62,12 @@ test('a hard run can terminate once, settle, and restart cleanly', () => {
   expect(sim.phase).toBe('crash');
   expect(sim.hits).toBe(1);
   expect(sim.gatesJudged).toBe(1);
-  expect(sim.beat).toBe(16);
+  expect(sim.beat).toBeCloseTo(16, 8);
   const score = sim.score;
   for (let i = 0; i < 43; i++) sim.step(STEP, idleInput);
   expect(sim.phase).toBe('results');
   expect(sim.score).toBe(score);
-  expect(sim.result).toEqual({ title: 'TERMINATED', accuracy: 0, rank: 'C' });
+  expect(sim.result).toMatchObject({ title: 'TERMINATED', accuracy: 0, rank: 'C', encountered: 1, unreached: 140 });
   expect(sim.start('easy')).toBe(true);
   expect([sim.gatesJudged, sim.hits, sim.lives, sim.combo, sim.score, sim.beat]).toEqual([0, 0, 3, 0, 0, 0]);
 });
@@ -89,15 +89,16 @@ test('fixed steps yield the same result at 20, 60, 120, and 144 Hz', () => {
   expect(run(60)).toEqual(run(144));
 });
 
-test('an unsafe frame commits no steps and can resume from its last tick', () => {
+test('a five-second gap carries debt into subsequent frames', () => {
   const clock = new FixedStepClock();
   const sim = new Simulation(VOLUMES[0]);
   sim.start('hard');
   const step = () => sim.step(STEP, idleInput);
   expect(clock.consume(5 * STEP, step)).toBe('ok');
-  const before = [sim.beat, sim.score, sim.lives, clock.elapsed];
-  expect(clock.consume(5, step)).toBe('stalled');
-  expect([sim.beat, sim.score, sim.lives, clock.elapsed]).toEqual(before);
-  expect(clock.consume(clock.elapsed + STEP, step)).toBe('ok');
-  expect(sim.beat).toBeGreaterThan(before[0]);
+  expect(clock.consume(5, step)).toBe('catching-up');
+  expect(clock.elapsed).toBeCloseTo(17 * STEP);
+  while (clock.consume(5, step) === 'catching-up') { /* RAF batches */ }
+  expect(clock.elapsed).toBe(5);
+  expect(sim.beat).toBeCloseTo(5 / sim.secondsPerBeat);
+  expect(sim.lives).toBe(1);
 });

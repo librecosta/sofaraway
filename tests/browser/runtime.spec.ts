@@ -75,6 +75,7 @@ test('context recovery and cached navigation preserve progress and a single fram
     await window.b0Harness.start(true);
   });
   await expect.poll(async () => (await snapshot()).progress).toBeGreaterThan(0);
+  const corridor = await page.evaluateHandle(() => window.b0Harness.corridor());
   const supported = await page.evaluate(() => {
     const context = document.querySelector('canvas')!.getContext('webgl2')!;
     const extension = context.getExtension('WEBGL_lose_context');
@@ -90,6 +91,8 @@ test('context recovery and cached navigation preserve progress and a single fram
   await page.evaluate(() => window.dispatchEvent(new Event('b0:restore-webgl')));
   await expect.poll(async () => (await snapshot()).phase).toBe('playing');
   await expect.poll(async () => (await snapshot()).progress).toBeGreaterThan(lost.progress);
+  expect(await page.evaluate(path => path === window.b0Harness.corridor(), corridor)).toBe(true);
+  await corridor.dispose();
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
   const cached = await snapshot();
   expect(cached.pauseReason).toBe('background');
@@ -124,34 +127,51 @@ test('forward and backward streaming evicts chunk-owned resources', async ({ pag
   }
 });
 
-test('an unsafe frame pauses the runtime without judging gates', async ({ page }) => {
+test('a long frame drains without a modal and neutralizes an unobservable crossing', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   const result = await page.evaluate(async () => {
     let next: FrameRequestCallback | undefined;
     window.requestAnimationFrame = callback => { next = callback; return 1; };
     window.cancelAnimationFrame = () => { next = undefined; };
     const test = window.b0Harness;
-    await test.mount({ quality: 'low', difficulty: 'hard' });
-    await test.start(true);
-    next!(performance.now() + 17);
-    test.pause();
-    const before = test.snapshot();
-    await test.resume(true);
-    next!(performance.now() + 5000);
-    const paused = test.snapshot();
-    await test.resume(true);
-    next!(performance.now() + 17);
-    test.pause();
-    const after = test.snapshot();
-    test.dispose();
-    return { before, paused, after };
+    const results = [];
+    for (const gap of [50, 100, 160, 250, 500, 2300]) {
+      const diagnostics = { fixedTime: null, autoplay: false, god: false, align: false, boost: false,
+        mobileQuality: false, post: true, record: false, debug: false };
+      await test.mount({ quality: 'low', difficulty: 'hard', best: 17, diagnostics });
+      await test.start(true);
+      const start = performance.now();
+      const approach = gap < 150 ? 6900 : 7400;
+      test.advance(approach / 1000 * 128 / 60);
+      next!(start + approach);
+      const before = test.snapshot();
+      for (let i = 0; i < 18; i++) next!(start + approach + gap + i * 17);
+      const after = test.snapshot();
+      let settled;
+      if (gap === 500) {
+        diagnostics.align = true;
+        test.advance(448);
+        for (let i = 0; i < 50; i++) next!(start + 210000 + i * 17);
+        settled = { score: test.snapshot().score, best: test.best(), result: test.snapshot().result };
+      }
+      test.dispose();
+      results.push({ gap, before, after, settled });
+    }
+    return results;
   });
-  expect(result.paused.phase).toBe('paused');
-  expect(result.paused.pauseReason).toBe('long-frame');
-  expect(result.paused.score).toBe(result.before.score);
-  expect(result.paused.gatesPassed).toBe(result.before.gatesPassed);
-  expect(result.paused.lives).toBe(result.before.lives);
-  expect(result.after.progress).toBeGreaterThan(result.paused.progress);
+  for (const { gap, before, after, settled } of result) {
+    expect(after.phase, String(gap)).toBe('playing');
+    expect(after.pauseReason).toBeNull();
+    expect(after.progress).toBeGreaterThan(before.progress);
+    expect(after.gatesPassed).toBe(0);
+    expect(after.lives).toBe(before.lives);
+    if (gap >= 150) expect(after.message).toBe('RECOVERY · BEST INELIGIBLE');
+    if (gap === 500) {
+      expect(settled?.score).toBeGreaterThan(17);
+      expect(settled?.best).toBe(17);
+      expect(settled?.result).toMatchObject({ title: 'ESCAPED', neutralized: 1, encountered: 141, passed: 140 });
+    }
+  }
 });
 
 test('repeated switches and runs keep resource counts bounded', async ({ page }) => {

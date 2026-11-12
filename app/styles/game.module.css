@@ -301,6 +301,7 @@ html,body{
   white-space:nowrap;
 }
 .center-msg.show{ opacity:1; }
+.restore-audio{ position:absolute; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); pointer-events:auto; }
 
 /* ================================================================== *
    GAME OVER

@@ -2,6 +2,7 @@ import { AudioTransport } from '../../app/game/audio/transport.client';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import type { VolumeId } from '../../app/game/contracts';
 import { FixedStepClock } from '../../app/game/core/clock';
+import type { RunTimeline } from '../../app/game/core/clock';
 import type { RunGate, Simulation } from '../../app/game/core/simulation';
 import { sectionAt, volumeById } from '../../app/game/core/volumes';
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
@@ -91,7 +92,10 @@ function frameState(runtime: Runtime) {
   const chart = Reflect.get(sim, 'chart') as RunGate[];
   return { phase: runtime.getSnapshot().phase, pauseReason: runtime.getSnapshot().pauseReason, elapsed: clock.elapsed,
     simTime: sim.time, beat: sim.beat, section: sim.section, score: Math.floor(sim.score), lives: sim.lives,
-    judged: sim.gatesJudged, passed: sim.gatesPassed, total: sim.gatesTotal, lastGateBeat: chart.at(-1)?.beat,
+    judged: sim.gatesJudged, passed: sim.gatesPassed, total: sim.gatesTotal,
+    neutralized: sim.gatesNeutralized, lastGateCrossedAt: chart.at(-1)?.crossedAt,
+    audio: { ...audio.diagnostics }, soundUnavailable: runtime.getSnapshot().soundUnavailable,
+    pausedAt: Reflect.get(runtime, 'pausedAt') as number,
     anchor: Reflect.get(audio, 'anchor') as number, offset: Reflect.get(audio, 'offset') as number,
     scheduler: Reflect.get(audio, 'timer') !== undefined, runBus: !!Reflect.get(audio, 'synth'),
     contextState: ctx?.state ?? null, gain: (Reflect.get(audio, 'master') as GainNode | undefined)?.gain.value ?? null };
@@ -111,7 +115,6 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
   let lastGate: Frame | undefined;
   let maxQuantization = 0;
   let minQuantization = 0;
-  let lastTarget: number | undefined;
   let runCount = 0;
   let pulse = 0, flash = 0;
   const observedViews = new WeakSet<RuntimeView>();
@@ -130,13 +133,6 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
     }
     playStep.call(this, step, at);
   };
-  const time = Object.getOwnPropertyDescriptor(AudioTransport.prototype, 'time')!;
-  Object.defineProperty(AudioTransport.prototype, 'time', { ...time, get(this: AudioTransport) {
-    const target = time.get!.call(this) as number | string;
-    if (getRuntime() && this === activeAudio() && typeof target === 'number') lastTarget = target;
-    return target;
-  } });
-
   const sample = (runtime: Runtime, scheduled?: number): Frame => {
     const graphics = Reflect.get(runtime, 'graphics') as { camera?: { fov: number } } | undefined;
     const scene = graphics && Reflect.get(graphics, 'volume') as { hue: number } | undefined;
@@ -155,7 +151,8 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
     draw.call(this, sim, now, update);
     if (this.getSnapshot().phase === 'playing') {
       const elapsed = (Reflect.get(this, 'clock') as FixedStepClock).elapsed;
-      const gap = lastTarget === undefined ? 0 : lastTarget - elapsed;
+      const timeline = Reflect.get(this, 'timeline') as RunTimeline;
+      const gap = timeline.at(now / 1000) - elapsed;
       maxQuantization = Math.max(maxQuantization, gap);
       minQuantization = Math.min(minQuantization, gap);
       if (!firstBeforeAnchor && elapsed === 0 && steps.length && (context()?.currentTime ?? Infinity) < steps[0].at) {
@@ -179,7 +176,6 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
       steps.length = sections.length = 0;
       firstBeforeAnchor = firstTick = firstBeat = end = lastGate = finale = undefined;
       maxQuantization = minQuantization = 0;
-      lastTarget = undefined;
     },
     inspect: () => sample(getRuntime()!),
     trace: () => ({ steps, sections, firstBeforeAnchor, firstTick, firstBeat, end, lastGate, finale, maxQuantization, minQuantization }),

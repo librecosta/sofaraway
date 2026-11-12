@@ -72,13 +72,13 @@ for (const [index, volume] of VOLUMES.entries()) {
       expect(data.sections[index].beat - boundary).toBeLessThanOrEqual(STEP * volume.bpm / 60 + 1e-8);
       boundary += section.beats;
     }
-    expect(data.lastGate?.beat).toBeGreaterThanOrEqual(data.lastGate!.lastGateBeat! - 1e-8);
-    expect(data.lastGate!.beat - data.lastGate!.lastGateBeat!).toBeLessThanOrEqual(STEP * volume.bpm / 60 + 1e-8);
+    expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeGreaterThanOrEqual(-1e-8);
+    expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeLessThanOrEqual(STEP + 1e-8);
     expect(data.end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: false });
     expect(result).toMatchObject({ beat: volume.beats, passed: gateCounts[index], judged: gateCounts[index],
       total: gateCounts[index], score: normalScores[index], lives: volume.lives.normal, scheduler: false, runBus: false });
-    expect(await page.evaluate(() => window.b0Harness.snapshot().result)).toEqual({
-      title: 'ESCAPED', rank: 'S', accuracy: 1, ...(volume.id === 'elsewhere' ? { route: 'main' } : {}),
+    expect(await page.evaluate(() => window.b0Harness.snapshot().result)).toMatchObject({
+      title: 'ESCAPED', rank: 'S', accuracy: 1, neutralized: 0, unreached: 0, ...(volume.id === 'elsewhere' ? { route: 'main' } : {}),
     });
     expect(errors).toEqual([]);
   });

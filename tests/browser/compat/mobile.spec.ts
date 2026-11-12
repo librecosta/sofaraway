@@ -2,7 +2,7 @@ import { devices, expect, test } from '@playwright/test';
 import { readMetrics } from '../diagnostics';
 import { ready, record, resumeRun, startButton, startRun } from './support';
 
-test('DPR 3 presents a reachable menu and either plays or protects the run', async ({ browser, browserName, baseURL }, info) => {
+test('DPR 3 presents a reachable menu and keeps the run moving', async ({ browser, browserName, baseURL }, info) => {
   const device = devices[browserName === 'webkit' ? 'iPhone 13' : 'Pixel 7'];
   const page = await browser.newPage({ ...device, deviceScaleFactor: 3, baseURL });
   try {
@@ -12,20 +12,11 @@ test('DPR 3 presents a reachable menu and either plays or protects the run', asy
     await startRun(page, info, 'tap');
     await expect.poll(async () => {
       const { phase, beat } = await readMetrics(page);
-      return phase === 'paused' || (phase === 'playing' && beat > 0.7);
+      return phase === 'playing' && beat > 0.7;
     }).toBe(true);
     const pause = page.getByRole('dialog', { name: 'PAUSED' });
-    if (await pause.isVisible()) {
-      await expect(pause).toContainText('Rendering fell behind');
-      const before = (await readMetrics(page)).beat;
-      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 250)));
-      expect((await readMetrics(page)).beat).toBe(before);
-      await pause.getByRole('button', { name: 'BACK TO MENU' }).tap();
-      await expect(startButton(page)).toBeEnabled();
-      record(info, 'BLOCKED', 'DPR 3 on this host hit the safe catch-up limit; menu, pause and exit worked');
-    } else {
-      record(info, 'PASS', 'DPR 3 gameplay advanced using the native browser compositor');
-    }
+    await expect(pause).toBeHidden();
+    record(info, 'PASS', 'DPR 3 gameplay advanced using the native browser compositor');
   } finally {
     await page.close();
   }

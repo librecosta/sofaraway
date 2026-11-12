@@ -51,7 +51,7 @@ for (const { kind, boost, feedback, badge } of cases) {
         path: import('../../app/game/graphics/path').Path;
       };
       function advance(beat: number, target = idleInput.target) {
-        while (sim.beat + 1e-9 < beat && sim.phase === 'playing') {
+        while (sim.trackDistance + 1e-8 < sim.reference.station(beat, sim.mode) && sim.phase === 'playing') {
           clock.consume(clock.elapsed + step, () => sim.step(step, { ...idleInput, boosting: boost, target }));
         }
         graphics.draw(sim, true);
@@ -74,7 +74,7 @@ for (const { kind, boost, feedback, badge } of cases) {
       const meshes = group.children as Mesh<import('three').BufferGeometry, MeshBasicMaterial>[];
       const shapes = meshes.map(mesh => mesh.geometry.type);
       const opacity = meshes[0].material.opacity;
-      const section = scene.path.sample(sim.distance + sim.speed * (pickupBeat - sim.beat) * sim.secondsPerBeat);
+      const section = scene.path.sample(sim.pickupStation);
       const projectionError = group.position.distanceTo(section.p.add(section.u));
       diagnostics.align = false;
       advance(pickupBeat, [0, 1]);

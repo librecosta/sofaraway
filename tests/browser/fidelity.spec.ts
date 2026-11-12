@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { difficulties } from '../../app/game/contracts';
+import { STEP } from '../../app/game/core/clock';
+import { idleInput } from '../../app/game/core/input';
+import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 
 const expectedCounts = [[140, 141, 141], [40, 40, 40], [158, 158, 158], [91, 91, 91]];
@@ -132,22 +135,30 @@ test('the last ORBIT gate fades into view before reaching full brightness', asyn
     };
   });
 
-  const renderAt = async (beat: number, boost = false): Promise<number[]> => {
-    await page.goto(`/?vol=orbit&t=${beat * 0.6}&q=low&align=1&god=0&dbg=1&boost=${Number(boost)}`);
+  const renderAt = async (ahead: number, boost = false): Promise<number[]> => {
+    const sim = new Simulation(VOLUMES[3], { align: true });
+    sim.start('normal');
+    const station = sim.reference.station(316, 'standard');
+    let ticks = 0;
+    while (station - sim.distance > ahead) {
+      sim.step(STEP, { ...idleInput, boosting: boost });
+      ticks++;
+    }
+    await page.goto(`/?vol=orbit&t=${ticks * STEP}&q=low&align=1&god=0&dbg=1&boost=${Number(boost)}`);
     await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
     const samples = await page.locator('html').getAttribute('data-gate-fades');
     return JSON.parse(samples ?? '[]');
   };
 
   // The last gate is at beat 316. Earlier gates in each capture are fully lit.
-  const early = Math.min(...await renderAt(304.45));
-  const midway = Math.min(...await renderAt(305.5));
-  const nearlyLit = Math.min(...await renderAt(306.75));
+  const early = Math.min(...await renderAt(187));
+  const midway = Math.min(...await renderAt(165));
+  const nearlyLit = Math.min(...await renderAt(144));
   expect(early).toBeGreaterThan(0);
   expect(early).toBeLessThan(0.1);
   expect(midway).toBeGreaterThan(early);
   expect(nearlyLit).toBeGreaterThan(midway);
   expect(nearlyLit).toBeLessThan(1);
-  expect(Math.min(...await renderAt(307.5))).toBe(1);
-  expect(Math.min(...await renderAt(304.45, true))).toBeCloseTo(early);
+  expect(Math.min(...await renderAt(139))).toBe(1);
+  expect(Math.min(...await renderAt(187, true))).toBeCloseTo(early);
 });

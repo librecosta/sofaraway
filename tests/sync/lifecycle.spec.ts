@@ -12,20 +12,12 @@ test('real activation, pause, visibility, suspend and silent recovery', async ({
     expect(info.project.name).toBe('webkit');
     await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().error?.kind)).toBe('audio');
     await page.locator('#silent').click();
-    await expect.poll(async () => {
-      const current = await state(page);
-      return current.phase === 'paused' || current.elapsed > 0.25;
-    }).toBe(true);
-    const recovery = await state(page);
-    if (recovery.phase === 'paused') {
-      expect(recovery).toMatchObject({ pauseReason: 'long-frame', scheduler: false, runBus: false });
-      await page.locator('#resume').click();
-    }
     await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(0.25);
-    expect(await state(page)).toMatchObject({ scheduler: false, runBus: false, contextState: null });
+    expect(await state(page)).toMatchObject({ scheduler: false, runBus: false, contextState: null,
+      audio: { silentFallbacks: 1 }, soundUnavailable: false });
     expect(errors).toEqual([]);
     report('activation', { engine: info.project.name, browser: browser.version(), status: 'BLOCKED', reason: 'AudioContext unavailable',
-      pauseReason: recovery.pauseReason, silent: await state(page) });
+      silent: await state(page) });
     return;
   }
 
@@ -73,7 +65,7 @@ test('real activation, pause, visibility, suspend and silent recovery', async ({
     await page.locator('#resume').click();
     await phase(page, 'playing');
     await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(paused.elapsed);
-    expect(await state(page)).toMatchObject({ offset: paused.elapsed, scheduler: true, runBus: true });
+    expect(await state(page)).toMatchObject({ offset: paused.pausedAt, scheduler: true, runBus: true });
   }
 
   await page.evaluate(() => {
@@ -90,32 +82,33 @@ test('real activation, pause, visibility, suspend and silent recovery', async ({
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await phase(page, 'playing');
-  expect(await state(page)).toMatchObject({ offset: hidden.elapsed, scheduler: true, runBus: true });
+  expect(await state(page)).toMatchObject({ offset: hidden.pausedAt, scheduler: true, runBus: true });
 
   await page.evaluate(() => window.syncHarness.setLevel(0.37, true));
   await expect.poll(async () => (await state(page)).gain).toBeLessThan(0.02);
   await page.evaluate(() => window.syncHarness.setLevel(0.37, false));
   await expect.poll(async () => (await state(page)).gain).toBeGreaterThan(0.34);
+  const beforeSuspend = await state(page);
   await page.evaluate(() => window.syncHarness.suspend());
-  await phase(page, 'paused');
-  const suspended = await state(page);
-  expect(suspended).toMatchObject({ contextState: 'suspended', pauseReason: 'audio', scheduler: false, runBus: false,
-    output: { status: 'inactive' } });
-  await page.waitForTimeout(150);
-  expect(await state(page)).toMatchObject({ elapsed: suspended.elapsed, beat: suspended.beat, score: suspended.score });
-  await page.locator('#resume').click();
-  await phase(page, 'playing');
+  await expect.poll(async () => (await state(page)).audio.resumes).toBeGreaterThan(beforeSuspend.audio.resumes);
   const resumed = await state(page);
-  expect(resumed).toMatchObject({ offset: suspended.elapsed, contextState: 'running', scheduler: true, runBus: true });
-  expect(resumed.elapsed - suspended.elapsed).toBeLessThan(0.30);
-  await page.evaluate(() => window.syncHarness.suspend());
-  await phase(page, 'paused');
-  const beforeSilent = await state(page);
-  await page.locator('#silent-resume').click();
-  await phase(page, 'playing');
-  await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(beforeSilent.elapsed + 2 * STEP);
-  expect(await state(page)).toMatchObject({ contextState: 'suspended', scheduler: false, runBus: false });
-  report('lifecycle', { engine: info.project.name, hidden, suspended, resumed, beforeSilent, silent: await state(page) });
+  expect(resumed).toMatchObject({ phase: 'playing', contextState: 'running', scheduler: true, runBus: true });
+
+  await page.evaluate(async () => {
+    const resume = AudioContext.prototype.resume;
+    AudioContext.prototype.resume = () => Promise.reject(new Error('test activation requires a gesture'));
+    window.addEventListener('test-allow-audio', () => { AudioContext.prototype.resume = resume; }, { once: true });
+    await window.syncHarness.suspend();
+  });
+  await expect.poll(async () => (await state(page)).soundUnavailable).toBe(true);
+  const silent = await state(page);
+  expect(silent).toMatchObject({ phase: 'playing', scheduler: false, runBus: false, audio: { silentFallbacks: 1 } });
+  await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(silent.elapsed + 2 * STEP);
+  await page.evaluate(() => window.dispatchEvent(new Event('test-allow-audio')));
+  await page.locator('#restore-audio').click();
+  await expect.poll(async () => (await state(page)).soundUnavailable).toBe(false);
+  expect(await state(page)).toMatchObject({ phase: 'playing', scheduler: true, runBus: true });
+  report('lifecycle', { engine: info.project.name, hidden, resumed, silent, restored: await state(page) });
 
   for (const volume of VOLUMES) {
     await page.evaluate(async id => { window.b0Harness.returnToMenu(); await window.b0Harness.select(id); }, volume.id);
@@ -134,7 +127,7 @@ test('real activation, pause, visibility, suspend and silent recovery', async ({
   expect(errors).toEqual([]);
 });
 
-test('scheduler starvation and a 160 ms main-thread stall pause without committing a jump', async ({ page }, info) => {
+test('scheduler starvation and a 160 ms blocked crossing recover in the same run', async ({ page }, info) => {
   const errors = await openSync(page);
   if (!await hasAudio(page)) {
     expect(info.project.name).toBe('webkit');
@@ -155,17 +148,15 @@ test('scheduler starvation and a 160 ms main-thread stall pause without committi
   await page.locator('#start').click();
   await phase(page, 'playing');
   await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(0.35);
+  const beforeStarvation = await state(page);
   await page.evaluate(() => document.documentElement.setAttribute('data-hold-scheduler', ''));
-  await phase(page, 'paused');
+  await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(beforeStarvation.elapsed + 0.36);
   const starved = await state(page);
-  const queued = (await trace(page)).steps.at(-1)!;
-  expect(starved).toMatchObject({ pauseReason: 'long-frame', scheduler: false, runBus: false });
-  const nextDue = queued.at + 15 / volume.bpm - starved.anchor;
-  expect(starved.elapsed).toBeLessThanOrEqual(nextDue + 1e-9);
+  expect(starved).toMatchObject({ phase: 'playing', scheduler: true, runBus: true });
   await page.evaluate(() => document.documentElement.removeAttribute('data-hold-scheduler'));
-  await page.locator('#resume').click();
-  await phase(page, 'playing');
-  await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(starved.elapsed + 0.2);
+  await expect.poll(async () => (await state(page)).audio.missedSteps).toBeGreaterThan(0);
+  const afterStarvation = await state(page);
+  expect(afterStarvation.anchor).toBe(starved.anchor);
 
   const gateTime = chartFor(volume, 'normal')[0].beat * 60 / volume.bpm;
   const before = await page.evaluate(async gateTime => {
@@ -179,15 +170,17 @@ test('scheduler starvation and a 160 ms main-thread stall pause without committi
   }, gateTime);
   expect(before.elapsed).toBeLessThan(gateTime);
   expect(before.elapsed + 0.16).toBeGreaterThan(gateTime);
-  await phase(page, 'paused');
-  const stalled = await state(page);
-  expect(stalled).toMatchObject({ pauseReason: 'long-frame', elapsed: before.elapsed, beat: before.beat,
-    score: before.score, judged: before.judged, runBus: false, scheduler: false });
-  await page.locator('#resume').click();
-  await phase(page, 'playing');
-  expect(await state(page)).toMatchObject({ offset: stalled.elapsed });
   await expect.poll(async () => (await state(page)).judged).toBe(1);
-  expect(await state(page)).toMatchObject({ judged: 1, passed: 1, lives: volume.lives.normal });
-  report('stress', { engine: info.project.name, nextDue, starved, stalled, resumed: await state(page) });
+  const recovered = await state(page);
+  expect(recovered).toMatchObject({ phase: 'playing', judged: 1, passed: 0, neutralized: 1, lives: volume.lives.normal });
+  expect(recovered.elapsed).toBeGreaterThan(before.elapsed);
+  const steps = (await trace(page)).steps;
+  expect(new Set(steps.map(item => item.run)).size).toBe(1);
+  expect(new Set(steps.map(item => item.step)).size).toBe(steps.length);
+  for (const step of steps) {
+    expect(step.at - step.trigger).toBeGreaterThanOrEqual(-1e-9);
+    expect(step.at).toBeCloseTo(steps[0].at + step.step * 15 / volume.bpm, 9);
+  }
+  report('stress', { engine: info.project.name, starved, afterStarvation, recovered });
   expect(errors).toEqual([]);
 });

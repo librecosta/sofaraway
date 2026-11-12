@@ -22,6 +22,11 @@ export function ResultsScreen({ snapshot, restart, menu }: {
           <div><b id="over-combo">{snapshot.maxCombo}</b><span>MAX LINK</span></div>
           <div><b id="over-acc">{Math.round((snapshot.result?.accuracy ?? 0) * 100)}%</b><span>ACCURACY</span></div>
         </div>
+        {snapshot.result && (snapshot.result.unreached > 0 || snapshot.result.neutralized > 0) && <div className={c('route-status')}>
+          {snapshot.result.encountered} ENCOUNTERED · {snapshot.result.unreached} UNREACHED
+          {snapshot.result.neutralized > 0 && ` · ${snapshot.result.neutralized} RECOVERY`}
+          {snapshot.result.neutralized > 0 && snapshot.mode === 'standard' && ' · BEST INELIGIBLE'}
+        </div>}
         <DecodeButton className={c('btn', 'start')} data-act="restart" onClick={restart} label="SPACE TO RUN AGAIN" />
         <DecodeButton className={c('btn', 'tiny')} data-act="menu" onClick={menu} label="BACK TO MENU" />
       </div>

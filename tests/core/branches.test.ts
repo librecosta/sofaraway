@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { difficulties } from '../../app/game/contracts';
-import { branchDistance, branchLayout, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SIDE_THRESHOLD, BRANCH_SPACING, MERGE_BEAT, REJOIN_BEAT,
+import { branchLayout, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SIDE_THRESHOLD, BRANCH_SPACING, MERGE_BEAT, REJOIN_BEAT,
   ROUTE_GATE_MULTIPLIERS, routeCharts, routeSides, selectSide, SPLIT_BEAT } from '../../app/game/core/branches';
 import type { RouteSide } from '../../app/game/core/branches';
 import { chartFor } from '../../app/game/core/chart';
@@ -11,7 +11,6 @@ import { pickupForSeed } from '../../app/game/core/pickups';
 import { corridorLength, Simulation } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
-import { BranchPath } from '../../app/game/graphics/branch-path';
 import { buildPath } from '../../app/game/graphics/path';
 
 const volume = volumeById('elsewhere');
@@ -67,7 +66,7 @@ test('the split uses the position at the crossing, not the end of the tick', () 
   while (sim.beat < 319.95) sim.step(STEP, idleInput);
   options.align = false;
   // Fractional initial offset makes the crossing internal to the tick.
-  sim.beat = 319.988;
+  sim.distance = sim.junctionPath!.split - 0.18;
   sim.camera.x = 2.37;
   sim.camera.tx = 2.37 + 0.06 / (1 - Math.exp(-20 * STEP));
   sim.step(STEP, idleInput);
@@ -115,22 +114,26 @@ test.each(difficulties.flatMap(difficulty => layoutSeeds.flatMap(seed => kinds.m
       route === 'main' ? 'iisidiis' : route === 'challenge' ? 'iiisiiidiiii' : 'sd'.repeat(12));
     const chart = [...prefix, ...chosen, ...suffix];
     sim.start(difficulty, seed);
-    expect(sim.gatesTotal).toBe(prefix.length + suffix.length);
+    expect(sim.gatesTotal).toBe(prefix.length + suffix.length + routeBeats.main.length);
     const ticks = Math.ceil((volume.beats * sim.secondsPerBeat + 0.8) / STEP);
+    let previousCrossing = -Infinity;
     for (let i = 0; i < ticks; i++) {
       const before = sim.gatesJudged;
       const next = chart[before];
       const last = chart[before - 1];
       let input = idleInput;
-      if (next && (!last || (sim.beat - last.beat) * sim.secondsPerBeat >= 0.150 - 1e-9)) {
+      if (next && sim.time - previousCrossing >= 0.150 - 1e-9) {
         const [x, y] = !sim.branch?.side && before >= prefix.length
           ? [side === 'left' ? -3.2 : side === 'right' ? 3.2 : 0, 0] : lanePoint(next.kind, next.sector, 0);
         input = { ...idleInput, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) };
       }
+      const start = sim.distance;
       sim.step(STEP, input);
       if (sim.gatesJudged !== before) {
-        expect(sim.beat - next.beat).toBeGreaterThanOrEqual(-1e-8);
-        expect(sim.beat - next.beat).toBeLessThan(STEP / sim.secondsPerBeat + 1e-8);
+        const crossed = (Reflect.get(sim, 'chart') as RunGate[])[before];
+        expect(crossed.routeStation).toBeGreaterThan(start);
+        expect(crossed.routeStation).toBeLessThanOrEqual(sim.distance + 1e-8);
+        previousCrossing = crossed.crossedAt!;
         expect(sim.gatesPassed, `${last?.beat ?? 'start'} → ${next.beat}`).toBe(before + 1);
       }
     }
@@ -143,7 +146,7 @@ test.each(difficulties.flatMap(difficulty => layoutSeeds.flatMap(seed => kinds.m
       .toEqual([n, n, n, n, 0, volume.lives[difficulty]]);
     expect(Math.floor(sim.score)).toBe(scores[difficulty][kinds.indexOf(route)]);
     expect(sim.phase).toBe('results');
-    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S', route });
+    expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, rank: 'S', route, unreached: 0, neutralized: 0 });
   },
 );
 
@@ -169,26 +172,24 @@ test('fixed clock gives the same selection and gate results at 20–144 Hz', () 
 
 test.each(['cruise', 'boost', 'toggle'] as const)('%s keeps the camera path continuous and gates fixed to their road', mode => {
   const base = buildPath(corridorLength(volume));
-  const sim = new Simulation(volume, { align: true, branchSide: 'right' });
+  const sim = new Simulation(volume, { align: true, branchSide: 'right' }, base);
   sim.start('normal');
-  let path: BranchPath | undefined;
+  const track = sim.junctionPath!;
   let previous = base.sample(sim.distance);
   while (sim.beat < 360) {
-    const boost = mode === 'boost' || (mode === 'toggle' && sim.beat >= 321 && sim.beat < 353);
+    const boost = mode === 'boost' || (mode === 'toggle' && sim.trackDistance >= track.split && sim.trackDistance < track.end);
     sim.step(STEP, { ...idleInput, boosting: boost });
-    if (sim.branch?.anchor && !path) path = new BranchPath(base, sim.branch.anchor);
-    const camera = path ? path.sample(sim.trackDistance, sim.branch?.side ?? 'center') : base.sample(sim.trackDistance);
+    const camera = track.sample(sim.trackDistance, sim.branch?.side ?? 'center');
     expect(camera.p.distanceTo(previous.p)).toBeLessThan(1.2);
     expect(camera.f.angleTo(previous.f)).toBeLessThan(0.09);
     previous = camera;
-    if (path && sim.beat >= SPLIT_BEAT && sim.beat < REJOIN_BEAT) {
-      expect(sim.trackDistance).toBeCloseTo(path.distanceAt(sim.beat), 8);
+    if (sim.branch?.side && sim.trackDistance < track.end) {
+      expect(sim.distance).toBeCloseTo(track.arcAt(sim.trackDistance, sim.branch.side), 8);
       const next = sim.previewGates.find(gate => gate.route && !gate.judged);
-      if (next) expect(sim.projectTrack(next.beat)).toBeCloseTo(path.distanceAt(next.beat), 8);
+      if (next) expect(next.routeStation).toBeCloseTo(track.arcAt(next.worldStation, sim.branch.side), 8);
     }
   }
-  const track = path!;
-  expect(track.split).toBeCloseTo(branchDistance(sim.branch!.anchor!, SPLIT_BEAT), 8);
+  expect(track.split).toBeCloseTo(sim.reference.station(SPLIT_BEAT, sim.mode), 8);
   for (const beat of [BRANCH_OPEN_BEAT, 326, 336, MERGE_BEAT]) {
     const s = track.distanceAt(beat);
     const center = track.sample(s, 'center');

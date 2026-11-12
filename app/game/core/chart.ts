@@ -1,8 +1,7 @@
 /* ------------------------------------------------------------------ *
  *  Chart — the score.
  *
- *  One run is one song. Gates sit on absolute beats so they always land
- *  on the music no matter how fast the corridor scrolls. Directional gates
+ *  Absolute beats author the spatial rhythm of the track. Directional gates
  *  use the sector to select the missing pane.
  *
  *  Sector index, counter-clockwise from east:

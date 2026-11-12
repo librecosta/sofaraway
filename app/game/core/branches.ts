@@ -4,7 +4,7 @@ import { runRandomWord } from './run-seed';
 
 export const BRANCH_PREVIEW_BEAT = 315;
 export const SPLIT_BEAT = 320;
-export const BRANCH_OPEN_BEAT = 321.75;
+export const BRANCH_OPEN_BEAT = 323.25;
 export const BRANCH_GUIDANCE_END = 323;
 export const ROUTE_BEAT = 326;
 export const MERGE_BEAT = 349.5;
@@ -36,31 +36,19 @@ function ease(t: number) {
   return u * u * u * (10 + u * (-15 + 6 * u));
 }
 
-export function branchSpread(beat: number, start: number, open = BRANCH_OPEN_BEAT, merge = MERGE_BEAT) {
-  return BRANCH_SPACING * ease(Math.min((beat - start) / (open - start),
-    (REJOIN_BEAT - beat) / (REJOIN_BEAT - merge)));
+export function branchSpread(station: number, start: number, open: number, merge: number, end: number) {
+  return BRANCH_SPACING * ease((station - start) / (open - start)) * (1 - ease((station - merge) / (end - merge)));
 }
 
-export function branchSteeringWidth(beat: number) {
-  if (beat <= BRANCH_PREVIEW_BEAT || beat >= BRANCH_OPEN_BEAT) return 0;
-  return Math.min(6, branchSpread(beat, BRANCH_PREVIEW_BEAT) * 0.7)
-    * (1 - ease((beat - SPLIT_BEAT) / (BRANCH_OPEN_BEAT - SPLIT_BEAT)));
-}
-
-export interface BranchAnchor {
-  readonly distance: number;
-  readonly unitsPerBeat: number;
+export function branchSteeringWidth(station: number, start: number, split: number, open: number) {
+  if (station <= start || station >= open) return 0;
+  return Math.min(6, BRANCH_SPACING * ease((station - start) / (open - start)) * 0.7)
+    * (1 - ease((station - split) / (open - split)));
 }
 
 export interface BranchRun {
   readonly layout: BranchLayout;
   readonly side: RouteSide | null;
-  readonly anchor: BranchAnchor | null;
-  readonly exit: BranchAnchor | null;
-}
-
-export function branchDistance(anchor: BranchAnchor, beat: number) {
-  return anchor.distance + (beat - BRANCH_PREVIEW_BEAT) * anchor.unitsPerBeat;
 }
 
 export function routeCharts(replaced: readonly ChartGate[]): Record<RouteKind, ChartGate[]> {

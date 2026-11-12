@@ -35,13 +35,17 @@ const harness = {
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
     return { branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
   },
-  advanceAndPause(beat: number) {
+  advance(beat: number) {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const clock: FixedStepClock = Reflect.get(runtime!, 'clock');
     const step = Reflect.get(runtime!, 'step') as (sim: Simulation) => void;
     while (sim.beat + 1e-9 < beat && sim.phase === 'playing') {
       clock.consume(clock.elapsed + STEP, () => step.call(runtime, sim));
     }
+  },
+  advanceAndPause(beat: number) {
+    harness.advance(beat);
+    const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
     graphics.draw(sim, true);
     runtime!.pause('user');
@@ -85,11 +89,13 @@ const harness = {
     return runtime.getSnapshot();
   },
   snapshot: () => runtime?.getSnapshot() ?? initialSnapshot,
+  corridor: () => runtime && (Reflect.get(runtime, 'graphics') as Graphics | undefined)?.path,
   best: () => best,
   metrics: () => metrics,
   start: (silent?: boolean) => runtime?.start(silent),
   pause: () => runtime?.pause('user'),
   resume: (silent?: boolean) => runtime?.resume(silent),
+  enableAudio: () => runtime?.enableAudio(),
   returnToMenu: () => runtime?.returnToMenu(),
   select: (id: GameOptions['volumeId']) => runtime?.selectVolume(id),
   dispose() {

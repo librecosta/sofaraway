@@ -8,7 +8,7 @@ import type { GameOptions } from '../../app/game/contracts';
 import type { Graphics } from '../../app/game/graphics/scene.client';
 import type { Runtime } from '../../app/game/runtime/GameRuntime.client';
 
-test('an Easy Square hit keeps the viewport steady and a real backlog still pauses safely', async ({ page }) => {
+test('an Easy Square hit keeps the viewport steady and a backlog recovers before manual pause', async ({ page }) => {
   const volume = volumeById('elsewhere');
   const gate = chartFor(volume, 'easy').find(gate => gate.kind === 'square')!;
   await page.goto('http://127.0.0.1:8091/?q=low&align=1');
@@ -42,7 +42,7 @@ test('an Easy Square hit keeps the viewport steady and a real backlog still paus
       pointerType: 'mouse', clientX: innerWidth * 0.85, clientY: innerHeight / 2,
     }));
     const frame: FrameRequestCallback = Reflect.get(runtime, 'frame');
-    let now = (Reflect.get(runtime, 'silentAnchor') + clock.elapsed) * 1000 + 0.1;
+    let now = (Reflect.get(Reflect.get(runtime, 'timeline'), 'origin') + clock.elapsed) * 1000 + 0.1;
     const advance = (ms: number) => {
       cancelAnimationFrame(Reflect.get(runtime, 'raf'));
       now += ms;
@@ -64,9 +64,10 @@ test('an Easy Square hit keeps the viewport steady and a real backlog still paus
     advance(160);
     advance(step * 1000);
     const { phase, pauseReason } = runtime.getSnapshot();
-    const paused = { phase, pauseReason, timeHeld: simulation.time === beforeStall, opacity: opacity(), draws };
+    const recovered = { phase, pauseReason, timeAdvanced: simulation.time > beforeStall, draws };
     graphics.draw = draw;
-    return { before, hit, continued, paused };
+    runtime.pause('user');
+    return { before, hit, continued, recovered };
   }, { step: STEP, gateBeat: gate.beat });
 
   expect(result.before.passed).toBe(result.before.judged);
@@ -77,10 +78,10 @@ test('an Easy Square hit keeps the viewport steady and a real backlog still paus
   expect(result.hit.opacity).toBeGreaterThan(0);
   expect.soft(result.hit.transform).toBe('none');
   expect(result.continued).toBe(true);
-  expect.soft(result.paused).toEqual({ phase: 'paused', pauseReason: 'long-frame', timeHeld: true, opacity: 0, draws: 0 });
+  expect(result.recovered).toEqual({ phase: 'playing', pauseReason: null, timeAdvanced: true, draws: 2 });
 
   const dialog = page.getByRole('dialog', { name: 'PAUSED' });
-  await expect(dialog.getByText('Rendering fell behind.', { exact: false })).toBeVisible();
+  await expect(dialog.getByText('Your run is paused.')).toBeVisible();
   const actions = dialog.getByRole('button');
   await expect(actions).toHaveCount(3);
   const gap = await actions.evaluateAll(buttons => {

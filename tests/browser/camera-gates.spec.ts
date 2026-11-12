@@ -25,10 +25,9 @@ test('the lens is steady on the beat and glass stays aligned during speed change
     expect(sample.fadeFrames, context).toBeGreaterThan(0);
     expect(sample.fadeDrift, context).toBeLessThan(1e-6);
     expect(sample.maxAheadIncrease, context).toBeLessThan(1e-6);
-    expect(sample.peak.idle, context).toBeLessThan(0.03);
-    const anchored = sample.stage === 'branch' || sample.stage === 'entry';
-    expect(sample.peak.press, context).toBeLessThan(anchored ? 1e-6 : 0.36);
-    expect(sample.peak.release, context).toBeLessThan(anchored ? 1e-6 : 0.12);
+    expect(sample.peak.idle, context).toBeLessThan(1e-5);
+    expect(sample.peak.press, context).toBeLessThan(1e-5);
+    expect(sample.peak.release, context).toBeLessThan(1e-5);
     if (sample.stage === 'entry' || sample.stage === 'merge') {
       expect(sample.cameraSeams).toHaveLength(1);
       expect(sample.cameraSeams[0].step).toBeLessThan(0.9);
@@ -37,7 +36,8 @@ test('the lens is steady on the beat and glass stays aligned during speed change
   }
   for (const { mode, cruise, boosted } of result.heldBoost) {
     expect(boosted.beat).toBe(cruise.beat);
-    expect(boosted.along - cruise.along).toBeGreaterThan(mode === 'standard' ? 50 : 25);
+    expect(Math.abs(boosted.along - cruise.along)).toBeLessThan(1e-5);
+    expect(cruise.crossedAt - boosted.crossedAt, mode).toBeGreaterThan(1);
     for (const crossing of [cruise, boosted]) {
       expect(crossing.visible).toBe(true);
       expect(crossing.passed).toBe(true);

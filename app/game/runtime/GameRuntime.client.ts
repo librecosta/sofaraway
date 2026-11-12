@@ -1,9 +1,9 @@
 import { initialSnapshot } from '../contracts';
 import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, PlayMode, QualityTier, VolumeId } from '../contracts';
-import { FixedStepClock, MAX_STEPS, STEP } from '../core/clock';
+import { FixedStepClock, MAX_STEPS, RECOVERY_GAP, RunTimeline, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
 import { idleInput } from '../core/input';
-import { PickupDeck, PICKUP_APPEAR_BEAT } from '../core/pickups';
+import { PickupDeck } from '../core/pickups';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
@@ -31,9 +31,10 @@ export class Runtime implements GameRuntime {
   private readonly listeners = new Set<() => void>();
   private readonly events = new AbortController();
   private readonly clock = new FixedStepClock();
+  private readonly timeline = new RunTimeline();
   private readonly pickupDeck = new PickupDeck();
   private pendingPickupDraw = false;
-  private readonly audio = new AudioTransport(reason => this.pause(reason));
+  private readonly audio = new AudioTransport(() => { void this.enableAudio(); });
   private graphics?: Graphics;
   private simulation?: Simulation;
   private input?: InputController;
@@ -43,13 +44,18 @@ export class Runtime implements GameRuntime {
   private generation = 0;
   private resumePending = false;
   private silent = false;
-  private silentAnchor = 0;
+  private audioPending = false;
+  private pausedAt = 0;
+  private recoveryUntil = 0;
+  private recovering = false;
+  private lastInput = idleInput;
   private lastFrame = 0;
   private visualDebt = 0;
   private nextPublish = 0;
   private nextDebug = 0;
   private frameTimes: number[] = [];
   private contextLost = false;
+  private contextRecoveryTimer?: ReturnType<typeof setTimeout>;
   private cached = false;
   private initMs = 0;
   private switchMs = 0;
@@ -97,6 +103,7 @@ export class Runtime implements GameRuntime {
     const phase = this.snapshot.phase;
     const sim = this.simulation;
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
+    const silentFallback = silent && this.snapshot.error?.kind === 'audio';
     const generation = ++this.generation;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
@@ -113,7 +120,14 @@ export class Runtime implements GameRuntime {
     this.input?.clear();
     this.noticeUntil = 0;
     this.clock.reset();
+    this.pausedAt = this.recoveryUntil = 0;
+    this.recovering = false;
+    this.lastInput = idleInput;
     this.silent = silent;
+    if (silent) {
+      this.audio.resetDiagnostics();
+      if (silentFallback) this.audio.diagnostics.silentFallbacks++;
+    }
     const fixedSeed = this.options?.runSeed;
     const seed = fixedSeed ?? createRunSeed();
     this.pendingPickupDraw = fixedSeed === undefined && sim.volume.id === 'elsewhere';
@@ -124,8 +138,8 @@ export class Runtime implements GameRuntime {
       this.fail(error);
       return;
     }
-    this.anchorSilent();
-    this.publishRun({ phase: 'playing', pauseReason: null, error: null });
+    this.anchorRun(0);
+    this.publishRun({ phase: 'playing', pauseReason: null, error: null, soundUnavailable: false });
   }
 
   pause(reason: PauseReason) {
@@ -136,11 +150,16 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase !== 'playing' && !this.resumePending) return;
     this.generation++;
     this.resumePending = false;
+    this.audioPending = false;
+    if (this.snapshot.phase === 'playing') {
+      this.pausedAt = Math.max(this.clock.elapsed, this.timeline.at(performance.now() / 1000));
+      if (this.pausedAt - this.clock.elapsed >= RECOVERY_GAP) this.recoveryUntil = this.pausedAt;
+    }
     this.audio.stop(true);
     this.input?.clear();
+    this.lastInput = idleInput;
     this.view.flash(0, '#fff');
-    this.publishRun({ phase: 'paused', pauseReason: reason, error: reason === 'audio' ? audioError : null,
-      boosting: false });
+    this.publishRun({ phase: 'paused', pauseReason: reason, error: null, boosting: false });
   }
 
   async resume(silent = this.silent) {
@@ -148,36 +167,47 @@ export class Runtime implements GameRuntime {
     if (!sim || this.snapshot.phase !== 'paused' || this.resumePending || this.unavailable()) return;
     this.resumePending = true;
     const generation = ++this.generation;
-    if (!silent && !await this.startAudio(sim, this.clock.elapsed, generation, true)) {
-      if (generation === this.generation) {
-        this.resumePending = false;
-        this.publish({ error: audioError });
-      }
-      return;
-    }
+    const restored = !silent && await this.startAudio(sim, this.pausedAt, generation, true);
     if (generation !== this.generation) return;
     this.resumePending = false;
     if (this.unavailable()) {
       this.audio.stop(true);
       return;
     }
-    this.silent = silent;
-    this.anchorSilent();
-    this.publish({ phase: 'playing', pauseReason: null, error: null });
+    this.silent = !restored;
+    if (!silent && !restored) this.audio.diagnostics.silentFallbacks++;
+    this.anchorRun(this.pausedAt);
+    this.publish({ phase: 'playing', pauseReason: null, error: null,
+      soundUnavailable: silent ? this.snapshot.soundUnavailable : !restored });
     this.schedule();
+  }
+
+  async enableAudio() {
+    const sim = this.simulation;
+    if (!sim || this.snapshot.phase !== 'playing' || this.audioPending || this.unavailable()) return;
+    if (this.silent && !this.snapshot.soundUnavailable) return;
+    this.audioPending = true;
+    const generation = this.generation;
+    const restored = await this.startAudio(sim, lead => this.timeline.at(performance.now() / 1000 + lead), generation, true);
+    if (generation !== this.generation || this.snapshot.phase !== 'playing') return;
+    this.audioPending = false;
+    if (!restored && !this.silent) this.audio.diagnostics.silentFallbacks++;
+    this.silent = !restored;
+    this.publish({ soundUnavailable: !restored });
   }
 
   returnToMenu() {
     if (!['starting', 'playing', 'paused', 'crash', 'results'].includes(this.snapshot.phase)) return;
     this.generation++;
     this.resumePending = false;
+    this.audioPending = false;
     this.audio.stop();
     this.input?.clear();
     this.pendingPickupDraw = false;
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
-      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0,
+      pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, soundUnavailable: false,
       route: null, routeHint: null });
   }
 
@@ -251,6 +281,7 @@ export class Runtime implements GameRuntime {
   }
 
   private release() {
+    clearTimeout(this.contextRecoveryTimer);
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.events.abort();
@@ -277,7 +308,7 @@ export class Runtime implements GameRuntime {
     const volume = volumeById(id);
     const graphics = this.graphics!;
     graphics.load(volume);
-    this.simulation = new Simulation(volume, flags);
+    this.simulation = new Simulation(volume, flags, graphics.path);
     if (flags.fixedTime === null) {
       this.draw(this.simulation, performance.now());
       graphics.prepare();
@@ -315,9 +346,12 @@ export class Runtime implements GameRuntime {
     return !!this.options?.diagnostics.mobileQuality || window.innerWidth < 860 || matchMedia('(pointer: coarse)').matches;
   }
 
-  private anchorSilent() { this.silentAnchor = performance.now() / 1000 - this.clock.elapsed; }
+  private anchorRun(offset: number) {
+    this.timeline.anchor(this.silent ? performance.now() / 1000 - offset : this.audio.runOrigin, offset);
+    this.lastFrame = 0;
+  }
 
-  private async startAudio(sim: Simulation, time: number, generation: number, resume = false) {
+  private async startAudio(sim: Simulation, time: number | ((lead: number) => number), generation: number, resume = false) {
     try {
       return await this.audio.start(sim.volume, time, resume);
     } catch {
@@ -335,19 +369,25 @@ export class Runtime implements GameRuntime {
     this.raf = 0;
     const sim = this.simulation;
     if (!sim || this.unavailable()) return;
-    const dt = this.lastFrame ? (now - this.lastFrame) / 1000 : 0;
+    const hadFrame = this.lastFrame !== 0;
+    const dt = hadFrame ? (now - this.lastFrame) / 1000 : 0;
     this.lastFrame = now;
     const fixed = this.options?.diagnostics.fixedTime != null;
     try {
       if (!fixed) {
+        let catchingUp = false;
         if (this.snapshot.phase === 'playing') {
-          const target = this.silent ? now / 1000 - this.silentAnchor : this.audio.time;
-          if (typeof target !== 'number') this.pause(target);
-          else if (this.clock.consume(target, () => {
-            this.step(sim);
+          const target = this.timeline.at(now / 1000);
+          const debt = target - this.clock.elapsed;
+          if ((dt >= RECOVERY_GAP || !hadFrame) && debt >= RECOVERY_GAP - STEP) this.recoveryUntil = target;
+          catchingUp = this.clock.consume(target, () => {
+            this.step(sim, this.clock.elapsed - STEP / 2 <= this.recoveryUntil);
             return sim.phase === 'playing';
-          }) === 'stalled') this.pause('long-frame');
+          }) === 'catching-up';
+          this.recovering = catchingUp && target - this.clock.elapsed >= 2;
           if (sim.phase === 'crash') {
+            this.generation++;
+            this.audioPending = false;
             this.audio.stop();
             this.input?.clear();
             this.publishRun({ phase: 'crash' });
@@ -361,7 +401,7 @@ export class Runtime implements GameRuntime {
           if (this.snapshot.phase !== sim.phase) {
             this.publishRun({ phase: sim.phase });
             const options = this.options!;
-            if (sim.mode === 'standard' && sim.score > options.best) {
+            if (sim.mode === 'standard' && sim.gatesNeutralized === 0 && sim.score > options.best) {
               options.best = Math.floor(sim.score);
               this.view.best?.(options.best);
             }
@@ -372,22 +412,26 @@ export class Runtime implements GameRuntime {
           this.publishRun();
         }
         if (this.snapshot.phase !== 'paused') this.trackFrame(dt);
+        if (!catchingUp) this.draw(sim, now);
       }
-      if (!fixed) this.draw(sim, now);
       this.schedule();
     } catch (error) {
       this.fail(error);
     }
   };
 
-  private step(sim: Simulation) {
-    const input = this.input?.read() ?? idleInput;
-    const { lives, pickup, branch } = sim;
-    sim.step(STEP, input);
+  private step(sim: Simulation, neutralize = false) {
+    const input = neutralize ? this.lastInput : this.input?.read() ?? idleInput;
+    if (!neutralize) this.lastInput = { ...input, target: null, dragX: 0, dragY: 0 };
+    const { lives, pickup, branch, gatesNeutralized } = sim;
+    sim.step(STEP, input, neutralize);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty, sim.steeringWidth);
-    if (this.pendingPickupDraw && sim.phase === 'playing' && sim.pickup && sim.beat >= PICKUP_APPEAR_BEAT) {
+    if (this.pendingPickupDraw && sim.pickup && sim.distance >= sim.pickupPreviewStation) {
       this.pickupDeck.consume();
       this.pendingPickupDraw = false;
+    }
+    if (sim.gatesNeutralized > gatesNeutralized) {
+      this.showMessage(sim.mode === 'standard' ? 'RECOVERY · BEST INELIGIBLE' : 'GATE NEUTRALIZED DURING RECOVERY');
     }
     if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch ||
       sim.routeGuide !== this.snapshot.routeHint) this.publishRun();
@@ -422,7 +466,8 @@ export class Runtime implements GameRuntime {
       this.nextDebug = now + 80;
       this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
-        branch: sim.branch, trackDistance: sim.trackDistance,
+        branch: sim.branch, trackDistance: sim.trackDistance, neutralized: sim.gatesNeutralized,
+        audio: this.audio.diagnostics,
         initMs: this.initMs, switchMs: this.switchMs }));
     }
   }
@@ -487,8 +532,13 @@ export class Runtime implements GameRuntime {
       // Detach Three's disposal callbacks before the restored context owns new GL handles.
       this.graphics?.releaseSurface();
       this.publish({ error: Object.freeze({ kind: 'graphics', message: 'Graphics were interrupted. Waiting for WebGL to recover.' }) });
+      clearTimeout(this.contextRecoveryTimer);
+      this.contextRecoveryTimer = setTimeout(() => {
+        if (this.contextLost) this.fail(new Error('WebGL did not recover. Reload to start a new run.'));
+      }, 8000);
     }, { signal });
     canvas.addEventListener('webglcontextrestored', () => {
+      clearTimeout(this.contextRecoveryTimer);
       try {
         const sim = this.simulation;
         if (!sim) return;
@@ -558,7 +608,7 @@ export class Runtime implements GameRuntime {
       boosting: this.snapshot.phase === 'playing' && sim.boosting,
       shield: sim.shield, resonance: sim.resonance,
       route: sim.route, routeHint: sim.routeGuide,
-      message: performance.now() < this.noticeUntil ? this.notice : sim.message,
+      message: this.recovering ? 'RECOVERING FLIGHT' : performance.now() < this.noticeUntil ? this.notice : sim.message,
       hint: this.snapshot.phase === 'playing' && sim.beat < 15, ...patch });
   }
 

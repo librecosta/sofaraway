@@ -7,7 +7,6 @@ import { PICKUP_BEAT, pickupForSeed } from '../../app/game/core/pickups';
 import { corridorLength, Simulation, START_DISTANCE } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
 import { sectionAt, VOLUMES } from '../../app/game/core/volumes';
-import { BranchPath } from '../../app/game/graphics/branch-path';
 import { buildPath } from '../../app/game/graphics/path';
 
 const elsewhere = VOLUMES[0];
@@ -45,18 +44,22 @@ test.each(cases)('$volume.id $side seed $seed keeps authored gates reachable wit
   expect(sim.lives).toBe(5);
 
   const ticks = Math.ceil((volume.beats * sim.secondsPerBeat + 0.8) / STEP);
+  let previousCrossing = -Infinity;
   for (let i = 0; i < ticks; i++) {
     const before = sim.gatesJudged;
     const next = chart[before];
     const previous = chart[before - 1];
     let input = idleInput;
-    if (next && (!previous || (sim.beat - previous.beat) * sim.secondsPerBeat >= 0.15)) {
+    if (next && sim.time - previousCrossing >= 0.15 - 1e-9) {
       const [x, y] = sim.branch && !sim.branch.side && next.beat >= SPLIT_BEAT
         ? [side === 'left' ? -3.2 : side === 'right' ? 3.2 : 0, 0] : lanePoint(next.kind, next.open, next.axis);
       input = { ...idleInput, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) };
     }
     sim.step(STEP, input);
-    if (sim.gatesJudged !== before) expect(sim.gatesPassed, `${previous?.beat} → ${next.beat}`).toBe(before + 1);
+    if (sim.gatesJudged !== before) {
+      previousCrossing = chartOf(sim)[before].crossedAt!;
+      expect(sim.gatesPassed, `${previous?.beat} → ${next.beat}`).toBe(before + 1);
+    }
   }
   expect(sim.phase).toBe('results');
   expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1 });
@@ -80,7 +83,7 @@ test.each(cases)('$volume.id $side seed $seed follows exactly one third of the f
     standard.step(STEP, input);
     tour.step(STEP, input);
     speedError = Math.max(speedError, Math.abs(tour.speed - standard.speed / 3));
-    trackError = Math.max(trackError, Math.abs(tour.trackDistance - START_DISTANCE - (standard.trackDistance - START_DISTANCE) / 3));
+    trackError = Math.max(trackError, Math.abs(tour.distance - START_DISTANCE - (standard.distance - START_DISTANCE) / 3));
   }
   expect(speedError).toBeLessThan(1e-8);
   expect(trackError).toBeLessThan(1e-7);
@@ -130,23 +133,22 @@ test('keyboard, pointer and touch move the camera identically in both modes', ()
 });
 
 test.each(['cruise', 'boost', 'toggle'] as const)('%s keeps sightseers on a continuous and separated branch', pace => {
-  const sim = new Simulation(elsewhere, { align: true, branchSide: 'right' });
   const base = buildPath(corridorLength(elsewhere));
+  const sim = new Simulation(elsewhere, { align: true, branchSide: 'right' }, base);
   sim.start('normal', 0, undefined, 'sightseeing');
-  let path: BranchPath | undefined;
+  const path = sim.junctionPath!;
   let previous = base.sample(sim.distance);
   let travel = 0, turn = 0;
   while (sim.beat < 356 && sim.phase === 'playing') {
-    const boosting = pace === 'boost' || (pace === 'toggle' && sim.beat >= 321 && sim.beat < 353);
+    const boosting = pace === 'boost' || (pace === 'toggle' && sim.trackDistance >= path.split && sim.trackDistance < path.end);
     sim.step(STEP, { ...idleInput, boosting });
-    if (sim.branch?.anchor && !path) path = new BranchPath(base, sim.branch.anchor, sim.mode);
-    const camera = path ? path.sample(sim.trackDistance, sim.branch?.side ?? 'center') : base.sample(sim.trackDistance);
+    const camera = path.sample(sim.trackDistance, sim.branch?.side ?? 'center');
     travel = Math.max(travel, camera.p.distanceTo(previous.p));
     turn = Math.max(turn, camera.f.angleTo(previous.f));
     previous = camera;
-    if (path && sim.beat >= SPLIT_BEAT && sim.beat < REJOIN_BEAT) {
-      expect(sim.trackDistance).toBeCloseTo(path.distanceAt(sim.beat), 8);
-      for (const gate of sim.branchGates![sim.route!]) expect(sim.projectTrack(gate.beat)).toBeCloseTo(path.distanceAt(gate.beat), 8);
+    if (sim.branch?.side && sim.trackDistance < path.end) {
+      expect(sim.distance).toBeCloseTo(path.arcAt(sim.trackDistance, sim.branch.side), 8);
+      for (const gate of sim.branchGates![sim.route!]) expect(gate.routeStation).toBeCloseTo(path.arcAt(gate.worldStation, sim.branch.side), 8);
     }
   }
   expect(travel).toBeLessThan(0.5);
@@ -160,7 +162,7 @@ test.each(['cruise', 'boost', 'toggle'] as const)('%s keeps sightseers on a cont
       expect(offset - SECTION.a * 2).toBeGreaterThan(2);
     }
   }
-  expect(sim.branch?.exit).not.toBeNull();
+  expect(sim.trackDistance).toBeGreaterThan(path.end);
   expect(path!.sample(path!.end, 'right').p.distanceTo(base.sample(path!.end).p)).toBe(0);
 });
 

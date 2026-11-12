@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { branchDistance, REJOIN_BEAT } from '../core/branches';
 import { canPass, clampSection } from '../core/collision';
-import { PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_PREVIEW_BEATS } from '../core/pickups';
+import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
+import { modeScale } from '../core/reference-track';
 import { corridorLength } from '../core/simulation';
 import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
 import type { Diagnostics, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
-import { BranchPath } from './branch-path';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { buildPath } from './path';
+import type { Path } from './path';
 import { PickupVisual } from './pickup.client';
 import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
@@ -32,7 +32,6 @@ class VolumeScene {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
   readonly tunnel: Tunnel;
-  readonly path: ReturnType<typeof buildPath>;
   readonly hologram?: RouteHologram;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly gateGeometries = new GateGeometries();
@@ -51,11 +50,10 @@ class VolumeScene {
   private disposeJunctionPrograms?: () => void;
 
   constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures>,
-    environment: THREE.Texture | null) {
+    environment: THREE.Texture | null, readonly path: Path) {
     this.hue = volume.hue[0];
     this.scene.fog = this.fog;
     try {
-      this.path = buildPath(corridorLength(volume), 150, 46, volume.topology);
       this.tunnel = new Tunnel(textures, this.path, volume.topology);
       this.scene.add(this.tunnel.group);
       this.sky = makeSky(volume);
@@ -107,7 +105,7 @@ class VolumeScene {
     const previousPhase = this.phase;
     this.phase = sim.phase;
 
-    const previews = junction && sim.branch && !sim.branch.side && sim.branchGates
+    const previews = junction && sim.routeGuide && sim.branch && !sim.branch.side && sim.branchGates
       ? [...sim.previewGates, sim.branchGates.main[0], sim.branchGates.challenge[0], sim.branchGates.score[0]]
       : sim.previewGates;
     for (const [gate, visual] of this.visuals) {
@@ -149,23 +147,19 @@ class VolumeScene {
       let visual = this.visuals.get(gate);
       if (!visual) {
         visual = new GateVisual(this.gateGeometries, gate.kind, gate.open, gate.axis);
+        const side = gate.route === 'main' ? 'center' : sim.branch?.layout.left === gate.route ? 'left' : 'right';
+        for (const [index, mesh] of visual.meshes.entries()) {
+          const station = gate.worldStation - index * THICKNESS;
+          const f = gate.route ? sim.junctionPath!.sample(station, side, this.gateFrame) : this.path.sample(station, this.gateFrame);
+          mesh.position.copy(f.p);
+          mesh.up.copy(f.u);
+          mesh.lookAt(this.gateTarget.copy(f.p).sub(f.f));
+        }
         this.visuals.set(gate, visual);
         this.scene.add(...visual.meshes);
       }
-      const beatsAway = gate.beat - sim.beat;
-      const along = gate.route && junction ? junction.path.distanceAt(gate.beat)
-        : gate.trackPosition ?? sim.projectTrack(gate.beat);
-      const ahead = along - distance;
-      const side = gate.route && junction
-        ? (gate.route === 'main' ? 'center' : junction.layout.left === gate.route ? 'left' : 'right') : null;
-      if (!visual.update(sim.time, this.hue, ahead, beatsAway, gate.hit)) continue;
-      for (const [index, mesh] of visual.meshes.entries()) {
-        const s = along - index * THICKNESS;
-        const f = side && junction ? junction.path.sample(s, side, this.gateFrame) : this.path.sample(s, this.gateFrame);
-        mesh.position.copy(f.p);
-        mesh.up.copy(f.u);
-        mesh.lookAt(this.gateTarget.copy(f.p).sub(f.f));
-      }
+      const ahead = gate.routeStation - sim.distance;
+      if (!visual.update(sim.time, this.hue, ahead, modeScale(sim.mode), gate.hit)) continue;
       if (!gate.route || gate.route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
@@ -187,12 +181,13 @@ class VolumeScene {
   }
 
   private updateJunction(sim: Simulation) {
-    const { anchor, layout } = sim.branch ?? {};
-    const past = anchor && sim.trackDistance > branchDistance(anchor, REJOIN_BEAT) + 95;
-    if (anchor && layout && !past) {
-      if (this.junction?.path.anchor === anchor) return;
+    const path = sim.junctionPath;
+    const layout = sim.branch?.layout;
+    const past = path && sim.trackDistance > path.end + 95;
+    if (path && layout && !past && sim.trackDistance >= path.guideStart - 100) {
+      if (this.junction?.path === path && this.junction.layout === layout) return;
       this.junction?.dispose();
-      this.junction = new BranchVisual(new BranchPath(this.path, anchor, sim.mode), layout, this.tunnel.junctionShell);
+      this.junction = new BranchVisual(path, layout, this.tunnel.junctionShell);
       this.scene.add(this.junction.group);
       this.tunnel.setJunction(this.junction.path);
     } else if (this.junction) {
@@ -205,8 +200,7 @@ class VolumeScene {
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
 
   private updatePickup(sim: Simulation) {
-    const beatsAway = PICKUP_BEAT - sim.beat;
-    if (sim.phase !== 'playing' || sim.pickup?.status !== 'pending' || beatsAway > PICKUP_PREVIEW_BEATS) {
+    if (sim.phase !== 'playing' || !sim.pickupVisible || !sim.pickup) {
       this.pickup?.dispose();
       this.pickup = undefined;
       return;
@@ -215,13 +209,12 @@ class VolumeScene {
       this.pickup = new PickupVisual(sim.pickup.kind);
       this.scene.add(this.pickup.group);
     }
-    const distance = sim.distance + sim.speed * beatsAway * sim.secondsPerBeat;
-    const { p, r, u, f } = this.path.sample(distance, this.pickupFrame);
+    const { p, r, u, f } = this.path.sample(sim.pickupStation, this.pickupFrame);
     const group = this.pickup.group;
     group.position.copy(p).addScaledVector(r, PICKUP_LOCAL_X).addScaledVector(u, PICKUP_LOCAL_Y);
     this.basis.makeBasis(r, u, this.backwards.copy(f).negate());
     group.quaternion.setFromRotationMatrix(this.basis);
-    this.pickup.update(sim.beat, beatsAway);
+    this.pickup.update(sim.beat, (sim.pickupStation - sim.distance) / (sim.pickupStation - sim.pickupPreviewStation));
   }
 
   dispose() {
@@ -244,6 +237,7 @@ export class Graphics {
   readonly gl: WebGL2RenderingContext;
   private capabilities: ReturnType<typeof readCapabilities>;
   private volume?: VolumeScene;
+  private corridor?: Path;
   private textures?: ReturnType<typeof buildTextures>;
   private environment?: THREE.WebGLRenderTarget;
   private post?: PostFX;
@@ -291,14 +285,16 @@ export class Graphics {
   }
 
   get camera() { return this.volume?.camera; }
+  get path() { return this.corridor; }
 
-  load(definition: VolumeDefinition) {
+  load(definition: VolumeDefinition, existingPath?: Path) {
     this.volume?.dispose();
     this.volume = undefined;
+    const path = this.corridor = existingPath ?? buildPath(corridorLength(definition), 150, 46, definition.topology);
     this.volume = this.withCoreShaders(() => {
       this.textures ??= buildTextures();
       if (this.capabilities.halfFloat) this.environment ??= makeEnvMap(this.renderer);
-      return new VolumeScene(definition, this.textures, this.environment?.texture ?? null);
+      return new VolumeScene(definition, this.textures, this.environment?.texture ?? null, path);
     });
     this.sizeCamera();
   }
@@ -430,7 +426,7 @@ export class Graphics {
   restore(volume: VolumeDefinition) {
     this.capabilities = this.readDeviceCapabilities();
     this.configure(this.quality, this.mobile);
-    this.load(volume);
+    this.load(volume, this.corridor);
     this.prepare();
   }
 
@@ -494,6 +490,7 @@ export class Graphics {
 
   dispose() {
     this.releaseSurface();
+    this.corridor = undefined;
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }

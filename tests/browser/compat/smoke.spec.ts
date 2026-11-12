@@ -84,7 +84,7 @@ test('prerender, four volumes, a live run and restart', async ({ browser, page, 
   await expect(startButton(page)).toBeEnabled();
   if (!hasTouch) await page.locator('#gl').click({ position: { x: 80, y: 140 } });
   await startRun(page, info, hasTouch ? 'tap' : 'Space');
-  await expect(page.locator('#hud-gates')).toHaveText('0/133');
+  await expect(page.locator('#hud-gates')).toHaveText('0/141');
   expect(await canvas!.evaluate((el: HTMLCanvasElement) => el.getContext('webgl2')!.getError())).toBe(0);
   expect(errors).toEqual([]);
   record(info, initial.dof ? 'PASS' : 'DEGRADED', 'Four volumes, live input, pause, resume, exit and restart',
@@ -131,21 +131,11 @@ for (const audio of ['absent', 'rejected', 'pending'] as const) {
     await expect(prompt).toBeVisible();
     await expect(page.locator('#hud')).toBeHidden();
     await prompt.getByRole('button', { name: 'PLAY WITH SOUND OFF' }).click();
-    const progressedOrPaused = async () => {
-      const { phase, beat } = await readMetrics(page);
-      return phase === 'paused' || (phase === 'playing' && beat > 0.2);
-    };
-    await expect.poll(progressedOrPaused).toBe(true);
-    const pause = page.getByRole('dialog', { name: 'PAUSED' });
-    if (await pause.isVisible()) {
-      await expect(pause).toContainText('Rendering fell behind');
-      await pause.getByRole('button', { name: 'RESUME', exact: true }).click();
-      record(info, 'PASS', 'Explicitly resumed the silent clock after a detected long frame');
-    }
     await expect.poll(async () => {
       const { phase, beat } = await readMetrics(page);
       return phase === 'playing' && beat > 0.2;
     }).toBe(true);
+    await expect(page.getByRole('dialog', { name: 'PAUSED' })).toBeHidden();
     await expect(page.locator('#hud')).toBeVisible();
     await expect(fallback(page)).toBeHidden();
     record(info, 'PASS', `Explicit silent transport after ${audio} activation`);

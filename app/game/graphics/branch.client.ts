@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BRANCH_PREVIEW_BEAT, BRANCH_SPACING, ROUTE_LABELS, routeSides } from '../core/branches';
+import { BRANCH_SPACING, ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
@@ -112,7 +112,7 @@ export class BranchVisual {
   }
 
   private sweep(target: Quads, side: RouteSide, from: number, through: number, wide: boolean) {
-    const width = (s: number) => a + (wide ? this.path.spreadAt(s, BRANCH_PREVIEW_BEAT) : 0);
+    const width = (s: number) => a + (wide ? this.path.spreadAt(s, this.path.start) : 0);
     const count = Math.ceil((through - from) / 2.5);
     let last = from;
     let previous = profile(width(last));

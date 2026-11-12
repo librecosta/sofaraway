@@ -28,8 +28,10 @@ function seedFor(kind: PickupKind) {
 }
 
 function advance(sim: Simulation, beat: number, input: InputFrame = idleInput) {
-  while (sim.beat + 1e-9 < beat && sim.phase === 'playing') sim.step(STEP, input);
-  expect(sim.beat + 1e-9).toBeGreaterThanOrEqual(beat);
+  const station = sim.reference.station(beat, sim.mode);
+  const reached = () => beat === sim.volume.beats ? sim.beat === beat : sim.trackDistance + 1e-8 >= station;
+  while (!reached() && sim.phase === 'playing') sim.step(STEP, input);
+  expect(reached()).toBe(true);
 }
 
 function start(kind: PickupKind, difficulty: Difficulty = 'normal', boost = false) {
@@ -40,13 +42,14 @@ function start(kind: PickupKind, difficulty: Difficulty = 'normal', boost = fals
   // Leave the Diamond opening and wait 150 ms before moving toward the pickup.
   advance(sim, previousGate, input);
   flags.align = false;
-  advance(sim, previousGate + 0.15 / sim.secondsPerBeat, input);
+  const ready = sim.time + 0.15;
+  while (sim.time + 1e-9 < ready) sim.step(STEP, input);
   return { sim, flags, input };
 }
 
 function collect(run: ReturnType<typeof start>, end = PICKUP_BEAT) {
   const { sim, input } = run;
-  while (sim.beat + 1e-9 < end && sim.phase === 'playing') {
+  while (sim.trackDistance + 1e-8 < sim.reference.station(end, sim.mode) && sim.phase === 'playing') {
     sim.step(STEP, { ...input, axisY: sim.camera.ty < 0.95 ? 1 : 0 });
   }
 }
@@ -95,6 +98,7 @@ test.each([{ from: 0.2, to: 0.31, status: 'missed' }, { from: 0.4, to: 0.29, sta
   'pickup uses the interpolated position, $from → $to is $status', ({ from, to, status }) => {
     const { sim, input } = start('lumen');
     advance(sim, PICKUP_BEAT - STEP / sim.secondsPerBeat, input);
+    sim.distance = sim.pickupStation - sim.speed * STEP * 0.4;
     expect(sim.pickup?.status).toBe('pending');
     expect(sim.camera.x).toBeCloseTo(0, 8);
     sim.camera.y = from;
@@ -150,7 +154,7 @@ test('a miss already covered by immunity leaves the Shield ready', () => {
   const { sim, input } = run;
   const lives = sim.lives;
   // This overlap does not occur in the current chart. Supply an active damage cooldown to test its precedence.
-  Reflect.set(sim, 'invulnUntil', nextGate + 0.1);
+  Reflect.set(sim, 'invulnUntil', nextGate * sim.secondsPerBeat + 0.1);
   advance(sim, nextGate, { ...input, target: [0, 0] });
   expect([sim.shield, sim.lives, sim.combo, sim.gatesJudged - sim.gatesPassed]).toEqual([true, lives, 0, 1]);
 });
@@ -246,7 +250,7 @@ test.each(difficulties.flatMap(difficulty => kinds.map(kind => ({ difficulty, ki
       : kind === 'resonance' ? 1000 * difficultySettings(volume, difficulty).mult : 0;
     expect(Math.floor(sim.score)).toBe(scores[difficulty] + bonus);
     expect(sim.gatesPassed).toBe(chartFor(volume, difficulty).length - 3);
-    expect(sim.result).toEqual({ title: 'ESCAPED', accuracy: 1, rank: 'S', route: 'main' });
+    expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, rank: 'S', route: 'main', unreached: 0 });
     expect([sim.phase, sim.shield, sim.resonance]).toEqual(['results', false, 0]);
     expect(sim.start(difficulty, seedFor('lumen'))).toBe(true);
     expect([sim.pickup, sim.score, sim.shield, sim.resonance]).toEqual([

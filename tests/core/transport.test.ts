@@ -45,15 +45,33 @@ function advance(seconds: number, timerMs = 25) {
 
 const scheduled = () => playStep.mock.calls.map(([step, at]) => [step + 0, at]);
 
-test('a scheduler delay past an unscheduled step pauses rather than discarding it', async () => {
+test('a late scheduler skips expired steps and continues on the original grid', async () => {
   await transport.start(VOLUMES[0], 0);
   // The initial lookahead contains step 0 only. Step 1 is due at 177.1875 ms.
   Context.active.currentTime = 0.200;
-  expect(transport.time).toBe('long-frame');
+  expect(transport.time).toBeCloseTo(0.14);
   vi.advanceTimersByTime(25);
-  expect(interrupt).toHaveBeenCalledExactlyOnceWith('long-frame');
-  expect(vi.getTimerCount()).toBe(0);
-  expect(scheduled()).toEqual([[0, 0.06]]);
+  expect(interrupt).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(1);
+  expect(scheduled()).toEqual([[0, 0.06], [2, 0.06 + 30 / 128]]);
+  expect(transport.diagnostics).toMatchObject({ lateCallbacks: 1, missedSteps: 1 });
+  expect(transport.diagnostics.maxDelaySeconds).toBeCloseTo(0.0228125, 9);
+});
+
+test.each([[100], [160], [250], [100, 160, 250, 160]])('scheduler delay sequence %j avoids replay and preserves the grid', async (...delays) => {
+  const volume = VOLUMES[0];
+  await transport.start(volume, 0);
+  for (const delay of delays) {
+    const queued = playStep.mock.calls.length;
+    advance(delay / 1000);
+    for (const [, at] of playStep.mock.calls.slice(queued)) expect(at).toBeGreaterThanOrEqual(Context.active.currentTime);
+    for (let i = 0; i < 8; i++) advance(0.025);
+  }
+  const notes = scheduled();
+  expect(new Set(notes.map(([i]) => i)).size).toBe(notes.length);
+  expect(notes.at(-1)![0] + 1 - notes.length).toBe(transport.diagnostics.missedSteps);
+  for (const [i, at] of notes) expect(at).toBeCloseTo(0.06 + i * 15 / volume.bpm, 9);
+  expect(interrupt).not.toHaveBeenCalled();
 });
 
 test('a step exactly at the current context time stays on its grid', async () => {

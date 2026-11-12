@@ -42,20 +42,24 @@ export function inspectCameraAndGates() {
       const scene = Reflect.get(graphics, 'volume') as { visuals: Map<RunGate, GateVisual>; path: Path; junction?: BranchVisual };
       for (const mode of modes) {
         const stages = volume.id === 'elsewhere'
-          ? [['normal', 96], ['before', 304], ['entry', 316.5], ['branch', 328], ['merge', 349.5], ['after', 356]] as const
+          ? [['normal', 96], ['before', 304], ['entry', 317.5], ['branch', 328], ['merge', 349.5], ['after', 356]] as const
           : [['normal', 56]] as const;
         for (const [stage, start] of stages) {
           const sim = new Simulation(volume, flags);
           sim.start('normal', 0, undefined, mode);
-          while (sim.beat < start && sim.phase === 'playing') sim.step(STEP, idleInput);
-          const hasOrdinaryGate = () => sim.previewGates.some(gate => gate.beat > sim.beat + 3 && gate.beat < sim.beat + 12);
+          const station = (beat: number) => sim.reference.station(beat, mode);
+          while (sim.trackDistance < station(start) && sim.phase === 'playing') sim.step(STEP, idleInput);
+          const inRange = (gate: RunGate) => {
+            const delta = gate.routeStation - sim.distance;
+            return delta > sim.speed * sim.secondsPerBeat * 3 && delta < sim.speed * sim.secondsPerBeat * 11.5;
+          };
+          const hasOrdinaryGate = () => sim.previewGates.some(inRange);
           if (stage === 'normal') {
             while (!hasOrdinaryGate() && sim.phase === 'playing') sim.step(STEP, idleInput);
           }
           graphics.update(sim, true);
           const route = stage === 'entry' || stage === 'branch' ? sim.branch?.layout.right : undefined;
-          const gate = [...scene.visuals.keys()].find(gate => gate.beat > sim.beat + 3 && gate.beat < sim.beat + 12
-            && gate.route === route);
+          const gate = [...scene.visuals.keys()].find(gate => inRange(gate) && gate.route === route);
           if (!gate) throw new Error(`No sampled gate: ${volume.id} ${mode} ${stage}`);
           const visual = scene.visuals.get(gate)!;
           const update = visual.update.bind(visual);
@@ -67,7 +71,7 @@ export function inspectCameraAndGates() {
           graphics.update(sim, true);
           const mesh = visual.meshes[0];
           let previous = mesh.position.clone();
-          let previousAlong = sim.trackDistance + ahead;
+          let previousAlong = sim.distance + ahead;
           const visible = mesh.visible;
           const peak = { idle: 0, press: 0, release: 0 };
           const travel = { idle: 0, press: 0, release: 0 };
@@ -80,12 +84,13 @@ export function inspectCameraAndGates() {
           let cameraRotation = graphics.camera!.quaternion.clone();
           for (let tick = 0; !gate.judged && tick < 600; tick++) {
             const part = tick < 12 ? 'idle' : tick < 42 ? 'press' : 'release';
-            const previousBeat = sim.beat;
+            const previousTime = sim.time;
+            const previousTrack = sim.trackDistance;
             sim.step(STEP, { ...idleInput, boosting: part === 'press' });
             graphics.update(sim, true);
             const camera = graphics.camera!;
             for (const seam of [SPLIT_BEAT, REJOIN_BEAT]) {
-              if (previousBeat < seam && sim.beat >= seam) {
+              if (previousTrack < station(seam) && sim.trackDistance >= station(seam)) {
                 cameraSeams.push({ beat: seam, step: cameraPosition.distanceTo(camera.position),
                   turn: cameraRotation.angleTo(camera.quaternion) * 180 / Math.PI });
               }
@@ -93,16 +98,16 @@ export function inspectCameraAndGates() {
             cameraPosition = camera.position.clone();
             cameraRotation = camera.quaternion.clone();
             if (!mesh.visible) continue;
-            const along = sim.trackDistance + ahead;
+            const along = sim.distance + ahead;
             const junction = scene.junction;
-            const p = gate.route && junction ? junction.path.sample(along, 'right').p : scene.path.sample(along).p;
+            const p = gate.route && junction ? junction.path.sample(gate.worldStation, 'right').p : scene.path.sample(gate.worldStation).p;
             maxPathError = Math.max(maxPathError, mesh.position.distanceTo(p));
             peak[part] = Math.max(peak[part], previous.distanceTo(mesh.position));
             travel[part] += Math.abs(along - previousAlong);
             maxAheadIncrease = Math.max(maxAheadIncrease, ahead - previousAhead);
             if (gate.judged) {
-              const k = (gate.beat - previousBeat) / (sim.beat - previousBeat);
-              crossingError = Math.abs(ahead + (sim.trackDistance - (previousAlong - previousAhead)) * (1 - k));
+              const k = (gate.crossedAt! - previousTime) / STEP;
+              crossingError = Math.abs(ahead + (sim.distance - (previousAlong - previousAhead)) * (1 - k));
             }
             previous.copy(mesh.position);
             previousAlong = along;
@@ -131,17 +136,17 @@ export function inspectCameraAndGates() {
       const sim = new Simulation(drift, flags);
       sim.start('normal', 0, undefined, mode);
       while (sim.beat < 56) sim.step(STEP, idleInput);
-      const gate = sim.previewGates.find(gate => gate.beat === (mode === 'standard' ? 64 : 70))!;
+      const gate = (Reflect.get(sim, 'chart') as RunGate[]).find(gate => gate.beat === (mode === 'standard' ? 64 : 70))!;
       while (!gate.judged) {
         const before = sim.trackDistance;
-        const beat = sim.beat;
+        const time = sim.time;
         const passed = sim.gatesPassed;
         sim.step(STEP, { ...idleInput, boosting });
         if (gate.judged) {
-          const along = before + (sim.trackDistance - before) * (gate.beat - beat) / (sim.beat - beat);
+          const along = before + (sim.trackDistance - before) * (gate.crossedAt! - time) / STEP;
           graphics.update(sim, true);
           const mesh = scene.visuals.get(gate)!.meshes[0];
-          return { beat: gate.beat, along, visible: mesh.visible, passed: sim.gatesPassed === passed + 1,
+          return { beat: gate.beat, along, crossedAt: gate.crossedAt!, visible: mesh.visible, passed: sim.gatesPassed === passed + 1,
             contactError: mesh.position.distanceTo(scene.path.sample(along).p) };
         }
       }

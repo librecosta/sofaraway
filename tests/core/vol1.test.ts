@@ -86,6 +86,7 @@ test.each(difficulties)('%s clears ELSEWHERE using keyboard input after a 150 ms
   const reaction = 0.150;
   const axis = (delta: number) => Math.abs(delta) < 0.05 ? 0 : Math.sign(delta);
   sim.start(difficulty);
+  let lastCrossing = -Infinity;
 
   const songSteps = Math.ceil(elsewhere.beats * sim.secondsPerBeat / STEP) + 1;
   for (let tick = 0; tick < songSteps && sim.phase === 'playing'; tick++) {
@@ -93,12 +94,13 @@ test.each(difficulties)('%s clears ELSEWHERE using keyboard input after a 150 ms
     const gate = chart[index];
     const previous = chart[index - 1];
     let input = idleInput;
-    if (gate && (!previous || (sim.beat - previous.beat) * sim.secondsPerBeat + 1e-9 >= reaction)) {
+    if (gate && sim.time - lastCrossing + 1e-9 >= reaction) {
       const [x, y] = !sim.branch?.side && gate.beat >= SPLIT_BEAT ? [0, 0] : lanePoint(gate.kind, gate.sector, 0);
       input = { ...idleInput, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) };
     }
     sim.step(STEP, input);
     if (sim.gatesJudged === index) continue;
+    lastCrossing = sim.previewGates.find(candidate => candidate.beat === gate.beat)!.crossedAt!;
     expect(sim.gatesPassed, `${previous?.beat ?? 'start'} ${previous?.kind ?? ''} → ${gate.beat} ${gate.kind}`)
       .toBe(index + 1);
     if (gate.kind === 'iris') irisSectors.add(gate.sector);
@@ -119,5 +121,5 @@ test.each(difficulties)('%s clears ELSEWHERE using keyboard input after a 150 ms
     .toEqual([chart.length, chart.length, 0, elsewhere.lives[difficulty]]);
   for (let n = 0; n < Math.ceil(0.8 / STEP); n++) sim.step(STEP, idleInput);
   expect(sim.phase).toBe('results');
-  expect(sim.result).toEqual({ title: 'ESCAPED', rank: 'S', accuracy: 1, route: 'main' });
+  expect(sim.result).toMatchObject({ title: 'ESCAPED', rank: 'S', accuracy: 1, route: 'main', unreached: 0 });
 });

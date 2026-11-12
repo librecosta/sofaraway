@@ -10,22 +10,23 @@ Vol. I–IV · runtime procedural graphics and music · WebGL2
 
 ## What it is
 
-You fly down a corridor at the tempo of a soundtrack that is being synthesised
-while you play. Bulkheads rush at you. Each one has exactly one opening. Be in it
-when it arrives.
+You fly down a corridor while the game synthesises its soundtrack. Each glass
+gate has exactly one opening. Find it before you reach the gate. Hold Shift to
+reach the next gate sooner, or choose Sightseeing for one-third forward speed
+and the same soundtrack.
 
 Four volumes. Each is a different corridor, a different kind of glass, and a
 different arrangement — but the same engine underneath.
 
 | | World | Glass | Music | Length | Gates (Normal) |
 |---|---|---|---|---|---|
-| **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 144 |
+| **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 141 / 145 / 157 (Main / Challenge / Bonus) |
 | **II · DRIFT** | open canal, sky above | **shutter** — one of three slats missing, horizontal or vertical | downtempo · 96 | 2:20 | 40 |
 | **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 3:38 | 158 |
 | **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:12 | 91 |
 
-The palette, the pulse and the gates are all driven by the same beat clock, so
-the world moves to the music rather than alongside it.
+The soundtrack sets the palette, the light pulses and the spacing of gates.
+Your flight speed determines when you cross each gate.
 
 ## Play
 
@@ -64,7 +65,7 @@ The [C0-B performance report](docs/audits/C0-B-performance-report.md) documents
 the browser requirements and the reference-build comparison.
 
 Run `npm run test:sync` for audio timing, lifecycle, offline signal checks and
-four real-time songs. See the [C0-C audio sync report](docs/audits/C0-C-audio-sync-report.md)
+real-time songs in Standard and Sightseeing. See the [C0-C audio sync report](docs/audits/C0-C-audio-sync-report.md)
 for browser setup and the listening checklist.
 
 Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome for a comparable GPU
@@ -93,10 +94,11 @@ React Router Framework Mode prerenders the menu. After hydration, React sends
 commands to the runtime and subscribes to immutable snapshots for the UI. Three.js
 and Web Audio are initialized in the browser.
 
-The runtime drives a 60 Hz simulation from the audio clock or a monotonic silent
-clock. Charts, collision, scoring and camera motion share the same simulation.
-Chart and synthesis read the same section and tempo definitions. Render frames
-can arrive at a different rate from simulation ticks.
+The runtime uses a monotonic timeline for the 60 Hz simulation and aligns the
+audio scheduler to that timeline. A reference trajectory converts authored
+beats into fixed world positions. Collision and scoring use the player's
+actual crossings. Rendering can run at a different rate from simulation ticks;
+short stalls catch up in bounded batches.
 
 The graphics session samples a shared path for the camera, procedural tunnel
 chunks and GLSL gates. PostFX renders bloom, chromatic aberration, vignette and
@@ -113,7 +115,8 @@ tests/             Vitest, Playwright and isolated browser harness
 build/client/      generated static deployment directory
 ```
 
-See the [B0 architecture contract](docs/contracts/B0-application-game-runtime-architecture.md).
+See the [B0 architecture contract](docs/contracts/B0-application-game-runtime-architecture.md)
+and the [world-space validation report](docs/audits/D0-B2-F2-validation-report.md).
 
 ## Debug overview
 

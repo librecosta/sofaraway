@@ -7,7 +7,7 @@ export const difficulties = ['easy', 'normal', 'hard'] as const;
 export type Difficulty = typeof difficulties[number];
 export const qualities = ['high', 'auto', 'low'] as const;
 export type QualityTier = typeof qualities[number];
-export type PauseReason = 'user' | 'background' | 'context' | 'audio' | 'long-frame';
+export type PauseReason = 'user' | 'background' | 'context';
 export type GamePhase = 'uninitialized' | 'initializing' | 'menu' | 'starting' | 'playing'
   | 'paused' | 'crash' | 'results' | 'unsupported' | 'error' | 'disposed';
 
@@ -15,6 +15,11 @@ export interface RunResult {
   readonly title: 'ESCAPED' | 'TERMINATED';
   readonly accuracy: number;
   readonly rank: 'S' | 'A' | 'B' | 'C';
+  readonly planned: number;
+  readonly encountered: number;
+  readonly passed: number;
+  readonly unreached: number;
+  readonly neutralized: number;
   readonly route?: RouteKind;
 }
 
@@ -51,6 +56,7 @@ export interface GameSnapshot {
   readonly routeHint: BranchLayout | null;
   readonly hint: boolean;
   readonly message: string;
+  readonly soundUnavailable: boolean;
 }
 
 export interface GameOptions {
@@ -85,6 +91,7 @@ export interface GameRuntime {
   start(silent?: boolean): Promise<void>;
   pause(reason: PauseReason): void;
   resume(silent?: boolean): Promise<void>;
+  enableAudio(): Promise<void>;
   returnToMenu(): void;
   selectVolume(id: VolumeId): Promise<void>;
   setDifficulty(value: Difficulty): void;
@@ -125,4 +132,5 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   routeHint: null,
   hint: false,
   message: '',
+  soundUnavailable: false,
 });

@@ -44,8 +44,7 @@ test('visibility and BFCache suspension preserve progress and obey audio recover
     await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 250)));
     expect((await readMetrics(page)).beat).toBe(before);
     await page.evaluate(show);
-    await expect.poll(async () => !(await pause.isVisible()) ||
-      await pause.getByText(/Audio could not start|Rendering fell behind/).isVisible()).toBe(true);
+    await expect(pause).toBeHidden();
     await resumeRun(page, info);
     await expect.poll(async () => (await readMetrics(page)).beat).toBeGreaterThan(before);
     expect((await readMetrics(page)).beat - before).toBeLessThan(1.2);
@@ -115,7 +114,8 @@ test('WebGL context loss stops rendering and resumes the same run', async ({ pag
     return;
   }
   const dialog = page.getByRole('dialog', { name: 'PAUSED' });
-  await expect(dialog).toContainText('Waiting for WebGL');
+  await expect(page.getByRole('status').filter({ hasText: 'Waiting for WebGL' })).toBeVisible();
+  await expect(dialog).toBeHidden();
   const countDraws = () => page.evaluate(() => {
     window.dispatchEvent(new Event('compat-read-draw-calls'));
     return Number(document.documentElement.dataset.drawCalls);
@@ -128,9 +128,6 @@ test('WebGL context loss stops rendering and resumes the same run', async ({ pag
   expect(await countDraws()).toBe(drawCalls);
   await canvas!.evaluate(el => el.dispatchEvent(new Event('compat-restore')));
   await expect(page.locator('#gl')).toHaveAttribute('data-restored', 'true');
-  await expect.poll(async () => !(await dialog.isVisible()) ||
-    await dialog.getByText(/Audio could not start|Rendering fell behind/).isVisible()).toBe(true);
-  await resumeRun(page, info);
   await expect(dialog).toBeHidden();
   await expect.poll(async () => (await readMetrics(page)).beat).toBeGreaterThan(suspended);
   expect(await countDraws()).toBeGreaterThan(drawCalls);
@@ -191,6 +188,11 @@ test('audio suspension and restart preserve progress with one scheduler', async 
         master ??= node;
         return node;
       }
+      override async resume() {
+        await super.resume();
+        const data = document.documentElement.dataset;
+        data.audioRestores = String(Number(data.audioRestores ?? 0) + 1);
+      }
     } });
     window.addEventListener('compat-suspend-audio', () => { void active?.suspend(); });
   });
@@ -204,13 +206,11 @@ test('audio suspension and restart preserve progress with one scheduler', async 
   }
   await expect(root).toHaveAttribute('data-audio-buses', '1');
   await expect.poll(async () => (await readMetrics(page)).beat).toBeGreaterThan(0.4);
-  await page.evaluate(() => window.dispatchEvent(new Event('compat-suspend-audio')));
-  const dialog = page.getByRole('dialog', { name: 'PAUSED' });
-  await expect(dialog).toContainText('Audio could not start');
-  await expect(root).toHaveAttribute('data-audio-timers', '0');
-  await expect(root).toHaveAttribute('data-audio-buses', '0');
   const before = (await readMetrics(page)).beat;
-  await dialog.getByRole('button', { name: 'RESUME', exact: true }).click();
+  const resumes = Number(await root.getAttribute('data-audio-restores') ?? 0);
+  await page.evaluate(() => window.dispatchEvent(new Event('compat-suspend-audio')));
+  await expect(root).toHaveAttribute('data-audio-restores', String(resumes + 1));
+  await expect(page.getByRole('dialog', { name: 'PAUSED' })).toBeHidden();
   await expect(root).toHaveAttribute('data-audio-timers', '1');
   await expect(root).toHaveAttribute('data-audio-buses', '1');
   await expect.poll(async () => (await readMetrics(page)).beat).toBeGreaterThan(before);
