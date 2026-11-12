@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { canPass, clampSection } from '../core/collision';
+import { canPass, playerViewOffset } from '../core/collision';
 import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { modeScale } from '../core/reference-track';
 import { corridorLength } from '../core/simulation';
@@ -7,6 +7,7 @@ import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
 import type { Diagnostics, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
+import { DressingVisuals } from './dressing.client';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
@@ -35,6 +36,8 @@ class VolumeScene {
   readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
   readonly tunnel: Tunnel;
   readonly hologram?: RouteHologram;
+  readonly dressing?: DressingVisuals;
+  activeProps = 0;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly gateGeometries = new GateGeometries();
   private readonly visuals = new Map<RunGate, GateVisual>();
@@ -67,6 +70,8 @@ class VolumeScene {
         // The new albedos are decoded from sRGB. Keep broad metal faces readable
         // under the existing chapter lights with a little more neutral reflection.
         this.scene.environmentIntensity = 1.7;
+        this.dressing = new DressingVisuals(path, this.surfaceLibrary!);
+        this.scene.add(this.dressing.group);
         this.hologram = new RouteHologram();
       }
     } catch (error) {
@@ -108,12 +113,16 @@ class VolumeScene {
     const distance = sim.trackDistance;
     this.updateJunction(sim);
     this.tunnel.update(distance, sim.phase === 'menu');
+    if (sim.dressing) {
+      this.dressing?.update(sim.dressing, distance, sim.time, sim.phase);
+      this.activeProps = sim.dressing.active;
+    }
     const junction = this.junction;
     const cameraFrame = junction && sim.branch?.side
       ? junction.path.sample(distance, sim.branch.side, this.cameraFrame)
       : this.path.sample(distance, this.cameraFrame);
     const width = sim.steeringWidth;
-    const [cx, cy] = clampSection(x * 0.88, y * 0.88, 0.62, width);
+    const [cx, cy] = playerViewOffset(x, y, width);
     this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
     this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
     this.camera.quaternion.setFromRotationMatrix(this.basis);
@@ -245,6 +254,7 @@ class VolumeScene {
     this.visuals.clear();
     this.gateGeometries.dispose();
     this.tunnel?.dispose();
+    this.dressing?.dispose();
     this.surfaceLibrary?.dispose();
     this.sky?.dispose();
     this.scene.clear();
@@ -498,6 +508,7 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
+      dressing: this.volume?.dressing?.visible ?? 0, activeProps: this.volume?.activeProps ?? 0,
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
       dof: this.post?.quality.dof ?? false,

@@ -9,8 +9,8 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('link', { name: 'Debug overview' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(24);
-  for (const name of ['Surface materials', 'Effect materials', 'Environment', 'Soundtrack']) {
+  await expect(previews).toHaveCount(31);
+  for (const name of ['Surface materials', 'Effect materials', 'Structural kit', 'Loose props', 'Environment', 'Soundtrack']) {
     await expect(page.getByRole('heading', { name })).toBeVisible();
   }
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
@@ -26,11 +26,13 @@ test('the unified overview renders lit materials, effects and the existing model
     'shield', 'resonance', 'lumen', 'elsewhere', 'drift', 'descent', 'orbit',
     'iris', 'square', 'diamond', 'shutter', 'lattice', 'aperture',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
-    'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan', 'sky', 'stars',
+    'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
+    'overhead-assembly', 'ventilation-assembly', 'utility-conduits', 'service-bay', 'holographic-service-door',
+    'tech-crate', 'utility-barrel', 'sky', 'stars',
   ].map(id => ({ id, painted: true })));
   const shield = page.getByRole('img', { name: 'Prism Shield 3D model' });
   const first = await shield.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
-  await page.getByRole('slider', { name: 'View angle' }).focus();
+  await page.getByRole('slider', { name: 'View angle', exact: true }).focus();
   await page.keyboard.press('End');
   expect(await shield.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(first);
 
@@ -51,6 +53,18 @@ test('the unified overview renders lit materials, effects and the existing model
   await expect.poll(() => film.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(still);
   await scan.click();
 
+  const fan = page.locator('[data-preview=ventilation-assembly][data-mode=model]');
+  const front = await fan.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+  await page.getByRole('slider', { name: 'Kit view angle' }).focus();
+  await page.keyboard.press('Home');
+  expect(await fan.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(front);
+  for (const [id, name] of [['tech-crate', 'Tech crate'], ['utility-barrel', 'Utility barrel']]) {
+    const prop = page.locator(`[data-preview=${id}][data-mode=model]`);
+    const standing = await prop.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+    await page.getByRole('button', { name: `Preview ${name} impact` }).click();
+    await expect.poll(() => prop.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(standing);
+  }
+
   await page.setViewportSize({ width: 360, height: 760 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   expect(errors).toEqual([]);
@@ -67,7 +81,7 @@ test('materials and the soundtrack controls are available without WebGL2', async
   });
   await page.goto('/debug/');
   await expect(page.getByText('WebGL2 is needed for 3D previews.')).toBeVisible();
-  await expect(page.getByRole('slider', { name: 'View angle' })).toBeDisabled();
+  await expect(page.getByRole('slider', { name: 'View angle', exact: true })).toBeDisabled();
   await expect(page.locator('#materials canvas[data-mode=raw]')).toHaveCount(6);
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(0);
   await expect(page.getByText(/Lit previews unavailable/)).toBeVisible();
@@ -75,6 +89,8 @@ test('materials and the soundtrack controls are available without WebGL2', async
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
   await expect(page.locator('canvas[data-preview=surface-channel]')).toHaveAttribute('data-channel', 'normal');
   await expect(page.getByRole('button', { name: 'Render to WAV' })).toBeEnabled();
+  await expect(page.getByRole('slider', { name: 'Kit view angle' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Preview Tech crate impact' })).toBeDisabled();
 });
 
 test('the debug material renderer restores one context and redraws the lit specimens', async ({ page }) => {
@@ -101,9 +117,10 @@ test('the debug material renderer restores one context and redraws the lit speci
   await expect(page.getByText(/Waiting for WebGL/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Animate scan' })).toBeDisabled();
   await page.evaluate(() => {
-    for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-mode=lit]')) delete canvas.dataset.mode;
+    for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-mode=lit], canvas[data-mode=model]')) delete canvas.dataset.mode;
     window.dispatchEvent(new Event('test-debug-restore'));
   });
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
+  await expect(page.locator('canvas[data-mode=model]')).toHaveCount(7);
   await expect(page.getByRole('button', { name: 'Animate scan' })).toBeEnabled();
 });

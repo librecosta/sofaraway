@@ -1,0 +1,13 @@
+# D0-B3-A0 — ELSEWHERE Structural Kit & Prop Dressing
+
+Scope: VOL. I / ELSEWHERE only. Baseline: `dev@113b34106f0f6a500c84e0b17633ef0bfce9f36c`. Keep BSD-3-Clause and deliver via a normal push to `origin/dev`.
+
+The dark industrial tunnel gets five real 3D assemblies: a beveled overhead beam with braces and hangers; a wall exhaust assembly with fan, guard and short duct; wall conduits with bends, fixings and cable tray; a recessed service bay; and a backed, wall-mounted holographic service door. The service door has no passage or interaction. Use the M0 surface and effect materials. Keep glass the visual focus; adjust ELSEWHERE's ordinary strips and local lighting only. Exposure, Bloom, DPR, glass and the other three volumes remain unchanged.
+
+A fixed world seed and authored segment motifs determine world stations and mounting sides. Place fixtures with the F2 Path frame against the existing octagonal surfaces. Use a mix of quiet and serviced stretches, prioritizing straights. Leave the flight envelope, required gate openings, pickup and branch approach/split/merge clear. No placement depends on the current beat, Boost, frame rate or Run Seed.
+
+The tech crate and utility barrel are floor props within reachable steering range. They keep clear of gate stations and pickup/branch zones in both modes. The fixed step sweeps the actual camera center segment against a small combined radius, using the closest fraction `clamp(dot(C − A, B − A) / |B − A|², 0, 1)`. On a first contact only, local forward and separation impulses and a bounded deterministic spin move the prop. Fixed-step gravity, floor support, restitution and damping handle the reaction. Props never block or modify player travel, score, lives, combos, gate or pickup results. Physics stays frozen when the game pauses; context restoration rebuilds graphics from the current pose. Retry and menu reset motion.
+
+Generate all geometry at runtime; reuse templates, materials and bounded instances across the visible station window. Volume rendering owns the template geometries and instance buffers, while the M0 library owns the materials and maps. No external asset, new texture generator, physics engine or final environment art pass. Additional assemblies do not change Tunnel chunks, branch geometry or timings.
+
+`/debug/` adds Structural Kit and Loose Props to the existing overview. It uses the gameplay geometry and materials, a shared angle control and deterministic, on-demand impact previews on the existing renderer. Verify resource release, real GPU rendering, light/visual comparison with M0, fixed spatial safety, normal and Boost contact in both modes, browser restoration, other-volume pixel parity, Strict TypeScript, SSG and gameplay regressions.

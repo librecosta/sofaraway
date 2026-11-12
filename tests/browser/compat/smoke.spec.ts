@@ -11,11 +11,14 @@ test('material lab renders lit specimens or clearly exposes raw channels', async
   const lit = await surface.locator('canvas[data-mode=lit]').count();
   if (lit === 6) {
     await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
-    record(info, 'PASS', 'Six lit surfaces and both cyan effects render with the runtime materials');
+    await expect(page.locator('#structure canvas[data-mode=model]')).toHaveCount(5);
+    await expect(page.locator('#props canvas[data-mode=model]')).toHaveCount(2);
+    record(info, 'PASS', 'Six lit surfaces, both effects and seven kit models render on the shared preview renderer');
   } else {
     expect(lit).toBe(0);
     await expect(surface.locator('canvas[data-mode=raw]')).toHaveCount(6);
     await expect(surface.getByText(/Lit previews unavailable/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Preview Tech crate impact' })).toBeDisabled();
     record(info, 'BLOCKED', 'Lit material previews unavailable; raw fallback verified');
   }
   await surface.getByRole('button', { name: 'Normal', exact: true }).click();

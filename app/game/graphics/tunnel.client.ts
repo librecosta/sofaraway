@@ -22,6 +22,8 @@ const RING = 3.0;    // 3 units: dense enough to read, sparse enough not to stri
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
+const ELSEWHERE_RIM = 0.84;
+const ELSEWHERE_STRIP = 0.79;
 
 /* conduit: a closed octagon.  canal: an open U — floor, two low walls,
    nothing overhead — with a glazed side handled by the shell material. */
@@ -127,9 +129,9 @@ export class Tunnel {
 
   /* ---------------- light rig that rides with the camera ---------------- */
   _buildLights() {
-    this.hemi = new THREE.HemisphereLight(0x88bbdd, 0x08090b, 0.55);
+    this.hemi = new THREE.HemisphereLight(0x88bbdd, this.surfaces ? 0x25323b : 0x08090b, 0.55);
     this.group.add(this.hemi);
-    this.ambient = new THREE.AmbientLight(0x223344, 0.45);
+    this.ambient = new THREE.AmbientLight(0x223344, this.surfaces ? 0.66 : 0.45);
     this.group.add(this.ambient);
 
     this.lights = [];
@@ -489,10 +491,10 @@ export class Tunnel {
   setHue(h: number) {
     this.hue = h;
     const c = new THREE.Color().setHSL(h, 1.0, 0.5);
-    this.stripMat.color.copy(c);
-    this.rimMat.color.copy(c).multiplyScalar(0.55);
+    this.stripMat.color.copy(c).multiplyScalar(this.surfaces ? ELSEWHERE_STRIP : 1);
+    this.rimMat.color.copy(c).multiplyScalar(0.55 * (this.surfaces ? ELSEWHERE_RIM : 1));
     for (const l of this.lights) l.color.copy(c);
-    this.ambient.color.setHSL(h, 0.9, 0.22);
+    this.ambient.color.setHSL(h, this.surfaces ? 0.53 : 0.9, this.surfaces ? 0.27 : 0.22);
     this.hemi.color.setHSL(h, 0.75, 0.40);
 
     if (!this.surfaces) {
@@ -505,8 +507,8 @@ export class Tunnel {
 
   pulse(p: number) {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
-    this.stripMat.color.copy(c).multiplyScalar(1 + p * 1.3);
-    this.rimMat.color.copy(c).multiplyScalar(0.55 + p * 1.0);
+    this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * (this.surfaces ? ELSEWHERE_STRIP : 1));
+    this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * (this.surfaces ? ELSEWHERE_RIM : 1));
   }
 
   /* ---------------- menu wireframe ---------------- */

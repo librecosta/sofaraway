@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import type { VolumeId } from '../game/contracts';
 import { PICKUP_BEAT } from '../game/core/pickups';
 import { volumeById } from '../game/core/volumes';
-import { catalog, environmentCards, gateNotes, pickupCards } from '../game/debug/catalog';
+import { catalog, environmentCards, gateNotes, pickupCards, propCards, structureCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
 import { channelNames, effectIds, effectPresets, surfaceChannels, surfaceIds, surfacePresets } from '../game/graphics/materials/presets';
 import type { SurfaceChannel, SurfaceMaterialId } from '../game/graphics/materials/presets';
@@ -80,6 +80,7 @@ export default function DebugOverview() {
   const root = useRef<HTMLElement>(null);
   const models = useRef<ModelPreviews>(null);
   const [angle, setAngle] = useState(initialAngle);
+  const [kitAngle, setKitAngle] = useState(28);
   const [modelStatus, setModelStatus] = useState('Loading the 3D previews…');
   const [worldStatus, setWorldStatus] = useState('Rendering the four worlds…');
   const [materialStatus, setMaterialStatus] = useState('');
@@ -113,6 +114,7 @@ export default function DebugOverview() {
         viewer.drawPickups(initialAngle);
         viewer.drawGates();
         viewer.drawMaterials();
+        viewer.drawDressing();
         models.current = viewer;
         setModelReady(true);
         setModelStatus('');
@@ -150,7 +152,8 @@ export default function DebugOverview() {
         <a href="/" className={s.brand}>SoFaraway</a>
         <nav aria-label="Debug sections">
           <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#gates">Gates</a>
-          <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
+          <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#structure">Structure</a>
+          <a href="#props">Props</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
         <a href="/" className={s.back}>Back to game</a>
       </header>
@@ -275,6 +278,43 @@ export default function DebugOverview() {
                 {id === 'hologram-panel-cyan' && <button className={s.scan} type="button" disabled={!modelReady}
                   aria-pressed={scanning} onClick={() => { setScanning(!scanning); models.current?.setScan(!scanning); }}>
                   Animate scan</button>}
+              </figcaption>
+            </figure>)}
+          </div>
+        </section>
+
+        <section id="structure" className={s.section}>
+          <div className={s.sectionHead}>
+            <div><h2>Structural kit</h2><p>ELSEWHERE · ceiling and wall assemblies</p></div>
+            <div className={s.angle}>
+              <label htmlFor="debug-kit-angle">Kit view angle</label>
+              <input id="debug-kit-angle" type="range" min="-55" max="64" value={kitAngle} disabled={!modelReady}
+                onChange={event => {
+                  const value = event.currentTarget.valueAsNumber;
+                  setKitAngle(value);
+                  models.current?.drawDressing(value);
+                }} />
+              <output htmlFor="debug-kit-angle">{kitAngle}°</output>
+            </div>
+          </div>
+          <div className={s.actions}><a href="/?vol=elsewhere&t=1.917&q=high&align=1">Inspect an installed assembly</a></div>
+          <div className={s.trio}>
+            {structureCards.map(({ id, name, detail }) => <figure key={id} className={s.card}>
+              <Preview id={id} label={`${name} 3D model`} />
+              <figcaption className={s.caption}><h3>{name}</h3><p>{detail}</p></figcaption>
+            </figure>)}
+          </div>
+        </section>
+
+        <section id="props" className={s.section}>
+          <h2>Loose props</h2>
+          <p>Floor objects tumble on contact without interrupting the run.</p>
+          <div className={s.worlds}>
+            {propCards.map(({ id, name, detail }) => <figure key={id} className={s.card}>
+              <Preview id={id} label={`${name} 3D model`} />
+              <figcaption className={s.caption}><h3>{name}</h3><p>{detail}</p>
+                <button className={s.scan} type="button" disabled={!modelReady} aria-label={`Preview ${name} impact`}
+                  onClick={() => models.current?.previewImpact(id)}>Preview impact</button>
               </figcaption>
             </figure>)}
           </div>

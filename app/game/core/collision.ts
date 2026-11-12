@@ -25,6 +25,10 @@ export function clampSection(x: number, y: number, margin: number, extraWidth = 
   return d > diagonal ? [px * diagonal / d, py * diagonal / d] : [px, py];
 }
 
+/** Optical camera center, also used for decorative swept contacts. */
+export const playerViewOffset = (x: number, y: number, extraWidth = 0) =>
+  clampSection(x * 0.88, y * 0.88, 0.62, extraWidth);
+
 export function opening(obstacle: GateKind, sector: number) {
   if (obstacle === 'square' || obstacle === 'diamond') return 0;
   const lanes = obstacle === 'lattice' ? 9 : obstacle === 'shutter' ? 3 : 8;
