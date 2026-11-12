@@ -270,17 +270,23 @@ const stability = {
     const output = document.createElement('canvas');
     document.body.prepend(output);
     const surface = new Graphics(output, quality, false, diagnostics);
-    const sim = new Simulation(definition, diagnostics);
+    const sim = new Simulation(definition, diagnostics, undefined, mode);
+    const started = performance.now();
+    const path = sim.path;
+    const pathBuild = { ms: performance.now() - started, frames: path.retainedFrameCount, segments: path.segments.length,
+      numericBytes: path.retainedFrameCount * 13 * 8 + path.segments.length * (2 + 12) * 8 + path.arcTableBytes };
     try {
       instrumentRenderer(surface);
       surface.resize(960, 540, 1);
-      surface.load(definition);
+      surface.load(definition, path, mode);
       surface.prepare();
       sim.start('normal', 0, undefined, mode);
       const station = sim.reference.station(beat, mode);
       const input = boost ? { ...idleInput, boosting: true } : idleInput;
       while (sim.phase === 'playing' && (boost ? sim.trackDistance < station : sim.beat + 1e-9 < beat)) sim.step(STEP, input);
+      begin();
       surface.warmSurface(sim, true);
+      const chunkBuild = end().cpu.chunk;
       const frozenBeat = sim.beat;
       let tick = 0;
       const draw = () => new Promise<void>((resolve, reject) => requestAnimationFrame(now => {
@@ -303,7 +309,7 @@ const stability = {
       const volume = Reflect.get(surface, 'volume') as { visuals: Map<RunGate, GateVisual> };
       const visible = Array.from(volume.visuals).filter(([, gate]) => gate.meshes[0].visible);
       const meshes = visible.flatMap(([, gate]) => gate.meshes);
-      return { beat: frozenBeat, speed: sim.speed, route: sim.route, phase: sim.phase, trace, metrics: surface.metrics(),
+      return { beat: frozenBeat, speed: sim.speed, route: sim.route, phase: sim.phase, trace, pathBuild, chunkBuild, metrics: surface.metrics(),
         gateCount: visible.length, gateKinds: visible.map(([gate]) => gate.kind), gateMeshes: meshes.length,
         gateGeometries: new Set(meshes.map(mesh => mesh.geometry)).size,
         renderer: gl.getParameter(info?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) as string,

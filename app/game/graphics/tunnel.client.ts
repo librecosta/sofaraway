@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { SECTION } from '../core/collision';
 import type { RouteSide } from '../core/branches';
-import { placementIndex } from '../core/dressing';
+import { frameLightLevel, octagon } from '../core/lighting-atlas';
+import type { LightingZone } from '../core/lighting-atlas';
 import type { LightingState } from '../core/lighting-score';
-import { ARCH_RING, SLOT_LENGTH, SLOT_X, WALL_INSET, WALL_RECESS, socketHalf } from '../core/scenic-plan';
-import type { ScenicPlan } from '../core/scenic-plan';
 import type { Topology } from '../core/volumes';
 import type { BranchPath } from './branch-path';
 import type { Path, PathFrame } from './path';
@@ -14,7 +13,7 @@ import { surfacePresets } from './materials/presets';
 import type { SurfaceMaterialId } from './materials/presets';
 import { surfaceUV } from './materials/uv';
 
-interface GeometryData { pos: number[]; nor?: number[]; uv?: number[]; idx: number[] }
+interface GeometryData { pos: number[]; nor?: number[]; uv?: number[]; rgb?: number[]; idx: number[] }
 interface Chunk { s0: number; s1: number; meshes: THREE.Mesh[] }
 
 /* ------------------------------------------------------------------ *
@@ -24,7 +23,7 @@ interface Chunk { s0: number; s1: number; meshes: THREE.Mesh[] }
  *  behind it. Chunks are built a few hundred units ahead, so the next
  *  stretch — and the turn into it — is always already there.
  * ------------------------------------------------------------------ */
-const RING = ARCH_RING;
+const RING = 3;
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
@@ -45,12 +44,7 @@ function profile(topology: Topology) {
   }
   return {
     closed: true,
-    pts: [
-      [-a + ch, -b], [a - ch, -b],
-      [a, -b + ch], [a, b - ch],
-      [a - ch, b], [-a + ch, b],
-      [-a, b - ch], [-a, -b + ch],
-    ],
+    pts: octagon,
   };
 }
 
@@ -81,9 +75,9 @@ export class Tunnel {
   private readonly ringFrames: PathFrame[] = [];
   private readonly mainLight = new THREE.Color();
   private junction?: { start: number; end: number };
-  private architecture?: ScenicPlan;
 
-  constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path, private readonly topology: Topology) {
+  constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path,
+    private readonly topology: Topology, private readonly atlas: readonly LightingZone[] = []) {
     this.group = new THREE.Group();
     this.chunks = [];
     this.wire = null;
@@ -121,11 +115,11 @@ export class Tunnel {
     }
 
     this.rimMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff, side: THREE.DoubleSide, toneMapped: false,
+      color: 0xffffff, side: THREE.DoubleSide, toneMapped: false, vertexColors: this.atlas.length > 0,
     });
 
     this.stripMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff, side: THREE.DoubleSide, toneMapped: false,
+      color: 0xffffff, side: THREE.DoubleSide, toneMapped: false, vertexColors: this.atlas.length > 0,
     });
 
     this.wireMat = new THREE.LineBasicMaterial({
@@ -182,29 +176,28 @@ export class Tunnel {
       for (let s = (Math.floor(s0 / RING) + 1) * RING; s < s1 - 1e-6; s += RING) rings.push(s);
     } else for (let s = s0; s < s1; s += RING) rings.push(s);
     rings.push(s1);
+    if (m0) {
+      for (const s of this.path.boundaries(s0, s1)) {
+        if (Math.abs(s - Math.round(s / RING) * RING) > 1e-7) rings.push(s);
+      }
+      rings.sort((a, b) => a - b);
+    }
     const ringFrames = this.ringFrames;
+    const ringLight = this.atlas.length ? rings.map(station => frameLightLevel(this.atlas, station)) : undefined;
     for (let i = 0; i < rings.length; i++) this.path.sample(rings[i], ringFrames[i] ??= frame());
 
     const ghost = this.topology === 'orbit';   // light frame only, no hull
     const shell = { pos: [] as number[], nor: [] as number[], uv: [] as number[], idx: [] as number[] };
     const shellGroups = [shell.idx, [] as number[], [] as number[]];
     const rib = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
-    const rim = { pos: [] as number[], nor: [] as number[], idx: [] as number[] };
-    const strip = { pos: [] as number[], idx: [] as number[] };
+    const rim = { pos: [] as number[], nor: [] as number[], idx: [] as number[], rgb: ringLight ? [] as number[] : undefined };
+    const strip = { pos: [] as number[], idx: [] as number[], rgb: ringLight ? [] as number[] : undefined };
     const brace = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
 
     const C = frame();
     const D = frame();
-    const capA = frame();
-    const capB = frame();
     const v3 = new THREE.Vector3();
     const nWall = new THREE.Vector3();
-    const across = new THREE.Vector3();
-    const wall = this.architecture?.placements;
-    const wallSockets = wall?.slice(placementIndex(wall, s0 - 6), placementIndex(wall, s1 + 6))
-      .filter(part => part.mount !== 'ceiling') ?? [];
-    const roofSlots = this.architecture?.lamps.filter(lamp => lamp.side === 0 &&
-      lamp.station + SLOT_LENGTH / 2 > s0 && lamp.station - SLOT_LENGTH / 2 < s1) ?? [];
 
     const put = (arr: GeometryData, fr: PathFrame, px: number, py: number) => {
       v3.copy(fr.p).addScaledVector(fr.r, px).addScaledVector(fr.u, py);
@@ -258,54 +251,6 @@ export class Tunnel {
 
         if (m0) {
           const panel = i === 0 ? 2 : i === 2 || i === 6 ? 1 : 0;
-          const mid = (sA + sB) * .5;
-          const socket = i === 2 || i === 6 ? wallSockets.find(part =>
-            part.mount === (i === 2 ? 'right' : 'left') && Math.abs(mid - part.station) < socketHalf(part.kind)) : undefined;
-          const slot = i === 4 ? roofSlots.find(lamp => Math.abs(mid - lamp.station) < SLOT_LENGTH * .5) : undefined;
-          if (socket || slot) {
-            // Replace this wall/ceiling skin, rather than embedding a model through intact panels.
-            const from = socket ? socket.station - socketHalf(socket.kind) : slot!.station - SLOT_LENGTH * .5;
-            const end = socket ? socket.station + socketHalf(socket.kind) : slot!.station + SLOT_LENGTH * .5;
-            const enters = Math.abs(sA - from) < 1e-6, exits = Math.abs(sB - end) < 1e-6;
-            const shape: [number, number][] = [[0, 0]];
-            if (socket) {
-              const [lo, lip, highLip, hi] = WALL_INSET;
-              shape.push([lo, 0], [lip, WALL_RECESS], [highLip, WALL_RECESS], [hi, 0]);
-            } else {
-              for (const x of [SLOT_X, -SLOT_X]) {
-                const t = (p0[0] - x) / el;
-                shape.push([t - .151 / el, 0], [t - .112 / el, .135], [t + .112 / el, .135], [t + .151 / el, 0]);
-              }
-            }
-            shape.push([1, 0]);
-            const write = (fa: PathFrame, sa: number, da: number, fb: PathFrame, sb: number, db: number) => {
-              const id = panel === 1 ? 'panel-recessed' : 'alloy-satin-dark';
-              for (let j = 1; j < shape.length; j++) {
-                const [t0, d0] = shape[j - 1], [t1, d1] = shape[j];
-                const base = shell.pos.length / 3;
-                for (const [fr, station, t, d] of [[fa, sa, t0, d0 * da], [fa, sa, t1, d1 * da],
-                  [fb, sb, t1, d1 * db], [fb, sb, t0, d0 * db]] as const) {
-                  put(shell, fr, p0[0] + ex * t - nx2 * d, p0[1] + ey * t - ny2 * d);
-                  shell.uv.push(...surfaceUV(id, perim[i], el, t, station));
-                }
-                const p = shell.pos, n = base * 3;
-                v3.set(p[n + 3] - p[n], p[n + 4] - p[n + 1], p[n + 5] - p[n + 2])
-                  .cross(across.set(p[n + 9] - p[n], p[n + 10] - p[n + 1], p[n + 11] - p[n + 2])).normalize();
-                if (v3.dot(nWall) < 0) v3.negate();
-                for (let q = 0; q < 4; q++) shell.nor.push(v3.x, v3.y, v3.z);
-                shellGroups[panel].push(base, base + 1, base + 2, base, base + 2, base + 3);
-              }
-            };
-            const bevel = Math.min(.21, (sB - sA) * .25);
-            if (enters) {
-              this.path.sample(sA + bevel, capA);
-              write(A, sA, 0, capA, sA + bevel, 1);
-            }
-            if (exits) this.path.sample(sB - bevel, capB);
-            write(enters ? capA : A, enters ? sA + bevel : sA, 1, exits ? capB : B, exits ? sB - bevel : sB, 1);
-            if (exits) write(capB, sB - bevel, 1, B, sB, 0);
-            continue;
-          }
           const mapQuad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number,
             sa: number, sb: number, group: number) => {
             const id: SurfaceMaterialId = group === 2 ? 'floor-grip' : group === 1 ? 'panel-recessed' : 'alloy-satin-dark';
@@ -336,7 +281,7 @@ export class Tunnel {
     const R = 1.055, IN = 0.955, RIMW = 0.948;
     for (let k = 0; k < rings.length; k++) {
       // One owner per grid ring, including when two streamed chunks meet.
-      if (this.architecture && (k === rings.length - 1 || rings[k] % RING !== 0)) continue;
+      if (m0 && (k === rings.length - 1 || rings[k] % RING !== 0)) continue;
       const A = ringFrames[k];
       for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
@@ -356,9 +301,12 @@ export class Tunnel {
           }
           target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         };
-        if (!wallSockets.some(part => Math.abs(rings[k] - part.station) < socketHalf(part.kind) &&
-          ((i === 2 && part.mount === 'right') || (i === 6 && part.mount === 'left')))) addRing(rib, IN, R);
+        addRing(rib, IN, R);
         addRing(rim, RIMW, IN);
+        if (rim.rgb) {
+          const gain = ringLight![k];
+          for (let j = 0; j < 4; j++) rim.rgb.push(gain, gain, gain);
+        }
       }
     }
 
@@ -377,6 +325,10 @@ export class Tunnel {
           for (const sgn of [-1, 1]) {
             put(strip, fr, (p[0] + tx * SW * sgn) * INSET, (p[1] + ty * SW * sgn) * INSET);
           }
+        }
+        if (strip.rgb) {
+          const a = ringLight![k], b = ringLight![k + 1];
+          strip.rgb.push(a, a, a, a, a, a, b, b, b, b, b, b);
         }
         strip.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
       }
@@ -436,6 +388,7 @@ export class Tunnel {
       g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
       if (d.nor) g.setAttribute('normal', new THREE.Float32BufferAttribute(d.nor, 3));
       if (d.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(d.uv, 2));
+      if (d.rgb) g.setAttribute('color', new THREE.Float32BufferAttribute(d.rgb, 3));
       if (d.idx) g.setIndex(d.idx);
       return g;
     };
@@ -482,13 +435,6 @@ export class Tunnel {
   get junctionShell() { return this.shellMat; }
 
   get surfaceMaterials() { return this.shellMaterials && [...this.shellMaterials, this.ribMat, this.braceMat]; }
-
-  setArchitecture(plan: ScenicPlan) {
-    if (this.architecture === plan) return;
-    this.architecture = plan;
-    for (const chunk of this.chunks) this._disposeChunk(chunk);
-    this.chunks.length = 0;
-  }
 
   setJunction(junction?: { start: number; end: number }, behindCamera = false) {
     if (this.junction === junction) return;
@@ -539,7 +485,7 @@ export class Tunnel {
 
     let lo = Infinity, hi = -Infinity;
     for (const c of this.chunks) { lo = Math.min(lo, c.s0); hi = Math.max(hi, c.s1); }
-    if (!this.chunks.length) { lo = hi = this.architecture ? Math.floor(s / CHUNK) * CHUNK : s; }
+    if (!this.chunks.length) { lo = hi = this.surfaces ? Math.floor(s / CHUNK) * CHUNK : s; }
 
     // build forward
     let guard = 0;
@@ -591,7 +537,7 @@ export class Tunnel {
     this.ambient.color.copy(base); this.ambient.intensity = .70;
     this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .64;
     for (const [i, light] of this.lights.entries()) light.color.copy(i === 1 ? sky : base);
-    this.mainLight.setHSL(state.hue, 1, .5);
+    this.mainLight.setHSL(state.hue, state.saturation, .5);
     this.rimMat.color.copy(this.mainLight).multiplyScalar(state.rim);
     this.stripMat.color.copy(this.mainLight).multiplyScalar(state.strip);
   }

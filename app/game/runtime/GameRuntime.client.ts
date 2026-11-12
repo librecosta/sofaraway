@@ -101,8 +101,17 @@ export class Runtime implements GameRuntime {
 
   async start(silent = false) {
     const phase = this.snapshot.phase;
-    const sim = this.simulation;
+    let sim = this.simulation;
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
+    if (sim.volume.id === 'elsewhere' && sim.mode !== this.snapshot.mode) {
+      try {
+        this.loadVolume(sim.volume.id);
+        sim = this.simulation!;
+      } catch (error) {
+        this.fail(error);
+        return;
+      }
+    }
     const silentFallback = silent && this.snapshot.error?.kind === 'audio';
     const generation = ++this.generation;
     this.publish({ phase: 'starting', error: null });
@@ -236,7 +245,14 @@ export class Runtime implements GameRuntime {
   }
 
   setMode(value: PlayMode) {
-    if (this.snapshot.phase === 'menu') this.publish({ mode: value });
+    if (this.snapshot.phase !== 'menu' || this.snapshot.mode === value) return;
+    this.publish({ mode: value });
+    if (this.snapshot.volumeId !== 'elsewhere' || this.unavailable()) return;
+    try {
+      this.loadVolume('elsewhere');
+    } catch (error) {
+      this.fail(error);
+    }
   }
 
   async setQuality(value: QualityTier) {
@@ -307,8 +323,9 @@ export class Runtime implements GameRuntime {
     const flags = this.options!.diagnostics;
     const volume = volumeById(id);
     const graphics = this.graphics!;
-    graphics.load(volume);
-    this.simulation = new Simulation(volume, flags, graphics.path);
+    const mode = this.snapshot.mode;
+    const sim = this.simulation = new Simulation(volume, flags, undefined, mode);
+    graphics.load(volume, sim.path, mode);
     if (flags.fixedTime === null) {
       this.draw(this.simulation, performance.now());
       graphics.prepare();

@@ -79,11 +79,10 @@ Open `/debug/` directly or follow **Debug overview** from **Credits**.
 The page renders all four worlds, every gate type and the floating pickups.
 **Surface Materials** shows six lit ELSEWHERE samples and their raw channels;
 **Effect Materials** shows the cyan light channel and hologram film.
-**Structural Kit** shows the installed ceiling and recessed wall assemblies,
-with an adjustable viewing angle.
-**Lighting & Scenic Composition** holds a real corridor view in place while
-you scrub or play the in-game lighting score. The BUILD slots also have a
-labeled two-color comparison.
+**Lighting & Scenic Composition** previews six installed corridors in Standard
+or Sightseeing. Choose a fixed station or one of the five S-curve views, then
+scrub or play the in-game lighting score. Staggered Cells and Connected Flow
+include a two-color comparison.
 **Soundtrack** exports a WAV for the selected
 volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
 

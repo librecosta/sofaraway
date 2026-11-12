@@ -11,13 +11,13 @@ test('material lab renders lit specimens or clearly exposes raw channels', async
   const lit = await surface.locator('canvas[data-mode=lit]').count();
   if (lit === 6) {
     await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
-    await expect(page.locator('#structure canvas[data-mode=model]')).toHaveCount(5);
-    record(info, 'PASS', 'Six lit surfaces, both effects, five mounted assemblies render on the shared preview renderer');
+    await expect(page.getByText('S-Curve Preview', { exact: true })).toBeVisible();
+    record(info, 'PASS', 'Six lit surfaces and both effects render on the shared specimen renderer');
   } else {
     expect(lit).toBe(0);
     await expect(surface.locator('canvas[data-mode=raw]')).toHaveCount(6);
     await expect(surface.getByText(/Lit previews unavailable/)).toBeVisible();
-    await expect(page.getByRole('slider', { name: 'Kit view angle' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();
     record(info, 'BLOCKED', 'Lit material previews unavailable; raw fallback verified');
   }
   await surface.getByRole('button', { name: 'Normal', exact: true }).click();

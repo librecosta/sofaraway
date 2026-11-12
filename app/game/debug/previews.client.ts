@@ -2,13 +2,10 @@ import * as THREE from 'three';
 import type { Diagnostics } from '../contracts';
 import { STEP } from '../core/clock';
 import { opening } from '../core/collision';
-import { structureKinds } from '../core/dressing';
-import type { StructureKind } from '../core/dressing';
 import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
 import { makeEnvMap, makeSky } from '../graphics/environment.client';
-import { buildDressingModel } from '../graphics/dressing-kit.client';
 import { GateGeometries, GateVisual, THICKNESS } from '../graphics/gates.client';
 import { PickupVisual } from '../graphics/pickup.client';
 import { Graphics } from '../graphics/scene.client';
@@ -73,7 +70,7 @@ export function renderWorlds(root: HTMLElement) {
       const sim = new Simulation(volume, { align: true });
       sim.start('normal');
       for (let n = 0; n < Math.floor(seconds / STEP); n++) sim.step(STEP, idleInput);
-      graphics.load(volume);
+      graphics.load(volume, sim.path);
       graphics.draw(sim, true);
       paint(root, volume.id, canvas);
     }
@@ -95,8 +92,6 @@ export class ModelPreviews {
   private scanning = false;
   private lastScan = 0;
   private film?: THREE.Group;
-  private readonly kit = new Map<StructureKind, { display: THREE.Group; body: THREE.Group; center: THREE.Vector3; scale: number }>();
-  private kitAngle = 28;
   private lost = false;
 
   constructor(private readonly root: HTMLElement, private readonly materials: MaterialLibrary,
@@ -229,30 +224,6 @@ export class ModelPreviews {
     this.renderLab('hologram-panel-cyan', this.film, 'effect');
   }
 
-  drawDressing(angle = this.kitAngle) {
-    this.kitAngle = angle;
-    if (this.lost) return;
-    for (const kind of structureKinds) {
-      let view = this.kit.get(kind);
-      if (!view) {
-        const display = new THREE.Group(), body = new THREE.Group();
-        for (const { geometry, material } of buildDressingModel(kind, this.materials)) body.add(new THREE.Mesh(geometry, material));
-        const bounds = new THREE.Box3().setFromObject(body);
-        const center = bounds.getCenter(new THREE.Vector3());
-        const size = bounds.getSize(new THREE.Vector3());
-        const scale = Math.min(3.7 / size.x, 2.18 / size.y);
-        body.scale.setScalar(scale);
-        display.add(body);
-        view = { display, body, center, scale };
-        this.kit.set(kind, view);
-      }
-      view.body.position.copy(view.center).multiplyScalar(-view.scale);
-      view.body.rotation.set(0, 0, 0, 'ZXY');
-      view.display.rotation.set(kind === 'overhead-assembly' ? -.33 : .30, THREE.MathUtils.degToRad(angle), -.035);
-      this.renderLab(kind, view.display, 'model', 2.9);
-    }
-  }
-
   setScan(on: boolean) {
     this.scanning = on;
     cancelAnimationFrame(this.animation);
@@ -280,7 +251,6 @@ export class ModelPreviews {
       this.drawPickups(this.angle);
       this.drawGates();
       this.drawMaterials();
-      this.drawDressing();
       this.setScan(this.scanning);
       this.onContext(true);
     } catch { this.onContext(false); }
@@ -293,10 +263,6 @@ export class ModelPreviews {
     canvas.removeEventListener('webglcontextrestored', this.contextRestored);
     this.environment?.dispose();
     for (const mesh of this.film?.children ?? []) if (mesh instanceof THREE.Mesh) mesh.geometry.dispose();
-    for (const { display } of this.kit.values()) display.traverse(object => {
-      if (object instanceof THREE.Mesh) object.geometry.dispose();
-    });
-    this.kit.clear();
     this.pickups.forEach(pickup => pickup.dispose());
     this.renderer.dispose();
     this.renderer.forceContextLoss();

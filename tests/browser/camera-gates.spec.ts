@@ -21,6 +21,7 @@ test('the lens is steady on the beat and glass stays aligned during speed change
     expect(sample.visible, context).toBe(true);
     expect(sample.judged).toBe(true);
     expect(sample.maxPathError, context).toBeLessThan(1e-6);
+    expect(sample.maxNormalError, context).toBeLessThan(1e-6);
     expect(sample.crossingError, context).toBeLessThan(1e-6);
     expect(sample.fadeFrames, context).toBeGreaterThan(0);
     expect(sample.fadeDrift, context).toBeLessThan(1e-6);

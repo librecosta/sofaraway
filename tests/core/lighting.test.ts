@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
-import { beatPulse, breath, ceilingLight, colorScore, hueDistance, lightBeat, lightCues,
-  lightingState, mixHue, scoreHue } from '../../app/game/core/lighting-score';
+import { beatPulse, breath, colorScore, hueDistance, lightBeat, lightCues,
+  lightingState, mixHue, routeTone, scoreHue, scoreTone } from '../../app/game/core/lighting-score';
+import { SPLIT_BEAT } from '../../app/game/core/branches';
 import { Simulation } from '../../app/game/core/simulation';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
@@ -27,9 +28,16 @@ test('the pulse is smooth at the beat and the four- and eight-beat breaths are c
   expect(lightingState(202, true).rim).toBe(lightingState(8.3, true).rim);
 });
 
-test('authored hue cues hold the six anchors and follow the short circular arc', () => {
+test('authored hue cues use pale blue in the quiet phrases and follow the short circular arc', () => {
   expect(colorScore.length).toBeGreaterThan(Math.ceil(448 / 32) * 2);
-  for (const anchor of [.44, .78, .92, .57, .09, .66]) expect(colorScore.some(c => c.hue === anchor)).toBe(true);
+  for (const anchor of [.78, .92, .57, .09, .66]) expect(colorScore.some(c => c.hue === anchor)).toBe(true);
+  for (const beat of [0, 16, 128, 144, 288, 312, 444]) {
+    const tone = scoreTone(beat);
+    expect(tone.hue).toBeGreaterThan(.57);
+    expect(tone.hue).toBeLessThan(.62);
+    expect(tone.saturation).toBeLessThan(.65);
+    expect(lightingState(beat, true).saturation).toBe(tone.saturation);
+  }
   expect(hueDistance(.92, .04)).toBeCloseTo(.12, 12);
   expect(mixHue(.92, .04, .5)).toBeCloseTo(.98, 12);
   expect(scoreHue(200)).toBeCloseTo(.98, 12);
@@ -41,19 +49,29 @@ test('authored hue cues hold the six anchors and follow the short circular arc',
   }
 });
 
-test('ordered lamps share hue in game, travel in phase and limit the alternative tint to one group', () => {
-  const state = lightingState(174);
-  const a = ceilingLight(state, 6300, 0, true);
-  const b = ceilingLight(state, 6300, 1, true);
-  expect(a.hue).toBe(b.hue);
-  expect(a.level).not.toBe(b.level);
-  expect(ceilingLight(lightingState(178), 6300, 0, true).level).toBeCloseTo(a.level, 8);
-  expect(ceilingLight(state, 6348, 0, true).level).toBeCloseTo(a.level, 8);
-  expect(ceilingLight(state, 6300, 0, true, true)).toEqual(a);
-  expect(ceilingLight(state, 6300, 1, false, true)).toEqual(ceilingLight(state, 6300, 1, false));
-  expect(Math.abs(hueDistance(ceilingLight(state, 6300, 1, true, true).hue, a.hue))).toBeLessThan(.061);
-  expect(ceilingLight(lightingState(174, true), 6300, 1, true, true))
-    .toEqual(ceilingLight(lightingState(174, true), 6300, 0, true));
+test('junction colors cycle continuously in a distinct range for each route', () => {
+  const routes = ['main', 'challenge', 'score'] as const;
+  for (const route of routes) {
+    const tones = [0, 8, 16].map(offset => routeTone(route, SPLIT_BEAT + offset));
+    expect(new Set(tones.map(tone => tone.hue)).size).toBe(3);
+    for (const [i, tone] of tones.entries()) {
+      expect(tone.saturation).toBeLessThan(.8);
+      if (route === 'main') {
+        expect(tone.saturation).toBeLessThan(.4);
+        expect(tone.hue).toBeGreaterThan(.45);
+      } else if (route === 'challenge') {
+        expect(Math.abs(hueDistance(0, tone.hue))).toBeLessThan(.06);
+      } else {
+        expect(tone.hue).toBeGreaterThan(.06);
+        expect(tone.hue).toBeLessThan(.23);
+      }
+      expect(routeTone(route, SPLIT_BEAT + 24 + i * 8)).toEqual(tone);
+      const edge = SPLIT_BEAT + i * 8;
+      const before = routeTone(route, edge - 1e-5), after = routeTone(route, edge + 1e-5);
+      expect(hueDistance(before.hue, after.hue)).toBeCloseTo(0, 10);
+      expect(before.saturation).toBeCloseTo(after.saturation, 10);
+    }
+  }
 });
 
 test('the silent fixed-step timeline freezes the cue phase and Boost only changes the station', () => {

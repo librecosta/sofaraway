@@ -7,14 +7,14 @@ test('lighting studio starts from the game score and isolates the dual-color com
   const studio = page.locator('#lighting');
   await studio.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE lighting' });
-  await expect(canvas).toHaveAttribute('data-zone', 'structural-only');
-  const scene = studio.getByLabel('Scene station');
-  await scene.selectOption({ label: 'A · paired ceiling slots' });
-  await expect(canvas).toHaveAttribute('data-zone', 'ceiling-pair');
+  await expect(canvas).toHaveAttribute('data-zone', 'pure-frame');
+  const scene = studio.getByLabel('Corridor type');
+  await scene.selectOption({ label: 'Helical Wash' });
+  await expect(canvas).toHaveAttribute('data-zone', 'helical-wash');
   await expect(studio.locator('option[value=dual-color]')).toHaveAttribute('disabled', '');
-  await scene.selectOption({ label: 'BUILD · ordered chase' });
-  await expect(canvas).toHaveAttribute('data-zone', 'ordered-rhythm');
-  await expect(studio.getByLabel('Score chapter')).toHaveValue('3');
+  await scene.selectOption({ label: 'Staggered Cells' });
+  await expect(canvas).toHaveAttribute('data-zone', 'staggered-cells');
+  await expect(studio.getByLabel('Score chapter')).toHaveValue('2');
 
   const href = (await studio.getByRole('link', { name: 'Open this station in game' }).getAttribute('href'))!;
   const game = await page.context().newPage();
@@ -22,7 +22,7 @@ test('lighting studio starts from the game score and isolates the dual-color com
     await game.goto(href + '&dbg=1&ui=0');
     await expect(game.locator('#errbox')).toContainText('"phase":"playing"');
     const metrics = JSON.parse((await game.locator('#errbox').textContent())!);
-    expect(metrics.scenicLights.zone).toBe('ordered-rhythm');
+    expect(metrics.scenicLights.zone).toBe('staggered-cells');
     expect(metrics.scenicLights.groups).toBe(2);
     const previewRim: number[] = JSON.parse((await canvas.getAttribute('data-rim'))!);
     previewRim.forEach((value, i) => expect(value).toBeCloseTo(metrics.scenicLights.rim[i], 6));
@@ -55,6 +55,21 @@ test('lighting studio starts from the game score and isolates the dual-color com
   await expect(canvas).toHaveAttribute('data-light-beat', beat!);
   await scene.selectOption({ label: 'Challenge tunnel' });
   await expect(canvas).toHaveAttribute('data-route', 'challenge');
+  for (const [label, kind] of [['Triple Helix', 'triple-helix'], ['Connected Flow', 'connected-flow'],
+    ['Raked Bands', 'raked-bands']]) {
+    await scene.selectOption({ label });
+    await expect(canvas).toHaveAttribute('data-zone', kind);
+  }
+  await studio.getByLabel('Play mode').selectOption('sightseeing');
+  await expect(canvas).toHaveAttribute('data-mode', 'sightseeing');
+  await expect(canvas).toHaveAttribute('data-zone', 'raked-bands');
+  let previous = 0;
+  for (const label of ['Entry', 'First lateral peak', 'Midpoint', 'Second lateral peak', 'Exit']) {
+    await studio.getByRole('button', { name: label, exact: true }).click();
+    await expect.poll(async () => Number(await canvas.getAttribute('data-station'))).toBeGreaterThan(previous > 0 ? previous : 5000);
+    previous = Number(await canvas.getAttribute('data-station'));
+  }
+  await expect(studio.locator('canvas')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
@@ -67,9 +82,9 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('link', { name: 'Debug overview' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(29);
+  await expect(previews).toHaveCount(24);
   await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
-  for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Structural kit', 'Environment', 'Soundtrack']) {
+  for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Environment', 'Soundtrack']) {
     await expect(page.getByRole('heading', { name })).toBeVisible();
   }
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
@@ -86,7 +101,6 @@ test('the unified overview renders lit materials, effects and the existing model
     'iris', 'square', 'diamond', 'shutter', 'lattice', 'aperture',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
     'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
-    'overhead-assembly', 'ventilation-assembly', 'utility-conduits', 'service-bay', 'holographic-service-door',
     'sky', 'stars',
   ].map(id => ({ id, painted: true })));
   const shield = page.getByRole('img', { name: 'Prism Shield 3D model' });
@@ -112,11 +126,6 @@ test('the unified overview renders lit materials, effects and the existing model
   await expect.poll(() => film.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(still);
   await scan.click();
 
-  const fan = page.locator('[data-preview=ventilation-assembly][data-mode=model]');
-  const front = await fan.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
-  await page.getByRole('slider', { name: 'Kit view angle' }).focus();
-  await page.keyboard.press('Home');
-  expect(await fan.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(front);
   await page.setViewportSize({ width: 360, height: 760 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
   expect(errors).toEqual([]);
@@ -141,7 +150,7 @@ test('materials and the soundtrack controls are available without WebGL2', async
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
   await expect(page.locator('canvas[data-preview=surface-channel]')).toHaveAttribute('data-channel', 'normal');
   await expect(page.getByRole('button', { name: 'Render to WAV' })).toBeEnabled();
-  await expect(page.getByRole('slider', { name: 'Kit view angle' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();
 });
 
 test('the debug material renderer restores one context and redraws the lit specimens', async ({ page }) => {
@@ -168,10 +177,10 @@ test('the debug material renderer restores one context and redraws the lit speci
   await expect(page.getByText(/Waiting for WebGL/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Animate scan' })).toBeDisabled();
   await page.evaluate(() => {
-    for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-mode=lit], canvas[data-mode=model]')) delete canvas.dataset.mode;
+    for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas[data-mode=lit], canvas[data-mode=effect]')) delete canvas.dataset.mode;
     window.dispatchEvent(new Event('test-debug-restore'));
   });
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
-  await expect(page.locator('canvas[data-mode=model]')).toHaveCount(5);
+  await expect(page.locator('canvas[data-mode=effect]')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'Animate scan' })).toBeEnabled();
 });

@@ -92,11 +92,9 @@ body:has(.page) { margin: 0; background: #081014; }
 .scenicControls input { width: 100%; accent-color: #f2d992; }
 .scenicControls a { font-size: .87rem; }
 .scenicControls button { margin-top: 0; }
-.lightLegend { display: flex; flex-wrap: wrap; gap: .45rem 1rem; margin-top: .55rem;
-  color: var(--muted); font-size: .82rem; }
-.lightLegend span { border-top: 2px solid #a5d7f5; padding-top: .2rem; }
-.lightLegend span:nth-child(3n+1) { border-color: #f2d992; }
-.lightLegend span:nth-child(3n+2) { border-color: #f0f1ec; }
+.curveControls { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0 0;
+  padding: .45rem .65rem .65rem; border: 1px solid var(--rule); }
+.curveControls .scan { margin-top: 0; }
 @media (max-width: 650px) {
   .scenicDesk { grid-template-columns: 1fr; }
   .scenicControls { border-left: 0; border-top: 1px solid var(--rule); }

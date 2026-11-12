@@ -279,124 +279,25 @@ test('ELSEWHERE material GPU cost @m0', async ({ browser }) => {
   }
 });
 
-test('ELSEWHERE structure and light balance across the run @kit-visual', async ({ browser }, info) => {
-  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
-  const errors = captureErrors(page);
-  try {
-    const cases = [
-      ['elsewhere', 'intro', 2.7, 'standard', false],
-      ['elsewhere', 'assembly', 1.917, 'standard', false],
-      ['elsewhere', 'a', 37.9, 'standard', false],
-      ['elsewhere', 'b', 53.283, 'standard', false],
-      ['elsewhere', 'build-boost', 79, 'standard', true],
-      ['elsewhere', 'drop', 107.45, 'standard', false],
-      ['elsewhere', 'break', 140, 'standard', false],
-      ['elsewhere', 'split', 149.92, 'standard', false],
-      ['elsewhere', 'tour', 11.22, 'sightseeing', false],
-      ...(['drift', 'descent', 'orbit'] as const).map(id => [id, id, 83, 'standard', false] as const),
-    ] as const;
-    for (const [volume, name, seconds, mode, boost] of cases) {
-      const images: Buffer[] = [];
-      for (const build of haveReference ? [reference, candidate] : [candidate]) {
-        await page.goto(`${build.client}/?vol=${volume}&t=${seconds}&q=high&mode=${mode}&boost=${Number(boost)}&align=1&ui=0&dbg=1`);
-        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
-        await page.addStyleTag({ content: '#errbox { display: none; }' });
-        const path = volume === 'elsewhere' ? info.outputPath(`${name}-${build.label}.png`) : undefined;
-        const image = await page.locator('#gl').screenshot({ path });
-        images.push(image);
-        if (name === 'intro' || name === 'b') {
-          const pixels = await page.evaluate(async png => {
-            const response = await fetch('data:image/png;base64,' + png);
-            const img = await createImageBitmap(await response.blob());
-            const canvas = new OffscreenCanvas(img.width, img.height);
-            const ctx = canvas.getContext('2d')!;
-            ctx.drawImage(img, 0, 0);
-            const { data } = ctx.getImageData(0, 0, img.width, img.height);
-            let saturated = 0, midtone = 0;
-            for (let i = 0; i < data.length; i += 4) {
-              const peak = Math.max(data[i], data[i + 1], data[i + 2]);
-              if (peak > 165 && peak - Math.min(data[i], data[i + 1], data[i + 2]) > 65) saturated++;
-              const luminance = data[i] * .2126 + data[i + 1] * .7152 + data[i + 2] * .0722;
-              if (luminance >= 12 && luminance < 55) midtone++;
-            }
-            img.close();
-            return { saturated, midtone };
-          }, image.toString('base64'));
-          log('kit-light', { name, build: build.label, ...pixels });
-        }
-      }
-      const equal = images.length === 2 && images[0].equals(images[1]);
-      if (haveReference && volume !== 'elsewhere') expect(equal, name).toBe(true);
-      log('kit-image', { name, equal });
-    }
-    for (const build of haveReference ? [reference, candidate] : [candidate]) {
-      await page.addInitScript(() => {
-        const original = HTMLCanvasElement.prototype.getContext;
-        const contexts = new Set<unknown>();
-        Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-          value(this: HTMLCanvasElement, type: string, ...args: unknown[]) {
-            const gl = Reflect.apply(original, this, [type, ...args]);
-            if (type === 'webgl2' && gl) contexts.add(gl);
-            document.documentElement.dataset.kitContexts = String(contexts.size);
-            return gl;
-          },
-        });
-      });
-      const start = performance.now();
-      await page.goto(`${build.client}/debug/`);
-      const count = build === candidate ? 29 : await page.locator('#props').count() ? 31
-        : await page.locator('#lighting').count() ? 29 : 24;
-      await expect(page.locator('canvas[data-ready=true]')).toHaveCount(count);
-      const contexts = Number(await page.locator('html').getAttribute('data-kit-contexts'));
-      expect(contexts).toBeLessThanOrEqual(2);
-      log('kit-debug', { build: build.label, readyMs: performance.now() - start, contexts });
-      if (build === candidate) await page.locator('#structure').screenshot({ path: info.outputPath('debug-structure.png') });
-    }
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
-
-test('ELSEWHERE instanced dressing keeps rendering cost bounded @kit-perf', async ({ browser }) => {
-  for (const [sample, build] of builds.entries()) {
-    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
-    const errors = captureErrors(page);
-    try {
-      await openHarness(page, build);
-      for (const [name, beat, quality, boost, mode] of [
-        ['intro-high', 4.09, 'high', false, 'standard'], ['b-low', 113.67, 'low', false, 'standard'],
-        ['boost-high', 229.23, 'high', true, 'standard'], ['tour-high', 23.936, 'high', false, 'sightseeing'],
-        ['bonus-high', 333.5, 'high', false, 'standard'],
-      ] as const) {
-        const result = await page.evaluate(([beat, quality, boost, mode]) => window.stability.fixedGlass(beat, quality, boost, mode),
-          [beat, quality, boost, mode] as const);
-        log('kit-frame', { name, sample, build: build.label, browser: browser.version(), ...result });
-        expect(result.phase).toBe('playing');
-        expect(result.glError).toBe(0);
-        expect(result.trace.cpu.frame.n).toBe(480);
-        if (name === 'bonus-high') expect(result.route).toBe('score');
-        if (name === 'tour-high') expect(result.speed).toBeLessThan(12);
-      }
-      expect(errors).toEqual([]);
-    } finally { await page.close(); }
-  }
-});
-
 const scenicCases = [
-  ['intro', 5.6, 'high', false, 'standard', 'center'],
-  ['a', 61, 'high', false, 'standard', 'center'],
-  ['ceiling-pair', 43, 'high', false, 'standard', 'center'],
-  ['b', 113.67, 'low', false, 'standard', 'center'],
-  ['build', 176, 'high', false, 'standard', 'center'],
-  ['ordered-rhythm', 174, 'high', false, 'standard', 'center'],
-  ['drop', 193, 'high', false, 'standard', 'center'],
-  ['break', 297, 'high', false, 'standard', 'center'],
+  ['pure-frame', 7, 'high', false, 'standard', 'center'],
+  ['helical-wash', 35, 'high', false, 'standard', 'center'],
+  ['helical-wash-boost', 38, 'high', true, 'standard', 'center'],
+  ['staggered-cells', 117, 'high', false, 'standard', 'center'],
+  ['triple-helix', 168, 'high', false, 'standard', 'center'],
+  ['connected-flow', 257, 'high', false, 'standard', 'center'],
+  ['raked-bands', 401, 'high', false, 'standard', 'center'],
+  ['raked-bands-boost', 405, 'high', true, 'standard', 'center'],
+  ['s-curve-entry', 208, 'high', false, 'standard', 'center'],
+  ['s-curve', 229.23, 'high', false, 'standard', 'center'],
+  ['boost', 229.23, 'high', true, 'standard', 'center'],
+  ['sightseeing-wash', 35, 'high', false, 'sightseeing', 'center'],
+  ['sightseeing', 168, 'high', false, 'sightseeing', 'center'],
+  ['sightseeing-curve', 226, 'high', false, 'sightseeing', 'center'],
+  ['junction-approach', 319.5, 'high', false, 'standard', 'center'],
   ['main', 333.5, 'high', false, 'standard', 'center'],
   ['challenge', 333.5, 'high', false, 'standard', 'right'],
   ['bonus', 333.5, 'high', false, 'standard', 'left'],
-  ['finale', 401, 'high', false, 'standard', 'center'],
-  ['cruise', 229.23, 'high', false, 'standard', 'center'],
-  ['boost', 229.23, 'high', true, 'standard', 'center'],
-  ['sightseeing', 24, 'high', false, 'sightseeing', 'center'],
 ] as const;
 
 test('ELSEWHERE scenic score, routes and mode capacity across a full composition @scenic-perf', async ({ browser }) => {
@@ -422,12 +323,8 @@ test('ELSEWHERE scenic score, routes and mode capacity across a full composition
         }
         if (build === candidate) {
           expect(result.metrics.scenicLights?.point).toBe(3);
-          const instances = Object.values(result.metrics.scenicInstances!);
-          for (const { planned, visible, capacity, culled, overflow } of instances) {
-            expect(visible).toBeLessThanOrEqual(capacity);
-            expect(visible + culled).toBe(planned);
-            expect(overflow).toBe(0);
-          }
+          expect(result.metrics.scenicLights!.batches).toBeLessThanOrEqual(5);
+          expect(result.metrics.scenicLights!.fixtures).toBeLessThanOrEqual(280);
         }
       }
       expect(errors).toEqual([]);
@@ -439,8 +336,17 @@ test('fixed chapter frames preserve a low key, legible ELSEWHERE and other-volum
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   const errors = captureErrors(page);
   try {
-    const all = [...scenicCases.map(([name, beat, quality, boost, mode, side]) =>
-      ['elsewhere', name, beat * 60 / 128, quality, boost, mode, side] as const),
+    const all = [...scenicCases.map(([name, beat, quality, boost, mode, side]) => {
+      let time = beat * 60 / 128;
+      if (boost) {
+        const sim = new Simulation(VOLUMES[0], { align: true, branchSide: side });
+        sim.start('normal', 0, undefined, mode);
+        const station = sim.reference.station(beat, mode);
+        while (sim.phase === 'playing' && sim.trackDistance < station) sim.step(STEP, { ...idleInput, boosting: true });
+        time = sim.time;
+      }
+      return ['elsewhere', name, time, quality, boost, mode, side] as const;
+    }),
     ...(['drift', 'descent', 'orbit'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
     for (const [id, name, time, quality, boost, mode, side] of all) {
       const captured: Buffer[] = [];
@@ -480,9 +386,10 @@ test('fixed chapter frames preserve a low key, legible ELSEWHERE and other-volum
         log('scenic-image', { name, build: build.label, ...sample });
       }
       if (haveReference && id !== 'elsewhere') expect(captured[0].equals(captured[1]), id).toBe(true);
-      if (haveReference && (name === 'intro' || name === 'b' || name === 'break')) {
+      if (haveReference && (name === 'pure-frame' || name === 's-curve')) {
         expect(brightness[1].mean - brightness[0].mean, name).toBeLessThan(4);
-        expect(brightness[1].shadow / brightness[1].total, name).toBeGreaterThan(.68);
+        expect(brightness[1].shadow / brightness[1].total, name).toBeGreaterThan(
+          name === 'pure-frame' ? .68 : brightness[0].shadow / brightness[0].total - .06);
         expect(brightness[1].glare / brightness[1].total, name).toBeLessThan(.03);
       }
     }

@@ -1,7 +1,6 @@
 import { chartFor } from '../core/chart';
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
-import type { StructureKind } from '../core/dressing';
 
 const sceneTimes = { elsewhere: 36, drift: 32, descent: 45, orbit: 38 };
 
@@ -34,11 +33,3 @@ export const environmentCards = [
   { id: 'sky', name: 'Canal sky', detail: 'Sky gradient · Drift' },
   { id: 'stars', name: 'Starfield', detail: 'Equirectangular sky · Orbit' },
 ] as const;
-
-export const structureCards = [
-  { id: 'overhead-assembly', name: 'Overhead assembly', detail: 'A non-emissive beam with an inset shoulder and rolled edges.' },
-  { id: 'ventilation-assembly', name: 'Ventilation assembly', detail: 'Fan and grille fitted to a shallow wall recess.' },
-  { id: 'utility-conduits', name: 'Utility conduits', detail: 'Pipework and a cable tray fitted inside a two-bay recess.' },
-  { id: 'service-bay', name: 'Service bay', detail: 'Recessed maintenance panel with modular connections.' },
-  { id: 'holographic-service-door', name: 'Holographic service door', detail: 'Inactive dark access panel on a recessed backplate.' },
-] as const satisfies readonly { id: StructureKind; name: string; detail: string }[];

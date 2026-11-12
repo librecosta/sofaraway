@@ -9,6 +9,7 @@ import type { GateVisual } from '../../app/game/graphics/gates.client';
 import type { Path } from '../../app/game/graphics/path';
 import { Graphics } from '../../app/game/graphics/scene.client';
 import { REJOIN_BEAT, SPLIT_BEAT } from '../../app/game/core/branches';
+import { curveEndBeat, curveStartBeat } from '../../app/game/core/corridor-composition';
 
 export function inspectCameraAndGates() {
   const flags = { fixedTime: null, autoplay: false, god: false, align: true, boost: false,
@@ -17,9 +18,9 @@ export function inspectCameraAndGates() {
   const modes: PlayMode[] = ['standard', 'sightseeing'];
   const round = (n: number) => Number(n.toFixed(4));
   try {
-    graphics.load(VOLUMES[0]);
     const lens = modes.flatMap(mode => [20, 60, 120, 144].map(hz => {
-      const sim = new Simulation(VOLUMES[0], flags);
+      const sim = new Simulation(VOLUMES[0], flags, undefined, mode);
+      graphics.load(sim.volume, sim.path, mode);
       sim.start('normal', 0, undefined, mode);
       const clock = new FixedStepClock();
       const frames: { time: number; fov: number }[] = [];
@@ -38,17 +39,22 @@ export function inspectCameraAndGates() {
 
     const spatial = [];
     for (const volume of VOLUMES) {
-      graphics.load(volume);
-      const scene = Reflect.get(graphics, 'volume') as { visuals: Map<RunGate, GateVisual>; path: Path; junction?: BranchVisual };
       for (const mode of modes) {
+        const run = new Simulation(volume, flags, undefined, mode);
+        graphics.load(volume, run.path, mode);
+        const scene = Reflect.get(graphics, 'volume') as { visuals: Map<RunGate, GateVisual>; path: Path; junction?: BranchVisual };
         const stages = volume.id === 'elsewhere'
-          ? [['normal', 96], ['before', 304], ['entry', 317.5], ['branch', 328], ['merge', 349.5], ['after', 356]] as const
+          ? [['normal', 96], ['iris', 0], ['square', 0], ['diamond', 0],
+            ['before', 304], ['entry', 317.5], ['branch', 328], ['merge', 349.5], ['after', 356]] as const
           : [['normal', 56]] as const;
         for (const [stage, start] of stages) {
-          const sim = new Simulation(volume, flags);
+          const sim = new Simulation(volume, flags, run.path, mode);
           sim.start('normal', 0, undefined, mode);
           const station = (beat: number) => sim.reference.station(beat, mode);
-          while (sim.trackDistance < station(start) && sim.phase === 'playing') sim.step(STEP, idleInput);
+          const curveGate = start === 0 ? (Reflect.get(sim, 'chart') as RunGate[])
+            .find(gate => gate.kind === stage && gate.beat >= curveStartBeat && gate.beat < curveEndBeat) : undefined;
+          if (!start && !curveGate) throw new Error(`Missing S-curve gate: ${mode} ${stage}`);
+          while (sim.trackDistance < station(curveGate ? curveGate.beat - 7 : start) && sim.phase === 'playing') sim.step(STEP, idleInput);
           const inRange = (gate: RunGate) => {
             const delta = gate.routeStation - sim.distance;
             return delta > sim.speed * sim.secondsPerBeat * 3 && delta < sim.speed * sim.secondsPerBeat * 11.5;
@@ -59,14 +65,14 @@ export function inspectCameraAndGates() {
           }
           graphics.update(sim, true);
           const route = stage === 'entry' || stage === 'branch' ? sim.branch?.layout.right : undefined;
-          const gate = [...scene.visuals.keys()].find(gate => inRange(gate) && gate.route === route);
+          const gate = curveGate ?? [...scene.visuals.keys()].find(gate => inRange(gate) && gate.route === route);
           if (!gate) throw new Error(`No sampled gate: ${volume.id} ${mode} ${stage}`);
           const visual = scene.visuals.get(gate)!;
           const update = visual.update.bind(visual);
           let ahead = 0;
-          visual.update = (time, hue, distance, scale, hit, microContrast) => {
+          visual.update = (time, hue, distance, scale, hit, microContrast, saturation) => {
             ahead = distance;
-            return update(time, hue, distance, scale, hit, microContrast);
+            return update(time, hue, distance, scale, hit, microContrast, saturation);
           };
           graphics.update(sim, true);
           const mesh = visual.meshes[0];
@@ -75,7 +81,7 @@ export function inspectCameraAndGates() {
           const visible = mesh.visible;
           const peak = { idle: 0, press: 0, release: 0 };
           const travel = { idle: 0, press: 0, release: 0 };
-          let maxPathError = 0;
+          let maxPathError = 0, maxNormalError = 0;
           let maxAheadIncrease = 0;
           const cameraSeams = [];
           let crossingError = 0;
@@ -110,8 +116,12 @@ export function inspectCameraAndGates() {
             if (!mesh.visible) continue;
             const along = sim.distance + ahead;
             const junction = scene.junction;
-            const p = gate.route && junction ? junction.path.sample(gate.worldStation, 'right').p : scene.path.sample(gate.worldStation).p;
-            maxPathError = Math.max(maxPathError, mesh.position.distanceTo(p));
+            const frame = gate.route && junction ? junction.path.sample(gate.worldStation, 'right') : scene.path.sample(gate.worldStation);
+            maxPathError = Math.max(maxPathError, mesh.position.distanceTo(frame.p));
+            if (curveGate) {
+              const normal = frame.f.clone().set(0, 0, -1).applyQuaternion(mesh.quaternion);
+              maxNormalError = Math.max(maxNormalError, normal.distanceTo(frame.f));
+            }
             peak[part] = Math.max(peak[part], previous.distanceTo(mesh.position));
             travel[part] += Math.abs(along - previousAlong);
             maxAheadIncrease = Math.max(maxAheadIncrease, ahead - previousAhead);
@@ -135,15 +145,16 @@ export function inspectCameraAndGates() {
             }
           }
           spatial.push({ volume: volume.id, mode, stage, gate: gate.beat, visible, judged: gate.judged,
-            peak, travel, maxPathError, maxAheadIncrease, crossingError, fadeDrift, fadeFrames, cameraSeams, minContrast, contrastStep });
+            peak, travel, maxPathError, maxNormalError, maxAheadIncrease, crossingError, fadeDrift, fadeFrames, cameraSeams, minContrast, contrastStep });
         }
       }
     }
     const drift = VOLUMES[1];
-    graphics.load(drift);
+    const driftPath = new Simulation(drift).path;
+    graphics.load(drift, driftPath);
     const scene = Reflect.get(graphics, 'volume') as { visuals: Map<RunGate, GateVisual>; path: Path };
     const runToGate = (mode: PlayMode, boosting: boolean) => {
-      const sim = new Simulation(drift, flags);
+      const sim = new Simulation(drift, flags, driftPath, mode);
       sim.start('normal', 0, undefined, mode);
       while (sim.beat < 56) sim.step(STEP, idleInput);
       const gate = (Reflect.get(sim, 'chart') as RunGate[]).find(gate => gate.beat === (mode === 'standard' ? 64 : 70))!;

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { branchLayout } from '../../app/game/core/branches';
+import { hueDistance, routeTone } from '../../app/game/core/lighting-score';
 import type {} from '../harness/main';
 
 const harnessUrl = 'http://127.0.0.1:8090/';
@@ -19,6 +20,12 @@ test('the live junction has visible labelled mouths, route-local gates and bound
     expect(visible.visible).toEqual(sample.names);
     expect(sample.activeGates.length).toBeGreaterThan(0);
     expect(new Set(sample.activeGates)).toEqual(new Set([sample.route]));
+    const tone = routeTone(sample.route!, sample.lightingBeat);
+    expect(sample.during.routeLighting?.[sample.route!]).toEqual(tone);
+    for (const { h, s } of sample.gateTones) {
+      expect(hueDistance(h, tone.hue)).toBeCloseTo(0, 9);
+      expect(s).toBeCloseTo(tone.saturation * .72, 9);
+    }
     expect(Math.max(...sample.gateErrors)).toBeLessThan(1e-6);
     expect([sample.before.junctionMeshes, sample.during.junctionMeshes, sample.after.junctionMeshes]).toEqual([0, 5, 0]);
     expect(sample.released).toBe(true);

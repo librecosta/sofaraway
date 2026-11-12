@@ -3,11 +3,10 @@ import { initialSnapshot } from '../../app/game/contracts';
 import type { Diagnostics, GameOptions, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
-import { corridorLength } from '../../app/game/core/simulation';
 import type { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { MaterialLibrary } from '../../app/game/graphics/materials/library.client';
-import { buildPath } from '../../app/game/graphics/path';
+import { buildRunPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
 import type { Graphics } from '../../app/game/graphics/scene.client';
@@ -35,7 +34,8 @@ const harness = {
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
-    return { branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
+    return { sharedPath: sim.path === graphics.path && (!sim.junctionPath || sim.junctionPath.base === graphics.path),
+      trackDistance: sim.trackDistance, branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
   },
   advance(beat: number) {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
@@ -56,7 +56,7 @@ const harness = {
   streamResources(id: GameOptions['volumeId']) {
     const volume = volumeById(id);
     const textures = id === 'elsewhere' ? new MaterialLibrary() : buildTextures();
-    const path = buildPath(corridorLength(volume), 150, 46, volume.topology);
+    const path = buildRunPath(volume);
     const tunnel = new Tunnel(textures, path, volume.topology);
     tunnel.update(4200);
     const first = [...tunnel.chunks];
@@ -94,6 +94,7 @@ const harness = {
   snapshot: () => runtime?.getSnapshot() ?? initialSnapshot,
   corridor: () => runtime && (Reflect.get(runtime, 'graphics') as Graphics | undefined)?.path,
   best: () => best,
+  mode: (mode: PlayMode) => runtime?.setMode(mode),
   metrics: () => metrics,
   start: (silent?: boolean) => runtime?.start(silent),
   pause: () => runtime?.pause('user'),

@@ -21,7 +21,7 @@ export function inspectHologram() {
     const graphics = new Graphics(document.createElement('canvas'), 'high', false, diagnostics);
     const sim = new Simulation(volume, diagnostics);
     graphics.resize(width, height, 1);
-    graphics.load(volume);
+    graphics.load(volume, sim.path);
     graphics.prepare();
     const { hologram } = Reflect.get(graphics, 'volume') as { hologram: RouteHologram };
     const labels = Reflect.get(hologram, 'labels') as Record<string, THREE.BufferGeometry>;
@@ -94,9 +94,9 @@ export function inspectJunction(mode: PlayMode = 'standard') {
   const diagnostics: Diagnostics = { fixedTime: null, autoplay: false, god: false, align: true, boost: false,
     mobileQuality: false, post: true, record: false, debug: false };
   const graphics = new Graphics(document.createElement('canvas'), 'low', false, diagnostics);
-  const sim = new Simulation(volume, diagnostics);
+  const sim = new Simulation(volume, diagnostics, undefined, mode);
   graphics.resize(960, 540, 1);
-  graphics.load(volume);
+  graphics.load(volume, sim.path, mode);
   graphics.prepare();
   const scene = Reflect.get(graphics, 'volume') as {
     scene: THREE.Scene;
@@ -154,12 +154,16 @@ export function inspectJunction(mode: PlayMode = 'standard') {
       advance(327);
       graphics.draw(sim, true);
       const during = graphics.metrics();
+      const lightingBeat = sim.beat;
       const activeSide = sim.branch?.side!;
       const gateErrors = [];
       const activeGates = [];
+      const gateTones = [];
       for (const [gate, visual] of scene.visuals) {
         if (!gate.route || !visual.meshes[0].visible) continue;
         activeGates.push(gate.route);
+        const color = visual.mat.uniforms.uColor.value as THREE.Color;
+        gateTones.push(color.getHSL({ h: 0, s: 0, l: 0 }));
         const pos = junction.path.sample(gate.worldStation, activeSide).p;
         gateErrors.push(pos.distanceTo(visual.meshes[0].position));
       }
@@ -167,7 +171,7 @@ export function inspectJunction(mode: PlayMode = 'standard') {
       graphics.draw(sim, true);
       const after = graphics.metrics();
       const names = ['left', 'center', 'right'].map(side => `junction-sign:${side}:${branchLayout(seed)[side as RouteSide]}`);
-      samples.push({ seed, boost, names, setupMs, previewBeforeChoice, activeGates, gateErrors,
+      samples.push({ seed, boost, names, setupMs, previewBeforeChoice, activeGates, gateErrors, gateTones, lightingBeat,
         route: sim.route, before, during, after, released: !junction.group.parent, glError: graphics.gl.getError() });
       sim.returnToMenu();
       graphics.draw(sim, true);

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
+import { routeSwatches as colors } from '../core/lighting-score';
 import { routeGlyphs } from './route-glyphs';
 
-const colors = { main: '#76fadc', challenge: '#ffc27d', score: '#c7aeff' } satisfies Record<RouteKind, string>;
 const depth = 8;
 const lookDown = THREE.MathUtils.degToRad(13);
 

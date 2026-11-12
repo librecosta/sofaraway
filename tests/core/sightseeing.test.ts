@@ -4,10 +4,9 @@ import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { lanePoint, SECTION } from '../../app/game/core/collision';
 import { idleInput } from '../../app/game/core/input';
 import { PICKUP_BEAT, pickupForSeed } from '../../app/game/core/pickups';
-import { corridorLength, Simulation, START_DISTANCE } from '../../app/game/core/simulation';
+import { Simulation, START_DISTANCE } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
 import { sectionAt, VOLUMES } from '../../app/game/core/volumes';
-import { buildPath } from '../../app/game/graphics/path';
 
 const elsewhere = VOLUMES[0];
 const chartOf = (sim: Simulation): RunGate[] => Reflect.get(sim, 'chart');
@@ -133,10 +132,10 @@ test('keyboard, pointer and touch move the camera identically in both modes', ()
 });
 
 test.each(['cruise', 'boost', 'toggle'] as const)('%s keeps sightseers on a continuous and separated branch', pace => {
-  const base = buildPath(corridorLength(elsewhere));
-  const sim = new Simulation(elsewhere, { align: true, branchSide: 'right' }, base);
+  const sim = new Simulation(elsewhere, { align: true, branchSide: 'right' });
   sim.start('normal', 0, undefined, 'sightseeing');
   const path = sim.junctionPath!;
+  const base = sim.path;
   let previous = base.sample(sim.distance);
   let travel = 0, turn = 0;
   while (sim.beat < 356 && sim.phase === 'playing') {

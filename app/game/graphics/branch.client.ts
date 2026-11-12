@@ -1,21 +1,19 @@
 import * as THREE from 'three';
-import { BRANCH_SPACING, ROUTE_LABELS, routeSides } from '../core/branches';
+import { BRANCH_SPACING, ROUTE_LABELS, routeSides, SPLIT_BEAT } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
-import type { LightingState } from '../core/lighting-score';
+import { routeSwatches, routeTone } from '../core/lighting-score';
+import type { LightingState, LightTone } from '../core/lighting-score';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
 import type { PathFrame } from './path';
 import { surfaceUV } from './materials/uv';
-import { linearSwatch } from './scenic-lighting.client';
+import { linearSwatch } from './corridor-lights.client';
 
 const styles = {
-  main: { color: '#DDEAF3', spacing: 6.8, width: 0.018, brightness: 0.54 },
-  challenge: { color: '#F0AC6B', spacing: 4.3, width: 0.020, brightness: 0.58 },
-  score: { color: '#C4EAF4', spacing: 8.5, width: 0.025, brightness: 0.65 },
-} satisfies Record<RouteKind, { color: string; spacing: number; width: number; brightness: number }>;
-const routeColors = {
-  main: linearSwatch(styles.main.color), challenge: linearSwatch(styles.challenge.color), score: linearSwatch(styles.score.color),
-};
+  main: { spacing: 6.8, width: 0.018, brightness: 0.62 },
+  challenge: { spacing: 4.3, width: 0.020, brightness: 0.54 },
+  score: { spacing: 8.5, width: 0.025, brightness: 0.65 },
+} satisfies Record<RouteKind, { spacing: number; width: number; brightness: number }>;
 
 const routeIndex = { main: 0, challenge: 1, score: 2 } satisfies Record<RouteKind, number>;
 function guideMaterial(level: THREE.Vector3, tint: THREE.Color[]) {
@@ -110,13 +108,15 @@ class Quads {
 
 export class BranchVisual {
   readonly group = new THREE.Group();
+  readonly tones: Record<RouteKind, LightTone> = {
+    main: routeTone('main', SPLIT_BEAT), challenge: routeTone('challenge', SPLIT_BEAT), score: routeTone('score', SPLIT_BEAT),
+  };
   private readonly materials: THREE.Material[] = [];
   private readonly textures: THREE.Texture[] = [];
   private readonly near = pathFrame();
   private readonly far = pathFrame();
   private readonly level = new THREE.Vector3(1, 1, 1);
   private readonly tint = Array.from({ length: 3 }, () => new THREE.Color(0xffffff));
-  private readonly gateAccent = new THREE.Color();
 
   constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material) {
     this.group.name = 'elsewhere-junction';
@@ -130,14 +130,13 @@ export class BranchVisual {
     this.dividers(housing, path.mergeBeat);
     for (const side of routeSides) {
       const route = layout[side], style = styles[route];
-      const color = routeColors[route];
       rails.lane = routeIndex[route];
       this.sweep(housing, side, entry, exit, false);
       this.frames(rails, side, entry, exit, style.spacing, style.width, new THREE.Color().setScalar(style.brightness));
-      rails.lane = 3; // Entry markings and physical signs retain their route identity.
-      this.guide(rails, side, path.split, entry, color.clone().multiplyScalar(0.65));
-      this.guide(rails, side, exit, path.end, color.clone().multiplyScalar(0.65));
-      this.sign(side, route, color);
+      const guide = new THREE.Color().setScalar(.63);
+      this.guide(rails, side, path.split, entry, guide);
+      this.guide(rails, side, exit, path.end, guide);
+      this.sign(side, route);
     }
     const housingMesh = new THREE.Mesh(housing.geometry(), shell);
     housingMesh.name = 'junction-shell';
@@ -149,9 +148,11 @@ export class BranchVisual {
   }
 
   updateLighting(state: LightingState) {
-    this.gateAccent.setHSL(state.hue, 1, .5);
     this.level.setScalar(state.branch);
-    for (const tint of this.tint) tint.copy(this.gateAccent);
+    for (const route of ['main', 'challenge', 'score'] as const) {
+      const tone = this.tones[route] = routeTone(route, state.beat);
+      this.tint[routeIndex[route]].setHSL(tone.hue, tone.saturation, .56);
+    }
   }
 
   private sweep(target: Quads, side: RouteSide, from: number, through: number, wide: boolean) {
@@ -219,14 +220,15 @@ export class BranchVisual {
     }
   }
 
-  private sign(side: RouteSide, route: RouteKind, color: THREE.Color) {
+  private sign(side: RouteSide, route: RouteKind) {
     const canvas = document.createElement('canvas');
     canvas.width = 384; canvas.height = 96;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.fillStyle = '#10171d';
     ctx.fillRect(0, 0, 384, 96);
-    ctx.strokeStyle = ctx.fillStyle = styles[route].color;
+    const swatch = routeSwatches[route];
+    ctx.strokeStyle = ctx.fillStyle = swatch;
     ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, 378, 90);
     ctx.font = 'bold 43px sans-serif';
@@ -235,7 +237,7 @@ export class BranchVisual {
     ctx.fillText(ROUTE_LABELS[route], 192, 49);
     const texture = new THREE.CanvasTexture(canvas);
     this.textures.push(texture);
-    const material = signMaterial(texture, color.clone().lerp(new THREE.Color(0xffffff), 0.8));
+    const material = signMaterial(texture, linearSwatch(swatch).lerp(new THREE.Color(0xffffff), 0.8));
     this.materials.push(material);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), material);
     const frame = this.path.sample(this.path.distanceAt(this.path.openBeat - 0.07), side, this.near);

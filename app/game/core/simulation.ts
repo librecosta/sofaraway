@@ -13,26 +13,22 @@ import { LUMEN_POINTS, PICKUP_APPEAR_BEAT, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_L
 import type { RunPickup } from './pickups';
 import { CAPTURE_RUN_SEED } from './run-seed';
 import { BOOST_MULTIPLIER, CRUISE_RESPONSE, CRUISE_SPEED, cruiseTarget, modeScale,
-  referenceFor, SPEED_BONUS, START_DISTANCE } from './reference-track';
+  referenceFor, START_DISTANCE } from './reference-track';
 import { sightseeingChart, sightseeingRoute, SIGHTSEEING_LIVES, SIGHTSEEING_SPEED } from './sightseeing';
 import { sectionAt } from './volumes';
 import type { GateKind, VolumeDefinition } from './volumes';
 import { BranchPath } from '../graphics/branch-path';
-import { buildPath } from '../graphics/path';
+import { buildRunPath } from '../graphics/path';
 import type { Path } from '../graphics/path';
 
 export { START_DISTANCE } from './reference-track';
+export { corridorLength } from './corridor-composition';
 const MENU_DISTANCE = START_DISTANCE + 140;
 const BOOST_LENS_SECONDS = 0.18;
 export const GATE_LOAD_AHEAD = 210;
 const GATE_ALIGN_AHEAD = 145;
 const GATE_RELEASE_BEHIND = 8;
 const STATION_EPSILON = 1e-8;
-
-export function corridorLength(volume: VolumeDefinition) {
-  return START_DISTANCE + volume.beats * 60 / volume.bpm
-    * (CRUISE_SPEED + SPEED_BONUS) * BOOST_MULTIPLIER + 650;
-}
 
 export interface RunGate {
   readonly beat: number;
@@ -88,7 +84,8 @@ export class Simulation {
   private messageUntil = 0;
   private mult = 1;
   private difficulty: Difficulty = 'normal';
-  private playMode: PlayMode = 'standard';
+  private playMode: PlayMode;
+  private readonly paths = new Map<PlayMode, Path>();
   readonly reference;
   private readonly junctions = new Map<PlayMode, BranchPath>();
   private suffixBySide?: Record<RouteSide, RunGate[]>;
@@ -98,14 +95,26 @@ export class Simulation {
   constructor(
     readonly volume: VolumeDefinition,
     private readonly options: { align?: boolean; god?: boolean; branchSide?: RouteSide } = {},
-    private worldPath?: Path,
+    path?: Path,
+    mode: PlayMode = 'standard',
   ) {
+    this.playMode = mode;
+    if (path) this.paths.set(volume.id === 'elsewhere' ? mode : 'standard', path);
     this.secondsPerBeat = 60 / volume.bpm;
     this.reference = referenceFor(volume);
   }
 
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
   get mode() { return this.playMode; }
+  get path() {
+    const mode = this.volume.id === 'elsewhere' ? this.mode : 'standard';
+    let path = this.paths.get(mode);
+    if (!path) {
+      path = buildRunPath(this.volume, mode);
+      this.paths.set(mode, path);
+    }
+    return path;
+  }
   get route() { return this.branch?.side ? this.branch.layout[this.branch.side] : null; }
   get routeGuide() {
     const path = this.junctionPath;
@@ -134,7 +143,7 @@ export class Simulation {
     const makeGate = ({ beat, kind, sector }: ChartGate, axis: Axis, route?: RouteKind, side: RouteSide = 'center'): RunGate => {
       const worldStation = station(beat);
       return { beat, kind, open: opening(kind, sector), axis, worldStation,
-        routeStation: this.junctionPath?.arcAt(worldStation, side) ?? worldStation,
+        routeStation: route ? this.junctionPath!.arcAt(worldStation, side) : worldStation,
         judged: false, hit: false, ...(route ? { route } : {}) };
     };
     const authored = chartFor(this.volume, difficulty, rules.seed);
@@ -151,8 +160,7 @@ export class Simulation {
     if (elsewhere) {
       let path = this.junctions.get(mode);
       if (!path) {
-        this.worldPath ??= buildPath(corridorLength(this.volume), 150, 46, this.volume.topology);
-        path = new BranchPath(this.worldPath, this.reference, mode);
+        path = new BranchPath(this.path, this.reference, mode);
         this.junctions.set(mode, path);
       }
       this.junctionPath = path;

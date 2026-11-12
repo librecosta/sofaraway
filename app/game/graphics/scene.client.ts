@@ -2,28 +2,25 @@ import * as THREE from 'three';
 import { canPass, playerViewOffset } from '../core/collision';
 import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { modeScale } from '../core/reference-track';
-import { makeScenicPlan } from '../core/scenic-plan';
-import type { ScenicPlan } from '../core/scenic-plan';
-import { corridorLength } from '../core/simulation';
+import { makeLightingAtlas } from '../core/lighting-atlas';
+import { ease } from '../core/lighting-score';
 import type { RunGate, Simulation } from '../core/simulation';
 import type { VolumeDefinition } from '../core/volumes';
 import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
-import { DressingVisuals } from './dressing.client';
+import { CorridorLights } from './corridor-lights.client';
+import type { LightingPreview } from './corridor-lights.client';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
 import { MaterialLibrary } from './materials/library.client';
-import { surfaceIds } from './materials/presets';
-import { buildPath } from './path';
+import { buildRunPath } from './path';
 import type { Path } from './path';
 import { PickupVisual } from './pickup.client';
 import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
 import type { QualityProfile } from './quality';
 import { RouteHologram } from './route-hologram.client';
-import { ScenicLighting } from './scenic-lighting.client';
-import type { LightingPreview } from './scenic-lighting.client';
 import { buildTextures } from './textures.client';
 import { Tunnel } from './tunnel.client';
 
@@ -41,11 +38,9 @@ class VolumeScene {
   readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
   readonly tunnel: Tunnel;
   readonly hologram?: RouteHologram;
-  readonly dressing?: DressingVisuals;
-  readonly scenic?: ScenicLighting;
-  private readonly scenicSurfaces: THREE.MeshStandardMaterial[] = [];
-  private readonly scenicPlans = new Map<PlayMode, ScenicPlan>();
+  readonly scenic?: CorridorLights;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
+  private readonly routeFog = new THREE.Color();
   private readonly gateGeometries = new GateGeometries();
   private readonly visuals = new Map<RunGate, GateVisual>();
   private sky?: THREE.CanvasTexture | null;
@@ -56,6 +51,7 @@ class VolumeScene {
   private readonly gateTarget = new THREE.Vector3();
   private readonly basis = new THREE.Matrix4();
   private hue: number;
+  private saturation = 1;
   private phase?: Simulation['phase'];
   private pickup?: PickupVisual;
   private junction?: BranchVisual;
@@ -63,12 +59,13 @@ class VolumeScene {
   private readonly surfaceLibrary?: MaterialLibrary;
 
   constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary,
-    environment: THREE.Texture | null, readonly path: Path) {
+    environment: THREE.Texture | null, readonly path: Path, mode: PlayMode) {
     this.hue = volume.hue[0];
     this.surfaceLibrary = textures instanceof MaterialLibrary ? textures : undefined;
     this.scene.fog = this.fog;
     try {
-      this.tunnel = new Tunnel(textures, this.path, volume.topology);
+      const atlas = makeLightingAtlas(volume, mode);
+      this.tunnel = new Tunnel(textures, this.path, volume.topology, atlas);
       this.scene.add(this.tunnel.group);
       this.sky = makeSky(volume);
       this.scene.background = this.sky;
@@ -76,17 +73,14 @@ class VolumeScene {
       if (volume.id === 'elsewhere') {
         // Keep the existing PMREM and temper its contribution under the new local rig.
         this.scene.environmentIntensity = 1.56;
-        this.dressing = new DressingVisuals(path, this.surfaceLibrary!);
-        this.scene.add(this.dressing.group);
-        this.scenic = new ScenicLighting(path);
+        this.scenic = new CorridorLights(path, atlas, mode);
         this.scene.add(this.scenic.group);
-        for (const id of surfaceIds) {
-          const material = this.surfaceLibrary!.get(id);
+        for (const material of this.tunnel.surfaceMaterials ?? []) {
           // Reuse the same sRGB albedo to give unlit metal a restrained diffuse floor.
           // This is a scene-local response; M0's maps and inspection materials do not change.
           material.emissiveMap = material.map;
-          material.emissiveIntensity = id === 'floor-grip' ? .26 : id === 'utility-polymer' ? .42 : .36;
-          this.scenicSurfaces.push(material);
+          material.emissiveIntensity = material.name === 'floor-grip' ? .26 : .36;
+          material.emissive.copy(this.scenic.base);
         }
         this.hologram = new RouteHologram();
       }
@@ -126,27 +120,26 @@ class VolumeScene {
 
   update(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
     const { x, y, roll } = sim.camera;
-    const distance = sim.trackDistance;
-    if (this.scenic) {
-      let plan = this.scenicPlans.get(sim.mode);
-      if (!plan) {
-        plan = makeScenicPlan(this.volume, this.path, sim.mode);
-        this.scenicPlans.set(sim.mode, plan);
-      }
-      this.tunnel.setArchitecture(plan);
-      this.dressing?.update(plan, distance);
-    }
+    const distance = lighting?.station ?? sim.trackDistance;
     this.updateJunction(sim);
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.scenic) {
       const lightBeat = lighting?.beat ?? sim.beat;
-      const state = this.scenic.update(this.scenicPlans.get(sim.mode)!, distance, lightBeat, lighting?.pattern);
+      const state = this.scenic.update(distance, lightBeat, lighting?.pattern);
       const { base, sky, ground } = this.scenic;
       this.hue = state.hue;
+      this.saturation = state.saturation;
       this.tunnel.setScenic(base, sky, ground, state);
       this.fog.color.copy(this.scenic.fog);
-      for (const material of this.scenicSurfaces) material.emissive.copy(base);
-      this.junction?.updateLighting(state);
+      const junction = this.junction;
+      if (junction) {
+        junction.updateLighting(state);
+        if (sim.route && distance >= junction.path.split && distance < junction.path.end) {
+          const { hue, saturation } = junction.tones[sim.route];
+          const envelope = ease((distance - junction.path.split) / 14) * ease((junction.path.end - distance) / 14);
+          this.fog.color.lerp(this.routeFog.setHSL(hue, saturation * .65, .105).multiplyScalar(.041), .48 * envelope);
+        }
+      }
     }
     const junction = this.junction;
     const cameraFrame = junction && sim.branch?.side
@@ -218,7 +211,8 @@ class VolumeScene {
         this.scene.add(...visual.meshes);
       }
       const ahead = gate.routeStation - sim.distance;
-      if (!visual.update(sim.time, this.hue, ahead, scale, gate.hit, microContrast)) continue;
+      const tone = gate.route && junction ? junction.tones[gate.route] : undefined;
+      if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale, gate.hit, microContrast, tone?.saturation ?? this.saturation)) continue;
       if (!gate.route || gate.route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
@@ -257,6 +251,7 @@ class VolumeScene {
   }
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
+  get routeLighting() { return this.junction ? { ...this.junction.tones } : undefined; }
 
   private updatePickup(sim: Simulation) {
     if (sim.phase !== 'playing' || !sim.pickupVisible || !sim.pickup) {
@@ -286,7 +281,6 @@ class VolumeScene {
     this.visuals.clear();
     this.gateGeometries.dispose();
     this.tunnel?.dispose();
-    this.dressing?.dispose();
     this.scenic?.dispose();
     this.surfaceLibrary?.dispose();
     this.sky?.dispose();
@@ -300,6 +294,7 @@ export class Graphics {
   private capabilities: ReturnType<typeof readCapabilities>;
   private volume?: VolumeScene;
   private corridor?: Path;
+  private mode: PlayMode = 'standard';
   private textures?: ReturnType<typeof buildTextures>;
   private environment?: THREE.WebGLRenderTarget;
   private post?: PostFX;
@@ -349,14 +344,15 @@ export class Graphics {
   get camera() { return this.volume?.camera; }
   get path() { return this.corridor; }
 
-  load(definition: VolumeDefinition, existingPath?: Path) {
+  load(definition: VolumeDefinition, existingPath?: Path, mode: PlayMode = 'standard') {
     this.volume?.dispose();
     this.volume = undefined;
-    const path = this.corridor = existingPath ?? buildPath(corridorLength(definition), 150, 46, definition.topology);
+    const path = this.corridor = existingPath ?? buildRunPath(definition, mode);
+    this.mode = mode;
     this.volume = this.withCoreShaders(() => {
       if (this.capabilities.halfFloat) this.environment ??= makeEnvMap(this.renderer);
       const materials = definition.id === 'elsewhere' ? new MaterialLibrary() : this.textures ??= buildTextures();
-      return new VolumeScene(definition, materials, this.environment?.texture ?? null, path);
+      return new VolumeScene(definition, materials, this.environment?.texture ?? null, path, mode);
     });
     this.sizeCamera();
   }
@@ -488,7 +484,7 @@ export class Graphics {
   restore(volume: VolumeDefinition) {
     this.capabilities = this.readDeviceCapabilities();
     this.configure(this.quality, this.mobile);
-    this.load(volume, this.corridor);
+    this.load(volume, this.corridor, this.mode);
     this.prepare();
   }
 
@@ -541,11 +537,11 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
-      dressing: this.volume?.dressing?.visible ?? 0,
-      scenicInstances: this.volume?.dressing?.counts(),
+      routeLighting: this.volume?.routeLighting,
       scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,
         active: this.volume.tunnel.activePhysicalLights,
         fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups,
+        batches: this.volume.scenic.batches, reduced: this.volume.scenic.reduced,
         zone: this.volume.scenic.zone, hue: this.volume.scenic.hue, ...this.volume.tunnel.scenicTone } : undefined,
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
