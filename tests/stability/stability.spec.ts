@@ -209,6 +209,76 @@ test('fixed-time visual comparison across four volumes @glass', async ({ browser
   } finally { await page.close(); }
 });
 
+test('ELSEWHERE material views and unaffected volumes @m0', async ({ browser }, info) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  try {
+    const cases = [
+      ['elsewhere', 'tunnel', '36', 'high', 'standard'],
+      ['elsewhere', 'floor', '45', 'low', 'sightseeing'],
+      ['elsewhere', 'junction', '156.328125', 'high', 'standard'],
+      ...(['drift', 'descent', 'orbit'] as const).map(id => [id, id, '83', 'high', 'standard']),
+    ];
+    for (const [id, name, time, quality, mode] of cases) {
+      const images: Buffer[] = [];
+      for (const build of haveReference ? [reference, candidate] : [candidate]) {
+        await page.goto(`${build.client}/?vol=${id}&t=${time}&q=${quality}&mode=${mode}&align=1&route=left&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        const path = id === 'elsewhere' ? info.outputPath(`${name}-${build.label}.png`) : undefined;
+        images.push(await page.locator('#gl').screenshot({ path }));
+        if (path) await info.attach(`${name}-${build.label}`, { path, contentType: 'image/png' });
+      }
+      const equal = images.length === 2 && images[0].equals(images[1]);
+      if (haveReference && id !== 'elsewhere') expect(equal, id).toBe(true);
+      log('m0-image', { id, name, time, quality, mode, equal });
+    }
+    for (const build of haveReference ? [reference, candidate] : [candidate]) {
+      const begin = performance.now();
+      await page.goto(`${build.client}/debug/`);
+      const target = page.locator('#materials');
+      const count = build === candidate ? 7 : 4;
+      await expect(target.locator('canvas[data-ready=true]')).toHaveCount(count);
+      log('m0-debug', { build: build.label, browser: browser.version(), readyMs: performance.now() - begin, count });
+      if (build === candidate) {
+        await expect(target.locator('canvas[data-mode=lit]')).toHaveCount(6);
+        await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
+      }
+      for (const id of build === candidate ? ['materials', 'effects'] : ['materials']) {
+        const path = info.outputPath(`debug-${id}-${build.label}.png`);
+        await page.locator(`#${id}`).screenshot({ path });
+        await info.attach(`debug-${id}-${build.label}`, { path, contentType: 'image/png' });
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+test('ELSEWHERE material GPU cost @m0', async ({ browser }) => {
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [name, beat, quality, boost, mode] of [
+        ['cruise-high', 76.8, 'high', false, 'standard'], ['cruise-low', 76.8, 'low', false, 'standard'],
+        ['boost', 168, 'high', true, 'standard'], ['tour', 180, 'high', false, 'sightseeing'],
+        ['junction', 333.5, 'high', false, 'standard'],
+      ] as const) {
+        const result = await page.evaluate(([beat, quality, boost, mode]) => window.stability.fixedGlass(beat, quality, boost, mode),
+          [beat, quality, boost, mode] as const);
+        log('m0-frame', { name, sample, build: build.label, browser: browser.version(), ...result });
+        expect(result.phase).toBe('playing');
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(480);
+        if (name === 'junction') expect(result.route).toBe('score');
+        if (name === 'tour') expect(result.speed).toBeLessThan(12);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 test('Score Boost and Sightseeing stay readable across pixel ratios @glass', async ({ browser }, info) => {
   const sim = new Simulation(VOLUMES[0], { align: true, branchSide: 'left' });
   sim.start('normal', 0);

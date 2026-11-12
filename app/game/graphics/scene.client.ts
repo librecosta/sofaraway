@@ -10,6 +10,7 @@ import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
+import { MaterialLibrary } from './materials/library.client';
 import { buildPath } from './path';
 import type { Path } from './path';
 import { PickupVisual } from './pickup.client';
@@ -49,10 +50,12 @@ class VolumeScene {
   private pickup?: PickupVisual;
   private junction?: BranchVisual;
   private disposeJunctionPrograms?: () => void;
+  private readonly surfaceLibrary?: MaterialLibrary;
 
-  constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures>,
+  constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary,
     environment: THREE.Texture | null, readonly path: Path) {
     this.hue = volume.hue[0];
+    this.surfaceLibrary = textures instanceof MaterialLibrary ? textures : undefined;
     this.scene.fog = this.fog;
     try {
       this.tunnel = new Tunnel(textures, this.path, volume.topology);
@@ -60,7 +63,12 @@ class VolumeScene {
       this.sky = makeSky(volume);
       this.scene.background = this.sky;
       this.scene.environment = environment;
-      if (volume.id === 'elsewhere') this.hologram = new RouteHologram();
+      if (volume.id === 'elsewhere') {
+        // The new albedos are decoded from sRGB. Keep broad metal faces readable
+        // under the existing chapter lights with a little more neutral reflection.
+        this.scene.environmentIntensity = 1.7;
+        this.hologram = new RouteHologram();
+      }
     } catch (error) {
       this.dispose();
       throw error;
@@ -69,8 +77,13 @@ class VolumeScene {
 
   prepare(renderer: THREE.WebGLRenderer) {
     const gate = new GateVisual(this.gateGeometries, this.volume.obstacle, 0, 0);
+    const sample = this.tunnel.surfaceMaterials;
+    const plane = sample && new THREE.PlaneGeometry(1, 1);
+    const previews = plane && sample ? sample.map(material => new THREE.Mesh(plane, material)) : [];
     this.scene.add(gate.meshes[0]);
+    for (const preview of previews) this.scene.add(preview);
     try {
+      this.tunnel.surfaces?.upload(renderer);
       if (this.volume.id === 'elsewhere' && !this.disposeJunctionPrograms) {
         this.disposeJunctionPrograms = prepareJunctionPrograms(renderer, this.scene, this.camera);
       } else {
@@ -82,6 +95,8 @@ class VolumeScene {
       this.preparedGate = gate;
     } finally {
       this.scene.remove(gate.meshes[0]);
+      for (const preview of previews) this.scene.remove(preview);
+      plane?.dispose();
       if (this.preparedGate !== gate) gate.dispose();
     }
   }
@@ -230,6 +245,7 @@ class VolumeScene {
     this.visuals.clear();
     this.gateGeometries.dispose();
     this.tunnel?.dispose();
+    this.surfaceLibrary?.dispose();
     this.sky?.dispose();
     this.scene.clear();
   }
@@ -295,9 +311,9 @@ export class Graphics {
     this.volume = undefined;
     const path = this.corridor = existingPath ?? buildPath(corridorLength(definition), 150, 46, definition.topology);
     this.volume = this.withCoreShaders(() => {
-      this.textures ??= buildTextures();
       if (this.capabilities.halfFloat) this.environment ??= makeEnvMap(this.renderer);
-      return new VolumeScene(definition, this.textures, this.environment?.texture ?? null, path);
+      const materials = definition.id === 'elsewhere' ? new MaterialLibrary() : this.textures ??= buildTextures();
+      return new VolumeScene(definition, materials, this.environment?.texture ?? null, path);
     });
     this.sizeCamera();
   }

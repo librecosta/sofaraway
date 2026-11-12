@@ -6,6 +6,7 @@ import type { FixedStepClock } from '../../app/game/core/clock';
 import { corridorLength } from '../../app/game/core/simulation';
 import type { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
+import { MaterialLibrary } from '../../app/game/graphics/materials/library.client';
 import { buildPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
@@ -29,6 +30,7 @@ const harness = {
   inspectJunction: async (mode?: PlayMode) => (await import('./branch')).inspectJunction(mode),
   inspectHologram: async () => (await import('./branch')).inspectHologram(),
   inspectGlassOptics: async () => (await import('./glass-optics')).inspectGlassOptics(),
+  inspectMaterials: async () => (await import('./materials')).inspectMaterials(),
   inspectCameraAndGates: async () => (await import('./camera-gates')).inspectCameraAndGates(),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
@@ -53,7 +55,7 @@ const harness = {
   },
   streamResources(id: GameOptions['volumeId']) {
     const volume = volumeById(id);
-    const textures = buildTextures();
+    const textures = id === 'elsewhere' ? new MaterialLibrary() : buildTextures();
     const path = buildPath(corridorLength(volume), 150, 46, volume.topology);
     const tunnel = new Tunnel(textures, path, volume.topology);
     tunnel.update(4200);
@@ -74,7 +76,8 @@ const harness = {
     const oldChunksRemoved = !tunnel.chunks.some(chunk => first.includes(chunk));
     const currentDisposals = disposed;
     tunnel.dispose();
-    for (const texture of Object.values(textures)) texture.dispose();
+    if (textures instanceof MaterialLibrary) textures.dispose();
+    else for (const texture of Object.values(textures)) texture.dispose();
     return { counts, expectedDisposals, oldChunksRemoved, currentDisposals, remaining: tunnel.chunks.length };
   },
   async mount(options: Partial<GameOptions> = {}) {

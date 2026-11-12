@@ -4,6 +4,7 @@ import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
 import type { PathFrame } from './path';
+import { surfaceUV } from './materials/uv';
 
 const styles = {
   main: { color: '#72ffda', spacing: 5.5, width: 0.028, brightness: 0.48 },
@@ -46,6 +47,15 @@ function profile(w: number): Point[] {
     [w - ch, b], [-w + ch, b], [-w, b - ch], [-w, -b + ch]];
 }
 
+function perimeter(points: Point[]) {
+  const lengths = [0];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i], q = points[(i + 1) % points.length];
+    lengths.push(lengths[i] + Math.hypot(q[0] - p[0], q[1] - p[1]));
+  }
+  return lengths;
+}
+
 class Quads {
   private readonly position: number[] = [];
   private readonly uv: number[] = [];
@@ -54,14 +64,14 @@ class Quads {
   private readonly temp = new THREE.Vector3();
 
   quad(first: PathFrame, last: PathFrame, p: Point, q: Point, r: Point, s: Point,
-    uvStart = 0, uvEnd = 1, color?: THREE.Color) {
+    uvStart = 0, uvEnd = 1, color?: THREE.Color, mapped?: readonly number[]) {
     const n = this.position.length / 3;
     for (const [frame, [x, y]] of [[first, p], [first, q], [last, r], [last, s]] as const) {
       this.temp.copy(frame.p).addScaledVector(frame.r, x).addScaledVector(frame.u, y);
       this.position.push(this.temp.x, this.temp.y, this.temp.z);
       if (color) this.color.push(color.r, color.g, color.b);
     }
-    this.uv.push(0, uvStart, 1, uvStart, 1, uvEnd, 0, uvEnd);
+    this.uv.push(...(mapped ?? [0, uvStart, 1, uvStart, 1, uvEnd, 0, uvEnd]));
     this.indices.push(n, n + 1, n + 2, n, n + 2, n + 3);
   }
 
@@ -116,17 +126,22 @@ export class BranchVisual {
     const count = Math.ceil((through - from) / 2.5);
     let last = from;
     let previous = profile(width(last));
+    let previousLengths = perimeter(previous);
     this.path.sample(last, side, this.near);
     for (let k = 1; k <= count; k++) {
       const s = THREE.MathUtils.lerp(from, through, k / count);
       const next = profile(width(s));
+      const lengths = perimeter(next);
       this.path.sample(s, side, this.far);
       for (let i = 0; i < next.length; i++) {
         const j = (i + 1) % next.length;
-        target.quad(this.near, this.far, previous[i], previous[j], next[j], next[i], last / 3, s / 3);
+        const uv = (along: number, station: number) => surfaceUV('alloy-satin-dark', along, 0, 0, station);
+        target.quad(this.near, this.far, previous[i], previous[j], next[j], next[i], 0, 1, undefined,
+          [...uv(previousLengths[i], last), ...uv(previousLengths[i + 1], last), ...uv(lengths[i + 1], s), ...uv(lengths[i], s)]);
       }
       this.near.p.copy(this.far.p); this.near.r.copy(this.far.r); this.near.u.copy(this.far.u);
       previous = next;
+      previousLengths = lengths;
       last = s;
     }
   }
@@ -140,8 +155,10 @@ export class BranchVisual {
     for (const start of [-BRANCH_SPACING, 0]) {
       for (let i = 0; i < 3; i++) {
         const edge = ([x, y]: Point, offset: number): Point => [x + offset, y];
-        target.quad(frame, frame, edge(right[i], start), edge(left[i], start + BRANCH_SPACING),
-          edge(left[i + 1], start + BRANCH_SPACING), edge(right[i + 1], start));
+        const p = edge(right[i], start), q = edge(left[i], start + BRANCH_SPACING);
+        const r = edge(left[i + 1], start + BRANCH_SPACING), s = edge(right[i + 1], start);
+        target.quad(frame, frame, p, q, r, s, 0, 1, undefined, [p, q, r, s].flatMap(([x, y]) =>
+          surfaceUV('alloy-satin-dark', x, 0, 0, y)));
       }
     }
   }

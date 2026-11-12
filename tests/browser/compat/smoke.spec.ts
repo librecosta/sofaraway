@@ -2,6 +2,27 @@ import { expect, test } from '@playwright/test';
 import { readMetrics } from '../diagnostics';
 import { fallback, ready, record, startButton, startRun } from './support';
 
+test('material lab renders lit specimens or clearly exposes raw channels', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/debug/');
+  const surface = page.locator('#materials');
+  await expect(surface.locator('figure canvas[data-ready=true]')).toHaveCount(6);
+  const lit = await surface.locator('canvas[data-mode=lit]').count();
+  if (lit === 6) {
+    await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
+    record(info, 'PASS', 'Six lit surfaces and both cyan effects render with the runtime materials');
+  } else {
+    expect(lit).toBe(0);
+    await expect(surface.locator('canvas[data-mode=raw]')).toHaveCount(6);
+    await expect(surface.getByText(/Lit previews unavailable/)).toBeVisible();
+    record(info, 'BLOCKED', 'Lit material previews unavailable; raw fallback verified');
+  }
+  await surface.getByRole('button', { name: 'Normal', exact: true }).click();
+  await expect(surface.locator('canvas[data-channel=normal]')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('prerender, four volumes, a live run and restart', async ({ browser, page, request, hasTouch }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

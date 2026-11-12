@@ -3,6 +3,10 @@ import { SECTION } from '../core/collision';
 import type { Topology } from '../core/volumes';
 import type { Path, PathFrame } from './path';
 import type { buildTextures } from './textures.client';
+import { MaterialLibrary } from './materials/library.client';
+import { surfacePresets } from './materials/presets';
+import type { SurfaceMaterialId } from './materials/presets';
+import { surfaceUV } from './materials/uv';
 
 interface GeometryData { pos: number[]; nor?: number[]; uv?: number[]; idx: number[] }
 interface Chunk { s0: number; s1: number; meshes: THREE.Mesh[] }
@@ -57,6 +61,9 @@ export class Tunnel {
   private wire: THREE.LineSegments | null = null;
   private shellMat!: THREE.MeshStandardMaterial;
   private ribMat!: THREE.MeshStandardMaterial;
+  private braceMat!: THREE.MeshStandardMaterial;
+  private shellMaterials?: THREE.MeshStandardMaterial[];
+  readonly surfaces?: MaterialLibrary;
   private rimMat!: THREE.MeshBasicMaterial;
   private stripMat!: THREE.MeshBasicMaterial;
   private wireMat!: THREE.LineBasicMaterial;
@@ -68,33 +75,42 @@ export class Tunnel {
   private readonly ringFrames: PathFrame[] = [];
   private junction?: { start: number; end: number };
 
-  constructor(tex: ReturnType<typeof buildTextures>, private readonly path: Path, private readonly topology: Topology) {
+  constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path, private readonly topology: Topology) {
     this.group = new THREE.Group();
     this.chunks = [];
     this.wire = null;
 
+    this.surfaces = tex instanceof MaterialLibrary ? tex : undefined;
     this._buildMaterials(tex);
     this._buildLights();
     this._buildWire();
   }
 
   /* ---------------- shared materials ---------------- */
-  _buildMaterials(tex: ReturnType<typeof buildTextures>) {
-    this.shellMat = new THREE.MeshStandardMaterial({
-      map: tex.hullMap,
-      normalMap: tex.hullNormal,
-      normalScale: new THREE.Vector2(0.8, 0.8),
-      color: 0x2a3038,
-      metalness: 0.45,
-      roughness: 0.55,
-      side: THREE.DoubleSide,
-      envMapIntensity: 1.0,
-      emissive: 0x000000,
-    });
-    this.ribMat = new THREE.MeshStandardMaterial({
-      color: 0x151a20, metalness: 0.8, roughness: 0.38,
-      side: THREE.DoubleSide, envMapIntensity: 1.4,
-    });
+  _buildMaterials(tex: ReturnType<typeof buildTextures> | MaterialLibrary) {
+    if (tex instanceof MaterialLibrary) {
+      this.shellMat = tex.get('alloy-satin-dark');
+      this.shellMaterials = [this.shellMat, tex.get('panel-recessed'), tex.get('floor-grip')];
+      this.ribMat = tex.get('panel-reinforced');
+      this.braceMat = tex.get('alloy-brushed-tech');
+    } else {
+      this.shellMat = new THREE.MeshStandardMaterial({
+        map: tex.hullMap,
+        normalMap: tex.hullNormal,
+        normalScale: new THREE.Vector2(0.8, 0.8),
+        color: 0x2a3038,
+        metalness: 0.45,
+        roughness: 0.55,
+        side: THREE.DoubleSide,
+        envMapIntensity: 1.0,
+        emissive: 0x000000,
+      });
+      this.ribMat = new THREE.MeshStandardMaterial({
+        color: 0x151a20, metalness: 0.8, roughness: 0.38,
+        side: THREE.DoubleSide, envMapIntensity: 1.4,
+      });
+      this.braceMat = this.ribMat;
+    }
 
     this.rimMat = new THREE.MeshBasicMaterial({
       color: 0xffffff, side: THREE.DoubleSide, toneMapped: false,
@@ -147,18 +163,23 @@ export class Tunnel {
     }
     const totalPerim = perim[edges];
 
-    const rings = [];
-    for (let s = s0; s < s1; s += RING) rings.push(s);
+    const rings: number[] = [];
+    const m0 = this.surfaces !== undefined;
+    if (m0) {
+      rings.push(s0);
+      for (let s = (Math.floor(s0 / RING) + 1) * RING; s < s1 - 1e-6; s += RING) rings.push(s);
+    } else for (let s = s0; s < s1; s += RING) rings.push(s);
     rings.push(s1);
     const ringFrames = this.ringFrames;
     for (let i = 0; i < rings.length; i++) this.path.sample(rings[i], ringFrames[i] ??= frame());
 
     const ghost = this.topology === 'orbit';   // light frame only, no hull
     const shell = { pos: [] as number[], nor: [] as number[], uv: [] as number[], idx: [] as number[] };
-    const rib = { pos: [] as number[], nor: [] as number[], idx: [] as number[] };
+    const shellGroups = [shell.idx, [] as number[], [] as number[]];
+    const rib = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
     const rim = { pos: [] as number[], nor: [] as number[], idx: [] as number[] };
     const strip = { pos: [] as number[], idx: [] as number[] };
-    const brace = { pos: [] as number[], nor: [] as number[], idx: [] as number[] };
+    const brace = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
 
     const C = frame();
     const D = frame();
@@ -198,7 +219,7 @@ export class Tunnel {
 
         const lp = (t: number) => [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
 
-        const quad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number, ua: number, ub: number, va: number, vb: number, nf: THREE.Vector3) => {
+        const quad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number, ua: number, ub: number, va: number, vb: number, nf: THREE.Vector3, group = 0) => {
           const q0 = lp(t0), q1 = lp(t1);
           const base = shell.pos.length / 3;
           put(shell, fa, q0[0] * ka, q0[1] * ka);
@@ -207,13 +228,30 @@ export class Tunnel {
           put(shell, fb, q0[0] * kb, q0[1] * kb);
           for (let q = 0; q < 4; q++) shell.nor.push(nf.x, nf.y, nf.z);
           shell.uv.push(ua, va, ub, va, ub, vb, ua, vb);
-          shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+          shellGroups[group].push(base, base + 1, base + 2, base, base + 2, base + 3);
         };
 
         nWall.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2);
         const inner = 1 - DEPTH;
         const SEAM = 0.012;                 // half-width of the rib between plates
         const um = (u0 + u1) * 0.5;
+
+        if (m0) {
+          const panel = i === 0 ? 2 : i === 2 || i === 6 ? 1 : 0;
+          const mapQuad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number,
+            sa: number, sb: number, group: number) => {
+            const id: SurfaceMaterialId = group === 2 ? 'floor-grip' : group === 1 ? 'panel-recessed' : 'alloy-satin-dark';
+            const [ua, va] = surfaceUV(id, perim[i], el, t0, sa);
+            const [ub, vb] = surfaceUV(id, perim[i], el, t1, sb);
+            quad(fa, ka, fb, kb, t0, t1, ua, ub, va, vb, nWall, group);
+          };
+          mapQuad(A, 1, C, inner, 0, 1, sA, sA + CH, panel);
+          mapQuad(C, inner, D, inner, 0, 0.5 - SEAM, sA + CH, sB - CH, panel);
+          mapQuad(C, 1, D, 1, 0.5 - SEAM, 0.5 + SEAM, sA + CH, sB - CH, panel);
+          mapQuad(C, inner, D, inner, 0.5 + SEAM, 1, sA + CH, sB - CH, panel);
+          mapQuad(D, inner, B, 1, 0, 1, sB - CH, sB, panel);
+          continue;
+        }
 
         // lower chamfer, full width
         quad(A, 1.0, C, inner, 0, 1, u0, u1, vA, vA + CH * 0.02, nWall);
@@ -232,7 +270,7 @@ export class Tunnel {
       const A = ringFrames[k];
       for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
-        const addRing = (target: typeof rib, a: number, b: number) => {
+        const addRing = (target: { pos: number[]; nor: number[]; idx: number[]; uv?: number[] }, a: number, b: number) => {
           const base = target.pos.length / 3;
           for (const [px, py] of [
             [p0[0] * a, p0[1] * a], [p1[0] * a, p1[1] * a],
@@ -241,6 +279,10 @@ export class Tunnel {
             v3.copy(A.p).addScaledVector(A.r, px).addScaledVector(A.u, py);
             target.pos.push(v3.x, v3.y, v3.z);
             target.nor.push(A.f.x, A.f.y, A.f.z);
+            if (target.uv) {
+              const [u, v] = surfacePresets['panel-reinforced'].tile;
+              target.uv.push(px / u, py / v);
+            }
           }
           target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         };
@@ -302,6 +344,12 @@ export class Tunnel {
             const nl = Math.hypot(nx, ny, nz) || 1;
             nx /= nl; ny /= nl; nz /= nl;
             for (let q = 0; q < 4; q++) brace.nor.push(nx, ny, nz);
+            if (brace.uv) {
+              const [u, v] = surfacePresets['alloy-brushed-tech'].tile;
+              const across = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) / u;
+              const start = rings[k] / v, end = rings[k + 1] / v;
+              brace.uv.push(0, start, across, start, across, end, 0, end);
+            }
             brace.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
           };
 
@@ -322,20 +370,32 @@ export class Tunnel {
     };
 
     const meshes: THREE.Mesh[] = [];
-    const add = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material | THREE.Material[], name: string) => {
       const m = new THREE.Mesh(geo, mat);
+      m.name = name;
       meshes.push(m);
       this.group.add(m);
     };
 
-    if (brace.pos.length) add(geoOf(brace), this.ribMat);
-    if (shell.pos.length) add(geoOf(shell), this.shellMat);
-    add(geoOf(rib), this.ribMat);
-    add(geoOf(rim), this.rimMat);
+    if (brace.pos.length) add(geoOf(brace), this.braceMat, 'tunnel-braces');
+    if (shell.pos.length) {
+      if (this.shellMaterials) shell.idx = shellGroups.flat();
+      const g = geoOf(shell);
+      if (this.shellMaterials) {
+        let start = 0;
+        for (const [i, indices] of shellGroups.entries()) {
+          g.addGroup(start, indices.length, i);
+          start += indices.length;
+        }
+      }
+      add(g, this.shellMaterials ?? this.shellMat, 'tunnel-shell');
+    }
+    add(geoOf(rib), this.ribMat, 'tunnel-ribs');
+    add(geoOf(rim), this.rimMat, 'tunnel-rims');
 
     const sg = geoOf(strip);
     sg.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(strip.pos.length), 3));
-    add(sg, this.stripMat);
+    add(sg, this.stripMat, 'tunnel-strips');
 
     return { s0, s1, meshes };
   }
@@ -349,6 +409,8 @@ export class Tunnel {
   }
 
   get junctionShell() { return this.shellMat; }
+
+  get surfaceMaterials() { return this.shellMaterials && [...this.shellMaterials, this.ribMat, this.braceMat]; }
 
   setJunction(junction?: { start: number; end: number }, behindCamera = false) {
     if (this.junction === junction) return;
@@ -378,7 +440,7 @@ export class Tunnel {
     this.chunks.length = 0;
     this.group.clear();
     this.wire?.geometry.dispose();
-    for (const material of [this.shellMat, this.ribMat, this.rimMat, this.stripMat, this.wireMat]) {
+    for (const material of [this.rimMat, this.stripMat, this.wireMat, ...(!this.surfaces ? [this.shellMat, this.ribMat] : [])]) {
       material?.dispose();
     }
   }
@@ -433,10 +495,12 @@ export class Tunnel {
     this.ambient.color.setHSL(h, 0.9, 0.22);
     this.hemi.color.setHSL(h, 0.75, 0.40);
 
-    this.shellMat.color.setHSL(h, 0.42, 0.32);
-    this.shellMat.emissive.setHSL(h, 0.8, 0.03);
-    this.ribMat.color.setHSL(h, 0.45, 0.10);
-    this.ribMat.emissive.setHSL(h, 0.9, 0.02);
+    if (!this.surfaces) {
+      this.shellMat.color.setHSL(h, 0.42, 0.32);
+      this.shellMat.emissive.setHSL(h, 0.8, 0.03);
+      this.ribMat.color.setHSL(h, 0.45, 0.10);
+      this.ribMat.emissive.setHSL(h, 0.9, 0.02);
+    }
   }
 
   pulse(p: number) {

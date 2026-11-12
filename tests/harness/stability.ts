@@ -1,7 +1,7 @@
 import type { Object3D, WebGLRenderer } from 'three';
 import { PMREMGenerator } from 'three';
 import { initialSnapshot } from '../../app/game/contracts';
-import type { GameOptions, VolumeId, QualityTier } from '../../app/game/contracts';
+import type { GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
 import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
@@ -261,7 +261,7 @@ const stability = {
     await new Promise(resolve => setTimeout(resolve, 120));
     return end();
   },
-  async fixedGlass(beat: number, quality: QualityTier, boost = false) {
+  async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard') {
     const definition = volumeById('elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
       boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: 'left' };
@@ -274,8 +274,8 @@ const stability = {
       surface.resize(960, 540, 1);
       surface.load(definition);
       surface.prepare();
-      sim.start('normal', 0);
-      const station = sim.reference.station(beat, 'standard');
+      sim.start('normal', 0, undefined, mode);
+      const station = sim.reference.station(beat, mode);
       const input = boost ? { ...idleInput, boosting: true } : idleInput;
       while (sim.phase === 'playing' && (boost ? sim.trackDistance < station : sim.beat + 1e-9 < beat)) sim.step(STEP, input);
       surface.warmSurface(sim, true);

@@ -3,8 +3,10 @@ import type { CSSProperties } from 'react';
 import type { VolumeId } from '../game/contracts';
 import { PICKUP_BEAT } from '../game/core/pickups';
 import { volumeById } from '../game/core/volumes';
-import { catalog, gateNotes, materialCards, pickupCards } from '../game/debug/catalog';
+import { catalog, environmentCards, gateNotes, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
+import { channelNames, effectIds, effectPresets, surfaceChannels, surfaceIds, surfacePresets } from '../game/graphics/materials/presets';
+import type { SurfaceChannel, SurfaceMaterialId } from '../game/graphics/materials/presets';
 import s from '../styles/debug.module.css';
 
 export const meta = () => [
@@ -82,18 +84,35 @@ export default function DebugOverview() {
   const [worldStatus, setWorldStatus] = useState('Rendering the four worlds…');
   const [materialStatus, setMaterialStatus] = useState('');
   const [modelReady, setModelReady] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [surface, setSurface] = useState<SurfaceMaterialId>('alloy-satin-dark');
+  const [channel, setChannel] = useState<SurfaceChannel>('color');
+  const [inspect, setInspect] = useState<((id: SurfaceMaterialId, channel: SurfaceChannel) => void) | null>(null);
+
+  useEffect(() => { inspect?.(surface, channel); }, [inspect, surface, channel]);
 
   useEffect(() => {
     const container = root.current!;
     let stale = false;
     let timer: number | undefined;
     let viewer: ModelPreviews | undefined;
-    void import('../game/debug/previews.client').then(({ ModelPreviews, renderMaterials, renderWorlds }) => {
+    let releaseMaterials: (() => void) | undefined;
+    void Promise.all([import('../game/debug/previews.client'), import('../game/graphics/materials/library.client')]).then(([
+      { ModelPreviews, renderRawSurfaces, renderRawChannel, renderEnvironment, renderWorlds }, { MaterialLibrary },
+    ]) => {
       if (stale) return;
+      const materials = new MaterialLibrary(true);
+      releaseMaterials = () => materials.dispose();
+      setInspect(() => (id: SurfaceMaterialId, channel: SurfaceChannel) => renderRawChannel(container, materials, id, channel));
       try {
-        viewer = new ModelPreviews(container);
+        viewer = new ModelPreviews(container, materials, restored => {
+          setModelReady(restored);
+          setModelStatus(restored ? '' : 'WebGL previews interrupted. The last images remain available.');
+          setMaterialStatus(restored ? '' : 'Waiting for WebGL to restore the lit previews.');
+        });
         viewer.drawPickups(initialAngle);
         viewer.drawGates();
+        viewer.drawMaterials();
         models.current = viewer;
         setModelReady(true);
         setModelStatus('');
@@ -101,8 +120,10 @@ export default function DebugOverview() {
         viewer?.dispose();
         viewer = undefined;
         setModelStatus(error instanceof Error ? error.message : 'The 3D previews could not render.');
+        renderRawSurfaces(container, materials);
+        setMaterialStatus('Lit previews unavailable. These cards show base color; raw channels are still available.');
       }
-      try { renderMaterials(container); } catch { setMaterialStatus('The material previews could not render.'); }
+      renderEnvironment(container);
       timer = window.setTimeout(() => {
         try { renderWorlds(container); setWorldStatus(''); } catch {
           setWorldStatus('The scene previews could not render on this device.');
@@ -118,6 +139,7 @@ export default function DebugOverview() {
       stale = true;
       window.clearTimeout(timer);
       viewer?.dispose();
+      releaseMaterials?.();
       models.current = null;
     };
   }, []);
@@ -128,7 +150,7 @@ export default function DebugOverview() {
         <a href="/" className={s.brand}>SoFaraway</a>
         <nav aria-label="Debug sections">
           <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#gates">Gates</a>
-          <a href="#materials">Materials</a><a href="#audio">Audio</a>
+          <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
         <a href="/" className={s.back}>Back to game</a>
       </header>
@@ -203,10 +225,65 @@ export default function DebugOverview() {
         </section>
 
         <section id="materials" className={s.section}>
-          <h2>Materials</h2>
+          <h2>Surface materials</h2>
+          <p>ELSEWHERE specimens share the same light and scale.</p>
+          <div className={s.actions}>
+            <a href="/?vol=elsewhere&t=36&q=high&align=1">Inspect the tunnel</a>
+            <a href="/?vol=elsewhere&t=156.328125&route=left&q=high&align=1">Inspect the junction</a>
+          </div>
           {materialStatus && <p role="status">{materialStatus}</p>}
+          <div className={s.trio}>
+            {surfaceIds.map(id => {
+              const { name, detail, metalness, roughness } = surfacePresets[id];
+              return <figure key={id} className={s.card}>
+                <Preview id={id} label={`${name} material preview`} />
+                <figcaption className={s.caption}><h3>{name}</h3><p>{detail}</p>
+                  <p className={s.materialValues}>Metalness {metalness.toFixed(2)} · Roughness {roughness.toFixed(2)}</p></figcaption>
+              </figure>;
+            })}
+          </div>
+          <div className={s.inspector}>
+            <div>
+              <h3>Inspect raw channels</h3>
+              <p>Height is the source for normals. Its display stretches the sample range so shallow grooves remain visible.</p>
+              <label className={s.surfaceSelect}>Surface
+                <select value={surface} disabled={!inspect} onChange={event => {
+                  const id = event.currentTarget.value as SurfaceMaterialId;
+                  setSurface(id);
+                  if (!surfaceChannels(id).includes(channel)) setChannel('color');
+                }}>
+                  {surfaceIds.map(id => <option key={id} value={id}>{surfacePresets[id].name}</option>)}
+                </select>
+              </label>
+              <div className={s.channelControls} role="group" aria-label="Texture channel">
+                {surfaceChannels(surface).map(id => <button key={id} type="button" disabled={!inspect} aria-pressed={channel === id}
+                  onClick={() => setChannel(id)}>{channelNames[id]}</button>)}
+              </div>
+              <p className={s.materialValues}>{surfacePresets[surface].resolution}² · Tile {surfacePresets[surface].tile.map(n => n.toFixed(2)).join(' × ')} units</p>
+            </div>
+            <Preview id="surface-channel" label={`${surfacePresets[surface].name}: ${channelNames[channel]}`} width={256} height={256} />
+          </div>
+        </section>
+
+        <section id="effects" className={s.section}>
+          <h2>Effect materials</h2>
+          <p>Light and transparent film for future fixtures.</p>
+          <div className={s.worlds}>
+            {effectIds.map(id => <figure key={id} className={s.card}>
+              <Preview id={id} label={`${effectPresets[id].name} effect preview`} />
+              <figcaption className={s.caption}><h3>{effectPresets[id].name}</h3><p>{effectPresets[id].detail}</p>
+                {id === 'hologram-panel-cyan' && <button className={s.scan} type="button" disabled={!modelReady}
+                  aria-pressed={scanning} onClick={() => { setScanning(!scanning); models.current?.setScan(!scanning); }}>
+                  Animate scan</button>}
+              </figcaption>
+            </figure>)}
+          </div>
+        </section>
+
+        <section id="environment" className={s.section}>
+          <h2>Environment</h2>
           <div className={s.swatches}>
-            {materialCards.map(({ id, name, detail }) => (
+            {environmentCards.map(({ id, name, detail }) => (
               <figure key={id} className={s.card}>
                 <Preview id={id} label={name} width={320} height={320} />
                 <figcaption className={s.caption}><strong>{name}</strong><p>{detail}</p></figcaption>

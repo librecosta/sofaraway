@@ -29,9 +29,7 @@ export const pickupCards = [
   { kind: 'lumen', name: 'Lumen', color: '#ffe680', effect: '+2,500 / 5,000 / 7,500 points by difficulty.' },
 ] as const;
 
-export const materialCards = [
-  { id: 'hull', name: 'Hull plating', detail: 'Base colour · shared' },
-  { id: 'normal', name: 'Hull normal map', detail: 'Surface relief · shared' },
+export const environmentCards = [
   { id: 'sky', name: 'Canal sky', detail: 'Sky gradient · Drift' },
   { id: 'stars', name: 'Starfield', detail: 'Equirectangular sky · Orbit' },
 ] as const;

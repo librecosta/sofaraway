@@ -70,6 +70,17 @@ body:has(.page) { margin: 0; background: #081014; }
 .gateLibrary h3 { color: var(--muted); font-size: 1.05rem; }
 .gateLibrary .trio, .gateSingle { margin-top: .4rem; }
 .gateName { text-transform: capitalize; }
+.materialValues { margin-top: .3rem !important; font-variant-numeric: tabular-nums; }
+.inspector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9rem, 13rem); align-items: center; gap: 1.2rem;
+  margin-top: 1rem; border: 1px solid var(--rule); padding: 1rem; background: #101d22; }
+.inspector .preview { border: 1px solid var(--rule); max-width: 13rem; }
+.surfaceSelect { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; margin-top: .75rem; }
+.channelControls { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+.surfaceSelect select, .channelControls button, .scan { min-height: 40px; font: inherit; font-size: .9rem;
+  background: #081014; color: var(--text); border: 1px solid var(--rule); padding: .3rem .65rem; }
+.channelControls button[aria-pressed=true], .scan[aria-pressed=true] { border-color: var(--accent); color: var(--accent); }
+.channelControls button:not(:disabled), .scan:not(:disabled) { cursor: pointer; }
+.scan { margin-top: .65rem; }
 
 .audioControls { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem 1rem; margin: .75rem 0 .6rem; }
 .audioField { display: grid; gap: .2rem; color: var(--muted); }
@@ -93,4 +104,5 @@ body:has(.page) { margin: 0; background: #081014; }
   .content { padding-top: 1.65rem; }
   .section { margin-top: 2rem; }
   .trio, .worlds, .gateLibrary { grid-template-columns: 1fr; }
+  .inspector { grid-template-columns: 1fr; }
 }

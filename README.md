@@ -121,8 +121,10 @@ and the [world-space validation report](docs/audits/D0-B2-F2-validation-report.m
 ## Debug overview
 
 Open `/debug/` directly or follow **Debug overview** from **Credits**.
-The page renders all four worlds, every gate type, the floating pickups and
-individual procedural materials. **Soundtrack** exports a WAV for the selected
+The page renders all four worlds, every gate type and the floating pickups.
+**Surface Materials** shows six lit ELSEWHERE samples and their raw channels;
+**Effect Materials** shows the cyan light channel and hologram film.
+**Soundtrack** exports a WAV for the selected
 volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
 
 ### In-game debug parameters
