@@ -92,20 +92,21 @@ test('three horizontal holograms keep their outlines while their interiors move'
   await expect(page.locator('#route-hint')).toHaveCount(0);
 });
 
-test('a locked branch survives pause, WebGL loss and BFCache then resets on restart', async ({ page }) => {
+for (const mode of ['standard', 'sightseeing'] as const) test(`${mode} branch survives pause, WebGL loss and BFCache then resets on restart`, async ({ page }) => {
   await page.goto(harnessUrl);
-  const locked = await page.evaluate(async () => {
-    await window.b0Harness.mount({ runSeed: 0, quality: 'low', diagnostics: {
+  const locked = await page.evaluate(async mode => {
+    await window.b0Harness.mount({ mode, runSeed: 0, quality: 'low', diagnostics: {
       fixedTime: null, autoplay: false, god: false, align: true, boost: false,
       mobileQuality: false, post: true, record: false, debug: true, branchSide: 'right',
     } });
     await window.b0Harness.start(true);
     return window.b0Harness.advanceAndPause(329);
-  });
+  }, mode);
   expect(locked.branch?.side).toBe('right');
   expect(locked.metrics.junctionMeshes).toBe(5);
   const snapshot = () => page.evaluate(() => window.b0Harness.snapshot());
-  expect((await snapshot()).phase).toBe('paused');
+  const paused = await snapshot();
+  expect(paused).toMatchObject({ phase: 'paused', mode });
   const supported = await page.evaluate(() => {
     const ext = document.querySelector('canvas')!.getContext('webgl2')!.getExtension('WEBGL_lose_context');
     if (!ext) return false;
@@ -125,11 +126,11 @@ test('a locked branch survives pause, WebGL loss and BFCache then resets on rest
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
   });
-  expect((await snapshot()).phase).toBe('paused');
+  expect(await snapshot()).toMatchObject({ phase: 'paused', mode, progress: paused.progress, gatesTotal: paused.gatesTotal });
   await page.evaluate(() => window.b0Harness.resume(true));
   await expect.poll(async () => (await snapshot()).phase).toBe('playing');
   const exited = await page.evaluate(async () => {
-    const merged = window.b0Harness.advanceAndPause(361);
+    const merged = window.b0Harness.advanceAndPause(window.b0Harness.snapshot().mode === 'sightseeing' ? 375 : 361);
     window.b0Harness.returnToMenu();
     await window.b0Harness.start(true);
     const next = window.b0Harness.branchState();

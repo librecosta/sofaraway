@@ -9,6 +9,8 @@ export const BRANCH_GUIDANCE_END = 323;
 export const ROUTE_BEAT = 326;
 export const MERGE_BEAT = 349.5;
 export const REJOIN_BEAT = 352;
+export const SIGHTSEEING_OPEN_BEAT = 325.25;
+export const SIGHTSEEING_MERGE_BEAT = 347.25;
 export const BRANCH_SPACING = 10.5;
 export const BRANCH_SIDE_THRESHOLD = 2.4;
 export const ROUTE_STREAM = 0x524f5554;
@@ -34,9 +36,9 @@ function ease(t: number) {
   return u * u * u * (10 + u * (-15 + 6 * u));
 }
 
-export function branchSpread(beat: number, start: number) {
-  return BRANCH_SPACING * ease(Math.min((beat - start) / (BRANCH_OPEN_BEAT - start),
-    (REJOIN_BEAT - beat) / (REJOIN_BEAT - MERGE_BEAT)));
+export function branchSpread(beat: number, start: number, open = BRANCH_OPEN_BEAT, merge = MERGE_BEAT) {
+  return BRANCH_SPACING * ease(Math.min((beat - start) / (open - start),
+    (REJOIN_BEAT - beat) / (REJOIN_BEAT - merge)));
 }
 
 export function branchSteeringWidth(beat: number) {

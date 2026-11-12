@@ -6,6 +6,34 @@ import { mount, openSync, phase, report, state, trace } from './support';
 const normalScores = [105326, 23928, 119039, 65069];
 const gateCounts = [141, 40, 158, 91];
 
+test('Sightseeing on DRIFT plays the entire original song on real audio time', async ({ page }) => {
+  const volume = VOLUMES[1];
+  const duration = volume.beats * 60 / volume.bpm;
+  test.setTimeout((duration + 45) * 1000);
+  const errors = await openSync(page);
+  await mount(page, volume.id, 'sightseeing');
+  await page.locator('#start').click();
+  await phase(page, 'playing');
+  await page.waitForFunction(() => ['paused', 'crash', 'results', 'error'].includes(window.b0Harness.snapshot().phase),
+    undefined, { timeout: (duration + 8) * 1000, polling: 200 });
+  await phase(page, 'results');
+  const result = await state(page);
+  const { firstBeforeAnchor, steps, sections, end } = await trace(page);
+  expect(firstBeforeAnchor).toMatchObject({ beat: 0, elapsed: 0 });
+  expect(steps.map(step => [step.run, step.step])).toEqual(Array.from({ length: volume.beats * 4 }, (_, i) => [1, i]));
+  expect(Math.max(...steps.map(({ at, step }) => Math.abs(at - steps[0].at - step * 15 / volume.bpm)))).toBeLessThan(1e-9);
+  expect(sections.map(section => section.section)).toEqual(volume.sections.map(section => section.name));
+  expect(end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: false });
+  expect(end!.elapsed).toBeCloseTo(duration, 5);
+  expect(end!.wall - firstBeforeAnchor!.wall).toBeGreaterThanOrEqual((duration - 0.15) * 1000);
+  expect(end!.wall - firstBeforeAnchor!.wall).toBeLessThan((duration + 1) * 1000);
+  expect(result).toMatchObject({ lives: 5, passed: result.total, judged: result.total });
+  expect(await page.evaluate(() => window.b0Harness.snapshot().result?.title)).toBe('ESCAPED');
+  expect(errors).toEqual([]);
+  report('sightseeing-full', { volume: volume.id, duration, elapsed: end!.elapsed,
+    wallSeconds: (end!.wall - firstBeforeAnchor!.wall) / 1000, steps: steps.length, gates: result.total, lives: result.lives });
+});
+
 for (const [index, volume] of VOLUMES.entries()) {
   test(`${volume.id} completes the full song on real audio time`, async ({ page, browser }) => {
     const duration = volume.beats * 60 / volume.bpm;

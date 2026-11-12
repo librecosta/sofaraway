@@ -2,6 +2,7 @@ import { memo, useSyncExternalStore } from 'react';
 import { initialSnapshot } from '../game/contracts';
 import type { GameRuntime } from '../game/contracts';
 import { ROUTE_LABELS } from '../game/core/branches';
+import { SIGHTSEEING_SPEED } from '../game/core/sightseeing';
 import { classes as c } from '../styles/classes';
 
 const fallback = () => initialSnapshot;
@@ -12,7 +13,8 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
   const visible = ['playing', 'paused', 'crash'].includes(snapshot.phase);
   const routeHint = snapshot.routeHint;
   const routeLabel = snapshot.route ? ROUTE_LABELS[snapshot.route] : null;
-  const speed = Math.max(0, Math.min(1, (snapshot.speed - 24) / 34)) * 100;
+  const referenceSpeed = snapshot.mode === 'sightseeing' ? snapshot.speed / SIGHTSEEING_SPEED : snapshot.speed;
+  const speed = Math.max(0, Math.min(1, (referenceSpeed - 24) / 34)) * 100;
   return (
     <section id="hud" className={c('screen', !visible && 'hidden')}>
       <div className={c('hud-tl')}>

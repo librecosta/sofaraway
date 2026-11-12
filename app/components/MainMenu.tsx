@@ -1,5 +1,6 @@
-import { difficulties } from '../game/contracts';
-import type { Difficulty, GameSnapshot } from '../game/contracts';
+import { difficulties, playModes } from '../game/contracts';
+import type { Difficulty, GameSnapshot, PlayMode } from '../game/contracts';
+import { SIGHTSEEING_LIVES } from '../game/core/sightseeing';
 import { volumeById } from '../game/core/volumes';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
@@ -8,6 +9,7 @@ interface Props {
   snapshot: GameSnapshot;
   visible: boolean;
   chooseDifficulty(value: Difficulty): void;
+  chooseMode(value: PlayMode): void;
   stepVolume(direction: number): void;
   start(): void;
   settings(): void;
@@ -38,18 +40,27 @@ export function MainMenu(props: Props) {
           <span className={c('vol-name')} id="vol-name">{volume.subtitle.replace('VOL.', '').trim()} · {volume.name}</span>
           <button className={c('vol-nav')} data-vol-step="1" disabled={!ready} aria-label="next volume" onClick={() => props.stepVolume(1)}>›</button>
         </div>
-        <div className={c('diff')} id="diff">
-          {difficulties.map(difficulty => {
-            const label = difficulty.toUpperCase();
-            const lives = `${volume.lives[difficulty]} ${volume.lives[difficulty] === 1 ? 'LIFE' : 'LIVES'}`;
-            return (
-              <DecodeButton key={difficulty} className={c('diff-btn', snapshot.difficulty === difficulty && 'active')}
-                label={label} aria-label={`${label} ${lives}`} data-diff={difficulty} aria-pressed={snapshot.difficulty === difficulty}
-                disabled={!ready} onClick={() => props.chooseDifficulty(difficulty)}>
-                <em>{lives}</em>
-              </DecodeButton>
-            );
-          })}
+        <div className={c('play-options')}>
+          <div className={c('diff', 'modes')} role="group" aria-label="Play mode">
+            {playModes.map(mode => (
+              <DecodeButton key={mode} className={c('diff-btn', snapshot.mode === mode && 'active')}
+                label={mode.toUpperCase()} aria-pressed={snapshot.mode === mode} disabled={!ready}
+                onClick={() => props.chooseMode(mode)} />
+            ))}
+          </div>
+          <div className={c('diff', 'mode-options')} id="diff">
+            {snapshot.mode === 'sightseeing' ? <span className={c('mode-details')}>{SIGHTSEEING_LIVES} LIVES · ⅓ SPEED</span> : difficulties.map(difficulty => {
+              const label = difficulty.toUpperCase();
+              const lives = `${volume.lives[difficulty]} ${volume.lives[difficulty] === 1 ? 'LIFE' : 'LIVES'}`;
+              return (
+                <DecodeButton key={difficulty} className={c('diff-btn', snapshot.difficulty === difficulty && 'active')}
+                  label={label} aria-label={`${label} ${lives}`} data-diff={difficulty} aria-pressed={snapshot.difficulty === difficulty}
+                  disabled={!ready} onClick={() => props.chooseDifficulty(difficulty)}>
+                  <em>{lives}</em>
+                </DecodeButton>
+              );
+            })}
+          </div>
         </div>
       </div>
       <div className={c('bottom')}>

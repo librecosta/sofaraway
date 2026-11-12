@@ -1,5 +1,5 @@
 import { initialSnapshot } from '../contracts';
-import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, QualityTier, VolumeId } from '../contracts';
+import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, PlayMode, QualityTier, VolumeId } from '../contracts';
 import { FixedStepClock, MAX_STEPS, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
 import { idleInput } from '../core/input';
@@ -72,7 +72,7 @@ export class Runtime implements GameRuntime {
     const generation = this.generation;
     this.options = options;
     this.publish({ phase: 'initializing', volumeId: options.volumeId, difficulty: options.difficulty,
-      quality: options.quality, volume: options.volume, muted: options.muted });
+      mode: options.mode, quality: options.quality, volume: options.volume, muted: options.muted });
     if (generation !== this.generation) return;
     try {
       this.graphics = new Graphics(canvas, options.quality, this.mobile(), options.diagnostics);
@@ -117,7 +117,7 @@ export class Runtime implements GameRuntime {
     const fixedSeed = this.options?.runSeed;
     const seed = fixedSeed ?? createRunSeed();
     this.pendingPickupDraw = fixedSeed === undefined && sim.volume.id === 'elsewhere';
-    sim.start(this.snapshot.difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined);
+    sim.start(this.snapshot.difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, this.snapshot.mode);
     try {
       if (silent) this.graphics?.warmSurface(sim, false);
     } catch (error) {
@@ -205,6 +205,10 @@ export class Runtime implements GameRuntime {
     if (this.canConfigure()) this.publish({ difficulty: value });
   }
 
+  setMode(value: PlayMode) {
+    if (this.snapshot.phase === 'menu') this.publish({ mode: value });
+  }
+
   async setQuality(value: QualityTier) {
     if (!this.canConfigure() || this.unavailable() || !this.graphics) return;
     if (this.snapshot.quality === value && !this.options?.diagnostics.mobileQuality) return;
@@ -286,7 +290,7 @@ export class Runtime implements GameRuntime {
     const sim = this.simulation!;
     const flags = this.options!.diagnostics;
     const graphics = this.graphics!;
-    sim.start(this.snapshot.difficulty, this.options?.runSeed ?? CAPTURE_RUN_SEED);
+    sim.start(this.snapshot.difficulty, this.options?.runSeed ?? CAPTURE_RUN_SEED, undefined, this.snapshot.mode);
     const time = Math.min(seconds, sim.volume.beats * sim.secondsPerBeat + 10);
     const steps = Math.floor(time / STEP);
     const input = flags.boost ? { ...idleInput, boosting: true } : idleInput;
@@ -357,7 +361,7 @@ export class Runtime implements GameRuntime {
           if (this.snapshot.phase !== sim.phase) {
             this.publishRun({ phase: sim.phase });
             const options = this.options!;
-            if (sim.score > options.best) {
+            if (sim.mode === 'standard' && sim.score > options.best) {
               options.best = Math.floor(sim.score);
               this.view.best?.(options.best);
             }

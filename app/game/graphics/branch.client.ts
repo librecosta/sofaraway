@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { branchSpread, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SPACING, MERGE_BEAT, ROUTE_LABELS, routeSides } from '../core/branches';
+import { BRANCH_PREVIEW_BEAT, BRANCH_SPACING, ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { SECTION } from '../core/collision';
 import { BranchPath, pathFrame } from './branch-path';
@@ -87,12 +87,12 @@ export class BranchVisual {
     this.group.name = 'elsewhere-junction';
     const housing = new Quads();
     const rails = new Quads();
-    const entry = path.distanceAt(BRANCH_OPEN_BEAT);
-    const exit = path.distanceAt(MERGE_BEAT);
+    const entry = path.distanceAt(path.openBeat);
+    const exit = path.distanceAt(path.mergeBeat);
     this.sweep(housing, 'center', path.start, entry, true);
     this.sweep(housing, 'center', exit, path.end, true);
-    this.dividers(housing, BRANCH_OPEN_BEAT);
-    this.dividers(housing, MERGE_BEAT);
+    this.dividers(housing, path.openBeat);
+    this.dividers(housing, path.mergeBeat);
     for (const side of routeSides) {
       const style = styles[layout[side]];
       const color = new THREE.Color(style.color);
@@ -112,7 +112,7 @@ export class BranchVisual {
   }
 
   private sweep(target: Quads, side: RouteSide, from: number, through: number, wide: boolean) {
-    const width = (s: number) => a + (wide ? branchSpread(this.path.beatAt(s), BRANCH_PREVIEW_BEAT) : 0);
+    const width = (s: number) => a + (wide ? this.path.spreadAt(s, BRANCH_PREVIEW_BEAT) : 0);
     const count = Math.ceil((through - from) / 2.5);
     let last = from;
     let previous = profile(width(last));
@@ -188,7 +188,7 @@ export class BranchVisual {
     const material = signMaterial(texture, color.clone().lerp(new THREE.Color(0xffffff), 0.8));
     this.materials.push(material);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 1.15), material);
-    const frame = this.path.sample(this.path.distanceAt(BRANCH_OPEN_BEAT - 0.07), side, this.near);
+    const frame = this.path.sample(this.path.distanceAt(this.path.openBeat - 0.07), side, this.near);
     mesh.position.copy(frame.p).addScaledVector(frame.u, 2.28);
     mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(frame.r, frame.u, frame.f.clone().negate()));
     mesh.name = `junction-sign:${side}:${route}`;

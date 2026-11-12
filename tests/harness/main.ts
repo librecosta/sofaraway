@@ -1,6 +1,6 @@
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 import { initialSnapshot } from '../../app/game/contracts';
-import type { Diagnostics, GameOptions } from '../../app/game/contracts';
+import type { Diagnostics, GameOptions, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import { corridorLength } from '../../app/game/core/simulation';
@@ -20,12 +20,13 @@ const flags: Diagnostics = {
 let runtime: Runtime | undefined;
 let canvas: HTMLCanvasElement | undefined;
 let metrics: string | undefined;
+let best: number;
 
 const harness = {
   sectionSignals,
   shaderMismatches,
   stoppedRunSignal,
-  inspectJunction: async () => (await import('./branch')).inspectJunction(),
+  inspectJunction: async (mode?: PlayMode) => (await import('./branch')).inspectJunction(mode),
   inspectHologram: async () => (await import('./branch')).inspectHologram(),
   inspectGlassOptics: async () => (await import('./glass-optics')).inspectGlassOptics(),
   branchState() {
@@ -75,13 +76,15 @@ const harness = {
     harness.dispose();
     canvas = document.createElement('canvas');
     document.body.append(canvas);
-    runtime = new Runtime({ pointer() {}, flash() {}, debug(text) { metrics = text; } });
-    const { volumeId, difficulty, quality, volume, muted } = initialSnapshot;
-    await runtime.initialize(canvas, { volumeId, difficulty, quality, volume, muted, best: 0,
+    best = options.best ?? 0;
+    runtime = new Runtime({ pointer() {}, flash() {}, debug(text) { metrics = text; }, best(score) { best = score; } });
+    const { volumeId, difficulty, mode, quality, volume, muted } = initialSnapshot;
+    await runtime.initialize(canvas, { volumeId, difficulty, mode, quality, volume, muted, best: 0,
       diagnostics: flags, ...options });
     return runtime.getSnapshot();
   },
   snapshot: () => runtime?.getSnapshot() ?? initialSnapshot,
+  best: () => best,
   metrics: () => metrics,
   start: (silent?: boolean) => runtime?.start(silent),
   pause: () => runtime?.pause('user'),

@@ -153,9 +153,10 @@ class VolumeScene {
       }
       const beatsAway = gate.beat - sim.beat;
       const regular = sim.speed * beatsAway * sim.secondsPerBeat;
+      const projected = sim.branch?.anchor || sim.mode === 'sightseeing';
       const along = gate.route && junction ? junction.path.distanceAt(gate.beat)
-        : sim.branch?.anchor ? sim.projectTrack(gate.beat) : distance + regular;
-      const ahead = sim.branch?.anchor ? along - distance : regular;
+        : projected ? sim.projectTrack(gate.beat) : distance + regular;
+      const ahead = projected ? along - distance : regular;
       const side = gate.route && junction
         ? (gate.route === 'main' ? 'center' : junction.layout.left === gate.route ? 'left' : 'right') : null;
       if (!visual.update(sim.time, this.hue, ahead, beatsAway, gate.hit)) continue;
@@ -186,7 +187,7 @@ class VolumeScene {
     if (anchor && layout && !past) {
       if (this.junction?.path.anchor === anchor) return;
       this.junction?.dispose();
-      this.junction = new BranchVisual(new BranchPath(this.path, anchor), layout, this.tunnel.junctionShell);
+      this.junction = new BranchVisual(new BranchPath(this.path, anchor, sim.mode), layout, this.tunnel.junctionShell);
       this.scene.add(this.junction.group);
       this.tunnel.setJunction(this.junction.path);
     } else if (this.junction) {
@@ -209,7 +210,8 @@ class VolumeScene {
       this.pickup = new PickupVisual(sim.pickup.kind);
       this.scene.add(this.pickup.group);
     }
-    const distance = sim.distance + sim.speed * beatsAway * sim.secondsPerBeat;
+    const distance = sim.mode === 'sightseeing' ? sim.projectTrack(PICKUP_BEAT)
+      : sim.distance + sim.speed * beatsAway * sim.secondsPerBeat;
     const { p, r, u, f } = this.path.sample(distance, this.pickupFrame);
     const group = this.pickup.group;
     group.position.copy(p).addScaledVector(r, PICKUP_LOCAL_X).addScaledVector(u, PICKUP_LOCAL_Y);

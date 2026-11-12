@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
-import type { Difficulty, GameRuntime, GameSnapshot, QualityTier } from '../game/contracts';
+import type { Difficulty, GameRuntime, GameSnapshot, PlayMode, QualityTier } from '../game/contracts';
 import { volumeById, VOLUMES } from '../game/core/volumes';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import { readOptions, saveSetting } from '../game/runtime/settings.client';
@@ -15,7 +15,7 @@ import { SettingsPanel } from './SettingsPanel';
 
 const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
-const menuFields = ['phase', 'volumeId', 'difficulty', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result', 'message'] as const;
+const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result', 'message'] as const;
 
 function useMenuSnapshot(runtime: GameRuntime | null) {
   const previous = useRef<GameSnapshot>(initialSnapshot);
@@ -145,6 +145,11 @@ export function GameViewport() {
     if (runtime?.getSnapshot().difficulty === value) saveSetting('difficulty', value);
   }
 
+  function setMode(value: PlayMode) {
+    runtime?.setMode(value);
+    if (runtime?.getSnapshot().mode === value) saveSetting('mode', value);
+  }
+
   async function setQuality(value: QualityTier) {
     await runtime?.setQuality(value);
     if (runtime?.getSnapshot().quality !== value) return;
@@ -204,7 +209,7 @@ export function GameViewport() {
           <i className={c('fc', 'bl')} /><i className={c('fc', 'br')} />
         </div>
         <div inert={modalOpen}>
-          <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} stepVolume={stepVolume}
+          <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} chooseMode={setMode} stepVolume={stepVolume}
             start={() => void runtime?.start()} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
             share={() => void share()} fullscreen={fullscreen} />
           <GameHUD runtime={runtime} />

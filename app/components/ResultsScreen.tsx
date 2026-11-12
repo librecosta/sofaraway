@@ -11,7 +11,9 @@ export function ResultsScreen({ snapshot, restart, menu }: {
       <div className={c('center')}>
         <div className={c('eyebrow')}><i /><span id="over-title">{snapshot.result?.title ?? 'RUN TERMINATED'}</span><i /></div>
         <div className={c('over-score')} id="over-score">{snapshot.score}</div>
-        <div className={c('rank')} id="over-rank">{snapshot.result?.rank ?? 'C'}</div>
+        {snapshot.mode === 'sightseeing'
+          ? <div className={c('route-status')} id="over-mode">SIGHTSEEING</div>
+          : <div className={c('rank')} id="over-rank">{snapshot.result?.rank ?? 'C'}</div>}
         {snapshot.result?.route && <div className={c('route-status')} id="over-route">
           {ROUTE_LABELS[snapshot.result.route]} ROUTE
         </div>}

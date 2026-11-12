@@ -1,4 +1,4 @@
-import type { Difficulty, RunResult } from '../contracts';
+import type { Difficulty, PlayMode, RunResult } from '../contracts';
 import { branchDistance, branchLayout, branchSteeringWidth, BRANCH_GUIDANCE_END, BRANCH_PREVIEW_BEAT, BRANCH_SIDE_THRESHOLD, REJOIN_BEAT,
   ROUTE_GATE_MULTIPLIERS, routeCharts, selectSide, SPLIT_BEAT } from './branches';
 import type { BranchRun, RouteKind, RouteSide } from './branches';
@@ -12,6 +12,7 @@ import { LUMEN_POINTS, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_RADIU
   pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
 import type { RunPickup } from './pickups';
 import { CAPTURE_RUN_SEED } from './run-seed';
+import { sightseeingChart, sightseeingRoute, SIGHTSEEING_LIVES, SIGHTSEEING_SPEED } from './sightseeing';
 import { sectionAt } from './volumes';
 import type { GateKind, VolumeDefinition } from './volumes';
 
@@ -72,6 +73,10 @@ export class Simulation {
   private messageUntil = 0;
   private mult = 1;
   private difficulty: Difficulty = 'normal';
+  private playMode: PlayMode = 'standard';
+  private referenceBeats: number[] = [];
+  private referenceRoutes?: Readonly<Record<RouteKind, readonly RunGate[]>>;
+  private referenceProgress = 0;
   readonly secondsPerBeat: number;
 
   constructor(
@@ -82,6 +87,7 @@ export class Simulation {
   }
 
   get gatesTotal() { return this.chart.length; }
+  get mode() { return this.playMode; }
   get route() { return this.branch?.side ? this.branch.layout[this.branch.side] : null; }
   get routeGuide() {
     return this.phase === 'playing' && this.beat + 1e-9 >= BRANCH_PREVIEW_BEAT && this.beat < BRANCH_GUIDANCE_END
@@ -114,8 +120,11 @@ export class Simulation {
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
 
-  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED, pickupKind = pickupForSeed(runSeed)) {
+  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED, pickupKind = pickupForSeed(runSeed), mode: PlayMode = 'standard') {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
+    this.playMode = mode;
+    const sightseeing = mode === 'sightseeing';
+    if (sightseeing) difficulty = 'normal';
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
     const makeGate = ({ beat, kind, sector }: ChartGate, axis: Axis, route?: RouteKind): RunGate =>
@@ -143,6 +152,19 @@ export class Simulation {
       this.branchGates = null;
       this.chart = gates;
     }
+    this.referenceBeats = sightseeing ? this.chart.map(gate => gate.beat) : [];
+    this.referenceRoutes = sightseeing ? this.branchGates ?? undefined : undefined;
+    this.referenceProgress = 0;
+    if (sightseeing) {
+      this.chart = sightseeingChart(this.chart, this.volume.sections);
+      if (this.branchGates) {
+        const { main, challenge, score } = this.branchGates;
+        this.branchGates = {
+          main: sightseeingRoute(main, 'main'), challenge: sightseeingRoute(challenge, 'challenge'),
+          score: sightseeingRoute(score, 'score'),
+        };
+      }
+    }
     this.phase = 'playing';
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
     this.gatesPassed = this.gatesJudged = this.hits = this.reveal = this.judged = 0;
@@ -154,10 +176,10 @@ export class Simulation {
     this.shield = false;
     this.resonance = 0;
     this.crashDistance = 0;
-    this.lives = this.maxLives = rules.lives;
+    this.lives = this.maxLives = sightseeing ? SIGHTSEEING_LIVES : rules.lives;
     this.mult = rules.mult;
     this.distance = START_DISTANCE;
-    this.speed = CRUISE_SPEED;
+    this.speed = CRUISE_SPEED * (sightseeing ? SIGHTSEEING_SPEED : 1);
     this.boosting = false;
     this.hitTime = -Infinity;
     this.message = '';
@@ -217,7 +239,13 @@ export class Simulation {
     const elapsed = (this.beat - previousBeat) * this.secondsPerBeat;
     this.boosting = input.boosting;
     const boost = this.boosting ? BOOST_MULTIPLIER : 1;
-    const targetSpeed = (CRUISE_SPEED + Math.min(this.gatesPassed * 0.22, SPEED_BONUS)) * boost;
+    const sightseeing = this.mode === 'sightseeing';
+    // Use the full Normal chart's elapsed gates as a successful-run pace reference.
+    // Compare against the previous tick, as Standard's pass count is updated after movement.
+    while (this.referenceBeats[this.referenceProgress] <= previousBeat + 1e-9) this.referenceProgress++;
+    const speedProgress = sightseeing ? this.referenceProgress : this.gatesPassed;
+    const targetSpeed = (CRUISE_SPEED + Math.min(speedProgress * 0.22, SPEED_BONUS)) * boost
+      * (sightseeing ? SIGHTSEEING_SPEED : 1);
     this.speed += (targetSpeed - this.speed) * Math.min(1, elapsed * (boost > 1 ? 4 : 1.6));
     this.distance += this.speed * elapsed;
     this.score += this.speed * elapsed * 0.35;
@@ -260,8 +288,11 @@ export class Simulation {
       }
       if (!this.branch.side && this.beat + 1e-9 >= SPLIT_BEAT) {
         const side = selectSide(x + (camera.x - x) * at(SPLIT_BEAT));
-        const gates = this.branchGates![this.branch.layout[side]];
+        const route = this.branch.layout[side];
+        const gates = this.branchGates![route];
         this.chart.splice(this.judged, 0, ...gates);
+        const reference = this.referenceRoutes?.[route];
+        if (reference) this.referenceBeats.splice(this.referenceProgress, 0, ...reference.map(gate => gate.beat));
         this.branch = { ...this.branch, side };
       }
       if (!this.branch.exit && this.beat + 1e-9 >= REJOIN_BEAT) {

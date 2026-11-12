@@ -1,6 +1,8 @@
 import type { BranchLayout, RouteKind, RouteSide } from './core/branches';
 
 export type VolumeId = 'elsewhere' | 'drift' | 'descent' | 'orbit';
+export const playModes = ['standard', 'sightseeing'] as const;
+export type PlayMode = typeof playModes[number];
 export const difficulties = ['easy', 'normal', 'hard'] as const;
 export type Difficulty = typeof difficulties[number];
 export const qualities = ['high', 'auto', 'low'] as const;
@@ -25,6 +27,7 @@ export interface GameSnapshot {
   readonly phase: GamePhase;
   readonly volumeId: VolumeId;
   readonly difficulty: Difficulty;
+  readonly mode: PlayMode;
   readonly score: number;
   readonly lives: number;
   readonly maxLives: number;
@@ -53,6 +56,7 @@ export interface GameSnapshot {
 export interface GameOptions {
   volumeId: VolumeId;
   difficulty: Difficulty;
+  mode: PlayMode;
   quality: QualityTier;
   volume: number;
   muted: boolean;
@@ -84,6 +88,7 @@ export interface GameRuntime {
   returnToMenu(): void;
   selectVolume(id: VolumeId): Promise<void>;
   setDifficulty(value: Difficulty): void;
+  setMode(value: PlayMode): void;
   setQuality(value: QualityTier): Promise<void>;
   setVolume(value: number): void;
   setMuted(value: boolean): void;
@@ -96,6 +101,7 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   phase: 'uninitialized',
   volumeId: 'elsewhere',
   difficulty: 'normal',
+  mode: 'standard',
   score: 0,
   lives: 2,
   maxLives: 2,

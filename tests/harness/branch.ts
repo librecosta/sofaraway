@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { branchLayout, BRANCH_PREVIEW_BEAT } from '../../app/game/core/branches';
 import type { RouteSide } from '../../app/game/core/branches';
-import type { Diagnostics } from '../../app/game/contracts';
+import type { Diagnostics, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
@@ -87,7 +87,7 @@ export function inspectHologram() {
   });
 }
 
-export function inspectJunction() {
+export function inspectJunction(mode: PlayMode = 'standard') {
   const volume = volumeById('elsewhere');
   const diagnostics: Diagnostics = { fixedTime: null, autoplay: false, god: false, align: true, boost: false,
     mobileQuality: false, post: true, record: false, debug: false };
@@ -111,7 +111,7 @@ export function inspectJunction() {
     const profiles = [[0, false, 'left'], [1, false, 'right'], [0, true, 'right']] as const;
     for (const [seed, boost, side] of [...profiles, ...profiles, ...profiles]) {
       diagnostics.branchSide = side;
-      sim.start('normal', seed);
+      sim.start('normal', seed, undefined, mode);
       const advance = (beat: number) => {
         while (sim.beat + 1e-9 < beat && sim.phase === 'playing') sim.step(STEP, { ...idleInput, boosting: boost });
       };
@@ -159,7 +159,7 @@ export function inspectJunction() {
         const pos = junction.path.sample(junction.path.distanceAt(gate.beat), activeSide).p;
         gateErrors.push(pos.distanceTo(visual.meshes[0].position));
       }
-      advance(361);
+      advance(mode === 'sightseeing' ? 375 : 361);
       graphics.draw(sim, true);
       const after = graphics.metrics();
       const names = ['left', 'center', 'right'].map(side => `junction-sign:${side}:${branchLayout(seed)[side as RouteSide]}`);
