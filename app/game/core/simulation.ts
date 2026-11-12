@@ -21,7 +21,16 @@ const MENU_DISTANCE = START_DISTANCE + 140;
 const CRUISE_SPEED = 24;
 const SPEED_BONUS = 10;
 const BOOST_MULTIPLIER = 1.45;
+const BOOST_LENS_SECONDS = 0.18;
+const BOOST_LOOKAHEAD_SECONDS = 0.32;
 const GATE_PRELOAD_BEATS = 14;
+
+// Distance added to the common track to carry the junction's exit tangent into the next four beats.
+function rejoinCorrection(beat: number, slopeDifference: number) {
+  const t = clamp(beat - REJOIN_BEAT, 0, 4);
+  const u = t / 4;
+  return slopeDifference * t * (1 - u * u * (3 - 2 * u));
+}
 
 export function corridorLength(volume: VolumeDefinition) {
   return START_DISTANCE + volume.beats * 60 / volume.bpm
@@ -34,6 +43,8 @@ export interface RunGate {
   readonly open: number;
   readonly axis: Axis;
   readonly route?: RouteKind;
+  /** The crossing point in path distance, retained until the judged gate fades out. */
+  trackPosition?: number;
   judged: boolean;
   hit: boolean;
 }
@@ -53,6 +64,7 @@ export class Simulation {
   lives = 0;
   maxLives = 0;
   boosting = false;
+  boostLens = 0;
   message = '';
   result: RunResult | null = null;
   hitTime = -Infinity;
@@ -77,6 +89,7 @@ export class Simulation {
   private referenceBeats: number[] = [];
   private referenceRoutes?: Readonly<Record<RouteKind, readonly RunGate[]>>;
   private referenceProgress = 0;
+  private cruiseSpeed = CRUISE_SPEED;
   readonly secondsPerBeat: number;
 
   constructor(
@@ -102,19 +115,23 @@ export class Simulation {
       // Crash/recoil is physical even if the authoritative beat stops inside the junction.
       return branchDistance(anchor, this.beat) + (this.phase === 'playing' ? 0 : this.distance - this.crashDistance);
     }
-    const t = Math.max(0, this.beat - REJOIN_BEAT);
-    const u = Math.min(1, t / 4);
     return branchDistance(anchor, REJOIN_BEAT) + this.distance - exit.distance
-      + (anchor.unitsPerBeat - exit.unitsPerBeat) * t * (1 - u * u * (3 - 2 * u));
+      + rejoinCorrection(this.beat, anchor.unitsPerBeat - exit.unitsPerBeat);
   }
+
   projectTrack(beat: number) {
     const { anchor, exit } = this.branch ?? {};
-    if (anchor && !exit) return branchDistance(anchor, beat);
-    const t = Math.max(0, this.beat - REJOIN_BEAT);
-    const u = Math.min(1, t / 4);
-    const correction = anchor && exit
-      ? (anchor.unitsPerBeat - exit.unitsPerBeat) * (1 - u * u * (3 - 2 * u) - u * 6 * u * (1 - u)) : 0;
-    return this.trackDistance + (this.speed * this.secondsPerBeat + correction) * (beat - this.beat);
+    if (anchor && beat <= REJOIN_BEAT) return branchDistance(anchor, beat);
+    const originBeat = anchor && !exit ? REJOIN_BEAT : this.beat;
+    const seconds = Math.max(0, beat - originBeat) * this.secondsPerBeat;
+    // The player can release Boost on the next step. Integrate the transient velocity
+    // over a short horizon instead of predicting it will last until every visible gate.
+    const boostSeconds = -BOOST_LOOKAHEAD_SECONDS * Math.expm1(-seconds / BOOST_LOOKAHEAD_SECONDS);
+    const travel = this.cruiseSpeed * seconds + (this.speed - this.cruiseSpeed) * boostSeconds;
+    if (!anchor) return this.distance + travel;
+    const origin = branchDistance(anchor, REJOIN_BEAT) + (exit ? this.distance - exit.distance : 0);
+    const exitSlope = exit?.unitsPerBeat ?? this.speed * this.secondsPerBeat;
+    return origin + travel + rejoinCorrection(beat, anchor.unitsPerBeat - exitSlope);
   }
   private crashDistance = 0;
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
@@ -180,7 +197,9 @@ export class Simulation {
     this.mult = rules.mult;
     this.distance = START_DISTANCE;
     this.speed = CRUISE_SPEED * (sightseeing ? SIGHTSEEING_SPEED : 1);
+    this.cruiseSpeed = this.speed;
     this.boosting = false;
+    this.boostLens = 0;
     this.hitTime = -Infinity;
     this.message = '';
     this.result = null;
@@ -195,6 +214,7 @@ export class Simulation {
     this.distance = MENU_DISTANCE;
     this.time = this.beat = 0;
     this.boosting = false;
+    this.boostLens = 0;
     this.hitTime = -Infinity;
     this.pickup = null;
     this.pickupTime = -Infinity;
@@ -234,6 +254,7 @@ export class Simulation {
     const previousBeat = this.beat;
     const previousWidth = this.steeringWidth;
     const previousDistance = this.distance;
+    const previousTrack = this.trackDistance;
     const previousSpeed = this.speed;
     this.beat = Math.min(this.volume.beats, this.beat + dt / this.secondsPerBeat);
     const elapsed = (this.beat - previousBeat) * this.secondsPerBeat;
@@ -244,9 +265,12 @@ export class Simulation {
     // Compare against the previous tick, as Standard's pass count is updated after movement.
     while (this.referenceBeats[this.referenceProgress] <= previousBeat + 1e-9) this.referenceProgress++;
     const speedProgress = sightseeing ? this.referenceProgress : this.gatesPassed;
-    const targetSpeed = (CRUISE_SPEED + Math.min(speedProgress * 0.22, SPEED_BONUS)) * boost
-      * (sightseeing ? SIGHTSEEING_SPEED : 1);
-    this.speed += (targetSpeed - this.speed) * Math.min(1, elapsed * (boost > 1 ? 4 : 1.6));
+    const cruiseTarget = CRUISE_SPEED + Math.min(speedProgress * 0.22, SPEED_BONUS);
+    const speedScale = sightseeing ? SIGHTSEEING_SPEED : 1;
+    const speedDamping = Math.min(1, elapsed * (boost > 1 ? 4 : 1.6));
+    this.speed += (cruiseTarget * boost * speedScale - this.speed) * speedDamping;
+    this.cruiseSpeed += (cruiseTarget * speedScale - this.cruiseSpeed) * speedDamping;
+    this.boostLens += ((this.boosting ? 1 : 0) - this.boostLens) * -Math.expm1(-elapsed / BOOST_LENS_SECONDS);
     this.distance += this.speed * elapsed;
     this.score += this.speed * elapsed * 0.35;
 
@@ -309,6 +333,7 @@ export class Simulation {
     while (this.chart[this.judged]?.beat <= this.beat + 1e-9) {
       const gate = this.chart[this.judged++];
       const fraction = clamp((gate.beat - previousBeat) / (this.beat - previousBeat), 0, 1);
+      gate.trackPosition = previousTrack + (this.trackDistance - previousTrack) * fraction;
       this.judge(gate, x + (camera.x - x) * fraction, y + (camera.y - y) * fraction);
       if (this.lives === 0) {
         const overshoot = this.speed * (this.beat - gate.beat) * this.secondsPerBeat;

@@ -22,6 +22,7 @@ import { Tunnel } from './tunnel.client';
 const frame = () => ({
   p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3(),
 });
+const BASE_FOV = 76;
 
 export class UnsupportedGraphics extends Error {}
 
@@ -29,7 +30,7 @@ class ShaderFailure extends Error {}
 
 class VolumeScene {
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(76, 1, 0.1, 420);
+  readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
   readonly tunnel: Tunnel;
   readonly path: ReturnType<typeof buildPath>;
   readonly hologram?: RouteHologram;
@@ -117,7 +118,12 @@ class VolumeScene {
     }
     this.updatePickup(sim);
 
+    if (sim.phase === 'playing') {
+      const lensPulse = sim.mode === 'standard' ? (0.5 + 0.5 * Math.cos(sim.beat * Math.PI * 2)) ** 2 * 0.65 : 0;
+      this.setFov(BASE_FOV + lensPulse + sim.boostLens * 7 + Math.min(sim.speed, 56) * 0.045 + width);
+    }
     if (sim.phase === 'menu') {
+      this.setFov(BASE_FOV);
       this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15);
       return { focus: null, locked: false };
     }
@@ -135,11 +141,6 @@ class VolumeScene {
       this.tunnel.setHue((this.hue + 1) % 1);
       this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
-      if (sim.phase === 'playing' || previousPhase === 'playing') {
-        this.camera.fov = 76 + pulse * 3.4
-          + (sim.phase === 'playing' ? (sim.boosting ? 7 : 0) + Math.min(sim.speed, 56) * 0.045 + width : 0);
-        this.camera.updateProjectionMatrix();
-      }
     }
 
     let focus = 46;
@@ -152,11 +153,9 @@ class VolumeScene {
         this.scene.add(...visual.meshes);
       }
       const beatsAway = gate.beat - sim.beat;
-      const regular = sim.speed * beatsAway * sim.secondsPerBeat;
-      const projected = sim.branch?.anchor || sim.mode === 'sightseeing';
       const along = gate.route && junction ? junction.path.distanceAt(gate.beat)
-        : projected ? sim.projectTrack(gate.beat) : distance + regular;
-      const ahead = projected ? along - distance : regular;
+        : gate.trackPosition ?? sim.projectTrack(gate.beat);
+      const ahead = along - distance;
       const side = gate.route && junction
         ? (gate.route === 'main' ? 'center' : junction.layout.left === gate.route ? 'left' : 'right') : null;
       if (!visual.update(sim.time, this.hue, ahead, beatsAway, gate.hit)) continue;
@@ -179,6 +178,12 @@ class VolumeScene {
     }
     return { focus, locked: sim.phase === 'playing' && !!aimed
       && canPass(aimed.kind, aimed.open, aimed.axis, x, y) };
+  }
+
+  private setFov(fov: number) {
+    if (this.camera.fov === fov) return;
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
   }
 
   private updateJunction(sim: Simulation) {
@@ -210,8 +215,7 @@ class VolumeScene {
       this.pickup = new PickupVisual(sim.pickup.kind);
       this.scene.add(this.pickup.group);
     }
-    const distance = sim.mode === 'sightseeing' ? sim.projectTrack(PICKUP_BEAT)
-      : sim.distance + sim.speed * beatsAway * sim.secondsPerBeat;
+    const distance = sim.distance + sim.speed * beatsAway * sim.secondsPerBeat;
     const { p, r, u, f } = this.path.sample(distance, this.pickupFrame);
     const group = this.pickup.group;
     group.position.copy(p).addScaledVector(r, PICKUP_LOCAL_X).addScaledVector(u, PICKUP_LOCAL_Y);

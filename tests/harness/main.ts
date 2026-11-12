@@ -29,6 +29,7 @@ const harness = {
   inspectJunction: async (mode?: PlayMode) => (await import('./branch')).inspectJunction(mode),
   inspectHologram: async () => (await import('./branch')).inspectHologram(),
   inspectGlassOptics: async () => (await import('./glass-optics')).inspectGlassOptics(),
+  inspectCameraAndGates: async () => (await import('./camera-gates')).inspectCameraAndGates(),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
