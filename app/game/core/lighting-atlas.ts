@@ -1,6 +1,7 @@
 import type { PlayMode } from '../contracts';
 import { SECTION } from './collision';
 import { lightingWindows } from './corridor-composition';
+import type { AfterglowStage, OutroPlan } from './encore';
 import { ease } from './lighting-score';
 import { referenceFor } from './reference-track';
 import type { VolumeDefinition } from './volumes';
@@ -73,6 +74,7 @@ export interface LightingZone {
   readonly margin: number;
   readonly dual: boolean;
   readonly lights: readonly CorridorLight[];
+  readonly afterglow?: AfterglowStage;
 }
 
 export const FLOW_WAVELENGTH = 60;
@@ -161,6 +163,13 @@ export function makeLightingAtlas(volume: VolumeDefinition, mode: PlayMode): rea
   return lightingWindows.map(([kind, lo, hi]) => makeZone(kind, reference.station(lo, mode), reference.station(hi, mode), mode));
 }
 
+export function makeAfterglowAtlas(plan: OutroPlan): readonly LightingZone[] {
+  return plan.afterglow.map(({ stage, start, end }) => {
+    const kind = stage === 'flow' ? 'connected-flow' : stage === 'luminous' ? 'triple-helix' : 'pure-frame';
+    return { ...makeZone(kind, start, end, plan.mode), dual: false, afterglow: stage };
+  });
+}
+
 export function corridorAt(atlas: readonly LightingZone[], station: number) {
   return atlas.find(zone => zone.start <= station && station < zone.end);
 }
@@ -168,7 +177,7 @@ export function corridorAt(atlas: readonly LightingZone[], station: number) {
 /** Reduce competing structural light inside an installation while keeping its silhouette. */
 export function frameLightLevel(atlas: readonly LightingZone[], station: number) {
   const zone = corridorAt(atlas, station);
-  if (!zone || zone.kind === 'pure-frame') return 1;
-  const attenuation = zone.kind === 'helical-wash' ? .24 : .34;
+  if (!zone || (zone.kind === 'pure-frame' && !zone.afterglow)) return 1;
+  const attenuation = zone.afterglow === 'release' ? .40 : zone.afterglow === 'closing' ? .21 : zone.kind === 'helical-wash' ? .24 : .34;
   return 1 - attenuation * zoneFade(station, zone.start, zone.end, zone.margin);
 }

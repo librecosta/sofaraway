@@ -90,6 +90,8 @@ body:has(.page) { margin: 0; background: #081014; }
 .scenicControls select { width: 100%; min-height: 2.3rem; background: #081014; color: var(--text);
   border: 1px solid var(--rule); padding: .3rem .42rem; font: inherit; }
 .scenicControls input { width: 100%; accent-color: #f2d992; }
+.scenicControls .seed { min-height: 2.3rem; background: #081014; color: var(--text);
+  border: 1px solid var(--rule); padding: .3rem .42rem; font: inherit; }
 .scenicControls a { font-size: .87rem; }
 .scenicControls button { margin-top: 0; }
 .curveControls { display: flex; flex-wrap: wrap; gap: .4rem; margin: .8rem 0 0;

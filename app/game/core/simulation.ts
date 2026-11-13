@@ -6,6 +6,8 @@ import { chartFor, difficultySettings } from './chart';
 import type { ChartGate } from './chart';
 import { canPass, clamp, lanePoint, opening, SECTION } from './collision';
 import type { Axis } from './collision';
+import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
+import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
 import { steer } from './input';
 import type { InputFrame } from './input';
 import { LUMEN_POINTS, PICKUP_APPEAR_BEAT, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_RADIUS,
@@ -27,7 +29,7 @@ const MENU_DISTANCE = START_DISTANCE + 140;
 const BOOST_LENS_SECONDS = 0.18;
 export const GATE_LOAD_AHEAD = 210;
 const GATE_ALIGN_AHEAD = 145;
-const GATE_RELEASE_BEHIND = 8;
+export const GATE_RELEASE_BEHIND = 8;
 const STATION_EPSILON = 1e-8;
 
 export interface RunGate {
@@ -75,6 +77,11 @@ export class Simulation {
   pickupPreviewStation = Infinity;
   camera = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
   previewGates: RunGate[] = [];
+  previewEncore: EncoreGate[] = [];
+  outroPlan?: OutroPlan;
+  encore?: EncoreResult;
+  private encoreCursor = 0;
+  private encoreReveal = 0;
   private chart: RunGate[] = [];
   private reveal = 0;
   private judged = 0;
@@ -105,6 +112,9 @@ export class Simulation {
   }
 
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
+  get mainGates(): readonly RunGate[] { return this.chart; }
+  get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
+  private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && !!this.branch?.side; }
   get mode() { return this.playMode; }
   get path() {
     const mode = this.volume.id === 'elsewhere' ? this.mode : 'standard';
@@ -202,6 +212,11 @@ export class Simulation {
     this.gatesPassed = this.gatesJudged = this.gatesNeutralized = this.hits = this.reveal = this.judged = 0;
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
     this.previewGates = [];
+    this.previewEncore = [];
+    this.encore = undefined;
+    this.encoreCursor = this.encoreReveal = 0;
+    this.outroPlan = elsewhere ? makeOutroPlan(this.volume, mode, runSeed,
+      Math.max(...this.chart.map(gate => gate.worldStation))) : undefined;
     this.difficulty = difficulty;
     this.pickup = elsewhere ? { kind: pickupKind, status: 'pending' } : null;
     this.pickupStation = elsewhere ? station(PICKUP_BEAT) : Infinity;
@@ -226,6 +241,9 @@ export class Simulation {
   returnToMenu() {
     this.phase = 'menu';
     this.previewGates = [];
+    this.previewEncore = [];
+    this.outroPlan = undefined;
+    this.encore = undefined;
     this.distance = MENU_DISTANCE;
     this.time = this.beat = 0;
     this.boosting = false;
@@ -293,7 +311,7 @@ export class Simulation {
       camera.tx *= scale;
     }
     [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt, width);
-    const next = this.chart[this.judged];
+    const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
     if (this.options.align) {
       if (this.branch && !this.branch.side && this.routeGuide && (!next || next.worldStation >= this.junctionPath!.end)) {
         const side = this.options.branchSide;
@@ -311,9 +329,10 @@ export class Simulation {
     const travel = this.distance - previousDistance;
     while (travel > 0) {
       const gate = this.chart[this.judged];
+      const encore = this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined;
       const pickup = this.pickup?.status === 'pending' ? this.pickupStation : Infinity;
       const split = this.branch && !this.branch.side ? this.junctionPath!.split : Infinity;
-      const station = Math.min(gate?.routeStation ?? Infinity, pickup, split);
+      const station = Math.min(gate?.routeStation ?? Infinity, pickup, split, encore?.routeStation ?? Infinity);
       // The cursor consumes each event once, including the inclusive end of the tick.
       if (!(previousDistance < station && station <= this.distance + STATION_EPSILON)) break;
       const fraction = clamp((station - previousDistance) / travel, 0, 1);
@@ -327,8 +346,17 @@ export class Simulation {
         this.chooseRoute(selectSide(localX));
         continue;
       }
+      if (encore && station === encore.routeStation) {
+        this.encoreCursor++;
+        this.judgeEncore(encore, localX, localY, tickStart + elapsed * fraction, neutralize);
+        continue;
+      }
       this.judged++;
       this.judge(gate, localX, localY, tickStart + elapsed * fraction, neutralize);
+      if (this.outroPlan && this.mainComplete && this.beat + 1e-9 < this.volume.beats) {
+        this.message = this.mode === 'standard' ? 'MAIN COMPLETE · ENCORE AHEAD' : 'MAIN COMPLETE';
+        this.messageUntil = this.time + 1.3;
+      }
       if (this.lives === 0) {
         this.score -= Math.max(0, this.distance - station) * 0.35;
         this.distance = station;
@@ -339,6 +367,7 @@ export class Simulation {
     }
     this.preloadGates();
     while (this.previewGates[0]?.routeStation < this.distance - GATE_RELEASE_BEHIND) this.previewGates.shift();
+    while (this.previewEncore[0]?.routeStation < this.distance - GATE_RELEASE_BEHIND) this.previewEncore.shift();
     if (this.phase === 'playing' && this.beat + 1e-9 >= this.volume.beats) {
       this.beat = this.volume.beats;
       this.finish('ESCAPED');
@@ -352,6 +381,7 @@ export class Simulation {
       ...this.branchGates![layout[side]], ...this.suffixBySide![side]);
     this.previewGates = this.previewGates.filter(gate => gate.worldStation < this.junctionPath!.end);
     this.reveal = Math.min(this.reveal, this.judged);
+    for (const gate of this.outroPlan?.gates ?? []) gate.routeStation = this.junctionPath!.arcAt(gate.worldStation, side);
   }
 
   private resolvePickup(pickup: RunPickup, x: number, y: number) {
@@ -381,6 +411,24 @@ export class Simulation {
     while (this.chart[this.reveal]?.routeStation <= through) {
       this.previewGates.push(this.chart[this.reveal++]);
     }
+    const encore = this.branch?.side ? this.outroPlan?.gates : undefined;
+    while (encore && encore[this.encoreReveal]?.routeStation <= through) {
+      this.previewEncore.push(encore[this.encoreReveal++]);
+    }
+  }
+
+  private judgeEncore(gate: EncoreGate, x: number, y: number, crossingTime: number, neutralize: boolean) {
+    gate.judged = true;
+    gate.crossedAt = crossingTime;
+    gate.neutralized = neutralize;
+    gate.passed = !neutralize && (this.options.god === true || canPass(gate.kind, gate.open, gate.axis, x, y));
+    const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
+    gate.clean = gate.passed && Math.hypot(x - lx, y - ly) < CLEAN_RADIUS;
+    this.encore = recordEncore(gate, this.encore);
+    if (gate.passed) {
+      this.message = gate.clean ? 'ENCORE CLEAN +300' : 'ENCORE +200';
+      this.messageUntil = this.time + .65;
+    }
   }
 
   private judge(gate: RunGate, x: number, y: number, crossingTime: number, neutralize: boolean) {
@@ -401,7 +449,7 @@ export class Simulation {
       const gatePoints = 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05) * routeMult;
       this.score += gatePoints;
       let cleanPoints = 0;
-      if (Math.hypot(x - lx, y - ly) < 0.42 * 2.2) {
+      if (Math.hypot(x - lx, y - ly) < CLEAN_RADIUS) {
         cleanPoints = 150 * this.mult * routeMult;
         this.score += cleanPoints;
         this.message = 'CLEAN ×' + this.combo;
@@ -434,7 +482,8 @@ export class Simulation {
       ? accuracy >= 0.985 ? 'S' : accuracy >= 0.93 ? 'A' : accuracy >= 0.82 ? 'B' : 'C'
       : accuracy >= 0.93 ? 'B' : 'C';
     this.result = Object.freeze({ title, accuracy, rank, planned, encountered: this.gatesJudged, passed: this.gatesPassed,
-      unreached: planned - this.gatesJudged, neutralized: this.gatesNeutralized, ...(this.route ? { route: this.route } : {}) });
+      unreached: planned - this.gatesJudged, neutralized: this.gatesNeutralized, ...(this.route ? { route: this.route } : {}),
+      ...(this.encore ? { encore: this.encore } : {}) });
     this.phase = 'crash';
     this.settleAt = this.time + 0.7;
     this.recoil = title === 'ESCAPED' ? 0 : 0.55;

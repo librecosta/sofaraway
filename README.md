@@ -83,6 +83,8 @@ The page renders all four worlds, every gate type and the floating pickups.
 or Sightseeing. Choose a fixed station or one of the five S-curve views, then
 scrub or play the in-game lighting score. Staggered Cells and Connected Flow
 include a two-color comparison.
+**End Sequence Studio** at `/debug/#outro` previews the last main gate, Encore,
+Afterglow and results. Seek by world station or fly a ten-second segment.
 **Soundtrack** exports a WAV for the selected
 volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
 

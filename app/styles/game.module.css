@@ -319,6 +319,11 @@ html,body{
 }
 :global(#over) .btn.start{ position:static; transform:none; margin-top:5.5vh; }
 :global(#over) .btn.tiny{ margin-top:1.8vh; }
+.encore-stats{ margin-top:1.1rem; }
+.result-preview.screen{ position:relative; min-height:27rem; color:#e6f2f0; background:#080f15;
+  padding:1.5rem; --ink:#e6f2f0; --display:"Chakra Petch",system-ui,sans-serif; }
+.result-preview .btn.start{ position:static; transform:none; margin-top:1.5rem; }
+.result-preview .btn.tiny{ margin-top:.6rem; }
 
 /* ================================================================== *
    OVERLAYS / MODAL

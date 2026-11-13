@@ -114,6 +114,7 @@ interface Bucket {
   from: number;
   to: number;
   mesh: THREE.InstancedMesh;
+  afterglow: boolean;
 }
 
 /** The game and Debug share these fixed, wall-mounted batches and the same uniforms. */
@@ -147,14 +148,10 @@ export class CorridorLights {
   zone: CorridorLightingKind = 'pure-frame';
   hue = 0;
   reduced = false;
+  private outroAtlas: readonly LightingZone[] = [];
+  afterglow?: LightingZone['afterglow'];
 
-  constructor(path: Path, private readonly atlas: readonly LightingZone[], mode: PlayMode) {
-    const flow = atlas.find(zone => zone.kind === 'connected-flow');
-    if (flow) {
-      const frame = path.sample(flow.start);
-      this.uniforms.flowStart.value.copy(frame.p);
-      this.uniforms.flowForward.value.copy(frame.f);
-    }
+  constructor(private readonly path: Path, private readonly atlas: readonly LightingZone[], mode: PlayMode) {
     const wash = atlas.find(zone => zone.kind === 'helical-wash');
     if (wash) {
       const frame = path.sample(wash.start);
@@ -164,6 +161,22 @@ export class CorridorLights {
       this.uniforms.washUp.value.copy(frame.u);
       this.uniforms.washRange.value.set(washPitch(mode), wash.end - wash.start, wash.margin);
     }
+    this.addZones(atlas);
+  }
+
+  setAfterglow(atlas: readonly LightingZone[]) {
+    for (let i = this.buckets.length - 1; i >= 0; i--) {
+      const bucket = this.buckets[i];
+      if (!bucket.afterglow) continue;
+      this.group.remove(bucket.mesh);
+      bucket.mesh.dispose();
+      this.buckets.splice(i, 1);
+    }
+    this.outroAtlas = atlas;
+    this.addZones(atlas);
+  }
+
+  private addZones(atlas: readonly LightingZone[]) {
     for (const zone of atlas) {
       const batches = new Map<number, CorridorLight[]>();
       for (const light of zone.lights) {
@@ -172,13 +185,19 @@ export class CorridorLights {
         if (batch) batch.push(light);
         else batches.set(key, [light]);
       }
-      for (const fixtures of batches.values()) this.addBatch(path, fixtures, zone.kind);
+      const flow = zone.kind === 'connected-flow' ? this.path.sample(zone.start) : undefined;
+      for (const fixtures of batches.values()) this.addBatch(fixtures, zone, flow);
     }
   }
 
-  private addBatch(path: Path, lights: readonly CorridorLight[], kind: CorridorLightingKind) {
+  private addBatch(lights: readonly CorridorLight[], zone: LightingZone, flow?: ReturnType<Path['sample']>) {
     const mesh = new THREE.InstancedMesh(this.quad, this.material, lights.length);
-    mesh.name = 'elsewhere-' + kind;
+    mesh.name = 'elsewhere-' + zone.kind;
+    if (flow) mesh.onBeforeRender = () => {
+      this.uniforms.flowStart.value.copy(flow.p);
+      this.uniforms.flowForward.value.copy(flow.f);
+      this.material.uniformsNeedUpdate = true;
+    };
     const entry = pathFrame(), exit = pathFrame(), matrix = new THREE.Matrix4();
     const x = new THREE.Vector3(), y = new THREE.Vector3(), z = new THREE.Vector3();
     const origin = new THREE.Vector3(), endpoint = new THREE.Vector3();
@@ -187,8 +206,8 @@ export class CorridorLights {
     let from = Infinity, to = -Infinity;
     for (const [i, light] of lights.entries()) {
       from = Math.min(from, light.start); to = Math.max(to, light.end);
-      path.sample(light.start, entry);
-      path.sample(light.end, exit);
+      this.path.sample(light.start, entry);
+      this.path.sample(light.end, exit);
       const [lo, hi] = light.entry;
       x.copy(entry.r).multiplyScalar(hi.x - lo.x).addScaledVector(entry.u, hi.y - lo.y);
       midpoint(origin, entry, light.entry);
@@ -204,14 +223,15 @@ export class CorridorLights {
     }
     mesh.computeBoundingSphere();
     mesh.visible = false;
-    this.buckets.push({ mesh, from, to });
+    this.buckets.push({ mesh, from, to, afterglow: !!zone.afterglow });
     this.group.add(mesh);
   }
 
-  update(station: number, beat: number, override?: LightPattern) {
+  update(station: number, beat: number, override?: LightPattern, closing = false) {
     const reduced = this.reduced = this.reduce?.matches ?? false;
-    const state = lightingState(beat, reduced);
-    const active = corridorAt(this.atlas, station);
+    const state = lightingState(beat, reduced, closing);
+    const active = corridorAt(this.atlas, station) ?? corridorAt(this.outroAtlas, station);
+    this.afterglow = active?.afterglow;
     this.zone = active?.kind ?? 'pure-frame';
     this.groups = active?.dual ? 2 : 0;
     this.hue = state.hue;
@@ -229,8 +249,8 @@ export class CorridorLights {
     alternateHue.value.setHSL(dual ? mixHue(state.hue, state.hue + .27, .22 * (.5 + .5 * breath(beat, 8))) : state.hue,
       state.saturation, .5);
     flowPhase.value = (beat % 4) / 4;
-    pulse.value = .84 + .07 * state.breathing + .12 * state.energy * state.pulse;
-    motion.value = reduced ? 0 : 1;
+    pulse.value = (.84 + .07 * state.breathing + .12 * state.energy * state.pulse) * state.level;
+    motion.value = reduced ? 0 : state.level;
     this.fog.copy(this.sky).lerp(this.scratch.setHSL(state.hue, .61 * state.saturation, .12), .56).multiplyScalar(.041);
     return state;
   }

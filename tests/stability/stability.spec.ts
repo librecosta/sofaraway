@@ -4,6 +4,7 @@ import { VOLUMES } from '../../app/game/core/volumes';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
+import { OutroInspection, outroView } from '../../app/game/debug/outro-inspection';
 import type { QualityTier, VolumeId } from '../../app/game/contracts';
 import type {} from '../harness/stability';
 
@@ -39,6 +40,89 @@ async function openHarness(page: Page, build = candidate) {
   await page.goto(build.harness + '/?stability');
   await page.waitForFunction(() => !!window.stability);
 }
+
+test('Encore and Afterglow frame budgets against the same baseline stations @outro-perf', async ({ browser }) => {
+  const standard = new OutroInspection('standard', 0, 'main');
+  const tour = new OutroInspection('sightseeing', 0, 'main');
+  const views = [
+    ['main-last', standard, 'main-last', false, false], ['encore-entry', standard, 'encore-first', false, false],
+    ['encore-middle', standard, 'encore-middle', false, false], ['encore-final', standard, 'encore-final', false, false],
+    ['afterglow', standard, 'afterglow-peak', false, false], ['sustained-boost', standard, 'encore-middle', true, false],
+    ['sightseeing', tour, 'afterglow-peak', false, false], ['debug-seek', standard, 'encore-final', false, true],
+    ['debug-flight', standard, 'encore-first', true, true],
+  ] as const;
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [name, adapter, preset, fly, inspect] of views) {
+        const { station } = outroView(adapter.plan, preset);
+        const result = await page.evaluate(([station, mode, fly, inspection]) => window.stability.fixedGlass(416, 'high', true,
+          mode, 'center', 240, !fly, { station, fly, inspection }), [station, adapter.plan.mode, fly, inspect && build === candidate] as const);
+        log('outro-frame', { name, build: build.label, sample, station, ...result });
+        expect(result.glError).toBe(0);
+        expect(result.phase).toBe('playing');
+        if (build === candidate) {
+          expect(result.metrics.encoreMeshes).toBeLessThanOrEqual(3);
+          expect(result.metrics.scenicLights!.fixtures).toBeLessThanOrEqual(280);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('ending remains legible through the light cue and leaves the other volumes pixel-identical @outro-visual', async ({ browser }, info) => {
+  const page = await browser.newPage({ viewport: { width: 1100, height: 760 }, deviceScaleFactor: 1 });
+  const errors = captureErrors(page);
+  try {
+    await page.goto(candidate.client + '/debug/#outro');
+    const studio = page.locator('#outro');
+    await studio.getByRole('button', { name: 'Open live ending' }).click();
+    const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE ending' });
+    const captures = [['Main Last Gate', 'main'], ['Transition', 'transition'], ['Encore First Gate', 'encore'],
+      ['Afterglow Entry', 'release'], ['Afterglow Peak', 'luminous'], ['Music End', 'closing']] as const;
+    for (const [label, name] of captures) {
+      await studio.getByRole('button', { name: label, exact: true }).click();
+      if (name === 'closing') await expect(canvas).toHaveAttribute('data-beat', '448.000');
+      if (['release', 'luminous', 'closing'].includes(name)) await expect(canvas).toHaveAttribute('data-afterglow', name);
+      const shot = await canvas.screenshot({ path: info.outputPath(`${name}.png`) });
+      const luma = await page.evaluate(async encoded => {
+        const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + encoded)).blob());
+        const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!;
+        context.drawImage(bitmap, 0, 0);
+        const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        bitmap.close();
+        let sum = 0, bright = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const y = .2126 * data[i] + .7152 * data[i + 1] + .0722 * data[i + 2];
+          sum += y;
+          if (y >= 235) bright++;
+        }
+        return { mean: sum / (data.length / 4), bright: bright / (data.length / 4) };
+      }, shot.toString('base64'));
+      log('outro-image', { name, ...luma });
+      expect(luma.mean).toBeGreaterThan(5);
+      expect(luma.bright).toBeLessThan(.04);
+    }
+    await studio.getByLabel('Play mode').selectOption('sightseeing');
+    await studio.getByRole('button', { name: 'Afterglow Peak' }).click();
+    await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
+    await canvas.screenshot({ path: info.outputPath('sightseeing.png') });
+    if (haveReference) for (const id of ['drift', 'descent', 'orbit']) {
+      const shots: Buffer[] = [];
+      for (const build of [reference, candidate]) {
+        await page.goto(`${build.client}/?vol=${id}&t=83&q=high&align=1&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox, #cursor { display:none; }' });
+        shots.push(await page.locator('#gl').screenshot());
+      }
+      expect(shots[0].equals(shots[1]), id).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 
 async function productionStartup(browser: Browser, url: string) {
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });

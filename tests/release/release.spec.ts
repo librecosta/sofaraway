@@ -145,14 +145,21 @@ test('hydration loads the game on demand and keeps volume history working', asyn
 
 test('a failed runtime download can be retried from the fallback', async ({ page }) => {
   let attempts = 0;
-  await page.route(runtimeChunk, route => ++attempts === 1 ? route.abort() : route.continue());
+  let available = false;
+  await page.route(runtimeChunk, route => {
+    attempts++;
+    return available ? route.continue() : route.abort();
+  });
   await page.goto('/?vol=orbit&q=low');
   const fallback = page.getByRole('dialog', { name: 'GAME UNAVAILABLE' });
   await expect(fallback).toBeVisible();
+  const failedAttempts = attempts;
+  expect(failedAttempts).toBeGreaterThan(0);
+  available = true;
   await fallback.getByRole('button', { name: 'TRY AGAIN' }).click();
   await expect(page.locator(start)).toBeEnabled();
   await expect(page.locator('#vol-name')).toContainText('ORBIT');
-  expect(attempts).toBe(2);
+  expect(attempts).toBeGreaterThan(failedAttempts);
 });
 
 test('missing WebGL2 keeps a usable fallback and Retry can recover', async ({ page }) => {

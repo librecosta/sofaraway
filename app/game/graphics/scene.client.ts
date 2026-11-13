@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { canPass, playerViewOffset } from '../core/collision';
 import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
 import { modeScale } from '../core/reference-track';
-import { makeLightingAtlas } from '../core/lighting-atlas';
+import { makeAfterglowAtlas, makeLightingAtlas } from '../core/lighting-atlas';
 import { ease } from '../core/lighting-score';
 import type { RunGate, Simulation } from '../core/simulation';
+import type { EncoreGate, OutroPlan } from '../core/encore';
 import type { VolumeDefinition } from '../core/volumes';
 import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
@@ -28,6 +29,11 @@ const frame = () => ({
   p: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3(),
 });
 const BASE_FOV = 76;
+type SceneGate = RunGate | EncoreGate;
+export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance' | 'beat' | 'time' | 'phase' |
+  'mode' | 'route' | 'branch' | 'branchGates' | 'junctionPath' | 'steeringWidth' | 'routeGuide' | 'routeSide' |
+  'previewGates' | 'previewEncore' | 'outroPlan' | 'speed' | 'boostLens' | 'boosting' | 'hitTime' |
+  'pickup' | 'pickupVisible' | 'pickupStation' | 'pickupPreviewStation'>;
 
 export class UnsupportedGraphics extends Error {}
 
@@ -42,7 +48,8 @@ class VolumeScene {
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly routeFog = new THREE.Color();
   private readonly gateGeometries = new GateGeometries();
-  private readonly visuals = new Map<RunGate, GateVisual>();
+  private readonly visuals = new Map<SceneGate, GateVisual>();
+  private outro?: OutroPlan;
   private sky?: THREE.CanvasTexture | null;
   private readonly cameraFrame = frame();
   private readonly gateFrame = frame();
@@ -118,14 +125,21 @@ class VolumeScene {
 
   private preparedGate?: GateVisual;
 
-  update(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
+  update(sim: SceneState, deterministic: boolean, lighting?: LightingPreview) {
     const { x, y, roll } = sim.camera;
     const distance = lighting?.station ?? sim.trackDistance;
     this.updateJunction(sim);
+    const plan = sim.outroPlan && distance + 650 >= sim.outroPlan.afterglowStart ? sim.outroPlan : undefined;
+    if (this.scenic && this.outro !== plan) {
+      this.outro = plan;
+      const atlas = this.outro ? makeAfterglowAtlas(this.outro) : [];
+      this.tunnel.setAfterglow(atlas);
+      this.scenic.setAfterglow(atlas);
+    }
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.scenic) {
       const lightBeat = lighting?.beat ?? sim.beat;
-      const state = this.scenic.update(distance, lightBeat, lighting?.pattern);
+      const state = this.scenic.update(distance, lightBeat, lighting?.pattern, sim.phase !== 'menu');
       const { base, sky, ground } = this.scenic;
       this.hue = state.hue;
       this.saturation = state.saturation;
@@ -155,9 +169,10 @@ class VolumeScene {
     const previousPhase = this.phase;
     this.phase = sim.phase;
 
-    const previews = junction && sim.routeGuide && sim.branch && !sim.branch.side && sim.branchGates
+    const mainPreviews = junction && sim.routeGuide && sim.branch && !sim.branch.side && sim.branchGates
       ? [...sim.previewGates, sim.branchGates.main[0], sim.branchGates.challenge[0], sim.branchGates.score[0]]
       : sim.previewGates;
+    const previews: readonly SceneGate[] = sim.previewEncore.length ? [...mainPreviews, ...sim.previewEncore] : mainPreviews;
     for (const [gate, visual] of this.visuals) {
       if (previews.includes(gate)) continue;
       this.scene.remove(...visual.meshes);
@@ -192,17 +207,18 @@ class VolumeScene {
     }
 
     let focus = 46;
-    let aimed: RunGate | undefined;
+    let aimed: SceneGate | undefined;
     const scale = modeScale(sim.mode);
     const microContrast = this.volume.id === 'elsewhere' ? glassMicroContrast(sim.speed) : 1;
     for (const gate of previews) {
+      const route = 'index' in gate ? undefined : gate.route;
       let visual = this.visuals.get(gate);
       if (!visual) {
         visual = new GateVisual(this.gateGeometries, gate.kind, gate.open, gate.axis);
-        const side = gate.route === 'main' ? 'center' : sim.branch?.layout.left === gate.route ? 'left' : 'right';
+        const side = route === 'main' ? 'center' : sim.branch?.layout.left === route ? 'left' : 'right';
         for (const [index, mesh] of visual.meshes.entries()) {
           const station = gate.worldStation - index * THICKNESS;
-          const f = gate.route ? sim.junctionPath!.sample(station, side, this.gateFrame) : this.path.sample(station, this.gateFrame);
+          const f = route ? sim.junctionPath!.sample(station, side, this.gateFrame) : this.path.sample(station, this.gateFrame);
           mesh.position.copy(f.p);
           mesh.up.copy(f.u);
           mesh.lookAt(this.gateTarget.copy(f.p).sub(f.f));
@@ -211,9 +227,9 @@ class VolumeScene {
         this.scene.add(...visual.meshes);
       }
       const ahead = gate.routeStation - sim.distance;
-      const tone = gate.route && junction ? junction.tones[gate.route] : undefined;
-      if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale, gate.hit, microContrast, tone?.saturation ?? this.saturation)) continue;
-      if (!gate.route || gate.route === sim.route) {
+      const tone = route && junction ? junction.tones[route] : undefined;
+      if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale, 'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation)) continue;
+      if (!route || route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
       }
@@ -233,7 +249,7 @@ class VolumeScene {
     this.camera.updateProjectionMatrix();
   }
 
-  private updateJunction(sim: Simulation) {
+  private updateJunction(sim: SceneState) {
     const path = sim.junctionPath;
     const layout = sim.branch?.layout;
     const past = path && sim.trackDistance > path.end + 95;
@@ -251,9 +267,14 @@ class VolumeScene {
   }
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
+  get encoreMeshes() {
+    let count = 0;
+    for (const [gate, visual] of this.visuals) if ('index' in gate) count += visual.meshes.length;
+    return count;
+  }
   get routeLighting() { return this.junction ? { ...this.junction.tones } : undefined; }
 
-  private updatePickup(sim: Simulation) {
+  private updatePickup(sim: SceneState) {
     if (sim.phase !== 'playing' || !sim.pickupVisible || !sim.pickup) {
       this.pickup?.dispose();
       this.pickup = undefined;
@@ -494,7 +515,7 @@ export class Graphics {
     this.gl.finish();
   }
 
-  update(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
+  update(sim: SceneState, deterministic: boolean, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return;
     const { locked, focus } = this.volume.update(sim, deterministic, lighting);
     this.locked = locked;
@@ -504,7 +525,7 @@ export class Graphics {
     }
   }
 
-  draw(sim: Simulation, deterministic: boolean, updateScene = true, lighting?: LightingPreview) {
+  draw(sim: SceneState, deterministic: boolean, updateScene = true, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return false;
     if (updateScene) this.update(sim, deterministic, lighting);
     const { scene, camera } = this.volume;
@@ -537,12 +558,14 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
+      encoreMeshes: this.volume?.encoreMeshes ?? 0,
       routeLighting: this.volume?.routeLighting,
       scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,
         active: this.volume.tunnel.activePhysicalLights,
         fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups,
         batches: this.volume.scenic.batches, reduced: this.volume.scenic.reduced,
-        zone: this.volume.scenic.zone, hue: this.volume.scenic.hue, ...this.volume.tunnel.scenicTone } : undefined,
+        zone: this.volume.scenic.zone, hue: this.volume.scenic.hue, afterglow: this.volume.scenic.afterglow,
+        ...this.volume.tunnel.scenicTone } : undefined,
       canvas: [this.renderer.domElement.width, this.renderer.domElement.height],
       targets: targets.map(rt => [rt.width, rt.height, rt.samples]),
       dof: this.post?.quality.dof ?? false,

@@ -77,7 +77,7 @@ export function routeTone(route: RouteKind, beat: number): LightTone {
   return { hue: mixHue(h0, h1, blend), saturation: s0 + (s1 - s0) * blend };
 }
 
-export function lightingState(beat: number, reduced = false) {
+export function lightingState(beat: number, reduced = false, closing = false) {
   let i = lightCues.length - 1;
   while (i > 0 && beat < lightCues[i].start) i--;
   const cue = lightCues[i], previous = lightCues[Math.max(0, i - 1)];
@@ -88,10 +88,13 @@ export function lightingState(beat: number, reduced = false) {
   const pulse = reduced ? 0 : beatPulse(beat);
   const breathing = reduced ? .5 : breath(beat, 4) * (1 - slow) + breath(beat, 8) * slow;
   const { hue, saturation } = scoreTone(beat);
+  const close = closing ? ease((beat - 432) / 16) : 0;
+  const level = 1 - .28 * close;
   return { beat, hue, saturation, pulse, breathing, energy,
-    rim: .47 * (1 + .22 * energy * pulse + .12 * breathing),
-    strip: .79 * (1 + .16 * energy * pulse + .08 * breathing),
-    branch: .78 * (1 + .18 * energy * pulse + .10 * breathing),
+    level,
+    rim: .47 * (1 + .22 * energy * pulse + .12 * breathing) * level,
+    strip: .79 * (1 + .16 * energy * pulse + .08 * breathing) * level,
+    branch: .78 * (1 + .18 * energy * pulse + .10 * breathing) * level,
     reduced };
 }
 export type LightingState = ReturnType<typeof lightingState>;

@@ -56,6 +56,7 @@ function frame(): PathFrame {
 }
 
 export class Tunnel {
+  private outroAtlas: readonly LightingZone[] = [];
   readonly group: THREE.Group;
   chunks: Chunk[];
   private wire: THREE.LineSegments | null = null;
@@ -183,7 +184,8 @@ export class Tunnel {
       rings.sort((a, b) => a - b);
     }
     const ringFrames = this.ringFrames;
-    const ringLight = this.atlas.length ? rings.map(station => frameLightLevel(this.atlas, station)) : undefined;
+    const ringLight = this.atlas.length ? rings.map(station => frameLightLevel(
+      station >= (this.outroAtlas[0]?.start ?? Infinity) ? this.outroAtlas : this.atlas, station)) : undefined;
     for (let i = 0; i < rings.length; i++) this.path.sample(rings[i], ringFrames[i] ??= frame());
 
     const ghost = this.topology === 'orbit';   // light frame only, no hull
@@ -435,6 +437,17 @@ export class Tunnel {
   get junctionShell() { return this.shellMat; }
 
   get surfaceMaterials() { return this.shellMaterials && [...this.shellMaterials, this.ribMat, this.braceMat]; }
+
+  setAfterglow(atlas: readonly LightingZone[]) {
+    const from = Math.min(this.outroAtlas[0]?.start ?? Infinity, atlas[0]?.start ?? Infinity);
+    this.outroAtlas = atlas;
+    for (let i = 0; i < this.chunks.length; i++) {
+      const chunk = this.chunks[i];
+      if (chunk.s1 <= from) continue;
+      this._disposeChunk(chunk);
+      this.chunks[i] = this.streamChunk(chunk.s0, chunk.s1);
+    }
+  }
 
   setJunction(junction?: { start: number; end: number }, behindCamera = false) {
     if (this.junction === junction) return;

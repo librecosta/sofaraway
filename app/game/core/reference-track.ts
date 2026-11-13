@@ -15,12 +15,15 @@ export const cruiseTarget = (count: number) => CRUISE_SPEED + Math.min(count * 0
 export const modeScale = (mode: PlayMode) => mode === 'sightseeing' ? SIGHTSEEING_SPEED : 1;
 
 export class ReferenceTrack {
+  private readonly boostFinishes = new Map<PlayMode, number>();
   private readonly samples: Float64Array;
   private readonly secondsPerBeat: number;
+  private readonly duration: number;
   private readonly gateStations: number[];
 
   constructor(volume: VolumeDefinition) {
     this.secondsPerBeat = 60 / volume.bpm;
+    this.duration = volume.beats * this.secondsPerBeat;
     const normal = chartFor(volume, 'normal');
     const inJunction = (beat: number) => beat >= SPLIT_BEAT && beat < REJOIN_BEAT;
     const gates = volume.id === 'elsewhere'
@@ -51,6 +54,22 @@ export class ReferenceTrack {
     let count = previousCount;
     while (this.gateStations[count] <= normal + 1e-8) count++;
     return count;
+  }
+
+  /** Full Boost on the reference centerline, evaluated on the same fixed-step speed curve as a run. */
+  boostFinish(mode: PlayMode) {
+    const cached = this.boostFinishes.get(mode);
+    if (cached !== undefined) return cached;
+    const scale = modeScale(mode);
+    let station = START_DISTANCE, speed = CRUISE_SPEED * scale, count = 0;
+    for (let i = 0; i < this.samples.length - 1; i++) {
+      const dt = Math.min(STEP, this.duration - i * STEP);
+      count = this.countThrough(station, mode, count);
+      speed += (cruiseTarget(count) * BOOST_MULTIPLIER * scale - speed) * dt * 4;
+      station += speed * dt;
+    }
+    this.boostFinishes.set(mode, station);
+    return station;
   }
 }
 

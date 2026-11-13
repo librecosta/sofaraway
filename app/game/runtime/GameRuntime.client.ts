@@ -217,6 +217,7 @@ export class Runtime implements GameRuntime {
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
       pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, soundUnavailable: false,
+      outroPhase: undefined, encore: undefined,
       route: null, routeHint: null });
   }
 
@@ -440,7 +441,7 @@ export class Runtime implements GameRuntime {
   private step(sim: Simulation, neutralize = false) {
     const input = neutralize ? this.lastInput : this.input?.read() ?? idleInput;
     if (!neutralize) this.lastInput = { ...input, target: null, dragX: 0, dragY: 0 };
-    const { lives, pickup, branch, gatesNeutralized } = sim;
+    const { lives, pickup, branch, gatesNeutralized, encore } = sim;
     sim.step(STEP, input, neutralize);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty, sim.steeringWidth);
     if (this.pendingPickupDraw && sim.pickup && sim.distance >= sim.pickupPreviewStation) {
@@ -450,7 +451,7 @@ export class Runtime implements GameRuntime {
     if (sim.gatesNeutralized > gatesNeutralized) {
       this.showMessage(sim.mode === 'standard' ? 'RECOVERY · BEST INELIGIBLE' : 'GATE NEUTRALIZED DURING RECOVERY');
     }
-    if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch ||
+    if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch || encore !== sim.encore ||
       sim.routeGuide !== this.snapshot.routeHint) this.publishRun();
   }
 
@@ -467,7 +468,7 @@ export class Runtime implements GameRuntime {
     }
     if (!paused) {
       const hit = Math.max(0, 1 - (sim.time - sim.hitTime) / 0.38);
-      const end = sim.phase === 'playing' || sim.phase === 'crash'
+      const end = !sim.outroPlan && (sim.phase === 'playing' || sim.phase === 'crash')
         ? clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1) : 0;
       const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
       const pickup = Math.max(0, 1 - (sim.time - sim.pickupTime) / 0.24) * 0.13;
@@ -484,6 +485,7 @@ export class Runtime implements GameRuntime {
       this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
         branch: sim.branch, trackDistance: sim.trackDistance, neutralized: sim.gatesNeutralized,
+        outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
         audio: this.audio.diagnostics,
         initMs: this.initMs, switchMs: this.switchMs }));
     }
@@ -622,6 +624,7 @@ export class Runtime implements GameRuntime {
     this.publish({ score: Math.floor(sim.score), lives: sim.lives, maxLives: sim.maxLives,
       gatesPassed: sim.gatesPassed, gatesTotal: sim.gatesTotal, combo: sim.combo, maxCombo: sim.maxCombo,
       speed: sim.speed, progress: sim.progress, section: sim.section, result: sim.result,
+      outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
       boosting: this.snapshot.phase === 'playing' && sim.boosting,
       shield: sim.shield, resonance: sim.resonance,
       route: sim.route, routeHint: sim.routeGuide,

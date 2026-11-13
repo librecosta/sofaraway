@@ -1,4 +1,5 @@
 import type { BranchLayout, RouteKind, RouteSide } from './core/branches';
+import type { EncoreResult, OutroPhase } from './core/encore';
 
 export type VolumeId = 'elsewhere' | 'drift' | 'descent' | 'orbit';
 export const playModes = ['standard', 'sightseeing'] as const;
@@ -21,6 +22,7 @@ export interface RunResult {
   readonly unreached: number;
   readonly neutralized: number;
   readonly route?: RouteKind;
+  readonly encore?: EncoreResult;
 }
 
 export interface GameError {
@@ -57,6 +59,8 @@ export interface GameSnapshot {
   readonly hint: boolean;
   readonly message: string;
   readonly soundUnavailable: boolean;
+  readonly outroPhase?: OutroPhase;
+  readonly encore?: EncoreResult;
 }
 
 export interface GameOptions {
