@@ -28,6 +28,7 @@ export interface RunResult {
 
 export interface GameError {
   readonly kind: 'audio' | 'graphics' | 'runtime';
+  readonly stage?: 'recovery';
   readonly message: string;
 }
 
@@ -60,6 +61,7 @@ export interface GameSnapshot {
   readonly quality: QualityTier;
   readonly volume: number;
   readonly muted: boolean;
+  readonly dynamicLights: boolean;
   readonly error: GameError | null;
   readonly pauseReason: PauseReason | null;
   readonly result: RunResult | null;
@@ -85,6 +87,7 @@ export interface GameOptions {
   quality: QualityTier;
   volume: number;
   muted: boolean;
+  dynamicLights?: boolean;
   saveRecords?: boolean;
   runSeed?: number;
   diagnostics: Diagnostics;
@@ -118,6 +121,7 @@ export interface GameRuntime {
   setQuality(value: QualityTier): Promise<void>;
   setVolume(value: number): void;
   setMuted(value: boolean): void;
+  setDynamicLights(value: boolean): void;
   getSnapshot(): GameSnapshot;
   subscribe(listener: () => void): () => void;
   dispose(): void;
@@ -140,6 +144,7 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   quality: 'auto',
   volume: 0.8,
   muted: false,
+  dynamicLights: false,
   error: null,
   pauseReason: null,
   result: null,

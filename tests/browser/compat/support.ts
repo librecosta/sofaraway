@@ -7,7 +7,7 @@ export function record(info: TestInfo, status: 'PASS' | 'DEGRADED' | 'UNSUPPORTE
 }
 
 export const startButton = (page: Page) => page.locator('[data-act=start]');
-export const fallback = (page: Page) => page.getByRole('dialog', { name: 'GAME UNAVAILABLE' });
+export const fallback = (page: Page) => page.getByRole('dialog', { name: /GRAPHICS (UNAVAILABLE|UNSUPPORTED)/ });
 
 export async function resumeRun(page: Page, info: TestInfo, action: 'click' | 'tap' = 'click') {
   const pause = page.getByRole('dialog', { name: 'PAUSED' });

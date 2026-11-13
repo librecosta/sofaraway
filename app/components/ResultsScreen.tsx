@@ -11,7 +11,7 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
   return (
     <section id={id('over')} className={c('screen', preview && 'result-preview', snapshot.phase !== 'results' && 'hidden')}>
       <div className={c('center')}>
-        <div className={c('eyebrow')}><i /><span id={id('over-title')}>{snapshot.result?.title ?? 'RUN TERMINATED'}</span><i /></div>
+        <h2 className={c('results-title')} id={id('over-title')}>{snapshot.result?.title ?? 'TERMINATED'}</h2>
         <div className={c('over-score')} id={id('over-score')}>{snapshot.score}</div>
         {encore && <div className={c('route-status')}>MAIN SCORE</div>}
         {snapshot.mode === 'sightseeing'

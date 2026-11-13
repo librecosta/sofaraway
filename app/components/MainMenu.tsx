@@ -1,86 +1,84 @@
+import { useState } from 'react';
 import { playModes } from '../game/contracts';
-import type { Difficulty, GameSnapshot, PlayMode } from '../game/contracts';
+import type { Difficulty, GameSnapshot, PlayMode, VolumeId } from '../game/contracts';
 import { difficultySettings } from '../game/core/chart';
 import { difficultiesFor } from '../game/core/difficulty';
 import { SIGHTSEEING_LIVES } from '../game/core/sightseeing';
 import { volumeById } from '../game/core/volumes';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
+import { HorizontalSelector } from './HorizontalSelector';
+import { VolumeWheel } from './VolumeWheel';
+import { DynamicLightsButton, MusicInfo } from './MenuUtilities';
 
 interface Props {
   snapshot: GameSnapshot;
   visible: boolean;
   chooseDifficulty(value: Difficulty): void;
   chooseMode(value: PlayMode): void;
-  stepVolume(direction: number): void;
+  chooseVolume(id: VolumeId): void;
+  onVolumeTarget?(id: VolumeId): void;
+  setDynamicLights(value: boolean): void;
   start(): void;
   settings(): void;
   credits(): void;
   share(): void;
   fullscreen(): void;
+  musicInitiallyOpen?: boolean;
 }
+
+const score = (n: number | null | undefined) => n?.toLocaleString('en-US') ?? '—';
 
 export function MainMenu(props: Props) {
   const { snapshot } = props;
+  const [musicOpen, setMusicOpen] = useState(props.musicInitiallyOpen ?? false);
   const volume = volumeById(snapshot.volumeId);
   const { best, last } = snapshot.localRecord;
   const sightseeing = snapshot.mode === 'sightseeing';
   const ready = snapshot.phase === 'menu' && snapshot.error?.kind !== 'graphics';
+  const lives = difficultySettings(volume, snapshot.difficulty).lives;
+  const status = snapshot.phase === 'starting' ? 'STARTING' : 'INITIALIZING';
   return (
-    <section id="menu" className={c('screen', !props.visible && 'hidden')}>
+    <section id="menu" className={c('screen', 'menu-screen', !props.visible && 'hidden')}>
       <div className={c('top')}>
-        <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label="CREDITS" />
-        <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label="SHARE" />
-      </div>
-      <div className={c('center')}>
-        <div className={c('eyebrow')}><i /><span>{volume.subtitle} &nbsp;/&nbsp; PROCEDURAL&nbsp;RUNNER</span><i /></div>
-        <h1 className={c('wordmark')}>SOFARAWAY</h1>
-        <div className={c('rule')} />
-        <div className={c('tagline')}>ANYWHERE BUT HERE</div>
-        <p className={c('sr-only', 'intro')}>Thread the gates, ride the beat. A procedural rhythm runner by LibreCosta.</p>
-        <noscript><p>Enable JavaScript and use a WebGL2-capable browser to play.</p></noscript>
-        <div className={c('vols')} id="vols">
-          <button className={c('vol-nav')} data-vol-step="-1" disabled={!ready} aria-label="previous volume" onClick={() => props.stepVolume(-1)}>‹</button>
-          <span className={c('vol-name')} id="vol-name">{volume.subtitle.replace('VOL.', '').trim()} · {volume.name}</span>
-          <button className={c('vol-nav')} data-vol-step="1" disabled={!ready} aria-label="next volume" onClick={() => props.stepVolume(1)}>›</button>
+        <div className={c('menu-tools')}>
+          <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label="CREDITS" />
+          <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label="SHARE" />
         </div>
-        <div className={c('play-options')}>
-          <div className={c('diff', 'modes')} role="group" aria-label="Play mode">
-            {playModes.map(mode => (
-              <DecodeButton key={mode} className={c('diff-btn', snapshot.mode === mode && 'active')}
-                label={mode.toUpperCase()} aria-pressed={snapshot.mode === mode} disabled={!ready}
-                onClick={() => props.chooseMode(mode)} />
-            ))}
+        <div className={c('menu-tools')}>
+          <DynamicLightsButton active={snapshot.dynamicLights} onToggle={props.setDynamicLights} disabled={!ready} />
+          <MusicInfo volume={volume} open={props.visible && musicOpen} setOpen={setMusicOpen} />
+        </div>
+      </div>
+      <div className={c('center', 'menu-center')}>
+        <header className={c('menu-brand')}>
+          <div className={c('eyebrow')}>PROCEDURAL RUNNER</div>
+          <h1 className={c('wordmark')}>SOFARAWAY</h1>
+          <div className={c('tagline')}>MUSIC IN MOTION</div>
+        </header>
+        <noscript><p>Enable JavaScript and use a WebGL2-capable browser to play.</p></noscript>
+        <VolumeWheel value={snapshot.volumeId} choose={props.chooseVolume} disabled={!ready} onTarget={props.onVolumeTarget} />
+        <div className={c('menu-options')}>
+          <HorizontalSelector label="Play mode" options={playModes} value={snapshot.mode} choose={props.chooseMode} disabled={!ready} />
+          <div className={c('menu-difficulty')} id="diff" data-collapsed={sightseeing} inert={sightseeing} aria-hidden={sightseeing || undefined}>
+            <div><HorizontalSelector label="Difficulty" options={difficultiesFor(volume.id)} value={snapshot.difficulty}
+              choose={props.chooseDifficulty} disabled={!ready || sightseeing} /></div>
           </div>
-          <div className={c('diff', 'mode-options')} id="diff">
-            {sightseeing ? <span className={c('mode-details')}>{SIGHTSEEING_LIVES} LIVES · ⅓ SPEED</span> : difficultiesFor(volume.id).map(difficulty => {
-              const label = difficulty.toUpperCase();
-              const count = difficultySettings(volume, difficulty).lives;
-              const lives = `${count} ${count === 1 ? 'LIFE' : 'LIVES'}`;
-              return (
-                <DecodeButton key={difficulty} className={c('diff-btn', snapshot.difficulty === difficulty && 'active')}
-                  label={label} aria-label={`${label} ${lives}`} data-diff={difficulty} aria-pressed={snapshot.difficulty === difficulty}
-                  disabled={!ready} onClick={() => props.chooseDifficulty(difficulty)}>
-                  <em>{lives}</em>
-                </DecodeButton>
-              );
-            })}
-          </div>
-          <div className={c('local-records')} role="group" aria-label="Local records">
-            {!sightseeing && <span>BEST <b>{best?.toLocaleString('en-US') ?? '—'}</b></span>}
-            <span>{sightseeing ? 'LAST VISIT' : 'LAST'} <b>{last?.score.toLocaleString('en-US') ?? '—'}</b></span>
-            {last && <span>{last.outcome}{last.recovery && ' · RECOVERY'}</span>}
+          <div className={c('mode-details')}>{sightseeing ? `${SIGHTSEEING_LIVES} LIVES · ⅓ SPEED` : `${lives} ${lives === 1 ? 'LIFE' : 'LIVES'}`}</div>
+          <div className={c('local-records', 'record-grid')} role="group" aria-label="Local records">
+            {!sightseeing && <div><span>BEST SCORE</span><b>{score(best)}</b></div>}
+            <div><span>{sightseeing ? 'LAST VISIT' : 'LAST RUN'}</span><b>{score(last?.score)}</b>
+              {last && <small>{last.outcome}{last.recovery && ' · RECOVERY'}</small>}</div>
           </div>
         </div>
       </div>
       <div className={c('bottom')}>
         <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label="SETTINGS" />
         <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}
-          label={ready ? 'PRESS SPACE TO START' : 'LOADING'} />
+          label={ready ? 'PRESS SPACE TO START' : status} />
         <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen} label="FULL SCREEN" />
       </div>
-      <div className={c('center-msg', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
-      <div className={c('musicbadge')}><span className={c('mb-k')}>MUSIC</span><span className={c('mb-v')}>SYNTHESIZED</span></div>
+      <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
     </section>
   );
 }

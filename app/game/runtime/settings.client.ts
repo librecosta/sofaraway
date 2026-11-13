@@ -4,7 +4,7 @@ import { clamp } from '../core/collision';
 import { resolveDifficulty } from '../core/difficulty';
 import { volumeById } from '../core/volumes';
 
-type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted';
+type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted' | 'dynamicLights';
 
 function read(key: Setting) {
   try { return localStorage.getItem('sofaraway.' + key); } catch { return null; }
@@ -33,6 +33,7 @@ export function readOptions(params: URLSearchParams): GameOptions {
     quality: qualities.includes(quality as QualityTier) ? quality as QualityTier : 'auto',
     volume: Number.isFinite(volume) ? clamp(volume / 100, 0, 1) : 0.8,
     muted: read('muted') === 'true',
+    dynamicLights: (fixedTime !== null ? params.get('lights') ?? read('dynamicLights') : read('dynamicLights')) === 'true',
     diagnostics: {
       fixedTime, autoplay: params.get('auto') === '1', align: params.get('align') === '1',
       god: params.get('god') === '1' || (fixedTime !== null && !params.has('god')),

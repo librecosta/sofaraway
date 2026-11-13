@@ -1,22 +1,23 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
-import type { Difficulty, GameRuntime, GameSnapshot, PlayMode, QualityTier } from '../game/contracts';
-import { volumeById, VOLUMES } from '../game/core/volumes';
+import type { Difficulty, GameRuntime, GameSnapshot, PlayMode, QualityTier, VolumeId } from '../game/contracts';
+import { volumeById } from '../game/core/volumes';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import { readOptions, saveSetting } from '../game/runtime/settings.client';
 import { classes as c } from '../styles/classes';
-import { DecodeButton } from './DecodeButton';
-import { GameFallback } from './GameFallback';
+import { CreditsPanel } from './CreditsPanel';
+import { GameFallback, isBlockingFallback } from './GameFallback';
 import { GameHUD } from './GameHUD';
 import { MainMenu } from './MainMenu';
 import { ResultsScreen } from './ResultsScreen';
 import { SettingsPanel } from './SettingsPanel';
+import { ShareToast, useShareToast } from './MenuUtilities';
 
 const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
-  'localRecord', 'newBest', 'message'] as const;
+  'localRecord', 'newBest', 'message', 'dynamicLights'] as const;
 
 function useMenuSnapshot(runtime: GameRuntime | null) {
   const previous = useRef<GameSnapshot>(initialSnapshot);
@@ -34,6 +35,8 @@ export function GameViewport() {
   const [mount, setMount] = useState(0);
   const [panel, setPanel] = useState<'settings' | 'credits' | null>(null);
   const [hideUi, setHideUi] = useState(false);
+  const { notice, showNotice } = useShareToast();
+  const shareRequest = useRef(0);
   const snapshot = useMenuSnapshot(runtime);
   const host = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLElement>(null);
@@ -41,13 +44,15 @@ export function GameViewport() {
   const flash = useRef<HTMLDivElement>(null);
   const debug = useRef<HTMLPreElement>(null);
   const panelReturnFocus = useRef<HTMLElement | null>(null);
+  const runReturnFocus = useRef(false);
+  const volumeTarget = useRef<VolumeId | null>(null);
+  const startTarget = useRef<VolumeId | null>(null);
   const keys = useRef<(key: string, event: KeyboardEvent) => boolean>(() => false);
 
-  function stepVolume(direction: number) {
-    const index = VOLUMES.findIndex(volume => volume.id === snapshot.volumeId);
-    const next = VOLUMES[(index + direction + VOLUMES.length) % VOLUMES.length];
+  function chooseVolume(id: VolumeId) {
+    if (search.get('vol') === id) return;
     const params = new URLSearchParams(search);
-    params.set('vol', next.id);
+    params.set('vol', id);
     setSearch(params, { preventScrollReset: true });
   }
 
@@ -59,9 +64,7 @@ export function GameViewport() {
   }
 
   useEffect(() => {
-    if (panel) {
-      viewport.current?.querySelector<HTMLElement>('[role="dialog"] button:not(:disabled)')?.focus();
-    } else {
+    if (!panel) {
       panelReturnFocus.current?.focus();
       panelReturnFocus.current = null;
     }
@@ -73,14 +76,18 @@ export function GameViewport() {
         if (key === 'escape') setPanel(null);
         return true;
       }
-      if (snapshot.phase === 'menu' && (key === 'arrowleft' || key === 'arrowright')) {
+      if (event.defaultPrevented) return true;
+      if (snapshot.phase === 'menu' && !snapshot.error && !event.repeat && (key === ' ' || key === 'enter') &&
+        !(event.target instanceof HTMLButtonElement)) {
         event.preventDefault();
-        if (!event.repeat) stepVolume(key === 'arrowright' ? 1 : -1);
+        startSelected();
         return true;
       }
       return false;
     };
   });
+
+  useEffect(() => () => { shareRequest.current++; }, []);
 
   useEffect(() => {
     const element = host.current!;
@@ -127,18 +134,39 @@ export function GameViewport() {
     if (!runtime || requested === snapshot.volumeId || snapshot.error?.kind === 'graphics' ||
       ['uninitialized', 'initializing', 'unsupported', 'error', 'disposed'].includes(snapshot.phase)) return;
     if (snapshot.phase !== 'menu' && snapshot.phase !== 'results') runtime.returnToMenu();
-    void runtime.selectVolume(requested);
+    void runtime.selectVolume(requested).then(() => {
+      if (startTarget.current !== requested) return;
+      startTarget.current = null;
+      const loaded = runtime.getSnapshot();
+      if (loaded.phase === 'menu' && loaded.volumeId === requested) void runtime.start();
+    });
   }, [runtime, requested, snapshot.volumeId, snapshot.phase, snapshot.error]);
+
+  function startSelected() {
+    if (!runtime || snapshot.phase !== 'menu' || snapshot.error) return;
+    const id = volumeTarget.current;
+    if (id && id !== snapshot.volumeId) {
+      startTarget.current = id;
+      chooseVolume(id);
+    } else void runtime.start();
+  }
 
   const [importError, setImportError] = useState<string | null>(null);
   const viewSnapshot: GameSnapshot = importError ? {
     ...snapshot, phase: 'error', error: { kind: 'runtime', message: importError },
   } : snapshot;
   const menuVisible = ['uninitialized', 'initializing', 'menu', 'starting', 'unsupported', 'error'].includes(viewSnapshot.phase);
-  const modalOpen = !!panel || !!viewSnapshot.error || viewSnapshot.phase === 'paused';
-  const customCursor = !['uninitialized', 'initializing', 'unsupported', 'error', 'disposed'].includes(viewSnapshot.phase)
-    && viewSnapshot.error?.kind !== 'graphics';
+  const modalOpen = !!panel || isBlockingFallback(viewSnapshot);
+  const customCursor = viewSnapshot.phase === 'playing' && !modalOpen;
   const returnToMenu = () => runtime?.returnToMenu();
+
+  useEffect(() => {
+    if (viewSnapshot.phase === 'starting' || viewSnapshot.phase === 'playing') runReturnFocus.current = true;
+    if (viewSnapshot.phase === 'menu' && !modalOpen && runReturnFocus.current) {
+      runReturnFocus.current = false;
+      viewport.current?.querySelector<HTMLElement>('[data-act=start]:not(:disabled)')?.focus();
+    }
+  }, [viewSnapshot.phase, modalOpen]);
 
   function setDifficulty(value: Difficulty) {
     runtime?.setDifficulty(value);
@@ -148,6 +176,11 @@ export function GameViewport() {
   function setMode(value: PlayMode) {
     runtime?.setMode(value);
     if (runtime?.getSnapshot().mode === value) saveSetting('mode', value);
+  }
+
+  function setDynamicLights(value: boolean) {
+    runtime?.setDynamicLights(value);
+    if (runtime?.getSnapshot().dynamicLights === value) saveSetting('dynamicLights', value);
   }
 
   async function setQuality(value: QualityTier) {
@@ -173,11 +206,12 @@ export function GameViewport() {
 
   async function share() {
     const url = new URL(location.pathname, location.origin).href;
+    const request = ++shareRequest.current;
     try {
       await navigator.clipboard.writeText(url);
-      runtime?.showMessage('LINK COPIED');
+      if (request === shareRequest.current) showNotice(true);
     } catch {
-      runtime?.showMessage(url);
+      if (request === shareRequest.current) showNotice(false);
     }
   }
 
@@ -204,13 +238,10 @@ export function GameViewport() {
         </svg>
       </div>
       <div id="ui" style={{ display: hideUi ? 'none' : undefined }}>
-        <div className={c('frame')} aria-hidden="true">
-          <i className={c('fc', 'tl')} /><i className={c('fc', 'tr')} />
-          <i className={c('fc', 'bl')} /><i className={c('fc', 'br')} />
-        </div>
         <div inert={modalOpen}>
-          <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} chooseMode={setMode} stepVolume={stepVolume}
-            start={() => void runtime?.start()} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
+          <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} chooseMode={setMode} chooseVolume={chooseVolume}
+            setDynamicLights={setDynamicLights} onVolumeTarget={id => { volumeTarget.current = id; }}
+            start={startSelected} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
             share={() => void share()} fullscreen={fullscreen} />
           <GameHUD runtime={runtime} />
           <ResultsScreen snapshot={snapshot} restart={() => void runtime?.start()} menu={returnToMenu} />
@@ -219,30 +250,14 @@ export function GameViewport() {
         <div id="shade" />
         {!panel && <GameFallback snapshot={viewSnapshot} retry={tryAgain} menu={returnToMenu} settings={() => openPanel('settings')}
           startSilent={() => { if (snapshot.phase === 'paused') void runtime?.resume(true); else void runtime?.start(true); }} />}
-        {panel === 'credits' && (
-          <section id="panel" className={c('modal')} role="dialog" aria-label="Credits" aria-modal="true">
-            <div className={c('modal-inner')}>
-              <div className={c('eyebrow')}><i /><span>CREDITS</span><i /></div>
-              <div id="panel-body">
-                <b>SoFaraway</b> — a browser rhythm runner.<br />
-                Thread the gates, ride the beat.<br /><br />
-                Made by <b>librecosta</b>.<br />
-                Built with three.js r187 on WebGL2.<br />
-                Every material, shader, texture and note is generated at runtime.<br /><br />
-                <b>INSPIRATION</b><br />
-                Mechanism inspired by HelloRun (HelloEnjoy, 2013).<br /><br />
-                <a href={`/debug/?vol=${snapshot.volumeId}`}>Debug overview</a>
-              </div>
-              <DecodeButton className={c('btn', 'tiny')} data-act="closepanel" onClick={() => setPanel(null)} label="CLOSE" />
-            </div>
-          </section>
-        )}
+        {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} />}
+        <ShareToast notice={notice} />
       </div>
       <pre id="errbox" ref={debug} />
       {panel === 'settings' && <SettingsPanel snapshot={snapshot} close={() => setPanel(null)}
         chooseQuality={value => void setQuality(value)}
         setVolume={value => { runtime?.setVolume(value); saveSetting('volume', Math.round(value * 100)); }}
-        setMuted={value => runtime?.setMuted(value)} />}
+        setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights} />}
     </main>
   );
 }

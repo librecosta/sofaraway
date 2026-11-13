@@ -1,7 +1,9 @@
+import type { CSSProperties } from 'react';
 import { qualities } from '../game/contracts';
 import type { GameSnapshot, QualityTier } from '../game/contracts';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
+import { GameDialog } from './GameDialog';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -9,35 +11,51 @@ interface Props {
   chooseQuality(value: QualityTier): void;
   setVolume(value: number): void;
   setMuted(value: boolean): void;
+  setDynamicLights(value: boolean): void;
+  preview?: boolean;
 }
 
-export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted }: Props) {
+function Toggle({ id, label, checked, change }: { id: string; label: string; checked: boolean; change(value: boolean): void }) {
+  return <label className={c('panel-row', 'switch-row')} htmlFor={id}>
+    <span>{label}</span><input id={id} type="checkbox" role="switch" checked={checked} onChange={event => change(event.target.checked)} />
+    <span className={c('switch-track')} aria-hidden="true" />
+  </label>;
+}
+
+export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights, preview }: Props) {
+  const quality = qualities.indexOf(snapshot.quality);
   return (
-    <div className={c('modal')} id="settings" role="dialog" aria-label="Settings" aria-modal="true"
-      onClick={event => { if (event.target === event.currentTarget) close(); }}>
+    <GameDialog id="settings" title="Settings" dismiss={close} preview={preview}>
       <div className={c('panel')}>
-        <div className={c('panel-head')}>SETTINGS</div>
+        <h2 className={c('panel-head')}>SETTINGS</h2>
         <div className={c('panel-row')}>
           <span>QUALITY</span>
-          <div className={c('seg')} id="seg-quality">
-            {qualities.map(quality => (
-              <DecodeButton key={quality} className={c(quality === snapshot.quality && 'on')} data-q={quality}
-                aria-pressed={quality === snapshot.quality}
-                disabled={snapshot.phase === 'paused'} onClick={() => chooseQuality(quality)} label={quality.toUpperCase()} />
+          <div className={c('seg')} id="seg-quality" role="group" aria-label="Quality"
+            style={{ '--quality-index': quality } as CSSProperties} onKeyDown={event => {
+              const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+              if (!direction || snapshot.phase === 'paused') return;
+              event.preventDefault();
+              event.stopPropagation();
+              const next = (quality + direction + qualities.length) % qualities.length;
+              chooseQuality(qualities[next]);
+              event.currentTarget.querySelectorAll('button')[next]?.focus();
+            }}>
+            {qualities.map(item => (
+              <button type="button" key={item} data-q={item} aria-pressed={item === snapshot.quality}
+                disabled={snapshot.phase === 'paused'} onClick={() => chooseQuality(item)}>{item.toUpperCase()}</button>
             ))}
           </div>
         </div>
         <div className={c('panel-row')}>
           <label htmlFor="set-volume">VOLUME</label>
           <input id="set-volume" type="range" min="0" max="100" value={Math.round(snapshot.volume * 100)}
+            style={{ '--volume-fill': `${snapshot.volume * 100}%` } as CSSProperties}
             onChange={event => setVolume(event.target.valueAsNumber / 100)} />
         </div>
-        <div className={c('panel-row')}>
-          <label htmlFor="set-muted">MUTE</label>
-          <input id="set-muted" type="checkbox" checked={snapshot.muted} onChange={event => setMuted(event.target.checked)} />
-        </div>
+        <Toggle id="set-muted" label="MUTE" checked={snapshot.muted} change={setMuted} />
+        <Toggle id="set-dynamic-lights" label="DYNAMIC LIGHTS" checked={snapshot.dynamicLights} change={setDynamicLights} />
         <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label="CLOSE" />
       </div>
-    </div>
+    </GameDialog>
   );
 }

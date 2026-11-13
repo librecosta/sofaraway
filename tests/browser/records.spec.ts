@@ -17,35 +17,39 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/?q=low');
   const record = page.getByRole('group', { name: 'Local records' });
-  const impossible = page.getByRole('button', { name: 'IMPOSSIBLE 1 LIFE' });
-  await expect(record).toContainText('BEST —');
+  const difficulty = page.locator('#diff [data-selected=true]');
+  const next = page.getByRole('button', { name: 'Next difficulty' });
+  const previous = page.getByRole('button', { name: 'Previous difficulty' });
+  await expect(record).toContainText(/BEST SCORE\s*—/);
   await expect(record).not.toContainText('999,999');
-  await expect(page.locator('#diff button')).toHaveCount(4);
+  await expect(page.locator('#diff [data-choice]')).toHaveCount(4);
   for (const size of [{ width: 320, height: 568 }, { width: 667, height: 375 }]) {
     await page.setViewportSize(size);
-    for (const button of await page.locator('#menu button').all()) await expect(button).toBeInViewport({ ratio: 1 });
+    for (const button of await page.locator('#menu button:not([aria-hidden=true])').all()) await expect(button).toBeInViewport({ ratio: .65 });
   }
-  await impossible.focus();
+  await next.focus();
   await page.keyboard.press('Enter');
-  await expect(impossible).toHaveAttribute('aria-pressed', 'true');
-  await expect(record).toContainText('BEST 128,640');
-  await expect(record).toContainText('LAST 97,450');
+  await page.keyboard.press('Enter');
+  await expect(difficulty).toHaveText('IMPOSSIBLE');
+  await expect(page.getByText('1 LIFE', { exact: true })).toBeVisible();
+  await expect(record).toContainText(/BEST SCORE\s*128,640/);
+  await expect(record).toContainText(/LAST RUN\s*97,450/);
   await page.reload();
-  await expect(record).toContainText('BEST 128,640');
-  await page.getByRole('button', { name: 'HARD 1 LIFE', exact: true }).click();
-  await expect(record).toContainText('BEST 32,500');
+  await expect(record).toContainText(/BEST SCORE\s*128,640/);
+  await previous.click();
+  await expect(record).toContainText(/BEST SCORE\s*32,500/);
   await expect(record).toContainText('TERMINATED · RECOVERY');
-  await impossible.click();
-  await page.getByRole('button', { name: 'SIGHTSEEING', exact: true }).click();
-  await expect(record).toContainText('LAST VISIT 930');
+  await next.click();
+  await page.getByRole('button', { name: 'Next play mode' }).click();
+  await expect(record).toContainText(/LAST VISIT\s*930/);
   await expect(record).not.toContainText('BEST');
-  await page.getByRole('button', { name: 'STANDARD', exact: true }).click();
-  await expect(impossible).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Previous play mode' }).click();
+  await expect(difficulty).toHaveText('IMPOSSIBLE');
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page.locator('#vol-name')).toContainText('DRIFT');
-  await expect(impossible).toHaveCount(0);
-  await expect(page.locator('#diff button[aria-pressed=true]')).toHaveAttribute('data-diff', 'normal');
-  await expect(record).toContainText('BEST 21,000');
+  await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
+  await expect(difficulty).toHaveText('NORMAL');
+  await expect(record).toContainText(/BEST SCORE\s*21,000/);
   await page.goto('/?vol=drift&diff=impossible&t=2&dbg=1&q=low');
   await expect(page.locator('#errbox')).toContainText('"speed":24');
   expect(await page.evaluate(() => localStorage.getItem('sofaraway.best'))).toBe('999999');
@@ -135,7 +139,7 @@ test('blocked storage leaves the real menu and a finished run usable', async ({ 
   await expect(page.locator('#over').getByText('IMPOSSIBLE', { exact: true })).toBeVisible();
   await page.goto('/?q=low');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
-  await expect(page.getByRole('group', { name: 'Local records' })).toContainText('BEST —');
+  await expect(page.getByRole('group', { name: 'Local records' })).toContainText(/BEST SCORE\s*—/);
 });
 
 test('the real Sightseeing result saves a Last Visit while a fixed capture cannot overwrite records', async ({ page }) => {

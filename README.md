@@ -88,6 +88,8 @@ scrub or play the in-game lighting score. Staggered Cells and Connected Flow
 include a two-color comparison.
 **End Sequence Studio** at `/debug/#outro` previews Normal and Impossible courses,
 Encore, Afterglow and results. Seek by world station or fly a ten-second segment.
+**UI State Studio** at `/debug/#ui-states` opens production menus, overlays,
+results and recovery states in six viewport sizes without touching records or settings.
 **Soundtrack** exports a WAV for the selected
 volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
 
@@ -102,6 +104,7 @@ volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORB
 | `?q=low` | Low quality, DPR at most 1, depth of field disabled |
 | `?rec=1` | Open the flight recorder |
 | `?ui=0` | Hide the UI |
+| `?lights=true` | Enable Dynamic Lights for a fixed-time capture without changing settings |
 | `?dbg=1` | Read-only timing, draw-call, target and resource diagnostics |
 
 Fixed captures also accept `diff`, `mode`, and `route` for difficulty, play

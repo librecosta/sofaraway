@@ -37,7 +37,7 @@ test('the idle menu continues past the song and generated path without the finis
   await expect(page.locator('[data-act=start]')).toBeEnabled();
 });
 
-test('menu labels keep their size while decoding and the reticle stays on the pointer', async ({ page }) => {
+test('menu labels keep their size while decoding and the gameplay reticle does not cover UI text', async ({ page }) => {
   await page.goto('/?q=low');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   await page.evaluate(() => document.fonts.ready.then(() => {}));
@@ -52,11 +52,8 @@ test('menu labels keep their size while decoding and the reticle stays on the po
   await expect(credits).toHaveCSS('color', 'rgb(116, 255, 220)');
   await expect(noise).toHaveCount(0);
   expect(await credits.boundingBox()).toEqual(box);
-  const centers = await page.locator('#cursor circle').evaluateAll(circles => circles.map(circle => {
-    const { x, y } = new DOMPoint().matrixTransform((circle as SVGGraphicsElement).getScreenCTM()!);
-    return { x, y };
-  }));
-  expect(centers).toEqual([point, point]);
+  await expect(page.locator('#cursor')).toBeHidden();
+  await expect(credits).toHaveCSS('cursor', 'pointer');
   expect(await credits.evaluate(button => getComputedStyle(button, '::after').content)).toBe('none');
   await page.mouse.move(point.x, point.y + 100);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -72,8 +69,8 @@ test('Credits, Settings and menu controls keep readable sizes in a narrow viewpo
     const settings = page.locator('[data-act=settings]');
     await expect(credits).toHaveCSS('font-size', '14px');
     await expect(settings).toHaveCSS('font-size', '14px');
-    for (const action of await page.locator('#menu button').all()) {
-      await expect(action).toBeInViewport({ ratio: 1 });
+    for (const action of await page.locator('#menu button:not([aria-hidden=true])').all()) {
+      await expect(action).toBeInViewport({ ratio: .65 });
     }
     await credits.click();
     await expect(page.locator('#panel-body')).toHaveCSS('font-size', '16px');

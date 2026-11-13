@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { EndSequenceStudio } from '../components/EndSequenceStudio';
+import { UIStateStudio } from '../components/UIStateStudio';
 import type { VolumeId } from '../game/contracts';
 import type { PlayMode } from '../game/contracts';
 import { lightCues, lightPatterns } from '../game/core/lighting-score';
@@ -321,7 +322,7 @@ export default function DebugOverview() {
         <nav aria-label="Debug sections">
           <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#gates">Gates</a>
           <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#lighting">Lighting</a><a href="#s-curve">S-Curve</a>
-          <a href="#outro">Ending</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
+          <a href="#outro">Ending</a><a href="#ui-states">UI States</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
         <a href="/" className={s.back}>Back to game</a>
       </header>
@@ -453,6 +454,7 @@ export default function DebugOverview() {
 
         <LightingStudio available={modelReady} />
         <EndSequenceStudio />
+        <UIStateStudio />
 
 
         <section id="environment" className={s.section}>

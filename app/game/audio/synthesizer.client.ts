@@ -1,4 +1,5 @@
 import { sectionAt } from '../core/volumes';
+import { drumStrengths } from '../core/rhythmic-lights';
 import type { Music, VolumeDefinition } from '../core/volumes';
 
 /* downtempo drifts through maj7 colour rather than driving minor triads */
@@ -177,15 +178,12 @@ export class Synthesizer {
     // --- drums ---------------------------------------------------
     const halfTime = this.volume.music === 'industrial';
 
-    if (ending) {
-      // drums out, pad and arp only
-    } else if (halfTime ? (s === 0 || s === 10) : (s % 4 === 0) && energy > 0.20) {
-      this._kick(t, 0.55 + energy * 0.45);
+    const drums = drumStrengths(this.volume, step, energy);
+    if (drums.kick) {
+      this._kick(t, drums.kick);
       this._duck(t);
     }
-    if (!ending && energy > 0.42) {
-      if (halfTime ? s === 8 : (s === 4 || s === 12)) this._snare(t, 0.5 + energy * 0.5);
-    }
+    if (drums.snare) this._snare(t, drums.snare);
     if (this.volume.music === 'downtempo') {
       // only a soft off-beat tick; the sixteenth grid stays empty
       if (!ending && (s === 4 || s === 12)) this._hat(t, 0.18 * (0.5 + energy * 0.6), 0.05);
@@ -224,9 +222,7 @@ export class Synthesizer {
     }
 
     // --- fill ----------------------------------------------------
-    if (bar % 4 === 3 && s >= 12 && energy > 0.6) {
-      this._snare(t, 0.35 + (s - 12) * 0.14);
-    }
+    if (drums.fill) this._snare(t, drums.fill);
   }
 
   /* ---------------- voices ---------------- */

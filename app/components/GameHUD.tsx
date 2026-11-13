@@ -1,6 +1,6 @@
 import { memo, useSyncExternalStore } from 'react';
 import { initialSnapshot } from '../game/contracts';
-import type { GameRuntime } from '../game/contracts';
+import type { GameRuntime, GameSnapshot } from '../game/contracts';
 import { ROUTE_LABELS } from '../game/core/branches';
 import { SIGHTSEEING_SPEED } from '../game/core/sightseeing';
 import { classes as c } from '../styles/classes';
@@ -10,6 +10,10 @@ const noSubscribe = () => () => {};
 
 export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime | null }) {
   const snapshot = useSyncExternalStore(runtime?.subscribe ?? noSubscribe, runtime?.getSnapshot ?? fallback, fallback);
+  return <HUDView snapshot={snapshot} enableAudio={() => void runtime?.enableAudio()} pause={() => runtime?.pause('user')} />;
+});
+
+export function HUDView({ snapshot, enableAudio, pause }: { snapshot: GameSnapshot; enableAudio(): void; pause(): void }) {
   const visible = ['playing', 'paused', 'crash'].includes(snapshot.phase);
   const routeHint = snapshot.routeHint;
   const routeLabel = snapshot.route ? ROUTE_LABELS[snapshot.route] : null;
@@ -31,6 +35,7 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
           </div>
         )}
         {routeLabel && <div className={c('route-status')} id="hud-route">{routeLabel}</div>}
+        {snapshot.outroPhase === 'encore' && <div className={c('route-status')}>ENCORE</div>}
       </div>
       {snapshot.phase === 'playing' && routeHint && (
         <div className={c('sr-only')} id="route-hint" role="status">
@@ -54,9 +59,9 @@ export const GameHUD = memo(function GameHUD({ runtime }: { runtime: GameRuntime
       <div className={c('boost', snapshot.boosting && 'on')} id="hud-boost">BOOST</div>
       <div className={c('center-msg', !!snapshot.message && 'show')} id="center-msg">{snapshot.message}</div>
       {snapshot.phase === 'playing' && snapshot.soundUnavailable && <button type="button" className={c('btn', 'tiny', 'restore-audio')}
-        onClick={() => void runtime?.enableAudio()}>SOUND OFF · RESTORE AUDIO</button>}
+        onClick={enableAudio}>SOUND OFF · RESTORE AUDIO</button>}
       {snapshot.phase === 'playing' && <button type="button" className={c('btn', 'tiny', 'touch-pause')}
-        aria-label="Pause" onClick={() => runtime?.pause('user')}>PAUSE</button>}
+        aria-label="Pause" onClick={pause}>PAUSE</button>}
     </section>
   );
-});
+}

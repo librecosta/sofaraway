@@ -5,6 +5,7 @@ import { clamp } from '../core/collision';
 import { resolveDifficulty, supportsDifficulty } from '../core/difficulty';
 import { idleInput } from '../core/input';
 import { PickupDeck } from '../core/pickups';
+import { rhythmicLightGain } from '../core/rhythmic-lights';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
@@ -64,6 +65,10 @@ export class Runtime implements GameRuntime {
   private switchMs = 0;
   private notice = '';
   private noticeUntil = 0;
+  private lightAmount = 0;
+  private lightStamp = 0;
+  private lightMotion?: MediaQueryList;
+  private lightInput = { beat: 0, rhythmGain: 1 };
 
   constructor(private readonly view: RuntimeView) {}
 
@@ -80,10 +85,13 @@ export class Runtime implements GameRuntime {
     const begin = performance.now();
     const generation = this.generation;
     this.options = options;
+    this.lightAmount = Number(!!options.dynamicLights);
+    this.lightMotion = matchMedia('(prefers-reduced-motion: reduce)');
     if (options.saveRecords) this.records = readRecords();
     const difficulty = resolveDifficulty(options.volumeId, options.difficulty);
     this.publish({ phase: 'initializing', volumeId: options.volumeId, difficulty,
       mode: options.mode, quality: options.quality, volume: options.volume, muted: options.muted,
+      dynamicLights: !!options.dynamicLights,
       localRecord: recordFor(this.records, options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
@@ -148,7 +156,7 @@ export class Runtime implements GameRuntime {
     this.pendingPickupDraw = fixedSeed === undefined && sim.volume.id === 'elsewhere';
     sim.start(this.snapshot.difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, this.snapshot.mode);
     try {
-      if (silent) this.graphics?.warmSurface(sim, false);
+      if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
     } catch (error) {
       this.fail(error);
       return;
@@ -212,6 +220,10 @@ export class Runtime implements GameRuntime {
   }
 
   returnToMenu() {
+    if (this.snapshot.phase === 'menu' && this.snapshot.error?.kind === 'audio') {
+      this.publish({ error: null });
+      return;
+    }
     if (!['starting', 'playing', 'paused', 'crash', 'results'].includes(this.snapshot.phase)) return;
     this.generation++;
     this.resumePending = false;
@@ -295,6 +307,17 @@ export class Runtime implements GameRuntime {
     this.view.muted?.(value);
   }
 
+  setDynamicLights(value: boolean) {
+    if (this.snapshot.phase !== 'disposed') this.publish({ dynamicLights: value });
+  }
+
+  private lighting(sim: Simulation) {
+    this.lightInput.beat = sim.beat;
+    const beat = sim.phase === 'menu' ? sim.beat % sim.volume.beats : sim.beat;
+    this.lightInput.rhythmGain = rhythmicLightGain(sim.volume, beat, this.lightAmount, this.lightMotion?.matches);
+    return this.lightInput;
+  }
+
   showMessage(message: string) {
     this.notice = message;
     this.noticeUntil = performance.now() + 1500;
@@ -324,12 +347,12 @@ export class Runtime implements GameRuntime {
     this.recorder = undefined;
   }
 
-  private fail(error: unknown) {
+  private fail(error: unknown, kind: GameError['kind'] = 'graphics', stage?: GameError['stage']) {
     if (this.snapshot.phase === 'disposed') return;
     this.generation++;
     this.release();
     this.publish({ phase: error instanceof UnsupportedGraphics ? 'unsupported' : 'error',
-      error: Object.freeze({ kind: 'graphics', message: error instanceof Error ? error.message : 'Could not load the game.' }) });
+      error: Object.freeze({ kind, stage, message: error instanceof Error ? error.message : 'Could not load the game.' }) });
   }
 
   private loadVolume(id: VolumeId) {
@@ -357,11 +380,11 @@ export class Runtime implements GameRuntime {
     const input = flags.boost ? { ...idleInput, boosting: true } : idleInput;
     const advance = (dt: number) => {
       sim.step(dt, input);
-      graphics.update(sim, true);
+      graphics.update(sim, true, this.lighting(sim));
     };
     for (let i = 0; i < steps; i++) advance(STEP);
     if (time - steps * STEP > 0) advance(time - steps * STEP);
-    if (time === 0) graphics.update(sim, true);
+    if (time === 0) graphics.update(sim, true, this.lighting(sim));
     this.publishRun({ phase: sim.phase });
     this.draw(sim, performance.now(), false);
   }
@@ -441,7 +464,7 @@ export class Runtime implements GameRuntime {
       }
       this.schedule();
     } catch (error) {
-      this.fail(error);
+      this.fail(error, 'runtime');
     }
   };
 
@@ -484,7 +507,13 @@ export class Runtime implements GameRuntime {
     const fixed = this.options?.diagnostics.fixedTime != null;
     // Leave the last frame in place behind the pause UI; keep servicing the pointer.
     const paused = this.snapshot.phase === 'paused';
-    const locked = !paused && graphics.draw(sim, fixed, updateScene);
+    const dt = this.lightStamp ? Math.min(50, Math.max(0, now - this.lightStamp)) : 0;
+    this.lightStamp = now;
+    if (!paused) {
+      const target = Number(this.snapshot.dynamicLights);
+      this.lightAmount += Math.sign(target - this.lightAmount) * Math.min(Math.abs(target - this.lightAmount), dt / 280);
+    }
+    const locked = !paused && graphics.draw(sim, fixed, updateScene, this.lighting(sim));
     if (this.input) {
       this.input.pointer.locked = locked && this.snapshot.phase === 'playing';
       this.view.pointer(this.input.pointer);
@@ -509,6 +538,7 @@ export class Runtime implements GameRuntime {
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
         branch: sim.branch, trackDistance: sim.trackDistance, neutralized: sim.gatesNeutralized,
         outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
+        rhythmGain: this.lightInput.rhythmGain,
         audio: this.audio.diagnostics,
         initMs: this.initMs, switchMs: this.switchMs }));
     }
@@ -533,7 +563,9 @@ export class Runtime implements GameRuntime {
     try {
       this.resizeGraphics();
       // A canvas resize clears the frozen frame, so draw it once at the new size.
-      if (!this.contextLost && this.simulation && this.snapshot.phase === 'paused') this.graphics?.draw(this.simulation, true);
+      if (!this.contextLost && this.simulation && this.snapshot.phase === 'paused') {
+        this.graphics?.draw(this.simulation, true, true, this.lighting(this.simulation));
+      }
     } catch (error) {
       this.fail(error);
     }
@@ -576,7 +608,7 @@ export class Runtime implements GameRuntime {
       this.publish({ error: Object.freeze({ kind: 'graphics', message: 'Graphics were interrupted. Waiting for WebGL to recover.' }) });
       clearTimeout(this.contextRecoveryTimer);
       this.contextRecoveryTimer = setTimeout(() => {
-        if (this.contextLost) this.fail(new Error('WebGL did not recover. Reload to start a new run.'));
+        if (this.contextLost) this.fail(new Error('WebGL did not recover. Try again to start a new run.'), 'graphics', 'recovery');
       }, 8000);
     }, { signal });
     canvas.addEventListener('webglcontextrestored', () => {
@@ -587,11 +619,11 @@ export class Runtime implements GameRuntime {
         this.graphics?.restore(sim.volume);
         this.contextLost = false;
         this.resizeGraphics();
-        this.graphics?.warmSurface(sim, this.options?.diagnostics.fixedTime != null);
+        this.graphics?.warmSurface(sim, this.options?.diagnostics.fixedTime != null, this.lighting(sim));
         this.publish({ error: null });
         this.surfaceChanged();
       } catch (error) {
-        this.fail(error);
+        this.fail(error, 'graphics', 'recovery');
       }
     }, { signal });
     window.addEventListener('pagehide', event => {

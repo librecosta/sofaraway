@@ -70,9 +70,10 @@ test('prerendered metadata and visible fallback without scripting', async ({ bro
     await expect(page).toHaveTitle('SoFaraway — a rhythm runner');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await expect(page.getByRole('heading', { name: 'SOFARAWAY' })).toBeVisible();
-    await expect(page.getByText(/procedural rhythm runner by LibreCosta/i)).toBeVisible();
+    await expect(page.getByText('PROCEDURAL RUNNER', { exact: true })).toBeVisible();
+    await expect(page.getByText('MUSIC IN MOTION', { exact: true })).toBeVisible();
     await expect(page.getByText(/enable JavaScript/i)).toBeVisible();
-    await expect(page.getByText('LOADING', { exact: true })).toBeHidden();
+    await expect(page.getByText('INITIALIZING', { exact: true })).toBeHidden();
     await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', canonical);
     await expect(page.locator('link[rel=icon]')).toHaveAttribute('href', '/favicon.svg');
     for (const [attribute, key, value] of [
@@ -102,7 +103,7 @@ test('hydration loads the game on demand and keeps volume history working', asyn
     await page.goto('/?vol=elsewhere&q=low', { waitUntil: 'domcontentloaded' });
     await requested;
     await expect(page.locator(start)).toBeDisabled();
-    await expect(page.locator(start)).toHaveText('LOADING');
+    await expect(page.locator(start)).toHaveText('INITIALIZING');
   } finally {
     allowDownload();
   }
@@ -172,7 +173,7 @@ test('missing WebGL2 keeps a usable fallback and Retry can recover', async ({ pa
     } as typeof original;
   });
   await page.goto('/?vol=drift&q=low');
-  const dialog = page.getByRole('dialog', { name: 'GAME UNAVAILABLE' });
+  const dialog = page.getByRole('dialog', { name: 'GRAPHICS UNSUPPORTED' });
   const retry = dialog.getByRole('button', { name: 'TRY AGAIN' });
   await expect(dialog.getByRole('alert')).toContainText(/WebGL2/i);
   await expect(retry).toBeFocused();
@@ -192,5 +193,5 @@ test('unsupported Fullscreen reports a visible status', async ({ page }) => {
   await page.goto('/?q=low');
   await expect(page.locator(start)).toBeEnabled();
   await page.getByRole('button', { name: 'FULL SCREEN' }).click();
-  await expect(page.getByRole('status')).toHaveText('FULL SCREEN UNAVAILABLE');
+  await expect(page.locator('#menu').getByRole('status')).toHaveText('FULL SCREEN UNAVAILABLE');
 });

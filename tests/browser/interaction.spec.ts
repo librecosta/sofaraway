@@ -3,7 +3,8 @@ import { readMetrics } from './diagnostics';
 
 test('desktop input, focus loss, termination and restart', async ({ page }) => {
   await page.goto('/?q=low&dbg=1');
-  await page.locator('[data-diff=hard]').click();
+  await page.getByRole('button', { name: 'Next difficulty' }).click();
+  await expect(page.locator('#diff [data-selected=true]')).toHaveText('HARD');
   await page.locator('[data-act=start]').click();
   await expect(page.locator('#hud')).toBeVisible();
   await expect(page.locator('#hint')).toContainText('HOLD SHIFT TO BOOST');
@@ -93,7 +94,7 @@ test('unsupported graphics retains the menu and can retry in the same document',
     }, { once: true });
   });
   await page.goto('/');
-  const fallback = page.getByRole('dialog', { name: 'GAME UNAVAILABLE' });
+  const fallback = page.getByRole('dialog', { name: 'GRAPHICS UNSUPPORTED' });
   await expect(fallback).toBeVisible();
   await expect(page.locator('[data-act=start]')).toBeDisabled();
   await page.evaluate(() => window.dispatchEvent(new Event('b0:allow-webgl')));
@@ -151,7 +152,8 @@ test('disabled storage still allows configuration and play', async ({ page }) =>
     Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('Storage disabled', 'SecurityError'); } });
   });
   await page.goto('/?q=low');
-  await page.locator('[data-diff=hard]').click();
+  await page.getByRole('button', { name: 'Next difficulty' }).click();
+  await expect(page.locator('#diff [data-selected=true]')).toHaveText('HARD');
   await page.locator('[data-act=settings]').click();
   await page.locator('#set-volume').fill('37');
   await expect(page.locator('#set-volume')).toHaveValue('37');

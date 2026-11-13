@@ -128,6 +128,7 @@ class VolumeScene {
   update(sim: SceneState, deterministic: boolean, lighting?: LightingPreview) {
     const { x, y, roll } = sim.camera;
     const distance = lighting?.station ?? sim.trackDistance;
+    const rhythmGain = lighting?.rhythmGain ?? 1;
     this.updateJunction(sim);
     const plan = sim.outroPlan && distance + 650 >= sim.outroPlan.afterglowStart ? sim.outroPlan : undefined;
     if (this.scenic && this.outro !== plan) {
@@ -139,7 +140,9 @@ class VolumeScene {
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.scenic) {
       const lightBeat = lighting?.beat ?? sim.beat;
-      const state = this.scenic.update(distance, lightBeat, lighting?.pattern, sim.phase !== 'menu');
+      const baseState = this.scenic.update(distance, lightBeat, lighting?.pattern, sim.phase !== 'menu', rhythmGain);
+      const state = rhythmGain === 1 ? baseState : { ...baseState, rim: baseState.rim * rhythmGain,
+        strip: baseState.strip * rhythmGain, branch: baseState.branch * rhythmGain };
       const { base, sky, ground } = this.scenic;
       this.hue = state.hue;
       this.saturation = state.saturation;
@@ -187,7 +190,7 @@ class VolumeScene {
     }
     if (sim.phase === 'menu') {
       this.setFov(BASE_FOV);
-      if (!this.scenic) this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15);
+      if (!this.scenic) this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, rhythmGain);
       return { focus: null, locked: false };
     }
     if (sim.phase === 'results' || (sim.phase === 'crash' && previousPhase === 'crash')) {
@@ -202,7 +205,7 @@ class VolumeScene {
       this.hue = THREE.MathUtils.lerp(hue[index % hue.length], hue[(index + 1) % hue.length],
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
       this.tunnel.setHue((this.hue + 1) % 1);
-      this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18));
+      this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18), rhythmGain);
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
     }
 
@@ -509,8 +512,8 @@ export class Graphics {
     this.prepare();
   }
 
-  warmSurface(sim: Simulation, deterministic: boolean) {
-    this.draw(sim, deterministic);
+  warmSurface(sim: Simulation, deterministic: boolean, lighting?: LightingPreview) {
+    this.draw(sim, deterministic, true, lighting);
     // Finish the first uploads and post passes before the transport is re-anchored.
     this.gl.finish();
   }

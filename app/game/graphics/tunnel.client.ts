@@ -540,10 +540,10 @@ export class Tunnel {
     }
   }
 
-  pulse(p: number) {
+  pulse(p: number, rhythmGain = 1) {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
-    this.stripMat.color.copy(c).multiplyScalar(1 + p * 1.3);
-    this.rimMat.color.copy(c).multiplyScalar(0.55 + p * 1.0);
+    this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * rhythmGain);
+    this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * rhythmGain);
   }
 
   setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState) {

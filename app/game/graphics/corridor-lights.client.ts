@@ -13,6 +13,7 @@ export interface LightingPreview {
   readonly pattern?: LightPattern;
   readonly yaw?: number;
   readonly station?: number;
+  readonly rhythmGain?: number;
 }
 
 /** Decode authored sRGB swatches locally; the other volumes keep their existing color management. */
@@ -227,7 +228,7 @@ export class CorridorLights {
     this.group.add(mesh);
   }
 
-  update(station: number, beat: number, override?: LightPattern, closing = false) {
+  update(station: number, beat: number, override?: LightPattern, closing = false, rhythmGain = 1) {
     const reduced = this.reduced = this.reduce?.matches ?? false;
     const state = lightingState(beat, reduced, closing);
     const active = corridorAt(this.atlas, station) ?? corridorAt(this.outroAtlas, station);
@@ -249,7 +250,7 @@ export class CorridorLights {
     alternateHue.value.setHSL(dual ? mixHue(state.hue, state.hue + .27, .22 * (.5 + .5 * breath(beat, 8))) : state.hue,
       state.saturation, .5);
     flowPhase.value = (beat % 4) / 4;
-    pulse.value = (.84 + .07 * state.breathing + .12 * state.energy * state.pulse) * state.level;
+    pulse.value = (.84 + .07 * state.breathing + .12 * state.energy * state.pulse) * state.level * rhythmGain;
     motion.value = reduced ? 0 : state.level;
     this.fog.copy(this.sky).lerp(this.scratch.setHSL(state.hue, .61 * state.saturation, .12), .56).multiplyScalar(.041);
     return state;

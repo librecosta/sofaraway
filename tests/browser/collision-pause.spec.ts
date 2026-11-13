@@ -12,7 +12,8 @@ test('an Easy Square hit keeps the viewport steady and a backlog recovers before
   const volume = volumeById('elsewhere');
   const gate = chartFor(volume, 'easy').find(gate => gate.kind === 'square')!;
   await page.goto('http://127.0.0.1:8091/?q=low&align=1');
-  await page.locator('[data-diff=easy]').click();
+  await page.getByRole('button', { name: 'Previous difficulty' }).click();
+  await expect(page.locator('#diff [data-selected=true]')).toHaveText('EASY');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   const result = await page.evaluate(async ({ step, gateBeat }) => {
     const entry = performance.getEntriesByType('resource')

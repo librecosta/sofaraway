@@ -67,9 +67,9 @@ test('prerender, four volumes, a live run and restart', async ({ browser, page, 
   const initial = await readMetrics(page);
   expect(initial.calls).toBeGreaterThan(0);
   if (!hasTouch) {
-    await page.locator('[data-diff=hard]').focus();
+    await page.getByRole('button', { name: 'Next difficulty' }).focus();
     await page.keyboard.press('Space');
-    await expect(page.locator('[data-diff=hard]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#diff [data-selected=true]')).toHaveText('HARD');
     await expect(page.locator('#hud')).toBeHidden();
     await page.locator('#gl').click({ position: { x: 80, y: 140 } });
   }
