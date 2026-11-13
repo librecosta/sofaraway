@@ -660,9 +660,14 @@ html:has(.viewport), body:has(.viewport){
   .menu-brand .wordmark { font-size:clamp(2.25rem,9vw,3.3rem); }
   .volume-wheel { height:105px; }
   .record-grid { margin-top:6px; }
-  :global(#over) .btn.start { margin-top:10px; }
+  :global(#over) .btn.start { margin-top:5px; }
   :global(#over) .btn.tiny { margin-top:0; }
-  .stats { margin-top:9px; }
+  :global(#over) .results-title { margin-bottom:7px; }
+  :global(#over) .over-score { font-size:clamp(36px,12.5vh,64px); }
+  :global(#over) .rank { margin-top:2px; }
+  :global(#over) .route-status { margin-top:4px; }
+  :global(#over) .stats { margin-top:6px; }
+  :global(#over) .stats div { gap:.3em; }
 }
 @media (max-height:430px) and (min-width:570px) {
   .menu-center { display:grid; grid-template-columns:1fr 1fr; align-content:center; justify-items:center; }

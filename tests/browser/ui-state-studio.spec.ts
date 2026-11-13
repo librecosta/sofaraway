@@ -132,6 +132,8 @@ test('Studio uses the requested browser viewport and keeps one corridor canvas a
   expect(await frame.getByRole('alert').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await scenario.selectOption('landscape-results');
   await expect(frame.getByText('TOTAL SCORE')).toBeVisible();
+  const back = frame.getByRole('button', { name: 'BACK TO MENU' });
+  expect(await back.evaluate(el => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(375);
 
   await studio.getByLabel('Real corridor background').check();
   await expect(studio.getByRole('status')).toHaveText('Rendered game corridor');
