@@ -34,10 +34,10 @@ test('Sightseeing on DRIFT plays the entire original song on real audio time', a
     wallSeconds: (end!.wall - firstBeforeAnchor!.wall) / 1000, steps: steps.length, gates: result.total, lives: result.lives });
 });
 
-test('ELSEWHERE sustains Boost through Encore and Afterglow on the original audio clock', async ({ page }) => {
+for (const difficulty of ['normal', 'impossible'] as const) test(`ELSEWHERE ${difficulty} sustains Boost through Encore and Afterglow on the original audio clock`, async ({ page }) => {
   test.setTimeout(255_000);
   const errors = await openSync(page);
-  await mount(page, 'elsewhere');
+  await mount(page, 'elsewhere', 'standard', difficulty);
   await page.locator('#start').click();
   await phase(page, 'playing');
   await page.keyboard.down('Shift');
@@ -45,19 +45,21 @@ test('ELSEWHERE sustains Boost through Encore and Afterglow on the original audi
     await page.waitForFunction(() => window.b0Harness.snapshot().outroPhase === 'afterglow', undefined,
       { timeout: 205_000, polling: 250 });
     const tail = await page.evaluate(() => window.b0Harness.snapshot());
-    expect(tail.encore).toMatchObject({ encountered: 24, passed: 24, clean: 24, bonusScore: 7200 });
+    const count = difficulty === 'impossible' ? 36 : 24;
+    const main = difficulty === 'impossible' ? 184 : 141;
+    expect(tail.encore).toMatchObject({ encountered: count, passed: count, clean: count, bonusScore: count * 300 });
     await page.waitForFunction(() => window.b0Harness.snapshot().phase === 'results', undefined, { timeout: 24_000, polling: 200 });
-    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), best: window.b0Harness.best() }));
+    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), stored: localStorage.getItem('sofaraway.records.v1') }));
     const data = await trace(page);
     expect(data.end).toMatchObject({ elapsed: 210, beat: 448, scheduler: false, runBus: false });
     expect(data.steps).toHaveLength(1792);
     expect(run.snapshot.result).toMatchObject({ title: 'ESCAPED', route: 'main', rank: 'S', accuracy: 1,
-      planned: 141, passed: 141, encore: { bonusScore: 7200 } });
-    expect(run.best).toBe(run.snapshot.score);
-    expect(run.best).toBeLessThan(run.snapshot.score + run.snapshot.result!.encore!.bonusScore);
+      planned: main, passed: main, encore: { bonusScore: count * 300 } });
+    expect(run.snapshot.localRecord).toEqual({ best: null, last: null });
+    expect(run.stored).toBeNull();
     expect(errors).toEqual([]);
-    report('encore-full', { enteredAt: tail.progress * 210, end: data.end, steps: data.steps.length,
-      score: run.snapshot.score, best: run.best, encore: run.snapshot.result?.encore });
+    report('encore-full', { difficulty, enteredAt: tail.progress * 210, end: data.end, steps: data.steps.length,
+      score: run.snapshot.score, encore: run.snapshot.result?.encore });
   } finally { await page.keyboard.up('Shift'); }
 });
 

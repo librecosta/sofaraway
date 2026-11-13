@@ -1,5 +1,7 @@
-import { difficulties, playModes } from '../game/contracts';
+import { playModes } from '../game/contracts';
 import type { Difficulty, GameSnapshot, PlayMode } from '../game/contracts';
+import { difficultySettings } from '../game/core/chart';
+import { difficultiesFor } from '../game/core/difficulty';
 import { SIGHTSEEING_LIVES } from '../game/core/sightseeing';
 import { volumeById } from '../game/core/volumes';
 import { classes as c } from '../styles/classes';
@@ -21,6 +23,8 @@ interface Props {
 export function MainMenu(props: Props) {
   const { snapshot } = props;
   const volume = volumeById(snapshot.volumeId);
+  const { best, last } = snapshot.localRecord;
+  const sightseeing = snapshot.mode === 'sightseeing';
   const ready = snapshot.phase === 'menu' && snapshot.error?.kind !== 'graphics';
   return (
     <section id="menu" className={c('screen', !props.visible && 'hidden')}>
@@ -49,9 +53,10 @@ export function MainMenu(props: Props) {
             ))}
           </div>
           <div className={c('diff', 'mode-options')} id="diff">
-            {snapshot.mode === 'sightseeing' ? <span className={c('mode-details')}>{SIGHTSEEING_LIVES} LIVES · ⅓ SPEED</span> : difficulties.map(difficulty => {
+            {sightseeing ? <span className={c('mode-details')}>{SIGHTSEEING_LIVES} LIVES · ⅓ SPEED</span> : difficultiesFor(volume.id).map(difficulty => {
               const label = difficulty.toUpperCase();
-              const lives = `${volume.lives[difficulty]} ${volume.lives[difficulty] === 1 ? 'LIFE' : 'LIVES'}`;
+              const count = difficultySettings(volume, difficulty).lives;
+              const lives = `${count} ${count === 1 ? 'LIFE' : 'LIVES'}`;
               return (
                 <DecodeButton key={difficulty} className={c('diff-btn', snapshot.difficulty === difficulty && 'active')}
                   label={label} aria-label={`${label} ${lives}`} data-diff={difficulty} aria-pressed={snapshot.difficulty === difficulty}
@@ -60,6 +65,11 @@ export function MainMenu(props: Props) {
                 </DecodeButton>
               );
             })}
+          </div>
+          <div className={c('local-records')} role="group" aria-label="Local records">
+            {!sightseeing && <span>BEST <b>{best?.toLocaleString('en-US') ?? '—'}</b></span>}
+            <span>{sightseeing ? 'LAST VISIT' : 'LAST'} <b>{last?.score.toLocaleString('en-US') ?? '—'}</b></span>
+            {last && <span>{last.outcome}{last.recovery && ' · RECOVERY'}</span>}
           </div>
         </div>
       </div>

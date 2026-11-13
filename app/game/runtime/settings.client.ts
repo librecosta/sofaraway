@@ -1,9 +1,10 @@
-import { difficulties, playModes, qualities } from '../contracts';
-import type { Difficulty, GameOptions, PlayMode, QualityTier } from '../contracts';
+import { playModes, qualities } from '../contracts';
+import type { GameOptions, PlayMode, QualityTier } from '../contracts';
 import { clamp } from '../core/collision';
+import { resolveDifficulty } from '../core/difficulty';
 import { volumeById } from '../core/volumes';
 
-type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted' | 'best';
+type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted';
 
 function read(key: Setting) {
   try { return localStorage.getItem('sofaraway.' + key); } catch { return null; }
@@ -20,19 +21,18 @@ export function readOptions(params: URLSearchParams): GameOptions {
   const mode = fixedTime !== null ? params.get('mode') : read('mode');
   const quality = params.get('q') ?? read('quality');
   const volume = Number(read('volume') ?? 80);
-  const best = Number(read('best') ?? 0);
   const pair = (name: string) => params.get(name)?.split(',').map(Number) ?? [];
   const [x, y] = pair('cur');
   const [aperture, blur] = pair('dof');
   const branchSide = fixedTime !== null ? params.get('route') : null;
+  const volumeId = volumeById(params.get('vol')).id;
   return {
-    volumeId: volumeById(params.get('vol')).id,
-    difficulty: difficulties.includes(selectedDifficulty as Difficulty) ? selectedDifficulty as Difficulty : 'normal',
+    volumeId,
+    difficulty: resolveDifficulty(volumeId, selectedDifficulty),
     mode: playModes.includes(mode as PlayMode) ? mode as PlayMode : 'standard',
     quality: qualities.includes(quality as QualityTier) ? quality as QualityTier : 'auto',
     volume: Number.isFinite(volume) ? clamp(volume / 100, 0, 1) : 0.8,
     muted: read('muted') === 'true',
-    best: Number.isFinite(best) ? Math.max(best, 0) : 0,
     diagnostics: {
       fixedTime, autoplay: params.get('auto') === '1', align: params.get('align') === '1',
       god: params.get('god') === '1' || (fixedTime !== null && !params.has('god')),

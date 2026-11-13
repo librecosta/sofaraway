@@ -2,6 +2,7 @@ import { initialSnapshot } from '../contracts';
 import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, PlayMode, QualityTier, VolumeId } from '../contracts';
 import { FixedStepClock, MAX_STEPS, RECOVERY_GAP, RunTimeline, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
+import { resolveDifficulty, supportsDifficulty } from '../core/difficulty';
 import { idleInput } from '../core/input';
 import { PickupDeck } from '../core/pickups';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
@@ -12,13 +13,13 @@ import { Graphics, UnsupportedGraphics } from '../graphics/scene.client';
 import { Recorder } from '../debug/recorder.client';
 import { InputController } from './input.client';
 import type { PointerView } from './input.client';
+import { emptyRecords, readRecords, recordFor, recordRun, writeRecords } from './records.client';
 
 export interface RuntimeView {
   pointer(view: PointerView): void;
   flash(opacity: number, color: string): void;
   debug(text: string): void;
   key?(key: string, event: KeyboardEvent): boolean;
-  best?(score: number): void;
   muted?(value: boolean): void;
 }
 
@@ -40,6 +41,8 @@ export class Runtime implements GameRuntime {
   private input?: InputController;
   private recorder?: Recorder;
   private options?: GameOptions;
+  private records = emptyRecords();
+  private recordsSynced = true;
   private raf = 0;
   private generation = 0;
   private resumePending = false;
@@ -77,8 +80,11 @@ export class Runtime implements GameRuntime {
     const begin = performance.now();
     const generation = this.generation;
     this.options = options;
-    this.publish({ phase: 'initializing', volumeId: options.volumeId, difficulty: options.difficulty,
-      mode: options.mode, quality: options.quality, volume: options.volume, muted: options.muted });
+    if (options.saveRecords) this.records = readRecords();
+    const difficulty = resolveDifficulty(options.volumeId, options.difficulty);
+    this.publish({ phase: 'initializing', volumeId: options.volumeId, difficulty,
+      mode: options.mode, quality: options.quality, volume: options.volume, muted: options.muted,
+      localRecord: recordFor(this.records, options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
       this.graphics = new Graphics(canvas, options.quality, this.mobile(), options.diagnostics);
@@ -148,7 +154,7 @@ export class Runtime implements GameRuntime {
       return;
     }
     this.anchorRun(0);
-    this.publishRun({ phase: 'playing', pauseReason: null, error: null, soundUnavailable: false });
+    this.publishRun({ phase: 'playing', pauseReason: null, error: null, soundUnavailable: false, newBest: false });
   }
 
   pause(reason: PauseReason) {
@@ -217,7 +223,7 @@ export class Runtime implements GameRuntime {
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
       pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, soundUnavailable: false,
-      outroPhase: undefined, encore: undefined,
+      outroPhase: undefined, encore: undefined, newBest: false,
       route: null, routeHint: null });
   }
 
@@ -233,7 +239,9 @@ export class Runtime implements GameRuntime {
       this.input?.clear();
       this.loadVolume(id);
       this.switchMs = performance.now() - begin;
-      this.publishRun({ phase: 'menu', volumeId: id });
+      const difficulty = resolveDifficulty(id, this.snapshot.difficulty);
+      this.publishRun({ phase: 'menu', volumeId: id, difficulty, newBest: false,
+        localRecord: recordFor(this.records, id, difficulty, this.snapshot.mode) });
       if (this.options?.diagnostics.fixedTime != null) this.capture(this.options.diagnostics.fixedTime);
       this.schedule();
     } catch (error) {
@@ -242,12 +250,16 @@ export class Runtime implements GameRuntime {
   }
 
   setDifficulty(value: Difficulty) {
-    if (this.canConfigure()) this.publish({ difficulty: value });
+    const { volumeId, mode } = this.snapshot;
+    if (this.snapshot.phase === 'menu' && mode === 'standard' && supportsDifficulty(volumeId, value)) {
+      this.publish({ difficulty: value, localRecord: recordFor(this.records, volumeId, value, mode) });
+    }
   }
 
   setMode(value: PlayMode) {
     if (this.snapshot.phase !== 'menu' || this.snapshot.mode === value) return;
-    this.publish({ mode: value });
+    const { volumeId, difficulty } = this.snapshot;
+    this.publish({ mode: value, localRecord: recordFor(this.records, volumeId, difficulty, value) });
     if (this.snapshot.volumeId !== 'elsewhere' || this.unavailable()) return;
     try {
       this.loadVolume('elsewhere');
@@ -417,12 +429,7 @@ export class Runtime implements GameRuntime {
             this.step(sim);
           }
           if (this.snapshot.phase !== sim.phase) {
-            this.publishRun({ phase: sim.phase });
-            const options = this.options!;
-            if (sim.mode === 'standard' && sim.gatesNeutralized === 0 && sim.score > options.best) {
-              options.best = Math.floor(sim.score);
-              this.view.best?.(options.best);
-            }
+            this.publishRun({ phase: sim.phase, ...this.finishRecord(sim) });
           }
         }
         if (now >= this.nextPublish) {
@@ -437,6 +444,22 @@ export class Runtime implements GameRuntime {
       this.fail(error);
     }
   };
+
+  private finishRecord(sim: Simulation): Partial<GameSnapshot> {
+    const result = sim.result;
+    const options = this.options!;
+    const { fixedTime, autoplay, god, align, debug, record } = options.diagnostics;
+    if (!result || !options.saveRecords || fixedTime !== null || autoplay || god || align || debug || record) return {};
+    if (this.recordsSynced) this.records = readRecords(this.records);
+    const { id } = sim.volume;
+    const newBest = recordRun(this.records, id, sim.difficulty, sim.mode, {
+      score: Math.floor(sim.score), outcome: result.title,
+      ...(result.encore ? { encoreBonus: result.encore.bonusScore } : {}),
+      ...(result.neutralized || result.encore?.neutralized ? { recovery: true } : {}),
+    });
+    this.recordsSynced = writeRecords(this.records);
+    return { localRecord: recordFor(this.records, id, sim.difficulty, sim.mode), newBest };
+  }
 
   private step(sim: Simulation, neutralize = false) {
     const input = neutralize ? this.lastInput : this.input?.read() ?? idleInput;

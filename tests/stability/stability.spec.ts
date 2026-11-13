@@ -73,6 +73,39 @@ test('Encore and Afterglow frame budgets against the same baseline stations @out
   }
 });
 
+test('Impossible streams dense and extended corridors within the existing resource budgets @impossible-perf', async ({ browser }) => {
+  const hard = new OutroInspection('standard', 0, 'main', undefined, 'hard');
+  const impossible = new OutroInspection('standard', 0, 'main', undefined, 'impossible');
+  const same = [161.5, 235, 423].map(beat => hard.sim.reference.station(beat, 'standard'));
+  const views = [
+    ['build', 161.5, same[0], same[0], false], ['drop', 235, same[1], same[1], false],
+    ['finale', 423, same[2], same[2], false],
+    ['encore-final', 416, hard.view('encore-final').station, impossible.view('encore-final').station, false],
+    ['afterglow', 416, hard.view('afterglow-peak').station, impossible.view('afterglow-peak').station, false],
+    ['studio-flight', 416, hard.view('encore-first').station, impossible.view('encore-first').station, true],
+  ] as const;
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [scene, beat, before, after, inspection] of views) {
+        const updated = build === candidate;
+        const station = updated ? after : before;
+        const result = await page.evaluate(({ station, beat, inspection, updated }) => window.stability.fixedGlass(beat, 'high', true,
+          'standard', 'center', 240, !inspection, { station, fly: inspection, inspection: updated && inspection,
+            difficulty: updated ? 'impossible' : 'hard' }), { station, beat, inspection, updated });
+        log('impossible-frame', { scene, build: build.label, sample, station, ...result });
+        expect(result.glError).toBe(0);
+        expect(result.metrics.chunks).toBeLessThanOrEqual(5);
+        expect(result.gateMeshes).toBeLessThanOrEqual(18);
+        if (updated) expect(result.metrics.encoreMeshes).toBeLessThanOrEqual(3);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 test('ending remains legible through the light cue and leaves the other volumes pixel-identical @outro-visual', async ({ browser }, info) => {
   const page = await browser.newPage({ viewport: { width: 1100, height: 760 }, deviceScaleFactor: 1 });
   const errors = captureErrors(page);

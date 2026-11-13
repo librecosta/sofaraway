@@ -1,6 +1,8 @@
 import type { ChartGate } from './chart';
 import { clamp } from './collision';
 import { runRandomWord } from './run-seed';
+import { impossibleRoutes } from './impossible-chart';
+import type { Difficulty } from '../contracts';
 
 export const BRANCH_PREVIEW_BEAT = 315;
 export const SPLIT_BEAT = 320;
@@ -51,15 +53,16 @@ export interface BranchRun {
   readonly side: RouteSide | null;
 }
 
-export function routeCharts(replaced: readonly ChartGate[]): Record<RouteKind, ChartGate[]> {
+export function routeCharts(replaced: readonly ChartGate[], difficulty: Difficulty = 'normal'): Record<RouteKind, ChartGate[]> {
   const challengeKinds = ['iris', 'iris', 'iris', 'square', 'iris', 'iris',
     'iris', 'diamond', 'iris', 'iris', 'iris', 'iris'] as const;
   const directions = [0, 1, 2, 0, 4, 5, 6, 0, 7, 0, 1, 2];
-  return {
+  const routes: Record<RouteKind, ChartGate[]> = {
     main: replaced.slice(0, 8).map((gate, i) => ({ ...gate, beat: ROUTE_BEAT + i * 3 })),
     challenge: challengeKinds.map((kind, i) => ({ beat: ROUTE_BEAT + i * 2, kind, sector: directions[i], section: 'A2' })),
     score: Array.from({ length: 24 }, (_, i) => ({
       beat: ROUTE_BEAT + i, kind: i % 2 === 0 ? 'square' : 'diamond', sector: 0, section: 'A2',
     })),
   };
+  return difficulty === 'impossible' ? impossibleRoutes(routes) : routes;
 }

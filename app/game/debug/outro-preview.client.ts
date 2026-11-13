@@ -1,4 +1,4 @@
-import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
+import type { Diagnostics, Difficulty, PlayMode, QualityTier } from '../contracts';
 import type { RouteKind } from '../core/branches';
 import { Graphics } from '../graphics/scene.client';
 import { OutroInspection, outroVolume } from './outro-inspection';
@@ -26,9 +26,9 @@ export class OutroPreview {
     this.resize();
   }
 
-  select(mode: PlayMode, seed: number, route: RouteKind) {
+  select(mode: PlayMode, seed: number, route: RouteKind, difficulty: Difficulty) {
     const rebuild = this.mode !== mode;
-    const inspection = this.inspection = new OutroInspection(mode, seed, route, rebuild ? undefined : this.graphics.path);
+    const inspection = this.inspection = new OutroInspection(mode, seed, route, rebuild ? undefined : this.graphics.path, difficulty);
     if (!this.lost && rebuild) {
       this.graphics.load(outroVolume, inspection.sim.path, mode);
       this.graphics.prepare();
@@ -52,7 +52,8 @@ export class OutroPreview {
     const metrics = this.graphics.metrics();
     Object.assign(this.canvas.dataset, { station: state.trackDistance.toFixed(6), routeArc: state.distance.toFixed(6),
       beat: state.beat.toFixed(3), hue: metrics.scenicLights?.hue, afterglow: metrics.scenicLights?.afterglow ?? '',
-      mode: state.mode, route: state.route, seed: this.inspection.plan.seed, encoreMeshes: metrics.encoreMeshes,
+      mode: state.mode, difficulty: this.inspection.sim.difficulty, route: state.route, seed: this.inspection.plan.seed,
+      encoreMeshes: metrics.encoreMeshes, pathLength: this.inspection.sim.path.length,
       gateStations: JSON.stringify(state.previewEncore.map(gate => [gate.index + 1, gate.kind, gate.worldStation])) });
   }
 

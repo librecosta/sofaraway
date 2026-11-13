@@ -9,6 +9,8 @@
  * ------------------------------------------------------------------ */
 
 import type { Difficulty } from '../contracts';
+import { IMPOSSIBLE_LIVES, IMPOSSIBLE_SCORE_MULTIPLIER, IMPOSSIBLE_SPEED_FACTOR, resolveDifficulty } from './difficulty';
+import { impossibleChart } from './impossible-chart';
 import type { GateKind, VolumeDefinition } from './volumes';
 
 export interface ChartGate {
@@ -16,6 +18,7 @@ export interface ChartGate {
   sector: number;
   section: string;
   kind: GateKind;
+  inserted?: true;
 }
 
 function mulberry32(a: number) {
@@ -82,6 +85,8 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
 /** difficulty trims the chart; hard and normal play the authored one */
 export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed = difficultySettings(volume, difficulty).seed): ChartGate[] {
   const base = buildChart(volume, seed);
+  difficulty = resolveDifficulty(volume.id, difficulty);
+  if (difficulty === 'impossible') return impossibleChart(base);
   if (difficulty !== 'easy') return base;
 
   const out: ChartGate[] = [];
@@ -96,7 +101,10 @@ export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed 
 }
 
 export function difficultySettings(volume: VolumeDefinition, difficulty: Difficulty) {
+  difficulty = resolveDifficulty(volume.id, difficulty);
+  if (difficulty === 'impossible') return { lives: IMPOSSIBLE_LIVES, mult: IMPOSSIBLE_SCORE_MULTIPLIER,
+    seed: volume.seed + 13, speedFactor: IMPOSSIBLE_SPEED_FACTOR };
   const offsets = { easy: 0, normal: 7, hard: 13 };
   const multipliers = { easy: 1, normal: 1.6, hard: 2.4 };
-  return { lives: volume.lives[difficulty], mult: multipliers[difficulty], seed: volume.seed + offsets[difficulty] };
+  return { lives: volume.lives[difficulty], mult: multipliers[difficulty], seed: volume.seed + offsets[difficulty], speedFactor: 1 };
 }

@@ -43,6 +43,9 @@ Configure the host to return `404.html` with status 404 for unknown paths.
 See the [verification and hosting guide](docs/verification.md) for the static
 artifact and hosting requirements.
 
+ELSEWHERE Standard also offers Impossible. The menu keeps Best and Last by
+volume and difficulty in this browser. Sightseeing shows Last Visit per volume.
+
 ### Tests
 
 ```sh
@@ -83,8 +86,8 @@ The page renders all four worlds, every gate type and the floating pickups.
 or Sightseeing. Choose a fixed station or one of the five S-curve views, then
 scrub or play the in-game lighting score. Staggered Cells and Connected Flow
 include a two-color comparison.
-**End Sequence Studio** at `/debug/#outro` previews the last main gate, Encore,
-Afterglow and results. Seek by world station or fly a ten-second segment.
+**End Sequence Studio** at `/debug/#outro` previews Normal and Impossible courses,
+Encore, Afterglow and results. Seek by world station or fly a ten-second segment.
 **Soundtrack** exports a WAV for the selected
 volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
 

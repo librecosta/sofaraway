@@ -1,4 +1,4 @@
-import type { Difficulty, VolumeId } from '../contracts';
+import type { BaseDifficulty, VolumeId } from '../contracts';
 
 export type GateKind = 'iris' | 'square' | 'diamond' | 'shutter' | 'lattice' | 'aperture';
 export type Topology = 'conduit' | 'canal' | 'shaft' | 'orbit';
@@ -23,7 +23,7 @@ export interface VolumeDefinition {
   obstacle: Exclude<GateKind, 'square' | 'diamond'>;
   music: Music;
   hue: readonly number[];
-  lives: Readonly<Record<Difficulty, number>>;
+  lives: Readonly<Record<BaseDifficulty, number>>;
 }
 
 /* ------------------------------------------------------------------ *

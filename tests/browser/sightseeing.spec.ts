@@ -62,11 +62,11 @@ test('sightseeing renders all three portals and route gates remain attached to t
   expect(resets.slice(6)).toEqual(resets.slice(3, 6));
 });
 
-test('only Standard writes Best Score at the end of a live run', async ({ page }) => {
+test('aligned harness runs leave records empty in both modes', async ({ page }) => {
   await page.goto(harness);
   for (const mode of ['sightseeing', 'standard'] as const) {
     const paused = await page.evaluate(async mode => {
-      await window.b0Harness.mount({ volumeId: 'drift', mode, quality: 'low', best: 17,
+      await window.b0Harness.mount({ volumeId: 'drift', mode, quality: 'low',
         diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: false,
           mobileQuality: false, post: true, record: false, debug: false } });
       await window.b0Harness.start(true);
@@ -77,9 +77,10 @@ test('only Standard writes Best Score at the end of a live run', async ({ page }
     expect(paused.progress).toBeGreaterThan(0.99);
     await page.evaluate(() => window.b0Harness.resume(true));
     await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().phase)).toBe('results');
-    const result = await page.evaluate(() => ({ ...window.b0Harness.snapshot(), best: window.b0Harness.best() }));
+    const result = await page.evaluate(() => window.b0Harness.snapshot());
     expect(result.result?.title).toBe('ESCAPED');
     expect(result.score).toBeGreaterThan(17);
-    expect(result.best).toBe(mode === 'sightseeing' ? 17 : result.score);
+    expect(result.localRecord).toEqual({ best: null, last: null });
+    expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1'))).toBeNull();
   }
 });

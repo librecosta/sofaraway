@@ -17,6 +17,8 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
         {snapshot.mode === 'sightseeing'
           ? <div className={c('route-status')} id={id('over-mode')}>SIGHTSEEING</div>
           : <div className={c('rank')} id={id('over-rank')}>{snapshot.result?.rank ?? 'C'}</div>}
+        {snapshot.mode === 'standard' && snapshot.difficulty === 'impossible' && <div className={c('route-status')}>IMPOSSIBLE</div>}
+        {snapshot.newBest && <div className={c('route-status')}>NEW BEST</div>}
         {snapshot.result?.route && <div className={c('route-status')} id={id('over-route')}>
           {ROUTE_LABELS[snapshot.result.route]} ROUTE
         </div>}
@@ -30,6 +32,7 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
           <div><b>{encore.passed}/{encore.encountered}</b><span>ENCORE PASSED</span></div>
           <div><b>{snapshot.score + encore.bonusScore}</b><span>TOTAL SCORE</span></div>
         </div>}
+        {!!encore?.neutralized && !snapshot.result?.neutralized && <div className={c('route-status')}>RECOVERY · BEST INELIGIBLE</div>}
         {snapshot.result && (snapshot.result.unreached > 0 || snapshot.result.neutralized > 0) && <div className={c('route-status')}>
           {snapshot.result.encountered} ENCOUNTERED · {snapshot.result.unreached} UNREACHED
           {snapshot.result.neutralized > 0 && ` · ${snapshot.result.neutralized} RECOVERY`}

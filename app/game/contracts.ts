@@ -5,7 +5,8 @@ export type VolumeId = 'elsewhere' | 'drift' | 'descent' | 'orbit';
 export const playModes = ['standard', 'sightseeing'] as const;
 export type PlayMode = typeof playModes[number];
 export const difficulties = ['easy', 'normal', 'hard'] as const;
-export type Difficulty = typeof difficulties[number];
+export type BaseDifficulty = typeof difficulties[number];
+export type Difficulty = BaseDifficulty | 'impossible';
 export const qualities = ['high', 'auto', 'low'] as const;
 export type QualityTier = typeof qualities[number];
 export type PauseReason = 'user' | 'background' | 'context';
@@ -30,6 +31,18 @@ export interface GameError {
   readonly message: string;
 }
 
+export interface LastRun {
+  readonly score: number;
+  readonly outcome: RunResult['title'];
+  readonly encoreBonus?: number;
+  readonly recovery?: boolean;
+}
+
+export interface LocalRecord {
+  readonly best: number | null;
+  readonly last: LastRun | null;
+}
+
 export interface GameSnapshot {
   readonly phase: GamePhase;
   readonly volumeId: VolumeId;
@@ -50,6 +63,8 @@ export interface GameSnapshot {
   readonly error: GameError | null;
   readonly pauseReason: PauseReason | null;
   readonly result: RunResult | null;
+  readonly localRecord: LocalRecord;
+  readonly newBest: boolean;
   readonly speed: number;
   readonly boosting: boolean;
   readonly shield: boolean;
@@ -70,7 +85,7 @@ export interface GameOptions {
   quality: QualityTier;
   volume: number;
   muted: boolean;
-  best: number;
+  saveRecords?: boolean;
   runSeed?: number;
   diagnostics: Diagnostics;
 }
@@ -128,6 +143,8 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   error: null,
   pauseReason: null,
   result: null,
+  localRecord: Object.freeze({ best: null, last: null }),
+  newBest: false,
   speed: 24,
   boosting: false,
   shield: false,

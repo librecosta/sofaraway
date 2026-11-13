@@ -1,5 +1,6 @@
 import type { PlayMode } from '../contracts';
 import { BRANCH_PREVIEW_BEAT, REJOIN_BEAT } from './branches';
+import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale, referenceFor, START_DISTANCE } from './reference-track';
 import type { VolumeDefinition } from './volumes';
 
@@ -70,8 +71,10 @@ export type CorridorSegment =
   | ({ type: 's-curve'; s0: number; s1: number } & ReturnType<typeof fitCurve>);
 
 export function corridorLength(volume: VolumeDefinition, mode: PlayMode = 'standard') {
-  return START_DISTANCE + volume.beats * 60 / volume.bpm
+  const original = START_DISTANCE + volume.beats * 60 / volume.bpm
     * cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(mode) + 650;
+  return volume.id === 'elsewhere' && mode === 'standard'
+    ? Math.max(original, referenceFor(volume).boostFinish(mode, IMPOSSIBLE_SPEED_FACTOR) + 650) : original;
 }
 
 export function composeElsewhere(volume: VolumeDefinition, mode: PlayMode): CorridorSegment[] {

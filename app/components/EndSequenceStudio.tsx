@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameSnapshot, PlayMode, QualityTier } from '../game/contracts';
+import type { Difficulty, GameSnapshot, PlayMode, QualityTier } from '../game/contracts';
 import { ROUTE_LABELS } from '../game/core/branches';
 import type { RouteKind } from '../game/core/branches';
 import { modeScale } from '../game/core/reference-track';
-import { movements, outroPresets, outroView, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
+import { movements, outroPresets, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
 import type { OutroInspection, OutroMovement, OutroPreset } from '../game/debug/outro-inspection';
 import type { OutroPreview } from '../game/debug/outro-preview.client';
 import s from '../styles/debug.module.css';
@@ -19,6 +19,7 @@ export function EndSequenceStudio() {
   const [available, setAvailable] = useState(false);
   const [status, setStatus] = useState('');
   const [mode, setMode] = useState<PlayMode>('standard');
+  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [route, setRoute] = useState<RouteKind>('main');
   const [seed, setSeed] = useState(0);
   const [inspection, setInspection] = useState<OutroInspection>();
@@ -48,9 +49,9 @@ export function EndSequenceStudio() {
         setAvailable(restored);
         setStatus(restored ? '' : 'WebGL interrupted. Waiting to restore the ending.');
       });
-      const next = viewer.current.select(mode, seed, route);
+      const next = viewer.current.select(mode, seed, route, difficulty);
       setInspection(next);
-      if (!inspection) setStation(outroView(next.plan, 'main-last').station);
+      if (!inspection) setStation(next.view('main-last').station);
       setStatus('');
       setAvailable(true);
     }).catch(() => {
@@ -81,7 +82,7 @@ export function EndSequenceStudio() {
     let frame = 0;
     const draw = (now: number) => {
       const elapsed = Math.min(10, (now - start) / 1000);
-      const distance = Math.min(inspection.max, station + speed * elapsed);
+      const distance = inspection.stationAfter(station, speed * elapsed);
       viewer.current?.draw(distance, Math.min(outroVolume.beats, beat + elapsed * outroVolume.bpm / 60), movement, angle);
       if (elapsed < 10 && distance < inspection.max) frame = requestAnimationFrame(draw);
       else setFlying(false);
@@ -90,32 +91,36 @@ export function EndSequenceStudio() {
     return () => cancelAnimationFrame(frame);
   }, [available, inspection, flying, station, beat, movement, angle]);
 
+  const resultDifficulty = mode === 'sightseeing' ? 'normal' : difficulty;
   useEffect(() => {
-    setResult(previewResults(seed, resultPreset));
-  }, [seed, resultPreset]);
+    setResult(previewResults(seed, resultPreset, resultDifficulty));
+  }, [seed, resultPreset, resultDifficulty]);
 
-  const view = inspection && preset ? outroView(inspection.plan, preset) : undefined;
+  const view = inspection && preset ? inspection.view(preset) : undefined;
   const relative = inspection ? station - inspection.plan.mainLastStation : 0;
   const seek = (next: OutroPreset) => {
     if (!inspection) return;
     setFlying(false);
     setPreset(next);
-    setStation(outroView(inspection.plan, next).station);
+    const view = inspection.view(next);
+    setStation(view.station);
+    if ('musicBeat' in view && view.musicBeat !== undefined) setBeat(view.musicBeat);
     if (next === 'music-end') setBeat(outroVolume.beats);
   };
-  const changePlan = (nextMode: PlayMode, nextSeed: number, nextRoute: RouteKind) => {
+  const changePlan = (nextMode: PlayMode, nextSeed: number, nextRoute: RouteKind, nextDifficulty = difficulty) => {
     setFlying(false);
-    const next = viewer.current?.select(nextMode, nextSeed, nextRoute);
+    const next = viewer.current?.select(nextMode, nextSeed, nextRoute, nextDifficulty);
     if (next) {
       const selected = nextMode === 'sightseeing' && preset.startsWith('encore-') ? 'afterglow-entry' : preset;
       setPreset(selected);
-      setStation(selected ? outroView(next.plan, selected).station :
+      setStation(selected ? next.view(selected).station :
         Math.max(next.min, Math.min(next.max, next.plan.mainLastStation + relative * modeScale(nextMode) / modeScale(mode))));
       setInspection(next);
     }
     setMode(nextMode);
     setSeed(nextSeed);
     setRoute(nextRoute);
+    setDifficulty(nextDifficulty);
   };
 
   return <section className={s.section} id="outro">
@@ -131,8 +136,12 @@ export function EndSequenceStudio() {
         <label>Play mode <select disabled={!available} value={mode} onChange={e => changePlan(e.currentTarget.value as PlayMode, seed, route)}>
           <option value="standard">Standard</option><option value="sightseeing">Sightseeing</option>
         </select></label>
-        <label>Route <select disabled={!available} value={route} onChange={e => changePlan(mode, seed, e.currentTarget.value as RouteKind)}>
+        <label>Route <select aria-label="Route" disabled={!available} value={route} onChange={e => changePlan(mode, seed, e.currentTarget.value as RouteKind)}>
           {routes.map(value => <option key={value} value={value}>{ROUTE_LABELS[value]}</option>)}
+        </select></label>
+        <label>Chart difficulty <select disabled={mode === 'sightseeing'} value={mode === 'sightseeing' ? 'normal' : difficulty}
+          onChange={e => changePlan(mode, seed, route, e.currentTarget.value as Difficulty)}>
+          <option value="normal">Normal</option><option value="impossible">Impossible</option>
         </select></label>
         <label>Run seed <input disabled={!available} className={s.seed} type="number" min="0" max="4294967294" step="1" value={seed}
           onChange={e => {
@@ -164,16 +173,18 @@ export function EndSequenceStudio() {
       </div>
     </div>
     <fieldset className={s.curveControls}>
-      <legend>Ending positions</legend>
+      <legend>Course and ending positions</legend>
       {outroPresets.map(([id, label]) => <button type="button" className={s.scan} key={id} aria-pressed={preset === id}
         disabled={!available || (mode === 'sightseeing' && id.startsWith('encore-'))} onClick={() => seek(id)}>{label}</button>)}
     </fieldset>
     {mode === 'sightseeing' && <p>Sightseeing continues directly to Afterglow after the transition.</p>}
-    {view?.gate && <p>Encore {view.gate.index + 1} · {view.gate.kind} · Gate station {view.gate.worldStation.toFixed(2)}</p>}
+    {view && 'gate' in view && view.gate && <p>Encore {view.gate.index + 1} · {view.gate.kind} · Gate station {view.gate.worldStation.toFixed(2)}</p>}
     <div className={s.surfaceSelect}>
       <label htmlFor="outro-result">Results preview</label>
       <select id="outro-result" value={resultPreset} onChange={e => setResultPreset(e.currentTarget.value as typeof resultPreset)}>
-        {resultPresets.map(value => <option key={value}>{value}</option>)}
+        {resultPresets.map(value => <option key={value} value={value}>
+          {resultDifficulty === 'impossible' && value === 'Main Complete' ? 'Cruise Complete' : value}
+        </option>)}
       </select>
     </div>
     {result && <ResultsScreen snapshot={result} restart={noAction} menu={noAction} preview />}

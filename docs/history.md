@@ -12,6 +12,7 @@
 | ELSEWHERE surfaces use procedural height fields and world-scale UVs | [Material foundation](contracts/D0-B3-M0-material-surface-dressing.md) | [M0 validation](audits/D0-B3-M0-material-validation.md) |
 | ELSEWHERE pairs its single-hue lighting score with fixed corridor installations and a real S-curve | [Long corridor lighting and S-curve](contracts/D0-B3-A1-F2-long-corridor-lighting-s-curve.md) | [F2 validation](audits/D0-B3-A1-F2-validation.md) |
 | ELSEWHERE rewards early main completion with fixed Encore gates and a streamed light-only ending | [Encore and Afterglow](contracts/D0-B3-A1-F3-encore-afterglow.md) | [F3 validation](audits/D0-B3-A1-F3-validation.md) |
+| ELSEWHERE offers Impossible and the menu tracks local results per volume and difficulty | [Impossible and local records](contracts/D0-B3-A1-F4-impossible-local-records.md) | [F4 validation](audits/D0-B3-A1-F4-validation.md) |
 | BSD-3-Clause applies to the project. Static hosting serves the prerendered artifact. | [License](../LICENSE), [Hosting](verification.md#hosting-the-production-build) | [D0-A1 license reconciliation](https://github.com/librecosta/sofaraway/blob/d98cbcaf5d720258f2d6192e71e82ef62acf0929/docs/audits/D0-A1-gameplay-report.md), [C0-D release audit](https://github.com/librecosta/sofaraway/blob/d98cbcaf5d720258f2d6192e71e82ef62acf0929/docs/audits/C0-D-release-readiness-report.md) |
 
 ## Archive index

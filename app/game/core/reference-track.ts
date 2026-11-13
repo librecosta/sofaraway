@@ -15,7 +15,7 @@ export const cruiseTarget = (count: number) => CRUISE_SPEED + Math.min(count * 0
 export const modeScale = (mode: PlayMode) => mode === 'sightseeing' ? SIGHTSEEING_SPEED : 1;
 
 export class ReferenceTrack {
-  private readonly boostFinishes = new Map<PlayMode, number>();
+  private readonly boostFinishes = new Map<number, number>();
   private readonly samples: Float64Array;
   private readonly secondsPerBeat: number;
   private readonly duration: number;
@@ -57,10 +57,10 @@ export class ReferenceTrack {
   }
 
   /** Full Boost on the reference centerline, evaluated on the same fixed-step speed curve as a run. */
-  boostFinish(mode: PlayMode) {
-    const cached = this.boostFinishes.get(mode);
+  boostFinish(mode: PlayMode, speedFactor = 1) {
+    const scale = modeScale(mode) * speedFactor;
+    const cached = this.boostFinishes.get(scale);
     if (cached !== undefined) return cached;
-    const scale = modeScale(mode);
     let station = START_DISTANCE, speed = CRUISE_SPEED * scale, count = 0;
     for (let i = 0; i < this.samples.length - 1; i++) {
       const dt = Math.min(STEP, this.duration - i * STEP);
@@ -68,7 +68,7 @@ export class ReferenceTrack {
       speed += (cruiseTarget(count) * BOOST_MULTIPLIER * scale - speed) * dt * 4;
       station += speed * dt;
     }
-    this.boostFinishes.set(mode, station);
+    this.boostFinishes.set(scale, station);
     return station;
   }
 }

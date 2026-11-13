@@ -20,7 +20,6 @@ const flags: Diagnostics = {
 let runtime: Runtime | undefined;
 let canvas: HTMLCanvasElement | undefined;
 let metrics: string | undefined;
-let best: number;
 
 const harness = {
   sectionSignals,
@@ -84,16 +83,14 @@ const harness = {
     harness.dispose();
     canvas = document.createElement('canvas');
     document.body.append(canvas);
-    best = options.best ?? 0;
-    runtime = new Runtime({ pointer() {}, flash() {}, debug(text) { metrics = text; }, best(score) { best = score; } });
+    runtime = new Runtime({ pointer() {}, flash() {}, debug(text) { metrics = text; } });
     const { volumeId, difficulty, mode, quality, volume, muted } = initialSnapshot;
-    await runtime.initialize(canvas, { volumeId, difficulty, mode, quality, volume, muted, best: 0,
+    await runtime.initialize(canvas, { volumeId, difficulty, mode, quality, volume, muted,
       diagnostics: flags, ...options });
     return runtime.getSnapshot();
   },
   snapshot: () => runtime?.getSnapshot() ?? initialSnapshot,
   corridor: () => runtime && (Reflect.get(runtime, 'graphics') as Graphics | undefined)?.path,
-  best: () => best,
   mode: (mode: PlayMode) => runtime?.setMode(mode),
   metrics: () => metrics,
   start: (silent?: boolean) => runtime?.start(silent),

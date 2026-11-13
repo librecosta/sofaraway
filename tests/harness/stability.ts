@@ -1,7 +1,7 @@
 import type { Object3D, WebGLRenderer } from 'three';
 import { PMREMGenerator } from 'three';
 import { initialSnapshot } from '../../app/game/contracts';
-import type { GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
+import type { Difficulty, GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
 import type { RouteSide } from '../../app/game/core/branches';
 import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
@@ -240,7 +240,7 @@ const stability = {
       if (runtime?.getSnapshot().phase === 'playing') playingFrames++;
       return elapsed('frame', call);
     });
-    const options: GameOptions = { ...initialSnapshot, volumeId, quality, best: 0,
+    const options: GameOptions = { ...initialSnapshot, volumeId, quality,
       diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: false,
         mobileQuality: false, post: true, record: false, debug: false } };
     begin();
@@ -267,7 +267,7 @@ const stability = {
   },
   async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard',
     side: RouteSide = 'left', iterations = 480, animateLights = false,
-    sample?: { station: number; fly?: boolean; inspection?: boolean }) {
+    sample?: { station: number; fly?: boolean; inspection?: boolean; difficulty?: Difficulty }) {
     const definition = volumeById('elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
       boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: side };
@@ -285,19 +285,21 @@ const stability = {
       surface.load(definition, path, mode);
       surface.prepare();
       const planStarted = performance.now();
-      sim.start('normal', 0, undefined, mode);
+      const difficulty = sample?.difficulty ?? 'normal';
+      sim.start(difficulty, 0, undefined, mode);
       const runSetupMs = performance.now() - planStarted;
       const planBuildStarted = performance.now();
-      if (sample && sim.outroPlan) for (let i = 0; i < 40; i++) makeOutroPlan(definition, mode, i, sim.outroPlan.mainLastStation);
+      if (sample && sim.outroPlan) for (let i = 0; i < 40; i++) makeOutroPlan(definition, mode, i, sim.outroPlan.mainLastStation, difficulty);
       const encorePlanMs = sample ? (performance.now() - planBuildStarted) / 40 : undefined;
       const inspectionStarted = performance.now();
-      const inspection = sample?.inspection ? new OutroInspection(mode, 0, 'main', path) : undefined;
+      const inspection = sample?.inspection ? new OutroInspection(mode, 0, 'main', path, difficulty) : undefined;
       const inspectionBuildMs = inspection ? performance.now() - inspectionStarted : undefined;
       const station = sample?.station ?? sim.reference.station(beat, mode);
       const input = boost ? { ...idleInput, boosting: true } : idleInput;
       if (!inspection) while (sim.phase === 'playing' && (boost || sample ? sim.trackDistance < station : sim.beat + 1e-9 < beat)) sim.step(STEP, input);
       if (sample && !inspection && !sample.fly) sim.beat = beat;
-      const inspect = (tick: number) => inspection?.state(station + (sample?.fly ? tick * STEP * cruiseTarget(Infinity) * BOOST_MULTIPLIER : 0),
+      const inspectionSpeed = inspection?.state(station, beat, 'Boost').speed ?? cruiseTarget(Infinity) * BOOST_MULTIPLIER;
+      const inspect = (tick: number) => inspection?.state(station + (sample?.fly ? tick * STEP * inspectionSpeed : 0),
         beat + tick * STEP / sim.secondsPerBeat, 'Boost');
       begin();
       const initial = inspect(0);
@@ -327,8 +329,10 @@ const stability = {
       const volume = Reflect.get(surface, 'volume') as { visuals: Map<RunGate, GateVisual> };
       const visible = Array.from(volume.visuals).filter(([, gate]) => gate.meshes[0].visible);
       const meshes = visible.flatMap(([, gate]) => gate.meshes);
-      return { beat: frozenBeat, speed: sim.speed, route: sim.route, phase: sim.phase, trace, pathBuild, chunkBuild, runSetupMs, encorePlanMs,
+      return { beat: frozenBeat, speed: inspection ? inspectionSpeed : sim.speed, route: sim.route, phase: sim.phase, trace, pathBuild, chunkBuild, runSetupMs, encorePlanMs,
         inspectionBuildMs, metrics: surface.metrics(),
+        previewCount: initial ? initial.previewGates.length + initial.previewEncore.length : sim.previewGates.length + sim.previewEncore.length,
+        pathLength: path.length,
         gateCount: visible.length, gateKinds: visible.map(([gate]) => gate.kind), gateMeshes: meshes.length,
         gateGeometries: new Set(meshes.map(mesh => mesh.geometry)).size,
         renderer: gl.getParameter(info?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) as string,

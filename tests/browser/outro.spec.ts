@@ -140,10 +140,48 @@ test('the real results component remains available without WebGL and keeps Encor
   await expect(panel.getByText('+7200')).toBeVisible();
   await expect(panel.getByText('24/24')).toBeVisible();
   await expect(panel.getByText('TOTAL SCORE')).toBeVisible();
+  await studio.getByLabel('Chart difficulty').selectOption('impossible');
+  await expect(panel.getByText('IMPOSSIBLE', { exact: true })).toBeVisible();
+  await expect(panel.getByText('+10800')).toBeVisible();
   await results.selectOption('Sightseeing Complete');
   await expect(panel.locator('#preview-over-mode')).toHaveText('SIGHTSEEING');
   await expect(panel.getByText('ENCORE BONUS')).toHaveCount(0);
-  expect(await page.evaluate(() => Object.keys(localStorage).some(key => /best/i.test(key)))).toBe(false);
+  expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1'))).toBeNull();
+});
+
+test('the Impossible Studio exposes dense sections, route views and all 36 Encore gates in one context', async ({ page }) => {
+  await page.goto('/debug/#outro');
+  const studio = page.locator('#outro');
+  await studio.getByRole('button', { name: 'Open live ending' }).click();
+  const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE ending' });
+  await expect(canvas).toHaveAttribute('data-difficulty', 'normal');
+  await studio.getByLabel('Chart difficulty').selectOption('impossible');
+  await expect(canvas).toHaveAttribute('data-difficulty', 'impossible');
+  for (const [preset, label] of [['build', 'BUILD Gates'], ['drop', 'DROP Gates'], ['finale', 'FINALE Gates']] as const) {
+    const inspection = new OutroInspection('standard', 0, 'main', undefined, 'impossible');
+    await studio.getByRole('button', { name: label, exact: true }).click();
+    await expect(canvas).toHaveAttribute('data-station', inspection.view(preset).station.toFixed(6));
+  }
+  for (const route of ['main', 'challenge', 'score'] as const) {
+    const inspection = new OutroInspection('standard', 0, route, undefined, 'impossible');
+    await studio.getByLabel('Route', { exact: true }).selectOption(route);
+    await studio.getByRole('button', { name: 'Selected Route', exact: true }).click();
+    await expect(canvas).toHaveAttribute('data-route', route);
+    await expect(canvas).toHaveAttribute('data-station', inspection.view('branch').station.toFixed(6));
+  }
+  for (const [label, index] of [['Encore First Gate', 1], ['Encore Middle', 18], ['Encore Final Gate', 36]] as const) {
+    await studio.getByRole('button', { name: label, exact: true }).click();
+    await expect(canvas).toHaveAttribute('data-gate-stations', new RegExp(`\\[${index},`));
+  }
+  await studio.getByRole('button', { name: 'Afterglow Peak' }).click();
+  await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
+  await studio.getByRole('button', { name: 'Music End' }).click();
+  await expect(canvas).toHaveAttribute('data-afterglow', 'closing');
+  const finish = Number(await canvas.getAttribute('data-station'));
+  const length = Number(await canvas.getAttribute('data-path-length'));
+  expect(length - finish).toBeGreaterThanOrEqual(650 - 1e-6);
+  await expect(studio.locator('canvas')).toHaveCount(1);
+  expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1'))).toBeNull();
 });
 
 test('live Encore survives context loss, retries, and menu return with bounded meshes', async ({ page }) => {

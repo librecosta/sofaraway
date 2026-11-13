@@ -1,11 +1,13 @@
-import type { PlayMode } from '../contracts';
+import type { Difficulty, PlayMode } from '../contracts';
 import { opening } from './collision';
 import type { Axis } from './collision';
+import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
 import { referenceFor } from './reference-track';
 import { runRandomWord } from './run-seed';
 import type { VolumeDefinition } from './volumes';
 
 export const ENCORE_GATE_COUNT = 24;
+export const IMPOSSIBLE_ENCORE_COUNT = 36;
 export const ENCORE_FIRST_OFFSET = 140;
 export const ENCORE_MIN_SPACING = 95;
 export const ENCORE_MAX_SPACING = 105;
@@ -53,15 +55,18 @@ export interface OutroPlan {
   readonly afterglow: readonly AfterglowSection[];
 }
 
-export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: number, mainLastStation: number): OutroPlan {
-  const musicEndStation = referenceFor(volume).boostFinish(mode);
+export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: number, mainLastStation: number,
+  difficulty: Difficulty = 'normal'): OutroPlan {
+  const impossible = mode === 'standard' && difficulty === 'impossible';
+  const musicEndStation = referenceFor(volume).boostFinish(mode, impossible ? IMPOSSIBLE_SPEED_FACTOR : 1);
   // After rejoin, branch arc offsets carry through to the ending. The closing
   // frame has extra depth so either side can reach the end without seeing a seam.
   const end = musicEndStation + 72;
   let station = mainLastStation + ENCORE_FIRST_OFFSET;
   const gates: EncoreGate[] = [];
   const word = (index: number, field: number) => runRandomWord(seed, ENCORE_STREAM ^ Math.imul(1 + index * 3 + field, 0x9e3779b9));
-  if (mode === 'standard') for (let index = 0; index < ENCORE_GATE_COUNT; index++) {
+  const gateCount = mode === 'sightseeing' ? 0 : impossible ? IMPOSSIBLE_ENCORE_COUNT : ENCORE_GATE_COUNT;
+  for (let index = 0; index < gateCount; index++) {
     if (index) station += ENCORE_MIN_SPACING + (ENCORE_MAX_SPACING - ENCORE_MIN_SPACING) * word(index, 0) / 0xffffffff;
     const slot = index % 3;
     const swap = word(index - slot, 1) % 2;

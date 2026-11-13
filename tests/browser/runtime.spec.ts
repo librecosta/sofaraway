@@ -138,7 +138,7 @@ test('a long frame drains without a modal and neutralizes an unobservable crossi
     for (const gap of [50, 100, 160, 250, 500, 2300]) {
       const diagnostics = { fixedTime: null, autoplay: false, god: false, align: false, boost: false,
         mobileQuality: false, post: true, record: false, debug: false };
-      await test.mount({ quality: 'low', difficulty: 'hard', best: 17, diagnostics });
+      await test.mount({ quality: 'low', difficulty: 'hard', diagnostics });
       await test.start(true);
       const start = performance.now();
       const approach = gap < 150 ? 6900 : 7400;
@@ -152,7 +152,7 @@ test('a long frame drains without a modal and neutralizes an unobservable crossi
         diagnostics.align = true;
         test.advance(448);
         for (let i = 0; i < 50; i++) next!(start + 210000 + i * 17);
-        settled = { score: test.snapshot().score, best: test.best(), result: test.snapshot().result };
+        settled = { score: test.snapshot().score, record: test.snapshot().localRecord, result: test.snapshot().result };
       }
       test.dispose();
       results.push({ gap, before, after, settled });
@@ -168,7 +168,7 @@ test('a long frame drains without a modal and neutralizes an unobservable crossi
     if (gap >= 150) expect(after.message).toBe('RECOVERY · BEST INELIGIBLE');
     if (gap === 500) {
       expect(settled?.score).toBeGreaterThan(17);
-      expect(settled?.best).toBe(17);
+      expect(settled?.record).toEqual({ best: null, last: null });
       expect(settled?.result).toMatchObject({ title: 'ESCAPED', neutralized: 1, encountered: 141, passed: 140 });
     }
   }

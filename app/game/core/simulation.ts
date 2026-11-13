@@ -6,6 +6,7 @@ import { chartFor, difficultySettings } from './chart';
 import type { ChartGate } from './chart';
 import { canPass, clamp, lanePoint, opening, SECTION } from './collision';
 import type { Axis } from './collision';
+import { resolveDifficulty } from './difficulty';
 import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
 import { steer } from './input';
@@ -37,6 +38,7 @@ export interface RunGate {
   readonly kind: GateKind;
   readonly open: number;
   readonly axis: Axis;
+  readonly inserted?: true;
   readonly route?: RouteKind;
   readonly worldStation: number;
   readonly routeStation: number;
@@ -90,7 +92,8 @@ export class Simulation {
   private recoil = 0;
   private messageUntil = 0;
   private mult = 1;
-  private difficulty: Difficulty = 'normal';
+  private runDifficulty: Difficulty = 'normal';
+  private speedFactor = 1;
   private playMode: PlayMode;
   private readonly paths = new Map<PlayMode, Path>();
   readonly reference;
@@ -116,6 +119,7 @@ export class Simulation {
   get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
   private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && !!this.branch?.side; }
   get mode() { return this.playMode; }
+  get difficulty() { return this.runDifficulty; }
   get path() {
     const mode = this.volume.id === 'elsewhere' ? this.mode : 'standard';
     let path = this.paths.get(mode);
@@ -146,20 +150,20 @@ export class Simulation {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
     this.playMode = mode;
     const sightseeing = mode === 'sightseeing';
-    if (sightseeing) difficulty = 'normal';
+    difficulty = sightseeing ? 'normal' : resolveDifficulty(this.volume.id, difficulty);
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
     const station = (beat: number) => this.reference.station(beat, mode);
-    const makeGate = ({ beat, kind, sector }: ChartGate, axis: Axis, route?: RouteKind, side: RouteSide = 'center'): RunGate => {
+    const makeGate = ({ beat, kind, sector, inserted }: ChartGate, axis: Axis, route?: RouteKind, side: RouteSide = 'center'): RunGate => {
       const worldStation = station(beat);
       return { beat, kind, open: opening(kind, sector), axis, worldStation,
         routeStation: route ? this.junctionPath!.arcAt(worldStation, side) : worldStation,
-        judged: false, hit: false, ...(route ? { route } : {}) };
+        judged: false, hit: false, ...(inserted ? { inserted } : {}), ...(route ? { route } : {}) };
     };
     const authored = chartFor(this.volume, difficulty, rules.seed);
     const gates = authored.map(gate => {
       let axis: Axis = 0;
-      if (gate.kind !== 'square' && gate.kind !== 'diamond') {
+      if (!gate.inserted && gate.kind !== 'square' && gate.kind !== 'diamond') {
         rng = (rng * 1103515245 + 12345) & 0x7fffffff;
         axis = rng / 0x7fffffff < 0.5 ? 0 : 1;
       }
@@ -176,7 +180,7 @@ export class Simulation {
       this.junctionPath = path;
       const { left, right } = this.branch!.layout;
       const sideFor = (route: RouteKind): RouteSide => left === route ? 'left' : right === route ? 'right' : 'center';
-      const { main, challenge, score } = routeCharts(authored.filter(gate => gate.beat >= SPLIT_BEAT && gate.beat < REJOIN_BEAT));
+      const { main, challenge, score } = routeCharts(authored.filter(gate => gate.beat >= SPLIT_BEAT && gate.beat < REJOIN_BEAT), difficulty);
       this.branchGates = {
         main: main.map(gate => makeGate(gate, 0, 'main')),
         challenge: challenge.map(gate => makeGate(gate, 0, 'challenge', sideFor('challenge'))),
@@ -216,8 +220,9 @@ export class Simulation {
     this.encore = undefined;
     this.encoreCursor = this.encoreReveal = 0;
     this.outroPlan = elsewhere ? makeOutroPlan(this.volume, mode, runSeed,
-      Math.max(...this.chart.map(gate => gate.worldStation))) : undefined;
-    this.difficulty = difficulty;
+      Math.max(...this.chart.map(gate => gate.worldStation)), difficulty) : undefined;
+    this.runDifficulty = difficulty;
+    this.speedFactor = rules.speedFactor;
     this.pickup = elsewhere ? { kind: pickupKind, status: 'pending' } : null;
     this.pickupStation = elsewhere ? station(PICKUP_BEAT) : Infinity;
     this.pickupPreviewStation = elsewhere ? station(PICKUP_APPEAR_BEAT) : Infinity;
@@ -227,7 +232,7 @@ export class Simulation {
     this.lives = this.maxLives = sightseeing ? SIGHTSEEING_LIVES : rules.lives;
     this.mult = rules.mult;
     this.distance = START_DISTANCE;
-    this.speed = CRUISE_SPEED * (sightseeing ? SIGHTSEEING_SPEED : 1);
+    this.speed = CRUISE_SPEED * (sightseeing ? SIGHTSEEING_SPEED : this.speedFactor);
     this.boosting = false;
     this.boostLens = 0;
     this.hitTime = -Infinity;
@@ -295,7 +300,7 @@ export class Simulation {
     this.boosting = input.boosting;
     const boost = this.boosting ? BOOST_MULTIPLIER : 1;
     this.referenceProgress = this.reference.countThrough(this.trackDistance, this.mode, this.referenceProgress);
-    const targetSpeed = cruiseTarget(this.referenceProgress) * boost * modeScale(this.mode);
+    const targetSpeed = cruiseTarget(this.referenceProgress) * boost * modeScale(this.mode) * this.speedFactor;
     this.speed += (targetSpeed - this.speed) * Math.min(1, elapsed * (boost > 1 ? 4 : CRUISE_RESPONSE));
     this.boostLens += ((this.boosting ? 1 : 0) - this.boostLens) * -Math.expm1(-elapsed / BOOST_LENS_SECONDS);
     this.distance += this.speed * elapsed;

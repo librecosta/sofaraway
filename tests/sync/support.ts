@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import type { PlayMode, VolumeId } from '../../app/game/contracts';
+import type { Difficulty, PlayMode, VolumeId } from '../../app/game/contracts';
 import type {} from '../harness/main';
 import type {} from '../harness/audio-sync';
 
@@ -32,14 +32,14 @@ export async function openSync(page: Page) {
   return errors;
 }
 
-export async function mount(page: Page, volumeId: VolumeId, mode: PlayMode = 'standard') {
-  const phase = await page.evaluate(async ({ volumeId, mode }) => {
-    const snap = await window.b0Harness.mount({ volumeId, mode, quality: 'low',
+export async function mount(page: Page, volumeId: VolumeId, mode: PlayMode = 'standard', difficulty: Difficulty = 'normal') {
+  const phase = await page.evaluate(async ({ volumeId, mode, difficulty }) => {
+    const snap = await window.b0Harness.mount({ volumeId, mode, difficulty, quality: 'low',
       diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: false,
         mobileQuality: false, post: true, record: false, debug: false } });
     window.syncHarness.clear();
     return snap.phase;
-  }, { volumeId, mode });
+  }, { volumeId, mode, difficulty });
   expect(phase).toBe('menu');
 }
 

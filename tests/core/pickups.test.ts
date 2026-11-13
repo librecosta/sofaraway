@@ -19,7 +19,7 @@ const kinds = ['shield', 'resonance', 'lumen'] as const;
 const previousGate = 303.99;
 const nextGate = 309.32;
 const scores = { easy: 66201, normal: 105326, hard: 156826 };
-const lumen = { easy: 2500, normal: 5000, hard: 7500 };
+const lumen = { easy: 2500, normal: 5000, hard: 7500, impossible: 10000 };
 
 function seedFor(kind: PickupKind) {
   const seed = Array.from({ length: 30 }, (_, i) => i).find(seed => pickupForSeed(seed) === kind);
@@ -226,7 +226,7 @@ test('terminating a run discards unused Resonance charges', () => {
   expect([run.sim.result?.title, run.sim.resonance]).toEqual(['TERMINATED', 0]);
 });
 
-test.each(difficulties)('%s Lumen awards exactly the fixed points once, even during Boost', difficulty => {
+test.each([...difficulties, 'impossible'] as const)('%s Lumen awards exactly the fixed points once, even during Boost', difficulty => {
   const run = start('lumen', difficulty, true);
   const { sim, input } = run;
   const { score, distance, combo, lives, gatesJudged } = sim;

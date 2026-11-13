@@ -16,7 +16,7 @@ export const PICKUP_LOCAL_Y = 1;
 export const PICKUP_RADIUS = 0.7;
 export const RESONANCE_CHARGES = 8;
 export const RESONANCE_BONUS = 0.25;
-export const LUMEN_POINTS = { easy: 2500, normal: 5000, hard: 7500 } as const;
+export const LUMEN_POINTS = { easy: 2500, normal: 5000, hard: 7500, impossible: 10000 } as const;
 
 export function pickupForSeed(seed: number): PickupKind {
   return kinds[runRandomWord(seed, 0x5049434b) % kinds.length];

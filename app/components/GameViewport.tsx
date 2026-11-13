@@ -15,7 +15,8 @@ import { SettingsPanel } from './SettingsPanel';
 
 const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
-const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result', 'message'] as const;
+const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
+  'localRecord', 'newBest', 'message'] as const;
 
 function useMenuSnapshot(runtime: GameRuntime | null) {
   const previous = useRef<GameSnapshot>(initialSnapshot);
@@ -108,11 +109,10 @@ export function GameViewport() {
         },
         debug(text) { if (debug.current) debug.current.textContent = text; },
         key: (key, event) => keys.current(key, event),
-        best: score => saveSetting('best', score),
         muted: value => saveSetting('muted', value),
       });
       setRuntime(engine);
-      return engine.initialize(canvas, options);
+      return engine.initialize(canvas, { ...options, saveRecords: true });
     }).catch(error => {
       if (!stale) setImportError(error instanceof Error ? error.message : 'The game could not load.');
     });
