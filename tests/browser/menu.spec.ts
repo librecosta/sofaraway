@@ -64,6 +64,14 @@ test('menu labels keep their size while the original reticle expands on hover', 
 });
 
 test('Credits, Settings and menu controls keep readable sizes in a narrow viewport', async ({ page }) => {
+  const opened: unknown[][] = [];
+  await page.exposeFunction('recordMenuNavigation', (...args: unknown[]) => { opened.push(args); });
+  await page.addInitScript(() => {
+    window.open = (...args) => {
+      void (window as unknown as { recordMenuNavigation(...args: unknown[]): Promise<void> }).recordMenuNavigation(...args);
+      return null;
+    };
+  });
   await page.goto('/?q=low');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   for (const [name, href] of [
@@ -71,8 +79,10 @@ test('Credits, Settings and menu controls keep readable sizes in a narrow viewpo
     ['SoFaraway on GitHub', 'https://github.com/librecosta/sofaraway'],
   ]) {
     const link = page.getByRole('link', { name });
-    await expect(link).toHaveAttribute('href', href);
-    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).not.toHaveAttribute('href');
+    await expect(link).not.toHaveAttribute('title');
+    await link.press('Enter');
+    await expect.poll(() => opened.at(-1)).toEqual([href, '_blank', 'noopener,noreferrer']);
     await expect(link.locator('svg')).toHaveCSS('width', '27px');
   }
   const sizes = async () => {
@@ -93,7 +103,7 @@ test('Credits, Settings and menu controls keep readable sizes in a narrow viewpo
     await expect(page.locator('#panel-body hr')).toHaveCSS('border-top-width', '2px');
     await expect(page.locator('#panel-body hr')).toHaveCSS('border-top-style', 'dashed');
     const email = page.getByRole('link', { name: 'contact@librecosta.com' });
-    await expect(email).toHaveAttribute('href', 'mailto:contact@librecosta.com');
+    await expect(email).not.toHaveAttribute('href');
     await expect(email.locator('svg')).toBeVisible();
     await page.getByRole('dialog', { name: 'Credits' }).getByRole('button', { name: 'CLOSE' }).click();
     await settings.click();

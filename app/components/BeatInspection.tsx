@@ -24,7 +24,7 @@ export function BeatInspection() {
   const [beat, setBeat] = useState(222);
   const [station, setStation] = useState(referenceFor(VOLUMES[0]).station(222, 'standard'));
   const [quality, setQuality] = useState<QualityTier>('high');
-  const [dynamic, setDynamic] = useState(true);
+  const [dynamic, setDynamic] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [sample, setSample] = useState({ ...steadyLights, beat: 222 });
   const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);

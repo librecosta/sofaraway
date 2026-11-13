@@ -78,10 +78,9 @@ test('UI State Studio renders production states, stays scrollable and never writ
   await frame.getByRole('button', { name: 'SETTINGS' }).click();
   await expect(frame.getByRole('switch', { name: 'DYNAMIC LIGHTS' })).toBeChecked();
   await scenario.selectOption('credits');
-  await expect(frame.getByRole('link', { name: 'librecosta', exact: true })).toHaveAttribute('href', 'https://librecosta.com');
+  await expect(frame.getByRole('link', { name: 'librecosta', exact: true })).toBeVisible();
   const helloRun = frame.getByRole('link', { name: 'HelloRun' });
-  await expect(helloRun).toHaveAttribute('target', '_blank');
-  await expect(helloRun).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(helloRun).not.toHaveAttribute('href');
   await iframe.scrollIntoViewIfNeeded();
   await helloRun.click();
   expect(page.context().pages()).toHaveLength(1);

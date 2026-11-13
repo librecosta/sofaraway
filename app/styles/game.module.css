@@ -292,7 +292,6 @@ html:has(.viewport), body:has(.viewport){
   font-size:1rem; line-height:1.55;
   letter-spacing:.05em; opacity:.9;
 }
-:global(#panel-body) a{ color:var(--accent); text-decoration:none; }
 .fallback-actions{
   display:flex; flex-wrap:wrap; justify-content:center; gap:8px 14px; margin-top:24px;
 }
@@ -618,12 +617,12 @@ html:has(.viewport), body:has(.viewport){
   background:#10191eea; padding:.65rem 1rem; border-radius:8px;
   max-width:calc(100vw - 24px); color:#e5f6fd; text-align:center;
 }
-:global(#panel-body) a {
-  padding-block:4px; color:#c4f5e8;
-  background:linear-gradient(currentColor,currentColor) left bottom 4px / 0 1px no-repeat;
+:global(#panel-body) button {
+  appearance:none; border:0; padding:0; color:#c4f5e8; cursor:pointer; font:inherit; letter-spacing:inherit;
+  background:linear-gradient(currentColor,currentColor) left bottom / 0 1px no-repeat;
   transition:color var(--motion-hover),background-size var(--motion-hover);
 }
-:global(#panel-body) a:is(:hover,:focus-visible) { color:var(--accent); background-size:100% 1px; }
+:global(#panel-body) button:is(:hover,:focus-visible) { color:var(--accent); background-size:100% 1px; }
 :global(#panel-body) .credit-link { color:#74ffdc; font-weight:700; }
 :global(#panel-body) .credit-link:is(:hover,:focus-visible) { color:#b5ffeb; }
 .credits-divider { width:100%; margin:1rem 0 .5rem; border:0; border-top:2px dashed #74ffdc45; }

@@ -10,7 +10,7 @@ export function GameDialog({ id, title, children, dismiss, preview }: {
     const node = dialog.current;
     if (!node || preview) return;
     const active = node.ownerDocument.activeElement as HTMLElement | null;
-    node.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+    node.querySelector<HTMLElement>('button:not(:disabled):not([role="link"])')?.focus();
     return () => { if (active?.isConnected && !active.closest('[inert]')) active.focus(); };
   }, [title, preview]);
   return <section ref={dialog} id={id} className={c('modal')} role="dialog" aria-modal="true" aria-label={title}

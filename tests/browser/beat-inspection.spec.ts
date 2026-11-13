@@ -55,6 +55,8 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
         return { shot, light: await luminance(page, shot) };
       };
       const dynamic = studio.getByLabel('Dynamic', { exact: true });
+      await expect(dynamic).toHaveValue('off');
+      await dynamic.selectOption('on');
       const beat = studio.getByLabel('Beat', { exact: true });
       const station = await canvas.getAttribute('data-station');
       const resources = await canvas.getAttribute('data-resources');
