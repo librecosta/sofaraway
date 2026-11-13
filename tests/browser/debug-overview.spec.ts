@@ -1,5 +1,27 @@
 import { expect, test } from '@playwright/test';
 
+test('the Debug page scrolls with the results preview and reaches its section links', async ({ page }) => {
+  const scrollY = () => page.evaluate(() => window.scrollY);
+  await page.goto('/debug/');
+  await expect(page.locator('#preview-over')).toBeVisible();
+  expect(await scrollY()).toBe(0);
+  await page.mouse.move(450, 390);
+  await page.mouse.wheel(0, 550);
+  await expect.poll(scrollY).toBeGreaterThan(0);
+
+  await page.goto('/debug/#outro');
+  await expect(page.getByRole('heading', { name: 'End Sequence Studio' })).toBeInViewport();
+  const endingPosition = await scrollY();
+  await page.mouse.wheel(0, -550);
+  await expect.poll(scrollY).toBeLessThan(endingPosition);
+  await page.getByRole('navigation', { name: 'Debug sections' }).getByRole('link', { name: 'Audio', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Soundtrack' })).toBeInViewport();
+
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
+  await expect(page.locator('body')).toHaveCSS('overflow-y', 'hidden');
+});
+
 test('lighting studio starts from the game score and isolates the dual-color comparison at the same station', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

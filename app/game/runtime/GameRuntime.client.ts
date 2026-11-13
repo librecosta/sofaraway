@@ -468,7 +468,7 @@ export class Runtime implements GameRuntime {
     }
     if (!paused) {
       const hit = Math.max(0, 1 - (sim.time - sim.hitTime) / 0.38);
-      const end = !sim.outroPlan && (sim.phase === 'playing' || sim.phase === 'crash')
+      const end = sim.phase === 'playing' || sim.phase === 'crash'
         ? clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1) : 0;
       const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
       const pickup = Math.max(0, 1 - (sim.time - sim.pickupTime) / 0.24) * 0.13;

@@ -191,7 +191,7 @@ export function GameViewport() {
   }
 
   return (
-    <main ref={viewport} className={c(customCursor && 'custom-cursor')}>
+    <main ref={viewport} className={c('viewport', customCursor && 'custom-cursor')}>
       <div ref={host} />
       <div id="cursor" ref={cursor} aria-hidden="true" hidden={!customCursor}>
         <svg viewBox="-26 -26 52 52" width="52" height="52">

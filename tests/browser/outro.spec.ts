@@ -2,6 +2,30 @@ import { expect, test } from '@playwright/test';
 import { OutroInspection, outroView } from '../../app/game/debug/outro-inspection';
 import type {} from '../harness/main';
 
+test('ELSEWHERE fades to white on the music clock at cruise and under sustained Boost', async ({ page }) => {
+  const flash = page.locator('#flash');
+  const diagnostics = page.locator('#errbox');
+  for (const boost of [0, 1]) {
+    const capture = (time: number) => page.goto(`/?vol=elsewhere&diff=normal&align=1&god=0&q=low&dbg=1&boost=${boost}&t=${time}`);
+    await capture(204);
+    await expect(diagnostics).toContainText('"phase":"playing"');
+    await expect(flash).toHaveCSS('opacity', '0');
+
+    await capture(207.1875); // Six of the final twelve beats have elapsed.
+    await expect(diagnostics).toContainText(`"outroPhase":"${boost ? 'afterglow' : 'main'}"`);
+    await expect(flash).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(flash).toHaveCSS('opacity', '0.475');
+
+    await capture(210);
+    await expect(diagnostics).toContainText('"phase":"crash"');
+    await expect(flash).toHaveCSS('opacity', '0.95');
+
+    await capture(210.8);
+    await expect(page.locator('#over-title')).toHaveText('ESCAPED');
+    await expect(flash).toHaveCSS('opacity', '0');
+  }
+});
+
 test('End Sequence Studio locates real gates, keeps music separate, flies, and restores its single context', async ({ page }) => {
   await page.goto('/debug/#outro');
   const studio = page.locator('#outro');
