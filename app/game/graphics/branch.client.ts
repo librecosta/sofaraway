@@ -147,8 +147,8 @@ export class BranchVisual {
     this.group.add(housingMesh, railMesh);
   }
 
-  updateLighting(state: LightingState) {
-    this.level.setScalar(state.branch);
+  updateLighting(state: LightingState, gain = 1) {
+    this.level.setScalar(state.branch * gain);
     for (const route of ['main', 'challenge', 'score'] as const) {
       const tone = this.tones[route] = routeTone(route, state.beat);
       this.tint[routeIndex[route]].setHSL(tone.hue, tone.saturation, .56);

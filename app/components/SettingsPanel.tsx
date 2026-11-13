@@ -1,9 +1,18 @@
+import { useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import { qualities } from '../game/contracts';
 import type { GameSnapshot, QualityTier } from '../game/contracts';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { GameDialog } from './GameDialog';
+
+const motionQuery = '(prefers-reduced-motion: reduce)';
+const reducedMotion = () => window.matchMedia(motionQuery).matches;
+function subscribeMotion(change: () => void) {
+  const media = window.matchMedia(motionQuery);
+  media.addEventListener('change', change);
+  return () => media.removeEventListener('change', change);
+}
 
 interface Props {
   snapshot: GameSnapshot;
@@ -29,6 +38,7 @@ function Toggle({ id, label, checked, change, description }: {
 
 export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights, preview }: Props) {
   const quality = qualities.indexOf(snapshot.quality);
+  const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
   return (
     <GameDialog id="settings" title="Settings" dismiss={close} preview={preview}>
       <div className={c('panel')}>
@@ -59,7 +69,8 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
         </div>
         <Toggle id="set-muted" label="MUTE" checked={snapshot.muted} change={setMuted} />
         <Toggle id="set-dynamic-lights" label="DYNAMIC LIGHTS" checked={snapshot.dynamicLights} change={setDynamicLights}
-          description="Stronger corridor pulses on kick and snare." />
+          description={reduced ? 'Beat effects paused by your system’s Reduced Motion setting.'
+            : 'Corridor lights dim between beats and peak on drums.'} />
         <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label="CLOSE" />
       </div>
     </GameDialog>

@@ -2,6 +2,8 @@ import { AudioTransport } from '../../app/game/audio/transport.client';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import type { VolumeId } from '../../app/game/contracts';
 import { FixedStepClock } from '../../app/game/core/clock';
+import { drumScore, musicStepSeconds } from '../../app/game/core/rhythmic-lights';
+import type { DynamicLightEnvelope } from '../../app/game/core/rhythmic-lights';
 import type { RunTimeline } from '../../app/game/core/clock';
 import type { RunGate, Simulation } from '../../app/game/core/simulation';
 import { sectionAt, volumeById } from '../../app/game/core/volumes';
@@ -80,6 +82,8 @@ async function score(id: VolumeId) {
 }
 
 type Scheduled = { run: number; step: number; at: number; trigger: number };
+type BeatTiming = { planned: number; scheduled: number; audioAnchor: number; renderedAt: number; visualTime: number;
+  pulse: number; errorMs: number; output: ReturnType<typeof outputTiming> };
 type Frame = ReturnType<typeof frameState> & {
   wall: number; fov?: number; hue?: number; pulse: number; flash: number; output: ReturnType<typeof outputTiming>;
 };
@@ -117,11 +121,13 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
   let minQuantization = 0;
   let runCount = 0;
   let pulse = 0, flash = 0;
+  const beatFrames: { at: number; time: number; pulse: number; anchor: number;
+    output: ReturnType<typeof outputTiming> }[] = [];
   const observedViews = new WeakSet<RuntimeView>();
   const tunnelPulse = Tunnel.prototype.pulse;
-  Tunnel.prototype.pulse = function (value) {
+  Tunnel.prototype.pulse = function (value, dynamics) {
     pulse = value;
-    tunnelPulse.call(this, value);
+    tunnelPulse.call(this, value, dynamics);
   };
 
   const playStep = Synthesizer.prototype.playStep;
@@ -153,6 +159,12 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
       const elapsed = (Reflect.get(this, 'clock') as FixedStepClock).elapsed;
       const timeline = Reflect.get(this, 'timeline') as RunTimeline;
       const gap = timeline.at(now / 1000) - elapsed;
+      const { dynamics } = Reflect.get(this, 'lightInput') as { dynamics: DynamicLightEnvelope };
+      if (dynamics.amount > 0) {
+        if (beatFrames.length === 1_200) beatFrames.shift();
+        beatFrames.push({ at: now, time: Reflect.get(this, 'lightTime') as number, pulse: dynamics.pulse,
+          anchor: Reflect.get(activeAudio(), 'anchor') as number, output: outputTiming(context()) });
+      }
       maxQuantization = Math.max(maxQuantization, gap);
       minQuantization = Math.min(minQuantization, gap);
       if (!firstBeforeAnchor && elapsed === 0 && steps.length && (context()?.currentTime ?? Infinity) < steps[0].at) {
@@ -172,8 +184,31 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
   });
 
   window.syncHarness = {
+    setDynamicLights() { getRuntime()?.setDynamicLights(true); },
+    beatTiming(): BeatTiming[] {
+      const runtime = getRuntime();
+      if (!runtime) return [];
+      const sim = Reflect.get(runtime, 'simulation') as Simulation;
+      const grid = musicStepSeconds(sim.volume.bpm);
+      const score = drumScore(sim.volume);
+      const frames = beatFrames.slice();
+      const run = steps.at(-1)?.run;
+      return steps.filter(({ step, run: scheduledRun }) => scheduledRun === run && step > 0 && score[step].kick && step % 4 === 0)
+        .flatMap(event => {
+          const planned = event.step * grid;
+          if ((frames.at(-1)?.time ?? 0) < planned + .05) return [];
+          const near = frames.filter(frame => Math.abs(frame.time - planned) < .04);
+          const peak = near.sort((a, b) => b.pulse - a.pulse)[0];
+          if (!peak) return [];
+            const output = peak.output;
+          return [{ planned, scheduled: event.at, audioAnchor: peak.anchor, renderedAt: peak.at,
+            visualTime: peak.time, pulse: peak.pulse, errorMs: (peak.time - planned) * 1000,
+              output: output.status === 'valid' ? { ...output, scheduledPerformanceTime:
+                output.outputPerformanceTime + (event.at - output.outputContextTime) * 1000 } : output }];
+        });
+    },
     clear() {
-      steps.length = sections.length = 0;
+      steps.length = sections.length = beatFrames.length = 0;
       firstBeforeAnchor = firstTick = firstBeat = end = lastGate = finale = undefined;
       maxQuantization = minQuantization = 0;
     },
@@ -188,6 +223,8 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
 declare global {
   interface Window {
     syncHarness: {
+      setDynamicLights(): void;
+      beatTiming(): BeatTiming[];
       clear(): void;
       inspect(): Frame;
       trace(): { steps: Scheduled[]; sections: Frame[]; firstBeforeAnchor?: Frame; firstTick?: Frame; firstBeat?: Frame;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { BeatInspection } from '../components/BeatInspection';
 import { EndSequenceStudio } from '../components/EndSequenceStudio';
 import { UIStateStudio } from '../components/UIStateStudio';
 import type { VolumeId } from '../game/contracts';
@@ -93,6 +94,7 @@ function LightingStudio({ available }: { available: boolean }) {
   const viewer = useRef<ScenicPreview>(null);
   const followStation = useRef(true);
   const [open, setOpen] = useState(false);
+  const [inspectBeat, setInspectBeat] = useState(false);
   const [ready, setReady] = useState(false);
   const [scene, setScene] = useState(scenicExamples[0]);
   const [mode, setMode] = useState<PlayMode>('standard');
@@ -109,7 +111,7 @@ function LightingStudio({ available }: { available: boolean }) {
   const [status, setStatus] = useState('');
   const cue = lightCues[section];
   useEffect(() => {
-    if (!open) return;
+    if (!open || inspectBeat) return;
     let stale = false;
     void import('../game/debug/scenic-preview.client').then(({ ScenicPreview }) => {
       if (stale || !canvas.current) return;
@@ -127,7 +129,7 @@ function LightingStudio({ available }: { available: boolean }) {
       viewer.current?.dispose();
       viewer.current = null;
     };
-  }, [open]);
+  }, [open, inspectBeat]);
   useEffect(() => {
     if (!ready) return;
     const selected = viewer.current?.select(scene, mode, fixedBeat);
@@ -186,7 +188,7 @@ function LightingStudio({ available }: { available: boolean }) {
   return <section id="lighting" className={s.section}>
     <h2>Lighting &amp; scenic composition</h2>
     <p>Choose a corridor or move to a fixed station. Play or scrub the score to inspect the lighting in place.</p>
-    <div className={s.scenicDesk}>
+    {!inspectBeat && <div className={s.scenicDesk}>
       <div className={s.scenicView}>
         {!open && <button className={s.scan} type="button" disabled={!available} onClick={() => {
           setStatus('Loading the live corridor…'); setOpen(true);
@@ -235,15 +237,24 @@ function LightingStudio({ available }: { available: boolean }) {
         <button className={s.scan} type="button" disabled={!ready} onClick={toggle}>{playing ? 'Pause lights' : 'Play lights'}</button>
         <a href={'/?' + installed}>Open this station in game</a>
       </div>
-    </div>
+    </div>}
     <fieldset id="s-curve" className={s.curveControls}>
       <legend>S-Curve Preview</legend>
       {curveExamples.map(next => <button type="button" key={next.label} className={s.scan} disabled={!available && !open}
         aria-pressed={scene.curveT === next.curveT} onClick={() => {
-          choose(next); setAngle(0);
+          choose(next); setAngle(0); setInspectBeat(false);
           if (!open && available) { setStatus('Loading the live corridor…'); setOpen(true); }
         }}>{next.label}</button>)}
     </fieldset>
+    <div id="beat-inspection">
+      <h3>Dynamic Lights · Beat Inspection</h3>
+      <button className={s.scan} type="button" disabled={!available} aria-expanded={inspectBeat} onClick={() => {
+        setReady(false);
+        setPlaying(false);
+        setInspectBeat(!inspectBeat);
+      }}>{inspectBeat ? 'Close beat inspection' : 'Open beat inspection'}</button>
+      {inspectBeat && <BeatInspection />}
+    </div>
   </section>;
 }
 

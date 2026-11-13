@@ -5,7 +5,7 @@ import { clamp } from '../core/collision';
 import { resolveDifficulty, supportsDifficulty } from '../core/difficulty';
 import { idleInput } from '../core/input';
 import { PickupDeck } from '../core/pickups';
-import { rhythmicLightGain } from '../core/rhythmic-lights';
+import { approachDynamicLights, dynamicLightEnvelope, steadyLights } from '../core/rhythmic-lights';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
@@ -68,7 +68,8 @@ export class Runtime implements GameRuntime {
   private lightAmount = 0;
   private lightStamp = 0;
   private lightMotion?: MediaQueryList;
-  private lightInput = { beat: 0, rhythmGain: 1 };
+  private readonly lightInput = { beat: 0, dynamics: { ...steadyLights } };
+  private lightTime = 0;
 
   constructor(private readonly view: RuntimeView) {}
 
@@ -153,6 +154,7 @@ export class Runtime implements GameRuntime {
     this.noticeUntil = 0;
     this.clock.reset();
     this.pausedAt = this.recoveryUntil = 0;
+    this.lightTime = 0;
     this.recovering = false;
     this.lastInput = idleInput;
     this.silent = silent;
@@ -323,12 +325,16 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase !== 'disposed') this.publish({ dynamicLights: value });
   }
 
-  private lighting(sim: Simulation) {
+  private lighting(sim: Simulation, renderTime?: number) {
     this.lightInput.beat = sim.beat;
     const menu = sim.phase === 'menu';
     const volume = menu ? volumeById(this.snapshot.volumeId) : sim.volume;
-    const beat = menu ? volume.sections[0].beats + sim.time * volume.bpm / 60 % 8 : sim.beat;
-    this.lightInput.rhythmGain = rhythmicLightGain(volume, beat, this.lightAmount, this.lightMotion?.matches);
+    const beatSeconds = 60 / volume.bpm;
+    this.lightTime = menu ? volume.sections[0].beats * beatSeconds + sim.time % (8 * beatSeconds)
+      : renderTime ?? (this.snapshot.phase === 'paused' ? this.lightTime : sim.time);
+    const dynamics = this.lightInput.dynamics;
+    if (this.lightAmount && !this.lightMotion?.matches) dynamicLightEnvelope(volume, this.lightTime, this.lightAmount, false, dynamics);
+    else Object.assign(dynamics, steadyLights);
     return this.lightInput;
   }
 
@@ -524,10 +530,16 @@ export class Runtime implements GameRuntime {
     const dt = this.lightStamp ? Math.min(50, Math.max(0, now - this.lightStamp)) : 0;
     this.lightStamp = now;
     if (!paused) {
-      const target = Number(this.snapshot.dynamicLights);
-      this.lightAmount += Math.sign(target - this.lightAmount) * Math.min(Math.abs(target - this.lightAmount), dt / 280);
+      this.lightAmount = approachDynamicLights(this.lightAmount, this.snapshot.dynamicLights, dt);
     }
-    const locked = !paused && graphics.draw(sim, fixed, updateScene, this.lighting(sim));
+    let renderTime: number | undefined;
+    if (!fixed && this.snapshot.phase === 'playing') {
+      const seconds = now / 1000;
+      const followsAudio = this.lightAmount > 0 && !this.silent && !this.lightMotion?.matches;
+      renderTime = followsAudio ? this.audio.outputTimeAt(seconds) ?? seconds - this.audio.runOrigin : this.timeline.at(seconds);
+      if (this.pausedAt > 0 && renderTime < this.pausedAt) renderTime = this.lightTime;
+    }
+    const locked = !paused && graphics.draw(sim, fixed, updateScene, this.lighting(sim, renderTime));
     if (this.input) {
       this.input.pointer.locked = locked && this.snapshot.phase === 'playing';
       this.view.pointer(this.input.pointer);
@@ -552,7 +564,7 @@ export class Runtime implements GameRuntime {
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
         branch: sim.branch, trackDistance: sim.trackDistance, neutralized: sim.gatesNeutralized,
         outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
-        rhythmGain: this.lightInput.rhythmGain,
+        rhythmGain: this.lightInput.dynamics.fixtureGain, dynamics: this.lightInput.dynamics, lightTime: this.lightTime,
         audio: this.audio.diagnostics,
         initMs: this.initMs, switchMs: this.switchMs, renderedVolume: sim.volume.id, renderedMode: sim.mode }));
     }

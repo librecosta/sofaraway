@@ -4,6 +4,27 @@ import { STEP } from '../../app/game/core/clock';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { hasAudio, mount, openSync, phase, report, state, trace } from './support';
 
+test('dynamic structure lights peak on scheduled drum onsets in a live run', async ({ page }, info) => {
+  test.skip(info.project.name !== 'chromium', 'The live timing budget is measured on Chromium.');
+  const errors = await openSync(page);
+  await mount(page, 'descent');
+  await page.evaluate(() => window.syncHarness.setDynamicLights());
+  await page.locator('#start').click();
+  await phase(page, 'playing');
+  const samples = () => page.evaluate(() => window.syncHarness.beatTiming());
+  await expect.poll(async () => (await samples()).length, { timeout: 20_000 }).toBeGreaterThanOrEqual(3);
+  const measured = await samples();
+  for (const sample of measured) expect(sample.scheduled - sample.audioAnchor).toBeCloseTo(sample.planned, 9);
+  expect(Math.max(...measured.map(sample => Math.abs(sample.errorMs)))).toBeLessThanOrEqual(20);
+  for (const { output, renderedAt } of measured) {
+    if (output.status === 'valid' && output.scheduledPerformanceTime !== null) {
+      expect(Math.abs(renderedAt - output.scheduledPerformanceTime)).toBeLessThanOrEqual(24);
+    }
+  }
+  expect(errors).toEqual([]);
+  report('dynamic-lights', { measured });
+});
+
 test('real activation, pause, visibility, suspend and silent recovery', async ({ page, browser }, info) => {
   const errors = await openSync(page);
   await mount(page, 'orbit');

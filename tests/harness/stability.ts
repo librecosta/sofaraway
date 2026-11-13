@@ -10,6 +10,7 @@ import type { RunGate } from '../../app/game/core/simulation';
 import { makeOutroPlan } from '../../app/game/core/encore';
 import { OutroInspection } from '../../app/game/debug/outro-inspection';
 import { BOOST_MULTIPLIER, cruiseTarget } from '../../app/game/core/reference-track';
+import { dynamicLightEnvelope, steadyLights } from '../../app/game/core/rhythmic-lights';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateVisual } from '../../app/game/graphics/gates.client';
 import { Path } from '../../app/game/graphics/path';
@@ -267,7 +268,7 @@ const stability = {
   },
   async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard',
     side: RouteSide = 'left', iterations = 480, animateLights = false,
-    sample?: { station: number; fly?: boolean; inspection?: boolean; difficulty?: Difficulty }) {
+    sample?: { station: number; fly?: boolean; inspection?: boolean; difficulty?: Difficulty; dynamic?: boolean }) {
     const definition = volumeById('elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
       boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: side };
@@ -308,13 +309,20 @@ const stability = {
       const chunkBuild = end().cpu.chunk;
       const frozenBeat = sim.beat;
       let tick = 0;
+      const dynamics = { ...steadyLights };
       const draw = () => new Promise<void>((resolve, reject) => requestAnimationFrame(now => {
         try {
           if (measuring && frameAt) frames.push(now - frameAt);
           frameAt = now;
           if (!inspection && sample?.fly) sim.step(STEP, input);
           else if (!inspection && animateLights) sim.beat = Math.min(definition.beats, frozenBeat + tick * STEP / sim.secondsPerBeat);
-          elapsed('frame', () => surface.draw(inspect(tick++) ?? sim, true));
+          elapsed('frame', () => {
+            const state = inspect(tick++) ?? sim;
+            const lighting = sample?.dynamic
+              ? { beat: state.beat, dynamics: dynamicLightEnvelope(definition, state.beat * sim.secondsPerBeat, 1, false, dynamics) }
+              : undefined;
+            surface.draw(state, true, true, lighting);
+          });
           resolve();
         } catch (error) { reject(error); }
       }));

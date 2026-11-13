@@ -13,7 +13,7 @@ export interface LightingPreview {
   readonly pattern?: LightPattern;
   readonly yaw?: number;
   readonly station?: number;
-  readonly rhythmGain?: number;
+  readonly dynamics?: Readonly<import('../core/rhythmic-lights').DynamicLightEnvelope>;
 }
 
 /** Decode authored sRGB swatches locally; the other volumes keep their existing color management. */
@@ -62,6 +62,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 flowForward;
   uniform float flowPhase;
   uniform float pulse;
+  uniform float fixtureGain;
   uniform float motion;
   uniform vec3 washRange;
   varying vec3 fixture;
@@ -107,7 +108,7 @@ const fragmentShader = /* glsl */ `
     }
     float fog = exp(-0.0062 * 0.0062 * viewDepth * viewDepth) * (1.0 - smoothstep(175.0, 250.0, viewDepth));
     vec3 hue = mix(mainHue, alternateHue, group);
-    gl_FragColor = vec4(mix(hue, vec3(1.0), diffusion) * fixture.x * gain * fog, 1.0);
+    gl_FragColor = vec4(mix(hue, vec3(1.0), diffusion) * fixture.x * gain * fog * fixtureGain, 1.0);
   }
 `;
 
@@ -129,7 +130,7 @@ export class CorridorLights {
   private readonly uniforms = {
     mainHue: { value: new THREE.Color() }, alternateHue: { value: new THREE.Color() },
     flowStart: { value: new THREE.Vector3() }, flowForward: { value: new THREE.Vector3() },
-    flowPhase: { value: 0 }, pulse: { value: 1 }, motion: { value: 1 },
+    flowPhase: { value: 0 }, pulse: { value: 1 }, motion: { value: 1 }, fixtureGain: { value: 1 },
     washOrigin: { value: new THREE.Vector3() }, washForward: { value: new THREE.Vector3() },
     washRight: { value: new THREE.Vector3() }, washUp: { value: new THREE.Vector3() },
     washFaces: { value: washFaceProjection.map(face => new THREE.Vector3(...face)) },
@@ -228,7 +229,7 @@ export class CorridorLights {
     this.group.add(mesh);
   }
 
-  update(station: number, beat: number, override?: LightPattern, closing = false, rhythmGain = 1) {
+  update(station: number, beat: number, override?: LightPattern, closing = false, fixtureGain = 1) {
     const reduced = this.reduced = this.reduce?.matches ?? false;
     const state = lightingState(beat, reduced, closing);
     const active = corridorAt(this.atlas, station) ?? corridorAt(this.outroAtlas, station);
@@ -250,7 +251,8 @@ export class CorridorLights {
     alternateHue.value.setHSL(dual ? mixHue(state.hue, state.hue + .27, .22 * (.5 + .5 * breath(beat, 8))) : state.hue,
       state.saturation, .5);
     flowPhase.value = (beat % 4) / 4;
-    pulse.value = (.84 + .07 * state.breathing + .12 * state.energy * state.pulse) * state.level * rhythmGain;
+    pulse.value = (.84 + .07 * state.breathing + .12 * state.energy * state.pulse) * state.level;
+    this.uniforms.fixtureGain.value = fixtureGain;
     motion.value = reduced ? 0 : state.level;
     this.fog.copy(this.sky).lerp(this.scratch.setHSL(state.hue, .61 * state.saturation, .12), .56).multiplyScalar(.041);
     return state;

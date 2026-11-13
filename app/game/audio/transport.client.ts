@@ -1,4 +1,5 @@
 import type { VolumeDefinition } from '../core/volumes';
+import { musicStepSeconds } from '../core/rhythmic-lights';
 import { createBuffers, createMaster, Synthesizer } from './synthesizer.client';
 
 const LEAD = 0.06;
@@ -38,6 +39,17 @@ export class AudioTransport {
     const ctx = this.context;
     if (!this.synth || !ctx || ctx.state !== 'running') return 'audio';
     return Math.max(this.offset, ctx.currentTime - this.anchor);
+  }
+
+  /** Estimate the run phase at the audio output for this RAF timestamp. */
+  outputTimeAt(frameSeconds: number) {
+    const ctx = this.context;
+    if (!this.synth || !ctx || ctx.state !== 'running') return;
+    const stamp = ctx.getOutputTimestamp?.();
+    const at = stamp?.performanceTime, position = stamp?.contextTime;
+    if (at === undefined || position === undefined || !Number.isFinite(at) || !Number.isFinite(position) ||
+      at <= 0 || position <= 0 || Math.abs(frameSeconds - at / 1000) > .25) return;
+    return position + frameSeconds - at / 1000 - this.anchor;
   }
 
   // Use the same output bus as the soundtrack without starting its scheduler.
@@ -104,7 +116,7 @@ export class AudioTransport {
     this.offset = offset;
     this.anchor = ctx.currentTime + LEAD - offset;
     this.runOrigin = performance.now() / 1000 + LEAD - offset;
-    const stepTime = 15 / volume.bpm;
+    const stepTime = musicStepSeconds(volume.bpm);
     this.stepSeconds = stepTime;
     const endStep = volume.beats * 4;
     let step = Math.max(0, Math.ceil((offset - GRID_EPSILON) / stepTime), this.playedThrough + 1);

@@ -161,7 +161,7 @@ test('the settings-only dynamic lights switch persists and pulses through silent
   const toggle = page.getByRole('switch', { name: 'DYNAMIC LIGHTS' });
   await expect(toggle).not.toBeChecked();
   await toggle.check();
-  await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBeGreaterThan(1.03);
+  await expect.poll(async () => Math.abs((await diagnostics(page)).rhythmGain - 1)).toBeGreaterThan(.04);
   await toggle.uncheck();
   await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBe(1);
   expect(await canvasId(page)).toBe(marker);
@@ -173,13 +173,14 @@ test('the settings-only dynamic lights switch persists and pulses through silent
   await start(page).click();
   await page.getByRole('button', { name: 'PLAY WITH SOUND OFF' }).click();
   await expect(page.locator('#hud')).toBeVisible();
-  await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBeGreaterThan(1);
+  await expect.poll(async () => Math.abs((await diagnostics(page)).rhythmGain - 1)).toBeGreaterThan(.04);
   await page.keyboard.press('p');
   await expect(page.getByRole('dialog', { name: 'PAUSED' })).toBeVisible();
   await expect.poll(async () => (await diagnostics(page)).phase).toBe('paused');
   const paused = await diagnostics(page);
   await page.waitForTimeout(350);
   expect((await diagnostics(page)).beat).toBeCloseTo(paused.beat, 1);
+  expect((await diagnostics(page)).lightTime).toBe(paused.lightTime);
   await page.getByRole('button', { name: 'RESUME' }).click();
   await expect.poll(async () => (await diagnostics(page)).beat).toBeGreaterThan(paused.beat);
 });
@@ -192,7 +193,7 @@ test('fixed scenes respond in all four volumes while reduced motion leaves the b
     await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBe(1);
     const baseline = await diagnostics(page);
     await page.goto(url + '&lights=true');
-    await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBeGreaterThan(1);
+    await expect.poll(async () => Math.abs((await diagnostics(page)).rhythmGain - 1)).toBeGreaterThan(.03);
     const enhanced = await diagnostics(page);
     for (const field of ['calls','programs','textures','geometries','distance','trackDistance','speed']) {
       expect(enhanced[field], volume + '/' + field).toEqual(baseline[field]);

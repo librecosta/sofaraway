@@ -4,6 +4,8 @@ import type { RouteSide } from '../core/branches';
 import { frameLightLevel, octagon } from '../core/lighting-atlas';
 import type { LightingZone } from '../core/lighting-atlas';
 import type { LightingState } from '../core/lighting-score';
+import { steadyLights } from '../core/rhythmic-lights';
+import type { DynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { Topology } from '../core/volumes';
 import type { BranchPath } from './branch-path';
 import type { Path, PathFrame } from './path';
@@ -27,6 +29,7 @@ const RING = 3;
 const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
+const SCENIC_POINT_INTENSITIES = [16, 21, 25] as const;
 
 /* conduit: a closed octagon.  canal: an open U — floor, two low walls,
    nothing overhead — with a glazed side handled by the shell material. */
@@ -138,7 +141,7 @@ export class Tunnel {
     this.lights = [];
     const stations = this.surfaces ? [7, 20, 44] : [14, 52, 104, 170];
     for (const [i, d] of stations.entries()) {
-      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? [16, 21, 25][i] : 30, 100, 2);
+      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? SCENIC_POINT_INTENSITIES[i] : 30, 100, 2);
       l.userData.d = d;
       this.group.add(l);
       this.lights.push(l);
@@ -540,21 +543,26 @@ export class Tunnel {
     }
   }
 
-  pulse(p: number, rhythmGain = 1) {
+  pulse(p: number, dynamics: Readonly<DynamicLightEnvelope> = steadyLights) {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
-    this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * rhythmGain);
-    this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * rhythmGain);
-    this.hemi.intensity = .55 * (1 + (rhythmGain - 1) * .25);
+    this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * dynamics.fixtureGain);
+    this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * dynamics.rimGain);
+    this.hemi.intensity = .55;
+    for (const light of this.lights) light.intensity = 30 * dynamics.physicalGain;
   }
 
-  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState, rhythmGain = 1) {
-    const spill = 1 + (rhythmGain - 1) * .45;
+  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState,
+    dynamics: Readonly<DynamicLightEnvelope> = steadyLights) {
+    const spill = 1 + (dynamics.physicalGain - 1) * .45;
     this.ambient.color.copy(base); this.ambient.intensity = .70 * spill;
     this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .64 * spill;
-    for (const [i, light] of this.lights.entries()) light.color.copy(i === 1 ? sky : base);
+    for (const [i, light] of this.lights.entries()) {
+      light.color.copy(i === 1 ? sky : base);
+      light.intensity = SCENIC_POINT_INTENSITIES[i] * dynamics.physicalGain;
+    }
     this.mainLight.setHSL(state.hue, state.saturation, .5);
-    this.rimMat.color.copy(this.mainLight).multiplyScalar(state.rim);
-    this.stripMat.color.copy(this.mainLight).multiplyScalar(state.strip);
+    this.rimMat.color.copy(this.mainLight).multiplyScalar(state.rim * dynamics.rimGain);
+    this.stripMat.color.copy(this.mainLight).multiplyScalar(state.strip * dynamics.fixtureGain);
   }
 
   get physicalLights() { return this.lights.length + 2; }
