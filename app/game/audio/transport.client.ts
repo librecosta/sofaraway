@@ -30,6 +30,7 @@ export class AudioTransport {
   private disposed = false;
   private volume = 0.8;
   private muted = false;
+  private lastHover = -Infinity;
 
   constructor(private readonly onInterrupt: (reason: Interruption) => void) {}
 
@@ -39,16 +40,56 @@ export class AudioTransport {
     return Math.max(this.offset, ctx.currentTime - this.anchor);
   }
 
+  // Use the same output bus as the soundtrack without starting its scheduler.
+  unlock() {
+    if (this.disposed) return;
+    try {
+      const ctx = this.audioContext();
+      if (ctx && ctx.state !== 'running') void ctx.resume().catch(() => {});
+    } catch { /* A cue must never block menu interaction. */ }
+  }
+
+  playUiCue(cue: 'hover' | 'press') {
+    if (this.disposed || this.muted || this.volume === 0 || this.synth) return;
+    const press = cue === 'press';
+    try {
+      const activated = navigator.userActivation?.isActive;
+      const ctx = press || activated ? this.audioContext() : this.context;
+      if (!ctx) return;
+      const play = () => {
+        if (this.disposed || this.muted || this.volume === 0 || ctx.state !== 'running') return;
+        const now = ctx.currentTime;
+        if (!press && now - this.lastHover < .07) return;
+        if (!press) this.lastHover = now;
+        this.master ??= createMaster(ctx, this.volume);
+        const tone = ctx.createOscillator();
+        const envelope = ctx.createGain();
+        const end = now + (press ? .115 : .09);
+        tone.type = press ? 'sine' : 'triangle';
+        tone.frequency.setValueAtTime(press ? 780 : 610, now);
+        tone.frequency.exponentialRampToValueAtTime(press ? 390 : 890, end);
+        envelope.gain.setValueAtTime(.0001, now);
+        envelope.gain.exponentialRampToValueAtTime(press ? .28 : .12, now + .008);
+        envelope.gain.exponentialRampToValueAtTime(.0001, end);
+        tone.connect(envelope).connect(this.master);
+        tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
+        tone.start(now);
+        tone.stop(end);
+      };
+      if (ctx.state === 'running') play();
+      else if (press || activated) {
+        const pressedAt = performance.now();
+        void ctx.resume().then(() => { if (performance.now() - pressedAt < 240) play(); }).catch(() => {});
+      }
+    } catch { /* Audio failure is handled by the run transport on start. */ }
+  }
+
   async start(volume: VolumeDefinition, position: number | ((lead: number) => number), resume = false): Promise<boolean> {
     if (this.disposed) return false;
     this.stop(resume);
     if (!resume) this.resetDiagnostics();
     const generation = this.generation;
-    if (this.context?.state === 'closed') {
-      this.context.onstatechange = null;
-      this.context = this.master = this.buffers = undefined;
-    }
-    const ctx = this.context ??= this.createContext();
+    const ctx = this.audioContext();
     if (!ctx) return false;
 
     // Call resume before waiting for any work so the initiating gesture can unlock it.
@@ -144,6 +185,15 @@ export class AudioTransport {
       void this.context.close().catch(() => {});
     }
     this.context = this.master = this.buffers = undefined;
+  }
+
+  private audioContext() {
+    if (this.context?.state === 'closed') {
+      this.context.onstatechange = null;
+      this.context = this.master = this.buffers = undefined;
+      this.lastHover = -Infinity;
+    }
+    return this.context ??= this.createContext();
   }
 
   private createContext() {

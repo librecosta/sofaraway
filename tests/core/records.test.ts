@@ -14,12 +14,22 @@ test('Best and Last are independent across every supported volume and difficulty
   const loaded = parseRecords(JSON.stringify(records));
   points = 100;
   for (const { id } of VOLUMES) for (const difficulty of difficultiesFor(id)) {
-    expect(recordFor(loaded, id, difficulty, 'standard')).toEqual({ best: points++, last: { score: 20, outcome: 'TERMINATED' } });
+    expect(recordFor(loaded, id, difficulty, 'standard')).toEqual({ best: points++ + 7200, last: { score: 20, outcome: 'TERMINATED' } });
   }
   expect(recordRun(loaded, 'elsewhere', 'impossible', 'standard', { score: 900, outcome: 'ESCAPED', recovery: true })).toBe(false);
   expect(recordRun(loaded, 'elsewhere', 'normal', 'sightseeing', { score: 800, outcome: 'ESCAPED' })).toBe(false);
-  expect(recordFor(loaded, 'elsewhere', 'impossible', 'standard')).toEqual({ best: 103, last: { score: 900, outcome: 'ESCAPED', recovery: true } });
+  expect(recordFor(loaded, 'elsewhere', 'impossible', 'standard')).toEqual({ best: 7303, last: { score: 900, outcome: 'ESCAPED', recovery: true } });
   expect(recordFor(loaded, 'elsewhere', 'hard', 'sightseeing')).toEqual({ best: null, last: { score: 800, outcome: 'ESCAPED' } });
+});
+
+test('recoverable legacy bonus counts toward Best and each new Encore run compares by total', () => {
+  const previous = { score: 9800, encoreBonus: 900, outcome: 'ESCAPED' } as const;
+  const records = parseRecords(JSON.stringify({ version: 1, standard: { elsewhere: { normal: { best: 10000, last: previous } } } }));
+  expect(recordFor(records, 'elsewhere', 'normal', 'standard').best).toBe(10700);
+  expect(recordRun(records, 'elsewhere', 'normal', 'standard', { ...previous, score: 9900, encoreBonus: 600 })).toBe(false);
+  expect(recordRun(records, 'elsewhere', 'normal', 'standard', { ...previous, score: 9400, encoreBonus: 1500 })).toBe(true);
+  expect(recordRun(records, 'elsewhere', 'normal', 'standard', { ...previous, score: 20000, recovery: true })).toBe(false);
+  expect(recordFor(parseRecords(JSON.stringify(records)), 'elsewhere', 'normal', 'standard').best).toBe(10900);
 });
 
 test('records reject invalid or unknown storage values and tolerate a missing browser', () => {

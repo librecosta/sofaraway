@@ -146,7 +146,7 @@ class VolumeScene {
       const { base, sky, ground } = this.scenic;
       this.hue = state.hue;
       this.saturation = state.saturation;
-      this.tunnel.setScenic(base, sky, ground, state);
+      this.tunnel.setScenic(base, sky, ground, state, rhythmGain);
       this.fog.color.copy(this.scenic.fog);
       const junction = this.junction;
       if (junction) {

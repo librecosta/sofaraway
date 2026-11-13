@@ -19,6 +19,9 @@ test('UI State Studio renders production states, stays scrollable and never writ
   expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight * 2)).toBe(true);
   await expect(frame.getByText('PROCEDURAL RUNNER')).toBeVisible();
   await expect(frame.getByText('MUSIC IN MOTION')).toBeVisible();
+  await frame.getByRole('link', { name: 'SoFaraway on GitHub' }).click();
+  expect(page.context().pages()).toHaveLength(1);
+  await scenario.focus();
   await expect(frame.locator('#menu')).toHaveCSS('font-family', /Rajdhani/);
   await expect(frame.getByRole('group', { name: 'Local records' })).toContainText(/BEST SCORE\s*—/);
   await scenario.selectOption('record-failure');
@@ -71,7 +74,9 @@ test('UI State Studio renders production states, stays scrollable and never writ
   await expect(frame.getByRole('button', { name: 'LOW' })).toHaveAttribute('aria-pressed', 'true');
   await frame.getByRole('switch', { name: 'DYNAMIC LIGHTS' }).check();
   await frame.getByRole('button', { name: 'CLOSE' }).click();
-  await expect(frame.getByRole('button', { name: 'Dynamic lights', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(frame.getByRole('button', { name: 'Dynamic lights', exact: true })).toHaveCount(0);
+  await frame.getByRole('button', { name: 'SETTINGS' }).click();
+  await expect(frame.getByRole('switch', { name: 'DYNAMIC LIGHTS' })).toBeChecked();
   await scenario.selectOption('credits');
   await expect(frame.getByRole('link', { name: 'librecosta', exact: true })).toHaveAttribute('href', 'https://librecosta.com');
   const helloRun = frame.getByRole('link', { name: 'HelloRun' });
@@ -82,9 +87,9 @@ test('UI State Studio renders production states, stays scrollable and never writ
   expect(page.context().pages()).toHaveLength(1);
   await scenario.selectOption('music-open');
   await iframe.scrollIntoViewIfNeeded();
-  await expect(frame.getByRole('region', { name: 'Music' })).toContainText('128 BPM');
-  await frame.getByRole('button', { name: 'Music information' }).press('Escape');
-  await expect(frame.getByRole('button', { name: 'Music information' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(frame.getByRole('tooltip')).toContainText('128 BPM');
+  await frame.getByRole('button', { name: 'Sound', exact: true }).press('Escape');
+  await expect(frame.getByRole('tooltip')).toBeHidden();
 
   await scenario.selectOption('share-success');
   await iframe.scrollIntoViewIfNeeded();
@@ -119,11 +124,11 @@ test('Studio uses the requested browser viewport and keeps one corridor canvas a
     const wordmark = await frame.getByRole('heading', { name: 'SOFARAWAY' }).evaluate(el => el.getBoundingClientRect().toJSON());
     expect(wordmark.left).toBeGreaterThanOrEqual(0);
     expect(wordmark.right).toBeLessThanOrEqual(width);
-    await expect(frame.getByRole('button', { name: 'PRESS SPACE TO START' })).toBeEnabled();
-    await frame.getByRole('button', { name: 'Music information' }).click();
-    const music = await frame.getByRole('region', { name: 'Music' }).evaluate(el => el.getBoundingClientRect().toJSON());
+    await expect(frame.getByRole('button', { name: 'START · PRESS X' })).toBeEnabled();
+    await frame.getByRole('button', { name: 'Sound', exact: true }).hover();
+    const music = await frame.getByRole('tooltip').evaluate(el => el.getBoundingClientRect().toJSON());
     expect(music.right).toBeLessThanOrEqual(width);
-    await frame.getByRole('button', { name: 'Music information' }).press('Escape');
+    await frame.getByRole('button', { name: 'Sound', exact: true }).press('Escape');
     await frame.getByRole('button', { name: 'SETTINGS' }).click();
     await expect(frame.getByRole('switch', { name: 'DYNAMIC LIGHTS' })).toBeEnabled();
     await frame.getByRole('button', { name: 'CLOSE' }).click();

@@ -23,8 +23,11 @@ function score(value: unknown): value is number {
 function lastRun(value: unknown): LastRun | null {
   const { score: points, outcome, encoreBonus, recovery } = object(value);
   if (!score(points) || (outcome !== 'ESCAPED' && outcome !== 'TERMINATED')) return null;
-  return { score: points, outcome, ...(score(encoreBonus) ? { encoreBonus } : {}), ...(recovery === true ? { recovery } : {}) };
+  return { score: points, outcome, ...(score(encoreBonus) && score(points + encoreBonus) ? { encoreBonus } : {}),
+    ...(recovery === true ? { recovery } : {}) };
 }
+
+export function totalRunScore(run: LastRun) { return run.score + (run.encoreBonus ?? 0); }
 
 export function parseRecords(raw: string | null): RecordsV1 {
   const records = emptyRecords();
@@ -36,7 +39,10 @@ export function parseRecords(raw: string | null): RecordsV1 {
     const entries = object(standard[id]);
     for (const difficulty of difficultiesFor(id)) {
       const entry = object(entries[difficulty]);
-      const best = score(entry.best) ? entry.best : null, last = lastRun(entry.last);
+      let best = score(entry.best) ? entry.best : null;
+      const last = lastRun(entry.last);
+      // Older Best entries stored the main score. Last still has the recorded bonus.
+      if (last?.encoreBonus && !last.recovery) best = Math.max(best ?? 0, totalRunScore(last));
       if (best !== null || last) (records.standard[id] ??= {})[difficulty] = { best, last };
     }
     const last = lastRun(object(sightseeing[id]).last);
@@ -62,8 +68,9 @@ export function recordRun(records: RecordsV1, volume: VolumeId, difficulty: Diff
     return false;
   }
   const { best } = recordFor(records, volume, difficulty, mode);
-  const newBest = !last.recovery && (best === null || last.score > best);
-  (records.standard[volume] ??= {})[difficulty] = { best: newBest ? last.score : best, last };
+  const total = totalRunScore(last);
+  const newBest = !last.recovery && (best === null || total > best);
+  (records.standard[volume] ??= {})[difficulty] = { best: newBest ? total : best, last };
   return newBest;
 }
 

@@ -544,11 +544,13 @@ export class Tunnel {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
     this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * rhythmGain);
     this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * rhythmGain);
+    this.hemi.intensity = .55 * (1 + (rhythmGain - 1) * .25);
   }
 
-  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState) {
-    this.ambient.color.copy(base); this.ambient.intensity = .70;
-    this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .64;
+  setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState, rhythmGain = 1) {
+    const spill = 1 + (rhythmGain - 1) * .45;
+    this.ambient.color.copy(base); this.ambient.intensity = .70 * spill;
+    this.hemi.color.copy(sky); this.hemi.groundColor.copy(ground); this.hemi.intensity = .64 * spill;
     for (const [i, light] of this.lights.entries()) light.color.copy(i === 1 ? sky : base);
     this.mainLight.setHSL(state.hue, state.saturation, .5);
     this.rimMat.color.copy(this.mainLight).multiplyScalar(state.rim);

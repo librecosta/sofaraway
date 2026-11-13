@@ -33,3 +33,9 @@ Vite gzip output (kB): home entry 9.13 → 6.58, runtime 9.03 → 9.33, shared i
 After five warmups and two batches of 30 cycles, forced-GC JavaScript heap was 8.69 → 9.08 → 9.25 MB in the reference (Settings) and 8.91 → 9.41 → 9.57 MB in the candidate (Settings and Music). This measures retained JS heap on one page, not GPU memory or a long-duration leak limit. Studio tests verified disposal of its optional renderer when the preview closes.
 
 Physical touch feel, low-power/mobile Safari compositor behavior, and accessibility with an actual screen reader still merit manual review.
+
+## Menu follow-up
+
+Compared with `57c5487` on Chrome 157.0.8103.78 and AMD Radeon via ANGLE D3D11, at 960×540, Low and DPR 1. In four samples per selector with Reduced Motion enabled, the largest frame gap over the 500 ms after a mode choice fell from 142–171 ms to 12–13 ms. For volume choices it fell from 50–625 ms to 8–17 ms. These are browser frame gaps. The run scene is prepared when Start is activated. Both builds used one renderer.
+
+The updated menu and Results button tones share the Web Audio output bus. The hover tone peaks at .12 and the press tone peaks at .28 before applying the user's volume. The browser check observes both envelopes and verifies mute. A fresh browser session may require a click or keypress to enable Web Audio.

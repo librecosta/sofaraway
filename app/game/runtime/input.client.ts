@@ -50,7 +50,8 @@ export class InputController {
         (1 - e.clientY / window.innerHeight * 2) * RANGE_Y, 0.34);
     }, { passive: true, signal });
     window.addEventListener('pointerover', e => {
-      this.pointer.hover = e.target instanceof Element && !!e.target.closest('button');
+      this.pointer.hover = e.pointerType !== 'touch' && e.target instanceof Element &&
+        !!e.target.closest('button:not(:disabled), a[href], input:not(:disabled), #vols');
     }, { signal });
     document.addEventListener('pointerleave', () => { this.pointer.visible = false; }, { signal });
     document.addEventListener('pointerenter', () => { this.pointer.visible = true; }, { signal });
@@ -82,7 +83,7 @@ export class InputController {
         event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (command(key, event)) return;
       if (playing()) {
-        if (key.startsWith('arrow') || key === ' ') event.preventDefault();
+        if (key.startsWith('arrow') && !(event.target instanceof HTMLButtonElement)) event.preventDefault();
         this.keys.add(key);
       }
     }, { signal });

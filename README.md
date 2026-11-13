@@ -44,7 +44,8 @@ See the [verification and hosting guide](docs/verification.md) for the static
 artifact and hosting requirements.
 
 ELSEWHERE Standard also offers Impossible. The menu keeps Best and Last by
-volume and difficulty in this browser. Sightseeing shows Last Visit per volume.
+volume and difficulty in this browser, including Encore bonuses in both totals.
+Sightseeing shows Last Visit per volume.
 
 ### Tests
 
@@ -63,7 +64,8 @@ browser matrix, audio, benchmarks and original A0 baseline.
 | Mouse / touch drag | Steer — the reticle follows your hand across the whole window |
 | Arrow keys / WASD | Steer |
 | Hold left button / `Shift` | Boost on desktop |
-| `Space` / `Enter` | Start · retry |
+| `X` | Start · retry |
+| Click or tap START | Start |
 | `M` | Mute |
 | `P` / touch Pause button | Pause or resume |
 | `Esc` | Back to menu |

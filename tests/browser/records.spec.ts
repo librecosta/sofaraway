@@ -27,13 +27,16 @@ test('local records follow the selected volume, difficulty and mode at narrow si
     await page.setViewportSize(size);
     for (const button of await page.locator('#menu button:not([aria-hidden=true])').all()) await expect(button).toBeInViewport({ ratio: .65 });
   }
+  await page.evaluate(() => document.fonts.ready.then(() => {}));
+  const emptyBox = await record.boundingBox();
   await next.focus();
   await page.keyboard.press('Enter');
   await page.keyboard.press('Enter');
   await expect(difficulty).toHaveText('IMPOSSIBLE');
   await expect(page.getByText('1 LIFE', { exact: true })).toBeVisible();
   await expect(record).toContainText(/BEST SCORE\s*128,640/);
-  await expect(record).toContainText(/LAST RUN\s*97,450/);
+  await expect(record).toContainText(/LAST RUN\s*108,250/);
+  expect(await record.boundingBox()).toMatchObject({ y: emptyBox!.y, height: emptyBox!.height });
   await page.reload();
   await expect(record).toContainText(/BEST SCORE\s*128,640/);
   await previous.click();

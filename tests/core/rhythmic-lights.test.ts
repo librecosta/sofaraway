@@ -28,9 +28,9 @@ describe('dynamic structural lighting', () => {
         expect(rhythmicLightGain(volume, beat, 0)).toBe(1);
         expect(rhythmicLightGain(volume, beat, 1, true)).toBe(1);
         expect(gain).toBeGreaterThanOrEqual(1);
-        expect(gain).toBeLessThanOrEqual(1.30);
+        expect(gain).toBeLessThanOrEqual(1.65);
       }
-      expect(peak).toBeGreaterThan(1.13);
+      expect(peak).toBeGreaterThan(1.28);
       expect(rhythmicLightGain(volume, volume.beats - 1, 1)).toBe(1);
     }
   });

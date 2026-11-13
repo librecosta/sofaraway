@@ -15,10 +15,15 @@ interface Props {
   preview?: boolean;
 }
 
-function Toggle({ id, label, checked, change }: { id: string; label: string; checked: boolean; change(value: boolean): void }) {
+function Toggle({ id, label, checked, change, description }: {
+  id: string; label: string; checked: boolean; change(value: boolean): void; description?: string;
+}) {
   return <label className={c('panel-row', 'switch-row')} htmlFor={id}>
-    <span>{label}</span><input id={id} type="checkbox" role="switch" checked={checked} onChange={event => change(event.target.checked)} />
+    <span>{label}</span><input id={id} type="checkbox" role="switch" checked={checked}
+      aria-label={label} aria-describedby={description ? `${id}-description` : undefined}
+      onChange={event => change(event.target.checked)} />
     <span className={c('switch-track')} aria-hidden="true" />
+    {description && <small id={`${id}-description`} className={c('switch-description')}>{description}</small>}
   </label>;
 }
 
@@ -53,7 +58,8 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
             onChange={event => setVolume(event.target.valueAsNumber / 100)} />
         </div>
         <Toggle id="set-muted" label="MUTE" checked={snapshot.muted} change={setMuted} />
-        <Toggle id="set-dynamic-lights" label="DYNAMIC LIGHTS" checked={snapshot.dynamicLights} change={setDynamicLights} />
+        <Toggle id="set-dynamic-lights" label="DYNAMIC LIGHTS" checked={snapshot.dynamicLights} change={setDynamicLights}
+          description="Stronger corridor pulses on kick and snare." />
         <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label="CLOSE" />
       </div>
     </GameDialog>

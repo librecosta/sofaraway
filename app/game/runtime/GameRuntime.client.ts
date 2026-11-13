@@ -117,19 +117,28 @@ export class Runtime implements GameRuntime {
     const phase = this.snapshot.phase;
     let sim = this.simulation;
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
-    if (sim.volume.id === 'elsewhere' && sim.mode !== this.snapshot.mode) {
+    const silentFallback = silent && this.snapshot.error?.kind === 'audio';
+    const generation = ++this.generation;
+    const { volumeId, mode } = this.snapshot;
+    this.publish({ phase: 'starting', error: null });
+    if (generation !== this.generation) return;
+    if (sim.volume.id !== volumeId || (volumeId === 'elsewhere' && sim.mode !== mode)) {
+      // Unlock within the initiating gesture and let the menu paint STARTING before building.
+      if (!silent) this.primeAudio();
+      await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      if (generation !== this.generation) return;
+      if (this.unavailable()) {
+        this.publish({ phase });
+        return;
+      }
       try {
-        this.loadVolume(sim.volume.id);
+        this.loadVolume(volumeId);
         sim = this.simulation!;
       } catch (error) {
         this.fail(error);
         return;
       }
     }
-    const silentFallback = silent && this.snapshot.error?.kind === 'audio';
-    const generation = ++this.generation;
-    this.publish({ phase: 'starting', error: null });
-    if (generation !== this.generation) return;
     if (!silent && !await this.startAudio(sim, 0, generation)) {
       if (generation === this.generation) this.publish({ phase, error: audioError });
       return;
@@ -237,25 +246,30 @@ export class Runtime implements GameRuntime {
       pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, soundUnavailable: false,
       outroPhase: undefined, encore: undefined, newBest: false,
       route: null, routeHint: null });
+    // Release the run-only visuals even if the next menu frame has not painted yet.
+    if (this.simulation && !this.unavailable()) {
+      try {
+        this.graphics?.update(this.simulation, false, this.lighting(this.simulation));
+      } catch (error) {
+        this.fail(error);
+      }
+    }
   }
 
   async selectVolume(id: VolumeId) {
     if (!this.canConfigure() || this.contextLost || this.cached || id === this.snapshot.volumeId) return;
-    const generation = ++this.generation;
     const begin = performance.now();
-    this.publish({ phase: 'initializing', error: null, result: null, pauseReason: null });
-    await Promise.resolve();
-    if (generation !== this.generation) return;
+    if (this.snapshot.phase === 'results') this.returnToMenu();
+    const { mode } = this.snapshot;
+    const difficulty = resolveDifficulty(id, this.snapshot.difficulty);
+    this.publish({ volumeId: id, difficulty, error: null, newBest: false,
+      localRecord: recordFor(this.records, id, difficulty, mode) });
+    this.switchMs = performance.now() - begin;
+    // Fixed-time diagnostics render the requested volume immediately.
+    if (this.options?.diagnostics.fixedTime == null) return;
     try {
-      this.audio.stop();
-      this.input?.clear();
       this.loadVolume(id);
-      this.switchMs = performance.now() - begin;
-      const difficulty = resolveDifficulty(id, this.snapshot.difficulty);
-      this.publishRun({ phase: 'menu', volumeId: id, difficulty, newBest: false,
-        localRecord: recordFor(this.records, id, difficulty, this.snapshot.mode) });
-      if (this.options?.diagnostics.fixedTime != null) this.capture(this.options.diagnostics.fixedTime);
-      this.schedule();
+      this.capture(this.options.diagnostics.fixedTime);
     } catch (error) {
       this.fail(error);
     }
@@ -272,12 +286,6 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase !== 'menu' || this.snapshot.mode === value) return;
     const { volumeId, difficulty } = this.snapshot;
     this.publish({ mode: value, localRecord: recordFor(this.records, volumeId, difficulty, value) });
-    if (this.snapshot.volumeId !== 'elsewhere' || this.unavailable()) return;
-    try {
-      this.loadVolume('elsewhere');
-    } catch (error) {
-      this.fail(error);
-    }
   }
 
   async setQuality(value: QualityTier) {
@@ -307,14 +315,20 @@ export class Runtime implements GameRuntime {
     this.view.muted?.(value);
   }
 
+  primeAudio() { this.audio.unlock(); }
+
+  playUiCue(cue: 'hover' | 'press') { this.audio.playUiCue(cue); }
+
   setDynamicLights(value: boolean) {
     if (this.snapshot.phase !== 'disposed') this.publish({ dynamicLights: value });
   }
 
   private lighting(sim: Simulation) {
     this.lightInput.beat = sim.beat;
-    const beat = sim.phase === 'menu' ? sim.beat % sim.volume.beats : sim.beat;
-    this.lightInput.rhythmGain = rhythmicLightGain(sim.volume, beat, this.lightAmount, this.lightMotion?.matches);
+    const menu = sim.phase === 'menu';
+    const volume = menu ? volumeById(this.snapshot.volumeId) : sim.volume;
+    const beat = menu ? volume.sections[0].beats + sim.time * volume.bpm / 60 % 8 : sim.beat;
+    this.lightInput.rhythmGain = rhythmicLightGain(volume, beat, this.lightAmount, this.lightMotion?.matches);
     return this.lightInput;
   }
 
@@ -459,7 +473,7 @@ export class Runtime implements GameRuntime {
           this.nextPublish = now + 80;
           this.publishRun();
         }
-        if (this.snapshot.phase !== 'paused') this.trackFrame(dt);
+        if (this.snapshot.phase !== 'paused' && this.snapshot.phase !== 'starting') this.trackFrame(dt);
         if (!catchingUp) this.draw(sim, now);
       }
       this.schedule();
@@ -540,7 +554,7 @@ export class Runtime implements GameRuntime {
         outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
         rhythmGain: this.lightInput.rhythmGain,
         audio: this.audio.diagnostics,
-        initMs: this.initMs, switchMs: this.switchMs }));
+        initMs: this.initMs, switchMs: this.switchMs, renderedVolume: sim.volume.id, renderedMode: sim.mode }));
     }
   }
 
@@ -648,9 +662,10 @@ export class Runtime implements GameRuntime {
   private keydown = (key: string, event: KeyboardEvent) => {
     if (this.view.key?.(key, event)) return true;
     if (event.repeat || event.target instanceof HTMLInputElement) return false;
-    if ((key === ' ' || key === 'enter') && !(event.target instanceof HTMLButtonElement)) {
+    if (key === 'x' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       if (this.canConfigure()) {
         event.preventDefault();
+        if (event.isTrusted) this.playUiCue('press');
         void this.start();
         return true;
       }

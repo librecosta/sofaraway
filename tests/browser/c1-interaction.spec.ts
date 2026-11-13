@@ -144,7 +144,7 @@ test('clipboard feedback is top-centered, reports failure, and does not replace 
   await expect(page.locator('#center-msg')).toBeEmpty();
 });
 
-test('dynamic lights use the same persisted setting across surfaces, including silent pause and resume', async ({ page }) => {
+test('the settings-only dynamic lights switch persists and pulses through silent pause and resume', async ({ page }) => {
   await page.addInitScript(() => {
     const NativeAudio = window.AudioContext;
     Object.defineProperty(window, 'AudioContext', { value: class extends NativeAudio {
@@ -154,21 +154,22 @@ test('dynamic lights use the same persisted setting across surfaces, including s
   });
   await page.goto('/?q=low&dbg=1&vol=descent');
   await expect(start(page)).toBeEnabled();
-  const icon = page.getByRole('button', { name: 'Dynamic lights', exact: true });
-  await expect(icon).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Dynamic lights', exact: true })).toHaveCount(0);
   const marker = await canvasId(page);
-  await icon.click();
-  await expect(icon).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'SETTINGS' }).click();
+  const settings = page.getByRole('button', { name: 'SETTINGS' });
+  await settings.click();
   const toggle = page.getByRole('switch', { name: 'DYNAMIC LIGHTS' });
-  await expect(toggle).toBeChecked();
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBeGreaterThan(1.03);
   await toggle.uncheck();
-  await page.keyboard.press('Escape');
-  await expect(icon).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBe(1);
   expect(await canvasId(page)).toBe(marker);
-  await icon.click();
+  await toggle.check();
   await page.reload();
-  await expect(icon).toHaveAttribute('aria-pressed', 'true');
+  await settings.click();
+  await expect(toggle).toBeChecked();
+  await page.keyboard.press('Escape');
   await start(page).click();
   await page.getByRole('button', { name: 'PLAY WITH SOUND OFF' }).click();
   await expect(page.locator('#hud')).toBeVisible();
@@ -209,9 +210,103 @@ test('starting while the wheel is moving starts the intended course', async ({ p
   const wheel = page.getByRole('group', { name: 'Volume selector' });
   await wheel.press('ArrowDown');
   await expect(wheel).toHaveAttribute('data-moving', 'true');
-  await wheel.press('Space');
+  await wheel.press('x');
   await expect(page).toHaveURL(/vol=drift/);
   await expect(page.locator('#hud')).toBeVisible();
   await expect(volume(page)).toContainText('DRIFT');
   expect((await diagnostics(page)).phase).toBe('playing');
+  expect((await diagnostics(page)).renderedVolume).toBe('drift');
+});
+
+test('sound button shares mute with Settings while hover controls the music tooltip', async ({ page }) => {
+  await page.goto('/?vol=elsewhere&q=low');
+  await expect(start(page)).toBeEnabled();
+  const sound = page.getByRole('button', { name: 'Sound', exact: true });
+  const tip = page.getByRole('tooltip');
+  await expect(sound).toHaveAttribute('aria-pressed', 'true');
+  await expect(sound.locator('path').first()).toHaveAttribute('stroke', /^url/);
+  await expect(tip).toBeHidden();
+  await sound.hover();
+  await expect(tip).toContainText('SOUND ON');
+  await expect(tip).toContainText('128 BPM');
+  await sound.click();
+  await expect(sound).toHaveAttribute('aria-pressed', 'false');
+  await expect(sound.locator('path').first()).toHaveAttribute('stroke', 'currentColor');
+  await expect(tip).toContainText('SOUND OFF');
+  await page.mouse.move(6, 150);
+  await expect(tip).toBeHidden();
+  await page.getByRole('button', { name: 'SETTINGS' }).click();
+  const mute = page.getByRole('switch', { name: 'MUTE' });
+  await expect(mute).toBeChecked();
+  await mute.uncheck();
+  await page.keyboard.press('Escape');
+  await expect(sound).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(sound).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('menu and results emit distinct UI tones through the mute setting', async ({ page }) => {
+  await page.addInitScript(() => {
+    const tones: OscillatorType[] = [];
+    const peaks: number[] = [];
+    Object.defineProperty(window, 'testTones', { value: tones });
+    Object.defineProperty(window, 'testPeaks', { value: peaks });
+    const create = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const tone = create.call(this);
+      const start = tone.start.bind(tone);
+      tone.start = at => { tones.push(tone.type); start(at); };
+      return tone;
+    };
+    const ramp = AudioParam.prototype.exponentialRampToValueAtTime;
+    AudioParam.prototype.exponentialRampToValueAtTime = function (value, at) {
+      if (value > .01 && value < 1) peaks.push(value);
+      return ramp.call(this, value, at);
+    };
+  });
+  const tones = () => page.evaluate(() => Reflect.get(window, 'testTones') as OscillatorType[]);
+  const peaks = () => page.evaluate(() => Reflect.get(window, 'testPeaks') as number[]);
+  await page.goto('/?q=low');
+  await expect(start(page)).toBeEnabled();
+  await page.mouse.click(20, 130);
+  await expect(page.locator('#hud')).toBeHidden();
+  await page.getByRole('button', { name: 'CREDITS' }).hover();
+  await expect.poll(tones).toContain('triangle');
+  await expect.poll(peaks).toContain(.12);
+  await page.getByRole('button', { name: 'CREDITS' }).click();
+  await expect.poll(tones).toContain('sine');
+  await expect.poll(peaks).toContain(.28);
+  await page.getByRole('button', { name: 'CLOSE' }).click();
+  await page.getByRole('button', { name: 'Sound', exact: true }).click();
+  const mutedTones = (await tones()).length;
+  await page.getByRole('button', { name: 'CREDITS' }).click();
+  expect(await tones()).toHaveLength(mutedTones);
+
+  await page.evaluate(() => localStorage.setItem('sofaraway.muted', 'false'));
+  await page.goto('/?q=low&t=210.8&align=1');
+  await page.getByRole('button', { name: 'BACK TO MENU' }).click();
+  await expect.poll(tones).toContain('sine');
+});
+
+test('course and mode choices keep the menu corridor running until the start button is pressed', async ({ page }) => {
+  await page.goto('/?vol=elsewhere&q=low&dbg=1');
+  await expect(start(page)).toBeEnabled();
+  const original = await diagnostics(page);
+  await page.getByRole('button', { name: 'Next volume' }).click();
+  await expect(volume(page)).toContainText('DRIFT');
+  await page.getByRole('button', { name: 'Next play mode' }).click();
+  await expect(page.getByText('5 LIVES · ⅓ SPEED')).toBeVisible();
+  const menu = await diagnostics(page);
+  expect(menu.renderedVolume).toBe('elsewhere');
+  expect(menu.renderedMode).toBe('standard');
+  expect(menu.distance).toBeGreaterThan(original.distance);
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  await page.keyboard.press('Space');
+  await expect(page.locator('#hud')).toBeHidden();
+  await page.mouse.click(20, 130);
+  await expect(page.locator('#hud')).toBeHidden();
+  await page.getByRole('button', { name: 'START · PRESS X', exact: true }).click();
+  await expect(page.locator('#hud')).toBeVisible();
+  await expect.poll(async () => (await diagnostics(page)).renderedVolume).toBe('drift');
+  expect((await diagnostics(page)).renderedMode).toBe('sightseeing');
 });

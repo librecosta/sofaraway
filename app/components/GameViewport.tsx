@@ -16,6 +16,7 @@ import { ShareToast, useShareToast } from './MenuUtilities';
 
 const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
+const cueControls = 'button:not(:disabled), a[href], input[type="checkbox"]:not(:disabled)';
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
   'localRecord', 'newBest', 'message', 'dynamicLights'] as const;
 
@@ -46,7 +47,7 @@ export function GameViewport() {
   const panelReturnFocus = useRef<HTMLElement | null>(null);
   const runReturnFocus = useRef(false);
   const volumeTarget = useRef<VolumeId | null>(null);
-  const startTarget = useRef<VolumeId | null>(null);
+  const previousRequest = useRef<VolumeId | null>(null);
   const keys = useRef<(key: string, event: KeyboardEvent) => boolean>(() => false);
 
   function chooseVolume(id: VolumeId) {
@@ -77,9 +78,10 @@ export function GameViewport() {
         return true;
       }
       if (event.defaultPrevented) return true;
-      if (snapshot.phase === 'menu' && !snapshot.error && !event.repeat && (key === ' ' || key === 'enter') &&
-        !(event.target instanceof HTMLButtonElement)) {
+      if (snapshot.phase === 'menu' && !snapshot.error && !event.repeat && key === 'x' &&
+        !event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
+        if (event.isTrusted) runtime?.playUiCue('press');
         startSelected();
         return true;
       }
@@ -131,24 +133,23 @@ export function GameViewport() {
   }, [mount]);
 
   useEffect(() => {
-    if (!runtime || requested === snapshot.volumeId || snapshot.error?.kind === 'graphics' ||
+    if (!runtime || snapshot.error?.kind === 'graphics' ||
       ['uninitialized', 'initializing', 'unsupported', 'error', 'disposed'].includes(snapshot.phase)) return;
+    if (previousRequest.current === requested) return;
+    previousRequest.current = requested;
+    if (requested === snapshot.volumeId) return;
     if (snapshot.phase !== 'menu' && snapshot.phase !== 'results') runtime.returnToMenu();
-    void runtime.selectVolume(requested).then(() => {
-      if (startTarget.current !== requested) return;
-      startTarget.current = null;
-      const loaded = runtime.getSnapshot();
-      if (loaded.phase === 'menu' && loaded.volumeId === requested) void runtime.start();
-    });
+    void runtime.selectVolume(requested);
   }, [runtime, requested, snapshot.volumeId, snapshot.phase, snapshot.error]);
 
   function startSelected() {
     if (!runtime || snapshot.phase !== 'menu' || snapshot.error) return;
     const id = volumeTarget.current;
     if (id && id !== snapshot.volumeId) {
-      startTarget.current = id;
       chooseVolume(id);
-    } else void runtime.start();
+      void runtime.selectVolume(id);
+    }
+    void runtime.start();
   }
 
   const [importError, setImportError] = useState<string | null>(null);
@@ -157,7 +158,8 @@ export function GameViewport() {
   } : snapshot;
   const menuVisible = ['uninitialized', 'initializing', 'menu', 'starting', 'unsupported', 'error'].includes(viewSnapshot.phase);
   const modalOpen = !!panel || isBlockingFallback(viewSnapshot);
-  const customCursor = viewSnapshot.phase === 'playing' && !modalOpen;
+  const uiCursor = viewSnapshot.phase === 'menu' || viewSnapshot.phase === 'results';
+  const customCursor = uiCursor || viewSnapshot.phase === 'playing' && !modalOpen;
   const returnToMenu = () => runtime?.returnToMenu();
 
   useEffect(() => {
@@ -225,7 +227,22 @@ export function GameViewport() {
   }
 
   return (
-    <main ref={viewport} className={c('viewport', customCursor && 'custom-cursor')}>
+    <main ref={viewport} className={c('viewport', customCursor && 'custom-cursor')}
+      onPointerOver={event => {
+        if (!uiCursor || !event.isTrusted || event.pointerType === 'touch') return;
+        const control = (event.target as Element).closest(cueControls);
+        if (control && !(event.relatedTarget instanceof Node && control.contains(event.relatedTarget))) {
+          runtime?.playUiCue('hover');
+        }
+      }}
+      onClickCapture={event => {
+        if (!uiCursor || !event.isTrusted) return;
+        if ((event.target as Element).closest(cueControls)) runtime?.playUiCue('press');
+        else runtime?.primeAudio();
+      }}
+      onKeyDownCapture={event => {
+        if (uiCursor && event.isTrusted && !event.repeat && navigator.userActivation?.isActive) runtime?.primeAudio();
+      }}>
       <div ref={host} />
       <div id="cursor" ref={cursor} aria-hidden="true" hidden={!customCursor}>
         <svg viewBox="-26 -26 52 52" width="52" height="52">
@@ -240,7 +257,10 @@ export function GameViewport() {
       <div id="ui" style={{ display: hideUi ? 'none' : undefined }}>
         <div inert={modalOpen}>
           <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} chooseMode={setMode} chooseVolume={chooseVolume}
-            setDynamicLights={setDynamicLights} onVolumeTarget={id => { volumeTarget.current = id; }}
+            setMuted={value => {
+              runtime?.setMuted(value);
+              if (!value) runtime?.playUiCue('press');
+            }} onVolumeTarget={id => { volumeTarget.current = id; }}
             start={startSelected} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
             share={() => void share()} fullscreen={fullscreen} />
           <GameHUD runtime={runtime} />

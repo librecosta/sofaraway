@@ -44,5 +44,5 @@ export function rhythmicLightGain(volume: VolumeDefinition, beat: number, amount
   }
   const build = current?.name === 'BUILD' ? .55 + .45 * (beat - current.start) / (current.end - current.start) : 1;
   const closing = Math.min(1, (volume.beats - beat) / 12);
-  return 1 + amount * .30 * energy * build * closing * Math.min(1, pulse);
+  return 1 + amount * .65 * energy * build * closing * Math.min(1, pulse);
 }

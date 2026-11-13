@@ -29,11 +29,11 @@ export async function ready(page: Page, info: TestInfo, path = '/?q=low&dbg=1') 
   return false;
 }
 
-export async function startRun(page: Page, info: TestInfo, action: 'click' | 'tap' | 'Space' | 'Enter' = 'click') {
+export async function startRun(page: Page, info: TestInfo, action: 'click' | 'tap' | 'x' = 'click') {
   const audio = page.getByRole('dialog', { name: 'AUDIO UNAVAILABLE' });
   const hud = page.locator('#hud');
   const trigger = await audio.isVisible() ? audio.getByRole('button', { name: 'TRY AGAIN' }) : startButton(page);
-  if (action === 'Space' || action === 'Enter') await page.keyboard.press(action);
+  if (action === 'x') await page.keyboard.press(action);
   else await trigger[action]({ timeout: 8_000 });
   await expect.poll(async () => await hud.isVisible() || await audio.isVisible()).toBe(true);
   if (await audio.isVisible()) {

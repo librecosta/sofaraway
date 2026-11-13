@@ -1,15 +1,15 @@
-import { useState } from 'react';
 import { playModes } from '../game/contracts';
 import type { Difficulty, GameSnapshot, PlayMode, VolumeId } from '../game/contracts';
 import { difficultySettings } from '../game/core/chart';
 import { difficultiesFor } from '../game/core/difficulty';
 import { SIGHTSEEING_LIVES } from '../game/core/sightseeing';
 import { volumeById } from '../game/core/volumes';
+import { totalRunScore } from '../game/runtime/records.client';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { HorizontalSelector } from './HorizontalSelector';
 import { VolumeWheel } from './VolumeWheel';
-import { DynamicLightsButton, MusicInfo } from './MenuUtilities';
+import { MusicInfo, SocialLinks } from './MenuUtilities';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -18,20 +18,20 @@ interface Props {
   chooseMode(value: PlayMode): void;
   chooseVolume(id: VolumeId): void;
   onVolumeTarget?(id: VolumeId): void;
-  setDynamicLights(value: boolean): void;
+  setMuted(value: boolean): void;
   start(): void;
   settings(): void;
   credits(): void;
   share(): void;
   fullscreen(): void;
   musicInitiallyOpen?: boolean;
+  preview?: boolean;
 }
 
 const score = (n: number | null | undefined) => n?.toLocaleString('en-US') ?? '—';
 
 export function MainMenu(props: Props) {
   const { snapshot } = props;
-  const [musicOpen, setMusicOpen] = useState(props.musicInitiallyOpen ?? false);
   const volume = volumeById(snapshot.volumeId);
   const { best, last } = snapshot.localRecord;
   const sightseeing = snapshot.mode === 'sightseeing';
@@ -46,8 +46,9 @@ export function MainMenu(props: Props) {
           <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label="SHARE" />
         </div>
         <div className={c('menu-tools')}>
-          <DynamicLightsButton active={snapshot.dynamicLights} onToggle={props.setDynamicLights} disabled={!ready} />
-          <MusicInfo volume={volume} open={props.visible && musicOpen} setOpen={setMusicOpen} />
+          <SocialLinks preview={props.preview} />
+          <MusicInfo volume={volume} muted={snapshot.muted} setMuted={props.setMuted}
+            initiallyOpen={props.musicInitiallyOpen} />
         </div>
       </div>
       <div className={c('center', 'menu-center')}>
@@ -67,15 +68,16 @@ export function MainMenu(props: Props) {
           <div className={c('mode-details')}>{sightseeing ? `${SIGHTSEEING_LIVES} LIVES · ⅓ SPEED` : `${lives} ${lives === 1 ? 'LIFE' : 'LIVES'}`}</div>
           <div className={c('local-records', 'record-grid')} role="group" aria-label="Local records">
             {!sightseeing && <div><span>BEST SCORE</span><b>{score(best)}</b></div>}
-            <div><span>{sightseeing ? 'LAST VISIT' : 'LAST RUN'}</span><b>{score(last?.score)}</b>
-              {last && <small>{last.outcome}{last.recovery && ' · RECOVERY'}</small>}</div>
+            <div><span>{sightseeing ? 'LAST VISIT' : 'LAST RUN'}</span>
+              <b>{score(last && (sightseeing ? last.score : totalRunScore(last)))}</b>
+              <small>{last?.outcome}{last?.recovery && ' · RECOVERY'}</small></div>
           </div>
         </div>
       </div>
       <div className={c('bottom')}>
         <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label="SETTINGS" />
         <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}
-          label={ready ? 'PRESS SPACE TO START' : status} />
+          aria-keyshortcuts="X" label={ready ? 'START · PRESS X' : status} />
         <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen} label="FULL SCREEN" />
       </div>
       <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>

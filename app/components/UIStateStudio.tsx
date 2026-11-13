@@ -180,14 +180,14 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
     if (event.key === 'Escape' && panel) { event.preventDefault(); setPanel(null); }
   }}>
     <div inert={!!panel || blocking}>
-      <MainMenu snapshot={snapshot} visible={visible} musicInitiallyOpen={selected.overlay === 'music'}
+      <MainMenu snapshot={snapshot} visible={visible} musicInitiallyOpen={selected.overlay === 'music'} preview
         chooseVolume={id => {
           patch({ volumeId: id, difficulty: resolveDifficulty(id, snapshot.difficulty), localRecord: initialSnapshot.localRecord });
           setBackdropVolume(id);
         }}
         chooseDifficulty={difficulty => patch({ difficulty, localRecord: initialSnapshot.localRecord })}
         chooseMode={mode => patch({ mode, localRecord: initialSnapshot.localRecord })}
-        setDynamicLights={dynamicLights => patch({ dynamicLights })}
+        setMuted={muted => patch({ muted })}
         start={play} settings={() => setPanel('settings')} credits={() => setPanel('credits')}
         share={share} fullscreen={() => patch({ message: 'FULL SCREEN UNAVAILABLE' })} />
       <HUDView snapshot={snapshot} pause={() => patch({ phase: 'paused', pauseReason: 'user' })}

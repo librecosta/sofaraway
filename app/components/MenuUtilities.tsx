@@ -1,65 +1,84 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import type { VolumeDefinition } from '../game/core/volumes';
 import { classes as c } from '../styles/classes';
 
-export function DynamicLightsButton({ active, disabled, onToggle }: {
-  active: boolean; disabled?: boolean; onToggle(value: boolean): void;
-}) {
-  return <button type="button" className={c('icon-action')} aria-label="Dynamic lights" aria-pressed={active}
-    title="Dynamic lights" disabled={disabled} onClick={() => onToggle(!active)}>
-    <svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round">
-      <path d="M16 2v4" />
-      <path className={c('mirror-coral')} d="M5.5 13 11 11l2 5-7 2z" />
-      <path className={c('mirror-mint')} d="m13 16 6-1 2 6-7 1z" />
-      <path className={c('mirror-blue')} d="m21 21 6-2-2 6-3 2z" />
-      <circle cx="16" cy="17" r="11" />
-      <path d="M5.7 13.4c5.7-3 13.1-3.9 19.6-2.5M5.1 18.8c7.5-3.2 14.9-4.3 21.8-3.6M8 24.4c6.6-2.6 12.9-3.5 18.3-3.3M12.1 6.8c-3.2 6.6-.3 16.9 5.3 21M16.1 6c4.2 4.5 7.5 13.8 5.8 20.1" />
-    </svg>
-  </button>;
+function keepPreviewLink(event: MouseEvent) { event.preventDefault(); }
+
+export function SocialLinks({ preview }: { preview?: boolean }) {
+  const link = { className: c('icon-action', 'social-link'), target: '_blank', rel: 'noopener noreferrer',
+    onClick: preview ? keepPreviewLink : undefined, onAuxClick: preview ? keepPreviewLink : undefined,
+    onContextMenu: preview ? keepPreviewLink : undefined };
+  return <>
+    <a {...link} href="https://x.com/LibreCostaHQ" aria-label="LibreCosta on X" title="LibreCosta on X">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3l-4.9-7.4L5.6 22H2.5l7.3-8.4L2 2h6.5l4.4 6.7L18.9 2ZM17.8 20h1.7L7.5 3.9H5.7L17.8 20Z" />
+      </svg>
+    </a>
+    <a {...link} href="https://github.com/librecosta/sofaraway" aria-label="SoFaraway on GitHub" title="SoFaraway on GitHub">
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.46-1.15-1.11-1.45-1.11-1.45-.9-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.1.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.6 9.6 0 0 1 5 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.69 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.73c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" />
+      </svg>
+    </a>
+  </>;
 }
 
-export function MusicInfo({ volume, open, setOpen }: {
-  volume: VolumeDefinition; open: boolean; setOpen(value: boolean): void;
+export function MusicInfo({ volume, muted, setMuted, initiallyOpen = false }: {
+  volume: VolumeDefinition; muted: boolean; setMuted(value: boolean): void; initiallyOpen?: boolean;
 }) {
+  const id = useId();
+  const gradient = `${id}-sound`;
+  const [hover, setHover] = useState(initiallyOpen);
+  const [focus, setFocus] = useState(false);
+  const [dismissed, dismiss] = useState(false);
+  const open = !dismissed && (hover || focus);
   const host = useRef<HTMLDivElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open || !host.current) return;
     const doc = host.current.ownerDocument;
-    function outside(event: PointerEvent) {
-      if (!event.composedPath().includes(host.current!)) setOpen(false);
-    }
     function escape(event: KeyboardEvent) {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       event.stopPropagation();
       event.preventDefault();
-      setOpen(false);
-      button.current?.focus();
+      dismiss(true);
     }
-    doc.addEventListener('pointerdown', outside);
     doc.addEventListener('keydown', escape, true);
-    return () => {
-      doc.removeEventListener('pointerdown', outside);
-      doc.removeEventListener('keydown', escape, true);
-    };
-  }, [open, setOpen]);
+    return () => doc.removeEventListener('keydown', escape, true);
+  }, [open]);
 
   const seconds = Math.round(volume.beats * 60 / volume.bpm);
-  return <div ref={host} className={c('music-info')}>
-    <button ref={button} type="button" className={c('icon-action')} title="Music information" aria-label="Music information"
-      aria-expanded={open} aria-controls="music-information" onClick={() => setOpen(!open)}>
+  const paint = muted ? 'currentColor' : `url(#${gradient})`;
+  return <div ref={host} className={c('music-info')} onPointerEnter={event => {
+    if (event.pointerType !== 'touch') { setHover(true); dismiss(false); }
+  }} onPointerLeave={() => setHover(false)}>
+    <button type="button" className={c('icon-action')} aria-label="Sound" aria-pressed={!muted} aria-describedby={id}
+      onFocus={event => {
+        setFocus(event.currentTarget.matches(':focus-visible'));
+        dismiss(false);
+      }} onBlur={() => setFocus(false)} onClick={() => setMuted(!muted)}>
       <svg aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinejoin="round">
-        <path d="M11 23V8l15-3v14M11 13l15-3" />
-        <ellipse className={c('mirror-blue')} cx="7" cy="23.5" rx="4" ry="3.2" transform="rotate(-14 7 23.5)" />
-        <ellipse className={c('mirror-mint')} cx="22" cy="19.5" rx="4" ry="3.2" transform="rotate(-14 22 19.5)" />
+        <defs>
+          <linearGradient id={gradient} gradientUnits="userSpaceOnUse" x1="2" y1="26" x2="27" y2="7">
+            <stop stopColor="#55f5dc" />
+            <stop offset=".42" stopColor="#73baff" />
+            <stop offset=".64" stopColor="#ff83cc" />
+            <stop offset=".83" stopColor="#ffad69" />
+            <stop offset="1" stopColor="#fff393" />
+          </linearGradient>
+        </defs>
+        <path stroke={paint} d="M11 23V8l15-3v14M11 13l15-3" />
+        <path stroke={paint} fill={muted ? 'none' : paint}
+          d="M11 23c0 2-2 4-5 4-2 0-3-1-3-2.5 0-2 2-4 5-4 2 0 3 1 3 2.5Zm15-4c0 2-2 4-5 4-2 0-3-1-3-2.5 0-2 2-4 5-4 2 0 3 1 3 2.5Z" />
+        {muted && <><path d="m4 4 24 24" stroke="#081116" strokeWidth="5" />
+          <path d="m4 4 24 24" strokeLinecap="round" /></>}
       </svg>
     </button>
-    <section id="music-information" aria-label="Music" aria-hidden={!open} inert={!open} data-open={open} className={c('music-sheet')}>
-      <h2>MUSIC</h2>
+    <div id={id} role="tooltip" data-open={open} className={c('music-sheet')}>
+      <p className={c('music-state')}>{muted ? 'SOUND OFF' : 'SOUND ON'}</p>
       <strong>{volume.name}</strong>
       <p>{volume.music.toUpperCase()} · {volume.bpm} BPM · {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</p>
       <small>SYNTHESIZED</small>
-    </section>
+    </div>
   </div>;
 }
 

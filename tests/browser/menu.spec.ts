@@ -37,7 +37,7 @@ test('the idle menu continues past the song and generated path without the finis
   await expect(page.locator('[data-act=start]')).toBeEnabled();
 });
 
-test('menu labels keep their size while decoding and the gameplay reticle does not cover UI text', async ({ page }) => {
+test('menu labels keep their size while the original reticle expands on hover', async ({ page }) => {
   await page.goto('/?q=low');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   await page.evaluate(() => document.fonts.ready.then(() => {}));
@@ -52,8 +52,10 @@ test('menu labels keep their size while decoding and the gameplay reticle does n
   await expect(credits).toHaveCSS('color', 'rgb(116, 255, 220)');
   await expect(noise).toHaveCount(0);
   expect(await credits.boundingBox()).toEqual(box);
-  await expect(page.locator('#cursor')).toBeHidden();
-  await expect(credits).toHaveCSS('cursor', 'pointer');
+  await expect(page.locator('#cursor svg')).toBeVisible();
+  await expect(page.locator('#cursor')).toHaveClass(/hover/);
+  await expect(page.locator('#cursor circle').first()).toHaveCSS('transform', 'matrix(1.74, 0, 0, 1.74, 0, 0)');
+  await expect(credits).toHaveCSS('cursor', 'none');
   expect(await credits.evaluate(button => getComputedStyle(button, '::after').content)).toBe('none');
   await page.mouse.move(point.x, point.y + 100);
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -64,6 +66,15 @@ test('menu labels keep their size while decoding and the gameplay reticle does n
 test('Credits, Settings and menu controls keep readable sizes in a narrow viewport', async ({ page }) => {
   await page.goto('/?q=low');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
+  for (const [name, href] of [
+    ['LibreCosta on X', 'https://x.com/LibreCostaHQ'],
+    ['SoFaraway on GitHub', 'https://github.com/librecosta/sofaraway'],
+  ]) {
+    const link = page.getByRole('link', { name });
+    await expect(link).toHaveAttribute('href', href);
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link.locator('svg')).toHaveCSS('width', '27px');
+  }
   const sizes = async () => {
     const credits = page.locator('[data-act=credits]');
     const settings = page.locator('[data-act=settings]');
@@ -74,6 +85,16 @@ test('Credits, Settings and menu controls keep readable sizes in a narrow viewpo
     }
     await credits.click();
     await expect(page.locator('#panel-body')).toHaveCSS('font-size', '16px');
+    for (const name of ['librecosta', 'HelloRun']) {
+      const link = page.getByRole('link', { name, exact: true });
+      await expect(link).toHaveCSS('color', 'rgb(116, 255, 220)');
+      await expect(link).toHaveCSS('font-weight', '700');
+    }
+    await expect(page.locator('#panel-body hr')).toHaveCSS('border-top-width', '2px');
+    await expect(page.locator('#panel-body hr')).toHaveCSS('border-top-style', 'dashed');
+    const email = page.getByRole('link', { name: 'contact@librecosta.com' });
+    await expect(email).toHaveAttribute('href', 'mailto:contact@librecosta.com');
+    await expect(email.locator('svg')).toBeVisible();
     await page.getByRole('dialog', { name: 'Credits' }).getByRole('button', { name: 'CLOSE' }).click();
     await settings.click();
     const panel = page.getByRole('dialog', { name: 'Settings' });
