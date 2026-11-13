@@ -39,7 +39,7 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
           {snapshot.result.neutralized > 0 && snapshot.mode === 'standard' && ' · BEST INELIGIBLE'}
         </div>}
         <DecodeButton className={c('btn', 'start')} data-act="restart" disabled={preview} onClick={restart}
-          aria-keyshortcuts="X" label="RUN AGAIN · X" />
+          aria-keyshortcuts="X" label="RUN AGAIN · PRESS X" />
         <DecodeButton className={c('btn', 'tiny')} data-act="menu" disabled={preview} onClick={menu} label="BACK TO MENU" />
       </div>
     </section>
