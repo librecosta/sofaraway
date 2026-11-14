@@ -5,7 +5,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
-import { editions } from './editions.mjs';
+import { editions, stems } from './editions.mjs';
 
 const { values } = parseArgs({ options: {
   ffmpeg: { type: 'string', default: 'ffmpeg' },
@@ -30,13 +30,13 @@ try {
     const page = await browser.newPage({ acceptDownloads: true });
     page.on('console', message => console.log(message.text()));
     await page.goto('http://127.0.0.1:' + server.address().port);
-    async function save(edition, basename) {
+    async function save(edition, basename, stem = false) {
       const filename = basename + '.wav';
       const [download, metrics] = await Promise.all([
         page.waitForEvent('download', { timeout: 180_000 }),
-        page.evaluate(async ({ edition, filename }) => {
+        page.evaluate(async ({ edition, filename, stem }) => {
           const { render } = await import('/render.mjs');
-          const { blob, ...metrics } = await render(edition);
+          const { blob, ...metrics } = await render(edition, stem);
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
@@ -46,7 +46,7 @@ try {
           link.remove();
           setTimeout(() => URL.revokeObjectURL(url), 3000);
           return metrics;
-        }, { edition, filename }),
+        }, { edition, filename, stem }),
       ]);
       const path = fileURLToPath(new URL(filename, output));
       await download.saveAs(path);
@@ -55,7 +55,7 @@ try {
     }
 
     if (values.stems) {
-      for (const track of ['backing', 'reply', 'softReply', 'accents']) await save(track, 'stem-' + track);
+      for (const track of stems) await save(track, 'stem-' + track, true);
     }
     for (const [edition, { name }] of Object.entries(editions)) {
       const wav = await save(edition, name);

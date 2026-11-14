@@ -2,30 +2,23 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { accentEvents, editions, repliesFor } from './editions.mjs';
+import { accentEvents, editions, stems } from './editions.mjs';
 import { bpm, duration, rhythmTimeline, score, sections, tail } from './score.mjs';
 
-const orderedFrame = ({bar, section, chord, counter, keys, bass, kicks, snares, ghost, fill, hats,
+const orderedFrame = ({bar, section, chord, keys, bass, kicks, snares, ghost, fill, hats,
   peak, drumLevel, bassLevel, keysLevel, swell}) => ({
-  bar, section, chord, counter, keys, bass, kicks, snares, ghost, fill, hats, peak, drumLevel, bassLevel, keysLevel, swell,
+  bar, section, chord, keys, bass, kicks, snares, ghost, fill, hats, peak, drumLevel, bassLevel, keysLevel, swell,
 });
 const snapshot = JSON.stringify({ sections, score: score.map(orderedFrame), rhythm: rhythmTimeline() });
-// Calculated from the original M1 score without its mallet events.
+// Calculated from the original backing without the mallet and upper replies.
 assert.equal(createHash('sha256').update(snapshot).digest('hex'),
-  '7485d7b38931d566af2e5ca6815c104976217bb4b12bc3b37bae55370b72dcc2');
+  '1754d9a3a68c9a3717b698415f63c7336ccd66d15b53d6fa19297d54b63a5a05');
 assert.equal(bpm, 120);
 assert.equal(score.length, 72);
 assert.equal(duration, 144);
 assert.deepEqual(sections.map(section => section.start), [0, 8, 40, 64, 80, 112, 136]);
-for (const frame of score) {
-  const original = repliesFor(frame, false);
-  const softened = repliesFor(frame, true);
-  assert.deepEqual(softened.map(({ time, note }) => [time, note]), original.map(({ time, note }) => [time, note]));
-  softened.forEach((event, i) => {
-    assert.ok(event.length < original[i].length);
-    assert.ok(Math.abs(20 * Math.log10(event.level / original[i].level) + 7.5) < 1e-9);
-  });
-}
+assert.deepEqual(editions.groove.tracks, ['backing']);
+assert.deepEqual(editions.accents.tracks, ['backing', 'accents']);
 assert.equal(accentEvents.length, 22);
 for (const { bar, at, length, notes } of accentEvents) {
   const frame = score[bar];
@@ -49,11 +42,11 @@ async function pcm(name) {
   return new Int16Array(buffer.buffer, buffer.byteOffset + 44, (buffer.length - 44) / 2);
 }
 
-const stems = {};
-for (const track of ['backing', 'reply', 'softReply', 'accents']) stems[track] = await pcm('stem-' + track);
+const layersByName = {};
+for (const track of stems) layersByName[track] = await pcm('stem-' + track);
 for (const [edition, { name, tracks }] of Object.entries(editions)) {
   const samples = await pcm(name);
-  const layers = tracks.map(track => stems[track]);
+  const layers = tracks.map(track => layersByName[track]);
   let errorPeak = 0, peak = 0, power = 0;
   for (let i = 0; i < samples.length; i++) {
     const expected = layers.reduce((sum, layer) => sum + layer[i], 0);

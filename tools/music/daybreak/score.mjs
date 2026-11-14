@@ -54,87 +54,86 @@ const closing = [
   { bass: [[0,0,16.5]], keys: [[0,15.5,1.04],[9,7,0.55]] },
 ];
 
-// Opening rows carry groove overrides. Later rows list a chord, upper replies, and optional fill steps.
-// Reply events use [sixteenth onset, MIDI note, length in sixteenths, velocity].
+// Opening rows carry groove overrides. Later rows list a chord and optional fill steps.
 const opening = [
-  [D, [], { kicks: [], snares: [], ghost: [], hats: [], bass: [[0,0,5.2],[10,0,3.8]], keys: openingKeys }],
-  [A, [[10,93,1.3,0.65]], { kicks: [0], snares: [], ghost: [], hats: [6,14], keys: openingKeys }],
-  [B, [], { kicks: [0,10], snares: [12], ghost: [], keys: openingKeys }],
-  [G, [[11,90,1.4,0.7]], { kicks: [0,6,10,15], ghost: [], fill: [13,14,15], keys: openingKeys }],
-  [D, []],
-  [A, []],
-  [B, [[9,86,1.4,0.64]]],
-  [G, [], {fill: [10,13,15]}],
-  [D, [[8,90,1.25,0.7]]],
-  [A, []],
-  [B, [[10,86,1.4,0.63]]],
-  [G, [[4,95,1.2,0.7]], {fill: [9,11,13,14,15]}],
+  [D, { kicks: [], snares: [], ghost: [], hats: [], bass: [[0,0,5.2],[10,0,3.8]], keys: openingKeys }],
+  [A, { kicks: [0], snares: [], ghost: [], hats: [6,14], keys: openingKeys }],
+  [B, { kicks: [0,10], snares: [12], ghost: [], keys: openingKeys }],
+  [G, { kicks: [0,6,10,15], ghost: [], fill: [13,14,15], keys: openingKeys }],
+  [D],
+  [A],
+  [B],
+  [G, {fill: [10,13,15]}],
+  [D],
+  [A],
+  [B],
+  [G, {fill: [9,11,13,14,15]}],
 ];
 const glide = [
-  [D, [[9,90,1.2,0.6]]],
-  [A, [[9,88,1,0.56]]],
-  [B, [[10,86,1.1,0.64]]],
-  [G, [[11,90,1.3,0.65]], [12,14,15]],
-  [Df, [[10,88,1.3,0.58]]],
-  [G, [[10,90,1.25,0.67]]],
-  [Em, [[10,86,1.35,0.6]]],
-  [As, [[4,88,1.4,0.64]], [10,12,14,15]],
+  [D],
+  [A],
+  [B],
+  [G, [12,14,15]],
+  [Df],
+  [G],
+  [Em],
+  [As, [10,12,14,15]],
 ];
 const lift = [
-  [Bm9, [[10,93,1.2,0.63]]],
-  [G, [[8.5,86,1.1,0.58]]],
-  [Em, [[10,90,1.2,0.63]]],
-  [GA, [[4.5,86,1.05,0.62]], [12,14,15]],
-  [Df, [[9.5,93,1,0.58]]],
-  [G, [[9.5,91,1,0.6]]],
-  [B, [[9.5,93,1,0.6]]],
-  [A, [[8.5,90,1.1,0.6]], [13,15]],
-  [Em, [[10,91,1.1,0.64]]],
-  [G, [[10.5,90,1.25,0.59]]],
-  [Df, [[9.5,93,1,0.68]]],
-  [As, [[4.5,90,1.1,0.6]], [12,14,15]],
+  [Bm9],
+  [G],
+  [Em],
+  [GA, [12,14,15]],
+  [Df],
+  [G],
+  [B],
+  [A, [13,15]],
+  [Em],
+  [G],
+  [Df],
+  [As, [12,14,15]],
 ];
 const breeze = [
   [D6],
   [A],
   [Bm9],
   [G],
-  [Em, [[10.5,86,1,0.46]]],
+  [Em],
   [G],
-  [Df, [[12,88,1.1,0.5]]],
-  [As, [], [12,14,15]],
+  [Df],
+  [As, [12,14,15]],
 ];
 const sunburst = [
-  [D, [[8.7,93,0.95,0.68],[12.8,90,1,0.6]]],
-  [A, [[9.4,92,1.35,0.7]]],
-  [Bm9, [[9.5,95,1.15,0.73]]],
-  [G, [[10,90,1.25,0.71]], [10,13,15]],
-  [Df, [[10.9,93,1.25,0.73]]],
-  [G, [[8.8,95,1.05,0.69]]],
-  [Em, [[9.8,93,1.1,0.67]]],
-  [A, [[9.5,90,1.1,0.65]], [11,13,14,15]],
-  [D, [[9,95,1.1,0.7],[12.8,93,1.1,0.66]]],
-  [A, [[8.8,97,1,0.68]]],
-  [B, [[9.5,95,1.25,0.75]]],
-  [G, [[10,91,1.4,0.7]], [10,11,13,14,15]],
-  [Em, [[10,95,1.1,0.67]]],
-  [G, [[11,93,1.2,0.67]]],
-  [D6, [[8.8,93,1.1,0.68]]],
-  [As, [[9.5,91,1.15,0.63]], [13,15]],
+  [D],
+  [A],
+  [Bm9],
+  [G, [10,13,15]],
+  [Df],
+  [G],
+  [Em],
+  [A, [11,13,14,15]],
+  [D],
+  [A],
+  [B],
+  [G, [10,11,13,14,15]],
+  [Em],
+  [G],
+  [D6],
+  [As, [13,15]],
 ];
 const returning = [
-  [D, [[10.6,86,1.2,0.5]]],
-  [A, [[7.2,88,0.75,0.5]]],
-  [Bm9, [[10.3,90,1.1,0.57]]],
-  [G, [[10,88,1.3,0.55]], [13,15]],
+  [D],
+  [A],
+  [Bm9],
+  [G, [13,15]],
   [D6],
-  [G, [[11.4,90,1,0.52]]],
-  [Em, [[10.2,86,1.1,0.54]]],
-  [A, [[7.2,90,0.75,0.52]], [11,14,15]],
-  [Df, [[10.3,88,1.15,0.55]]],
-  [G, [[10,90,1.2,0.56]]],
-  [Em, [[12.25,88,1.1,0.52]]],
-  [GA, [[4.5,86,1,0.47]], [13,15]],
+  [G],
+  [Em],
+  [A, [11,14,15]],
+  [Df],
+  [G],
+  [Em],
+  [GA, [13,15]],
 ];
 const outro = [
   [D6],
@@ -147,13 +146,13 @@ const plans = [[], glide, lift, breeze, sunburst, returning, outro];
 function composeFrame(section, index, authored) {
   const bar = section.startBar + index;
   if (bar < 12) {
-    const [chord, counter, overrides = {}] = opening[bar];
-    return { ...grooveFor(bar), chord, counter, fill: [], ...overrides, bar, section: section.name, peak: false,
+    const [chord, overrides = {}] = opening[bar];
+    return { ...grooveFor(bar), chord, fill: [], ...overrides, bar, section: section.name, peak: false,
       drumLevel: 1, bassLevel: 1, keysLevel: 1, swell: bar === 0 ? 'normal' : null };
   }
-  const [chord, counter = [], fill = []] = authored;
+  const [chord, fill = []] = authored;
   const groove = grooveFor(index);
-  const frame = { ...groove, bar, chord, counter, fill, section: section.name, peak: false,
+  const frame = { ...groove, bar, chord, fill, section: section.name, peak: false,
     drumLevel: 1, bassLevel: 1, keysLevel: 1, swell: null };
   switch (section.name) {
     case 'LIFT':

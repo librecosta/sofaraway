@@ -55,18 +55,11 @@ export function envelope(ctx, destination, time, length, level, attack, decay, s
   return { out, end };
 }
 
-const plucks = {
-  keys: { decay: .11, sustain: .41, release: .085, bright: 3550, dark: 1430, sweep: .1 },
-  reply: { decay: .11, sustain: .24, release: .078, bright: 3850, dark: 1650, sweep: .1 },
-  softReply: { decay: .080, sustain: .21, release: .045, bright: 2200, dark: 1400, sweep: .075 },
-};
-
-export function brightPluck(ctx, bus, note, time, length, level, position, voice = 'keys') {
-  const { decay, sustain, release, bright, dark, sweep } = plucks[voice];
-  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .005, decay, sustain, release);
+export function brightPluck(ctx, bus, note, time, length, level, position) {
+  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .005, .11, .41, .085);
   const cutoff = filter(ctx, out, 'lowpass', 3100, .86);
-  cutoff.frequency.setValueAtTime(bright, time);
-  cutoff.frequency.exponentialRampToValueAtTime(dark, time + sweep);
+  cutoff.frequency.setValueAtTime(3550, time);
+  cutoff.frequency.exponentialRampToValueAtTime(1430, time + .1);
   const hz = noteHz(note);
   oscillator(ctx, gain(ctx, cutoff, .76), 'triangle', hz, time, end, -3);
   oscillator(ctx, gain(ctx, cutoff, .29), 'sawtooth', hz, time, end, 4);

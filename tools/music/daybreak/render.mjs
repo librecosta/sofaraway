@@ -1,6 +1,6 @@
 import { bassNote, brightPluck, electricAccent, envelope, filter, gain, hat, kick, makeRoom, noteHz,
   oscillator, pan, randomSource, rate, snare, wav } from './voices.mjs';
-import { accentEvents, editions, repliesFor } from './editions.mjs';
+import { accentEvents, editions, stems } from './editions.mjs';
 import { drumsFor, duration, master, onset, score, step, swing, tail } from './score.mjs';
 
 async function renderRange(firstBar, endBar, track) {
@@ -19,22 +19,12 @@ async function renderRange(firstBar, endBar, track) {
   const room = makeRoom(ctx, mixBus, random);
   const roomSend = (bus, level) => bus.connect(gain(ctx, room, level));
   const frames = score.slice(startBar, endBar);
-  if (track !== 'backing') {
+  if (track === 'accents') {
     const bus = gain(ctx, mixBus, 1);
-    if (track === 'accents') {
-      roomSend(bus, .10);
-      for (const event of accentEvents.filter(event => event.bar >= startBar && event.bar < endBar)) {
-        event.notes.forEach((note, i) => electricAccent(ctx, bus, note, event.time - offset + i * .003,
-          event.length, event.strength * .044 * (i === 1 ? 1 : .88), (i - 1) * .36));
-      }
-    } else {
-      const softened = track === 'softReply';
-      roomSend(bus, softened ? .18 : .31);
-      for (const frame of frames) {
-        for (const event of repliesFor(frame, softened)) {
-          brightPluck(ctx, bus, event.note, event.time - offset, event.length, event.level, -.35, softened ? 'softReply' : 'reply');
-        }
-      }
+    roomSend(bus, .10);
+    for (const event of accentEvents.filter(event => event.bar >= startBar && event.bar < endBar)) {
+      event.notes.forEach((note, i) => electricAccent(ctx, bus, note, event.time - offset + i * .003,
+        event.length, event.strength * .044 * (i === 1 ? 1 : .88), (i - 1) * .36));
     }
     return ctx.startRendering();
   }
@@ -135,8 +125,9 @@ async function renderTrack(track) {
 
 const tracks = new Map();
 
-export async function render(edition) {
-  const names = editions[edition]?.tracks ?? [edition];
+export async function render(name, stem = false) {
+  const names = stem ? (stems.includes(name) ? [name] : undefined) : editions[name]?.tracks;
+  if (!names) throw new Error('Unknown DAYBREAK render: ' + name);
   for (const name of names) {
     if (!tracks.has(name)) tracks.set(name, await renderTrack(name));
   }

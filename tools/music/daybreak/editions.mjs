@@ -1,17 +1,11 @@
-import { onset, score, step, swing } from './score.mjs';
+import { onset, score, swing } from './score.mjs';
 
 export const editions = {
-  R1: { name: 'DAYBREAK-R1-No-Lead', tracks: ['backing', 'reply'] },
-  R2: { name: 'DAYBREAK-R2-Groove-Only', tracks: ['backing', 'softReply'] },
-  R3: { name: 'DAYBREAK-R3-Rhythmic-Accents', tracks: ['backing', 'softReply', 'accents'] },
+  groove: { name: 'DAYBREAK-Groove-No-Chime', tracks: ['backing'] },
+  accents: { name: 'DAYBREAK-Accents-No-Chime', tracks: ['backing', 'accents'] },
 };
 
-export function repliesFor(frame, softened) {
-  return frame.counter.map(([at, note, length, level]) => ({
-    time: onset(frame.bar, at), note, length: length * step * (softened ? .70 : 1),
-    level: level * .071 * (softened ? 10 ** (-7.5 / 20) : 1),
-  }));
-}
+export const stems = ['backing', 'accents'];
 
 // Zero-based bar, sixteenth, gate in seconds, and strength. Leave OPEN and OUTRO clear.
 const accents = [
