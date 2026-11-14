@@ -5,7 +5,7 @@ import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { curveCurvature, curveOffset } from '../../app/game/core/corridor-composition';
 import { idleInput } from '../../app/game/core/input';
 import { circumference, corridorAt, helixPitch, makeLightingAtlas, perimeter, wallSpans, washCenter,
-  washFaceProjection, washPitch, washWidth } from '../../app/game/core/lighting-atlas';
+  washFaceProjection, washPitch, washStart, washWidth } from '../../app/game/core/lighting-atlas';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale, referenceFor } from '../../app/game/core/reference-track';
 import { Simulation } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
@@ -85,20 +85,19 @@ test.each(playModes)('%s installs a deterministic six-theme atlas on the actual 
     }
     if (zone.kind === 'helical-wash') {
       const pitch = washPitch(mode);
+      expect(zone.dual).toBe(false);
       const project = ({ x, y, edge }: ReturnType<typeof wallSpans>[number][number]) => {
         const [tx, ty, origin] = washFaceProjection[edge];
         return x * tx + y * ty + origin;
       };
-      for (const phase of [0, 1, 2, 3, 4]) {
-        const centers = ([0, 1] as const).map(strand => wallSpans(washCenter(phase * pitch / 4, pitch, strand), .01)[0][0].edge);
-        expect(centers).toEqual([[7, 3], [1, 5], [3, 7], [5, 1], [7, 3]][phase]);
-      }
       for (let s = zone.start; s < zone.end; s += 1.75) {
         const tiles = zone.lights.filter(light => light.start <= s && s < light.end);
-        for (const strand of [0, 1] as const) {
-          for (const [lo, hi] of wallSpans(washCenter(s - zone.start, pitch, strand), washWidth)) {
-            expect(tiles.some(({ entry: [a, b] }) => a.edge === lo.edge &&
-              project(a) <= project(lo) + 1e-9 && project(b) >= project(hi) - 1e-9)).toBe(true);
+        for (const strand of [0, 1, 2]) {
+          const center = washStart + circumference * ((s - zone.start) / pitch + strand / 3);
+          expect(washCenter(s - zone.start, pitch, strand)).toBeCloseTo(center, 9);
+          for (const [lo, hi] of wallSpans(center, washWidth)) {
+            expect(tiles.filter(({ entry: [a, b] }) => a.edge === lo.edge &&
+              project(a) <= project(lo) + 1e-9 && project(b) >= project(hi) - 1e-9)).toHaveLength(1);
           }
         }
       }

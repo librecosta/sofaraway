@@ -9,7 +9,7 @@ Build the [composition](../../app/game/core/corridor-composition.ts) and [lighti
 | Reference beats | Installation |
 | --- | --- |
 | 0–16 | Pure Frame with the existing rims and corner ribbons |
-| 24–72 | Helical Wash with two broad, soft ribbons following the octagon |
+| 24–72 | Helical Wash with three broad, soft ribbons following the octagon |
 | 104–152 | Staggered Cells with matching rectangular fixtures on the side faces, opposite diagonals alternating through four phases at 10.5-unit spacing |
 | 160–192 | Triple Helix with three strands of 0.91 × 0.098 fixtures every 9 units |
 | 208–248 | S-curve with Pure Frame |
@@ -20,7 +20,7 @@ Build the [composition](../../app/game/core/corridor-composition.ts) and [lighti
 
 The tunnel keeps its octagon, structural ribs, panels, bevels and gussets. The old roof slots, beams, wall pockets and equipment are retired. The atlas uses the same octagon profile as the shell, with a mounting surface at 0.966 of the nominal profile just inside the 0.970 panel skin. Continuous strips share endpoints at each tessellation seam. The installation fades by world station at its ends using a quintic ease over up to 21 units in Standard and 14 in Sightseeing. Fixture dimensions and spacing are shared across modes.
 
-Helical Wash starts at the lower-left and upper-right bevels. Each strand follows `l = C × fract(l0 / C + (s - s0) / pitch + j / 2)` with a 1.42-unit soft profile and a pitch of 144 in Standard or 108 in Sightseeing. The wash dims across the center of the floor and ceiling. Wall tiles cover the swept footprint on each face. The shared shader evaluates the continuous circumferential falloff and zone envelope across their seams. Raked Bands mirror four inclinations across the sidewalls and fade at each end. Successive pairs arrive about 0.20 seconds apart at full Standard Boost. Motion comes from travel and perspective, with the existing subtle music response.
+Helical Wash anchors its first strand at the lower-left bevel and spaces the three strands evenly around the perimeter. Each strand follows `l = C × fract(l0 / C + (s - s0) / pitch + j / 3)` for `j = 0, 1, 2`, with a 1.42-unit soft profile and a pitch of 144 in Standard or 108 in Sightseeing. The wash dims across the center of the floor and ceiling. Wall tiles cover the swept footprint on each face. The shared shader evaluates the continuous circumferential falloff and zone envelope across their seams. Raked Bands mirror four inclinations across the sidewalls and fade at each end. Successive pairs arrive about 0.20 seconds apart at full Standard Boost. Motion comes from travel and perspective, with the existing subtle music response.
 
 For a wall coordinate `l`, wrap by the circumference `C = 23.988225…`. Find the face whose cumulative edge interval contains `l`, then interpolate on that face. Its unit edge vector is the local tangent and its perpendicular points inward. Use the current PathFrame to map the mount to world space. For helix strand `j`, use `l = C × fract((s - s0) / pitch + j / 3)` with a pitch of 108 in Standard and 72 in Sightseeing. Split any short lamp that spans a corner at the exact face boundary. Both pieces meet at the vertex.
 

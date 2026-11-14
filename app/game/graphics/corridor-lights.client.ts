@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { circumference, corridorAt, FLOW_WAVELENGTH, perimeter, washFaceProjection,
-  washPitch, washStart, washWidth } from '../core/lighting-atlas';
+  washPitch, washSpacing, washStart, washWidth } from '../core/lighting-atlas';
 import type { CorridorLight, CorridorLightingKind, LightingZone } from '../core/lighting-atlas';
 import type { PlayMode } from '../contracts';
 import { breath, lightingState, mixHue } from '../core/lighting-score';
@@ -74,9 +74,8 @@ const fragmentShader = /* glsl */ `
     float t = clamp(x, 0.0, 1.0);
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
   }
-  float distanceToStrand(float wall) {
-    float phase = wall / (${wallCircumference} * 0.5);
-    return abs(fract(phase + 0.5) - 0.5) * (${wallCircumference} * 0.5);
+  float periodicDistance(float distance, float period) {
+    return abs(fract(distance / period + 0.5) - 0.5) * period;
   }
   void main() {
     vec2 edge = abs(2.0 * lensUv - 1.0);
@@ -94,9 +93,9 @@ const fragmentShader = /* glsl */ `
       float s = washCoordinate.y;
       float wall = washCoordinate.x;
       float center = ${washStart.toFixed(8)} + s * ${wallCircumference} / washRange.x;
-      float offset = distanceToStrand(wall - center);
+      float offset = periodicDistance(wall - center, ${washSpacing.toFixed(8)});
       if (offset >= ${washWidth / 2}) discard;
-      float horizontal = distanceToStrand(wall - ${(perimeter[1] / 2).toFixed(8)});
+      float horizontal = periodicDistance(wall - ${(perimeter[1] / 2).toFixed(8)}, ${wallCircumference} * 0.5);
       gain *= (1.0 - smoothstep(0.06, ${washWidth / 2}, offset));
       gain *= mix(0.18, 1.0, smoothstep(0.8, 3.15, horizontal));
       gain *= ease(s / washRange.z) * ease((washRange.y - s) / washRange.z);

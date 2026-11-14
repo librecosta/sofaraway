@@ -82,8 +82,10 @@ export const helixPitch = (mode: PlayMode) => mode === 'standard' ? 108 : 72;
 export const washPitch = (mode: PlayMode) => mode === 'standard' ? 144 : 108;
 export const washWidth = 1.42;
 export const washStart = (perimeter[7] + perimeter[8]) / 2;
-export const washCenter = (distance: number, pitch: number, strand: 0 | 1) =>
-  washStart + circumference * (distance / pitch + strand / 2);
+export const washStrands = 3;
+export const washSpacing = circumference / washStrands;
+export const washCenter = (distance: number, pitch: number, strand: number) =>
+  washStart + circumference * distance / pitch + strand * washSpacing;
 export const zoneFade = (s: number, start: number, end: number, margin: number) =>
   ease((s - start) / margin) * ease((end - s) / margin);
 
@@ -110,7 +112,7 @@ function makeZone(kind: CorridorLightingKind, start: number, end: number, mode: 
       for (let s = start; s < end; s += 18) {
         const next = Math.min(end, s + 18);
         const footprint = washWidth + circumference * (next - s) / pitch + .002;
-        for (const strand of [0, 1] as const) {
+        for (let strand = 0; strand < washStrands; strand++) {
           const center = washCenter((s + next) / 2 - start, pitch, strand);
           for (const span of wallSpans(center, footprint)) {
             lights.push({ start: s, end: next, entry: span, exit: span, level: .63, group: 0, style: 'wash' });
