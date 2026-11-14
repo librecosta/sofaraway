@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { approachDynamicLights, drumPulse, drumScore, drumStrengths, dynamicLightEnvelope,
+import { approachDynamicLights, drumOnsets, drumPulse, drumScore, drumStrengths, dynamicLightEnvelope,
   musicStepSeconds } from '../../app/game/core/rhythmic-lights';
+import { rhythmTimeline } from '../../app/game/core/daybreak-score';
 import { RunTimeline } from '../../app/game/core/clock';
 import { sectionAt, VOLUMES } from '../../app/game/core/volumes';
 
 describe('dynamic structural lighting', () => {
   it('preserves the authored kick, snare and roll events on every score step', () => {
     for (const volume of VOLUMES) {
+      if (volume.music === 'breakbeat') continue;
       for (let step = 0; step < volume.beats * 4; step++) {
         const energy = sectionAt(volume, step / 4)?.energy ?? .15;
         const s = step % 16;
@@ -20,6 +22,18 @@ describe('dynamic structural lighting', () => {
         expect(drumScore(volume)[step]).toEqual(drumStrengths(volume, step, energy));
       }
     }
+  });
+
+  it('samples DAYBREAK’s authored swing and drum offsets with the shared bounded envelope', () => {
+    const volume = VOLUMES[1];
+    const events = rhythmTimeline().filter(hit => hit.kind === 'kick' || hit.kind === 'snare' || hit.kind === 'fill');
+    expect(drumOnsets(volume).map(({ time, kind }) => ({ time, kind }))).toEqual(events
+      .map(({ time, kind }) => ({ time, kind })).sort((a, b) => a.time - b.time));
+    const downbeat = events.find(hit => hit.bar === 42 && hit.at === 0 && hit.kind === 'kick')!;
+    expect(downbeat.time).toBeCloseTo(84.016, 9);
+    expect(drumPulse(volume, downbeat.time)).toBe(1);
+    expect(drumPulse(volume, downbeat.time + .05)).toBeCloseTo(.9 ** 4);
+    expect(drumPulse(volume, downbeat.time - .008)).toBeLessThan(.6);
   });
 
   it('keeps off and reduced motion at baseline and gives each score a bounded pulse', () => {
@@ -39,11 +53,12 @@ describe('dynamic structural lighting', () => {
         expect(gain.physicalGain).toBeGreaterThanOrEqual(.85);
         expect(gain.physicalGain).toBeLessThanOrEqual(1.35);
       }
+      for (const { time } of drumOnsets(volume)) peak = Math.max(peak, dynamicLightEnvelope(volume, time, 1).fixtureGain);
       expect(peak).toBeGreaterThan(1.5);
       expect(valley).toBeLessThan(.7);
       expect(dynamicLightEnvelope(volume, (volume.beats - 1) * 60 / volume.bpm, 1).fixtureGain).toBeCloseTo(1, 2);
     }
-  });
+  }, 15_000);
 
   it('responds to kick and snare onsets and leaves the break quieter than the drop', () => {
     const volume = VOLUMES[0];

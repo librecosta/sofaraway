@@ -1,19 +1,13 @@
+import { DaybreakSynthesizer } from './daybreak.client';
 import { sectionAt } from '../core/volumes';
 import { drumStrengths } from '../core/rhythmic-lights';
 import type { Music, VolumeDefinition } from '../core/volumes';
 
-/* downtempo drifts through maj7 colour rather than driving minor triads */
 const PROG_TECHNO = [
   [57, 60, 64], [57, 60, 64],
   [53, 57, 60], [53, 57, 60],
   [48, 52, 55], [48, 52, 55],
   [55, 59, 62], [55, 59, 62],
-];
-const PROG_DOWNTEMPO = [
-  [62, 66, 69, 73], [59, 62, 66, 69],
-  [55, 59, 62, 66], [57, 60, 64, 67],
-  [62, 66, 69, 73], [59, 62, 66, 69],
-  [55, 59, 62, 66], [50, 54, 57, 61],
 ];
 
 /* industrial sits on a half-time feel: minor, tritone-adjacent, no lift */
@@ -33,15 +27,12 @@ const PROG_SYNTHWAVE = [
 ];
 
 function progression(mood: Music) {
-  return mood === 'downtempo' ? PROG_DOWNTEMPO
-    : mood === 'industrial' ? PROG_INDUSTRIAL
+  return mood === 'industrial' ? PROG_INDUSTRIAL
     : mood === 'synthwave' ? PROG_SYNTHWAVE : PROG_TECHNO;
 }
 
 function roots(mood: Music) {
-  return mood === 'downtempo'
-    ? [38, 35, 31, 33, 38, 35, 31, 26]
-    : mood === 'industrial'
+  return mood === 'industrial'
     ? [28, 29, 28, 22, 28, 29, 28, 24]
     : mood === 'synthwave'
     ? [41, 43, 45, 36, 41, 43, 45, 40]
@@ -116,6 +107,22 @@ export function createBuffers(ctx: BaseAudioContext) {
 }
 
 export class Synthesizer {
+  private readonly score: LegacyScore | DaybreakSynthesizer;
+
+  constructor(private readonly ctx: BaseAudioContext, volume: VolumeDefinition,
+    output: AudioNode, buffers?: ReturnType<typeof createBuffers>) {
+    this.score = volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, output)
+      : new LegacyScore(ctx, volume, output, buffers ?? createBuffers(ctx));
+  }
+
+  get eventSource() { return this.score; }
+
+  playStep(step: number, at: number, after?: number) { this.score.playStep(step, at, after); }
+
+  dispose() { this.score.dispose(); }
+}
+
+class LegacyScore {
   private readonly runBus: GainNode;
   private readonly revSend: GainNode;
   private readonly drumBus: GainNode;
@@ -124,7 +131,7 @@ export class Synthesizer {
   private readonly roots: number[];
 
   constructor(private readonly ctx: BaseAudioContext, private readonly volume: VolumeDefinition,
-    output: GainNode, private readonly buffers: ReturnType<typeof createBuffers>) {
+    output: AudioNode, private readonly buffers: ReturnType<typeof createBuffers>) {
     const c = ctx;
     this.progression = progression(volume.music);
     this.roots = roots(volume.music);
@@ -184,19 +191,14 @@ export class Synthesizer {
       this._duck(t);
     }
     if (drums.snare) this._snare(t, drums.snare);
-    if (this.volume.music === 'downtempo') {
-      // only a soft off-beat tick; the sixteenth grid stays empty
-      if (!ending && (s === 4 || s === 12)) this._hat(t, 0.18 * (0.5 + energy * 0.6), 0.05);
+    if (halfTime) {
+      if (s % 4 === 2 && energy > 0.3) this._hat(t, 0.30 * (0.5 + energy * 0.6), 0.018);
+      if (s % 8 === 6 && energy > 0.6) this._hat(t, 0.18, 0.10);
     } else {
-      if (halfTime) {
-        if (s % 4 === 2 && energy > 0.3) this._hat(t, 0.30 * (0.5 + energy * 0.6), 0.018);
-        if (s % 8 === 6 && energy > 0.6) this._hat(t, 0.18, 0.10);
-      } else {
-        if (s % 2 === 0 && energy > 0.22) {
-          this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
-        }
-        if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.volume.bpm) / 4, 0.14, 0.02);
+      if (s % 2 === 0 && energy > 0.22) {
+        this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
       }
+      if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.volume.bpm) / 4, 0.14, 0.02);
     }
 
     // --- bass ----------------------------------------------------
@@ -218,7 +220,7 @@ export class Synthesizer {
 
     // --- pad -----------------------------------------------------
     if (s === 0) {
-      this._pad(t, chord, (60 / this.volume.bpm) * (this.volume.music === 'downtempo' ? 2 : 1));
+      this._pad(t, chord, 60 / this.volume.bpm);
     }
 
     // --- fill ----------------------------------------------------
@@ -232,19 +234,11 @@ export class Synthesizer {
     o.type = 'sine';
     const g = c.createGain();
 
-    if (this.volume.music === 'downtempo') {
-      o.frequency.setValueAtTime(96, t);
-      o.frequency.exponentialRampToValueAtTime(46, t + 0.16);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vel * 0.85, t + 0.010);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-    } else {
-      o.frequency.setValueAtTime(168, t);
-      o.frequency.exponentialRampToValueAtTime(44, t + 0.10);
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vel, t + 0.004);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
-    }
+    o.frequency.setValueAtTime(168, t);
+    o.frequency.exponentialRampToValueAtTime(44, t + 0.10);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vel, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
 
     o.connect(g); g.connect(this.drumBus);
     o.start(t); o.stop(t + 0.34);
@@ -311,7 +305,7 @@ export class Synthesizer {
 
     const o2 = c.createOscillator();
     o2.type = 'sine';
-    o2.frequency.value = f * (this.volume.music === 'downtempo' ? 0.25 : 0.5);
+    o2.frequency.value = f * 0.5;
 
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
@@ -328,7 +322,7 @@ export class Synthesizer {
 
     const g2 = c.createGain();
     g2.gain.setValueAtTime(0.0001, t);
-    g2.gain.exponentialRampToValueAtTime((this.volume.music === 'downtempo' ? 0.34 : 0.22) * vel, t + 0.008);
+    g2.gain.exponentialRampToValueAtTime(0.22 * vel, t + 0.008);
     g2.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     o.connect(lp); lp.connect(g); g.connect(this.musicBus);
@@ -373,7 +367,7 @@ export class Synthesizer {
     const dur = barDur * 1.05;
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    const padLevel = this.volume.music === 'downtempo' ? 0.15 : 0.085;
+    const padLevel = 0.085;
     g.gain.linearRampToValueAtTime(padLevel, t + 0.28);
     g.gain.setValueAtTime(padLevel, t + dur * 0.7);
     g.gain.linearRampToValueAtTime(0.0001, t + dur);

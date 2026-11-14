@@ -1,10 +1,17 @@
 import { ease } from './lighting-score';
+import { drums as daybreakDrums } from './daybreak-score';
 import { sectionAt } from './volumes';
 import type { VolumeDefinition } from './volumes';
 
 export const musicStepSeconds = (bpm: number) => 15 / bpm;
 
 export function drumStrengths(volume: VolumeDefinition, step: number, energy: number) {
+  if (volume.music === 'breakbeat') {
+    const hits = daybreakDrums[Math.floor(step / 16)]?.filter(hit => hit.at === step % 16) ?? [];
+    return { kick: hits.find(hit => hit.kind === 'kick')?.strength ?? 0,
+      snare: hits.find(hit => hit.kind === 'snare')?.strength ?? 0,
+      fill: hits.find(hit => hit.kind === 'fill')?.strength ?? 0 };
+  }
   const s = step % 16;
   const industrial = volume.music === 'industrial';
   const ending = step / 4 > volume.beats - 8;
@@ -48,7 +55,44 @@ const ATTACK = .016;
 const DECAY = .14;
 const lerp = (a: number, b: number, mix: number) => a + (b - a) * mix;
 
+const daybreakLevels: Readonly<Record<string, readonly [number, number]>> = {
+  OPEN: [.85, 1.15], GLIDE: [.56, 1.67], LIFT: [.48, 1.80], BREEZE: [.78, 1.30],
+  SUNBURST: [.40, 1.98], RETURN: [.52, 1.72], OUTRO: [.80, 1.25],
+};
+const daybreakOnsets = daybreakDrums.map(events => events.flatMap(hit => {
+  const weight = hit.kind === 'kick' ? (hit.at === 0 ? 1 : .57) * hit.strength / (hit.at === 0 ? .224 : .224 * .84)
+    : hit.kind === 'snare' ? .65 * hit.strength / .19
+    : hit.kind === 'fill' ? .28 * hit.strength / .11 : 0;
+  return weight ? [{ time: hit.time, kind: hit.kind as 'kick' | 'snare' | 'fill', weight: Math.min(1, weight) }] : [];
+}));
+
+export type DrumOnset = { time: number; kind: 'kick' | 'snare' | 'fill' };
+const onsets = new WeakMap<VolumeDefinition, readonly DrumOnset[]>();
+export function drumOnsets(volume: VolumeDefinition): readonly DrumOnset[] {
+  let result = onsets.get(volume);
+  if (!result) {
+    const stepSeconds = musicStepSeconds(volume.bpm);
+    result = volume.music === 'breakbeat' ? daybreakOnsets.flat().sort((a, b) => a.time - b.time)
+      : drumScore(volume).flatMap((drums, step) =>
+        (['kick', 'snare', 'fill'] as const).filter(kind => drums[kind]).map(kind => ({ time: step * stepSeconds, kind })));
+    onsets.set(volume, result);
+  }
+  return result;
+}
+
 export function drumPulse(volume: VolumeDefinition, time: number) {
+  if (volume.music === 'breakbeat') {
+    let pulse = 0;
+    for (let bar = Math.max(0, Math.floor((time - .5) / 2)); bar <= Math.floor((time + ATTACK) / 2); bar++) {
+      for (const { time: hitTime, weight } of daybreakOnsets[bar] ?? []) {
+        const age = time - hitTime;
+        if (age < -ATTACK || age > .5) continue;
+        const envelope = age < 0 ? ease(1 + age / ATTACK) : (1 - age / .5) ** 4;
+        pulse = Math.max(pulse, weight * envelope);
+      }
+    }
+    return pulse;
+  }
   const stepSeconds = musicStepSeconds(volume.bpm);
   const score = drumScore(volume);
   const first = Math.max(0, Math.ceil((time - .84) / stepSeconds));
@@ -76,7 +120,8 @@ export function dynamicLightEnvelope(volume: VolumeDefinition, time: number, amo
   let delta = 0;
   if (mix && section) {
     const prior = volume.sections[Math.max(0, section.i - 1)];
-    const from = elsewhereLevels[prior.name], to = elsewhereLevels[section.name];
+    const levels = volume.music === 'breakbeat' ? daybreakLevels : elsewhereLevels;
+    const from = levels[prior.name], to = levels[section.name];
     const transition = ease((beat - section.start) / 1.5);
     const energy = lerp(prior.energy, section.energy, transition);
     const minimum = from && to ? lerp(from[0], to[0], transition) : 1 - .55 * energy;

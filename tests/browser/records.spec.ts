@@ -49,10 +49,10 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await page.getByRole('button', { name: 'Previous play mode' }).click();
   await expect(difficulty).toHaveText('IMPOSSIBLE');
   await page.getByRole('button', { name: 'next volume' }).click();
-  await expect(page.locator('#vol-name')).toContainText('DRIFT');
+  await expect(page.locator('#vol-name')).toContainText('DAYBREAK');
   await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
   await expect(difficulty).toHaveText('NORMAL');
-  await expect(record).toContainText(/BEST SCORE\s*21,000/);
+  await expect(record).toContainText(/BEST SCORE\s*—/);
   await page.goto('/?vol=drift&diff=impossible&t=2&dbg=1&q=low');
   await expect(page.locator('#errbox')).toContainText('"speed":24');
   expect(await page.evaluate(() => localStorage.getItem('sofaraway.best'))).toBe('999999');
@@ -175,9 +175,9 @@ test('the real Sightseeing result saves a Last Visit while a fixed capture canno
   }, key);
   expect(result.snapshot).toMatchObject({ mode: 'sightseeing', phase: 'results', newBest: false });
   expect(JSON.parse(result.raw)).toEqual({ version: 1, standard: {}, sightseeing: {
-    drift: { last: { score: result.snapshot.score, outcome: result.snapshot.result?.title } },
+    daybreak: { last: { score: result.snapshot.score, outcome: result.snapshot.result?.title } },
   } });
-  await page.goto('http://127.0.0.1:8091/?vol=drift&t=140.8&align=1&q=low');
+  await page.goto('http://127.0.0.1:8091/?vol=drift&t=144.8&align=1&q=low');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(result.raw);
 });

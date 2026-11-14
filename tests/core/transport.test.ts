@@ -9,7 +9,7 @@ vi.mock('../../app/game/audio/synthesizer.client', () => ({
   Synthesizer: class { playStep = playStep; dispose = disposeRun; },
 }));
 
-const playStep = vi.fn<(step: number, at: number) => void>();
+const playStep = vi.fn<(step: number, at: number, after?: number) => void>();
 const disposeRun = vi.fn();
 class Context {
   static active: Context;
@@ -17,6 +17,10 @@ class Context {
   currentTime = Context.initialTime;
   state: AudioContextState = 'running';
   onstatechange?: () => void;
+  destination = {};
+  createGain() {
+    return { connect: vi.fn(), disconnect: vi.fn(), gain: { value: 1, setTargetAtTime: vi.fn() } };
+  }
   constructor() { Context.active = this; }
   resume = vi.fn(async () => { this.state = 'running'; });
   close = vi.fn(async () => { this.state = 'closed'; });
@@ -131,6 +135,29 @@ test.each(VOLUMES)('$id lead, 25–50 ms jitter and full-song grid', async volum
   }
   transport.stop();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test('DAYBREAK can resume inside a step without repeating earlier onsets', async () => {
+  await transport.start(VOLUMES[1], 0);
+  Context.active.currentTime = .18 + .02;
+  const position = transport.time;
+  expect(position).toBeCloseTo(.14);
+  transport.stop(true);
+  Context.active.currentTime = 1;
+  const resumed = playStep.mock.calls.length;
+  await transport.start(VOLUMES[1], 2 / 15, true);
+  const [step, at, after] = playStep.mock.calls[resumed];
+  expect(step).toBe(1);
+  expect(at).toBeCloseTo(1.06 + .125 - 2 / 15);
+  expect(after).toBeCloseTo(.14);
+});
+
+test('DAYBREAK keeps notes queued across a 180 ms browser callback delay', async () => {
+  await transport.start(VOLUMES[1], 0);
+  expect(scheduled().map(([step]) => step)).toEqual([0, 1]);
+  advance(.180);
+  expect(scheduled().map(([step]) => step)).toEqual([0, 1, 2]);
+  expect(transport.diagnostics.missedSteps).toBe(0);
 });
 
 test('canceled activation cannot leave a scheduler or replace the next run', async () => {

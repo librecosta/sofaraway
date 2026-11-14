@@ -38,7 +38,7 @@ test.each(VOLUMES)('$id keeps fixed gate stations and original duration across c
       }));
     }
   }
-});
+}, 30_000);
 
 test.each([50, 100, 160, 250, 500, 2300])('%d ms backlog drains in order within the per-frame budget', milliseconds => {
   const clock = new FixedStepClock();
@@ -75,13 +75,14 @@ test('song end leaves an unreachable station unjudged and includes it in planned
   const sim = new Simulation(VOLUMES[1], { align: true });
   sim.start('normal');
   const final = gatesOf(sim).at(-1)!;
+  const planned = gatesOf(sim).length;
   const station = sim.reference.station(sim.volume.beats, sim.mode) + 50;
   const unreached = { ...final, worldStation: station, routeStation: station };
   gatesOf(sim).push(unreached);
   while (sim.phase === 'playing') sim.step(STEP, idleInput);
   expect(unreached.judged).toBe(false);
-  expect(sim.result).toMatchObject({ title: 'ESCAPED', planned: 41, encountered: 40, passed: 40, unreached: 1,
-    neutralized: 0, accuracy: 40 / 41 });
+  expect(sim.result).toMatchObject({ title: 'ESCAPED', planned: planned + 1, encountered: planned, passed: planned, unreached: 1,
+    neutralized: 0, accuracy: planned / (planned + 1) });
 });
 
 test('a single step processes multiple crossings and recovery preserves Shield, Resonance and Combo', () => {

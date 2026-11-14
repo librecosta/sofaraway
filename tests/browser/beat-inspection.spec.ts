@@ -131,3 +131,33 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
     }
   }
 });
+
+test('DAYBREAK lighting peaks at an authored onset with the same rendered station and resources', async ({ page }) => {
+  await page.goto('/debug/#beat-inspection');
+  const studio = page.locator('#beat-inspection');
+  await studio.getByRole('button', { name: 'Open beat inspection' }).click();
+  const canvas = studio.getByRole('img');
+  await expect(canvas).toHaveAttribute('data-ready', 'true');
+  await studio.getByLabel('Volume', { exact: true }).selectOption('drift');
+  await studio.getByLabel('Section', { exact: true }).selectOption({ label: 'SUNBURST' });
+  await studio.getByLabel('Quality', { exact: true }).selectOption('low');
+  await studio.getByRole('button', { name: 'Go to beat’s station' }).click();
+  await studio.getByLabel('Beat', { exact: true }).fill('168');
+  await studio.getByRole('button', { name: 'Kick Peak' }).click();
+  await expect(studio.locator('output')).toContainText('At kick · 84.0160 s');
+  const station = await canvas.getAttribute('data-station');
+  const resources = await canvas.getAttribute('data-resources');
+  const off = await canvas.screenshot();
+  await studio.getByLabel('Dynamic', { exact: true }).selectOption('on');
+  await expect(studio.locator('output')).toContainText('Fixture 1.980×');
+  const peak = await canvas.screenshot();
+  expect(peak.equals(off)).toBe(false);
+  await studio.getByRole('button', { name: 'Beat Valley' }).click();
+  const valley = await canvas.screenshot();
+  expect(valley.equals(peak)).toBe(false);
+  expect((await luminance(page, peak)).frame.y).toBeGreaterThan((await luminance(page, valley)).frame.y);
+  await expect(canvas).toHaveAttribute('data-station', station!);
+  await expect(canvas).toHaveAttribute('data-resources', resources!);
+  await studio.getByRole('button', { name: 'Fill Peak' }).click();
+  await expect(studio.locator('output')).toContainText('At fill');
+});

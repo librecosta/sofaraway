@@ -26,7 +26,7 @@ test('the volume wheel settles after rapid input, cycles, drags, and keeps one r
   await page.mouse.wheel(0, 95);
   await expect(wheel).toHaveAttribute('data-moving', 'true');
   await expect(page).toHaveURL(/vol=elsewhere/);
-  await expect(volume(page)).toContainText('DRIFT');
+  await expect(volume(page)).toContainText('DAYBREAK');
   await expect(wheel).toHaveAttribute('data-moving', 'false');
   await expect(start(page)).toBeEnabled();
 
@@ -50,7 +50,7 @@ test('the volume wheel settles after rapid input, cycles, drags, and keeps one r
   await expect(wheel).toHaveAttribute('data-moving', 'true');
   await page.waitForTimeout(105);
   await page.mouse.up();
-  await expect(volume(page)).toContainText('DRIFT');
+  await expect(volume(page)).toContainText('DAYBREAK');
   await expect(start(page)).toBeEnabled();
   expect(await canvasId(page)).toBe(marker);
 
@@ -79,7 +79,7 @@ test('touch drag changes tracks without scrolling the menu or starting a run', a
   }
   await page.waitForTimeout(110);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await expect(volume(page)).toContainText('DRIFT');
+  await expect(volume(page)).toContainText('DAYBREAK');
   await expect(start(page)).toBeEnabled();
   await expect(page.locator('#hud')).toBeHidden();
   await context.close();
@@ -214,7 +214,7 @@ test('starting while the wheel is moving starts the intended course', async ({ p
   await wheel.press('x');
   await expect(page).toHaveURL(/vol=drift/);
   await expect(page.locator('#hud')).toBeVisible();
-  await expect(volume(page)).toContainText('DRIFT');
+  await expect(volume(page)).toContainText('DAYBREAK');
   expect((await diagnostics(page)).phase).toBe('playing');
   expect((await diagnostics(page)).renderedVolume).toBe('drift');
 });
@@ -294,7 +294,7 @@ test('course and mode choices keep the menu corridor running until the start but
   await expect(start(page)).toBeEnabled();
   const original = await diagnostics(page);
   await page.getByRole('button', { name: 'Next volume' }).click();
-  await expect(volume(page)).toContainText('DRIFT');
+  await expect(volume(page)).toContainText('DAYBREAK');
   await page.getByRole('button', { name: 'Next play mode' }).click();
   await expect(page.getByText('5 LIVES · ⅓ SPEED')).toBeVisible();
   const menu = await diagnostics(page);

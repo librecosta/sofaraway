@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { QualityTier, VolumeId } from '../game/contracts';
 import { referenceFor, START_DISTANCE } from '../game/core/reference-track';
-import { drumPulse, drumScore, dynamicLightEnvelope, musicStepSeconds, steadyLights } from '../game/core/rhythmic-lights';
+import { drumOnsets, drumPulse, dynamicLightEnvelope, steadyLights } from '../game/core/rhythmic-lights';
 import { sectionAt, volumeById, VOLUMES } from '../game/core/volumes';
 import type { ScenicPreview } from '../game/debug/scenic-preview.client';
 import s from '../styles/debug.module.css';
 
 const motionQuery = '(prefers-reduced-motion: reduce)';
 const reducedMotion = () => window.matchMedia(motionQuery).matches;
+function lastOnset(events: ReturnType<typeof drumOnsets>, time: number) {
+  for (let i = events.length - 1; i >= 0; i--) if (events[i].time <= time) return events[i];
+}
+
 function subscribeMotion(change: () => void) {
   const media = window.matchMedia(motionQuery);
   media.addEventListener('change', change);
@@ -34,35 +38,34 @@ export function BeatInspection() {
     ...section, start: volume.sections.slice(0, index).reduce((sum, part) => sum + part.beats, 0),
   }));
   const section = sectionAt(volume, beat)!;
-  const score = drumScore(volume);
-  const first = section.start * 4, end = section.end * 4;
-  const nearest = (kind: 'kick' | 'snare') => {
+  const secondsPerBeat = 60 / volume.bpm;
+  const events = drumOnsets(volume);
+  const local = events.filter(event => event.time >= section.start * secondsPerBeat && event.time < section.end * secondsPerBeat);
+  const nearest = (kind: 'kick' | 'snare' | 'fill') => {
     let closest: number | undefined;
     let distance = Infinity;
-    for (let i = end - 1; i >= first; i--) {
-      const gap = Math.abs(i - beat * 4);
-      if (score[i][kind] && gap < distance) { closest = i; distance = gap; }
+    for (const event of local) {
+      const gap = Math.abs(event.time - beat * secondsPerBeat);
+      if (event.kind === kind && gap <= distance) { closest = event.time / secondsPerBeat; distance = gap; }
     }
     return closest;
   };
-  const kick = nearest('kick'), snare = nearest('snare');
-  const secondsPerStep = musicStepSeconds(volume.bpm);
+  const kick = nearest('kick'), snare = nearest('snare'), fill = nearest('fill');
   const valley = () => {
-    let start = Math.floor(beat * 4);
-    while (start > first && !score[start].kick && !score[start].snare) start--;
-    let next = start + 1;
-    while (next < end && !score[next].kick && !score[next].snare) next++;
+    const time = beat * secondsPerBeat;
+    const stronger = local.filter(event => event.kind !== 'fill');
+    const start = lastOnset(stronger, time)?.time ?? section.start * secondsPerBeat;
+    const end = stronger.find(event => event.time > time)?.time ?? section.end * secondsPerBeat;
     let low = start, minimum = Infinity;
-    for (let step = start; step < next; step += .05) {
-      const pulse = drumPulse(volume, step * secondsPerStep);
-      if (pulse <= minimum) { low = step; minimum = pulse; }
+    for (let at = start; at < end; at += secondsPerBeat / 80) {
+      const pulse = drumPulse(volume, at);
+      if (pulse <= minimum) { low = at; minimum = pulse; }
     }
-    return low / 4;
+    return low / secondsPerBeat;
   };
-  const currentStep = Math.min(score.length - 1, Math.floor(sample.beat * 4 + 1e-8));
-  let event = currentStep;
-  while (event >= 0 && !Object.values(score[event]).some(Boolean)) event--;
-  const drums = event < 0 ? '' : Object.entries(score[event]).filter(([, strength]) => strength > 0).map(([name]) => name).join(' + ');
+  const sampledTime = sample.beat * secondsPerBeat;
+  const recent = lastOnset(events, sampledTime + 1e-8);
+  const drums = events.filter(event => event.time === recent?.time).map(event => event.kind).join(' + ');
 
   useEffect(() => {
     let stale = false;
@@ -161,8 +164,9 @@ export function BeatInspection() {
         setDynamic(e.currentTarget.value === 'on');
       }}><option value="off">Off</option><option value="on">On</option></select></label>
       <div className={s.channelControls} role="group" aria-label="Beat phase">
-        <button disabled={!ready || kick === undefined} onClick={() => seek(kick! / 4)}>Kick Peak</button>
-        <button disabled={!ready || snare === undefined} onClick={() => seek(snare! / 4)}>Snare Peak</button>
+        <button disabled={!ready || kick === undefined} onClick={() => seek(kick!)}>Kick Peak</button>
+        <button disabled={!ready || snare === undefined} onClick={() => seek(snare!)}>Snare Peak</button>
+        {id === 'drift' && <button disabled={!ready || fill === undefined} onClick={() => seek(fill!)}>Fill Peak</button>}
         <button disabled={!ready || (kick === undefined && snare === undefined)} onClick={() => seek(valley())}>Beat Valley</button>
         <button disabled={!ready} onClick={() => playing ? seek(shownBeat.current) : setPlaying(true)}>
           {playing ? 'Pause' : 'Play continuously'}
@@ -170,7 +174,7 @@ export function BeatInspection() {
       </div>
       <output aria-live="off">
         Beat {sample.beat.toFixed(4)} · {volume.bpm} BPM<br />
-        {event < 0 ? 'No drums yet' : `${Math.abs(sample.beat * 4 - event) < .001 ? 'At' : 'Last'} ${drums} · ${(event * secondsPerStep).toFixed(4)} s`}
+        {!recent ? 'No drums yet' : `${Math.abs(sampledTime - recent.time) < .0002 ? 'At' : 'Last'} ${drums} · ${recent.time.toFixed(4)} s`}
         <br />Pulse {sample.pulse.toFixed(3)} · Amount {sample.amount.toFixed(2)}
         <br />Fixture {sample.fixtureGain.toFixed(3)}× · Rim {sample.rimGain.toFixed(3)}×
         <br />Physical {sample.physicalGain.toFixed(3)}×

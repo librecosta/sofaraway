@@ -4,6 +4,7 @@ import { createBuffers, createMaster, Synthesizer } from './synthesizer.client';
 
 const LEAD = 0.06;
 const LOOKAHEAD = 0.12;
+const DAYBREAK_LOOKAHEAD = 0.22;
 const GRID_EPSILON = 1e-9;
 const ACTIVATION_TIMEOUT = 2000;
 type Interruption = 'audio';
@@ -15,6 +16,7 @@ function emptyDiagnostics() {
 export class AudioTransport {
   private context?: AudioContext;
   private master?: GainNode;
+  private daybreakOutput?: GainNode;
   private buffers?: ReturnType<typeof createBuffers>;
   private synth?: Synthesizer;
   private timer?: ReturnType<typeof setInterval>;
@@ -26,6 +28,8 @@ export class AudioTransport {
   private nextStepAt = Infinity;
   private lastScheduledStep = -1;
   private playedThrough = -1;
+  private daybreakThrough = -Infinity;
+  private daybreak = false;
   private cancelActivation?: () => void;
   private generation = 0;
   private disposed = false;
@@ -108,9 +112,21 @@ export class AudioTransport {
     if (ctx.state !== 'running' && !await this.activate(ctx)) return false;
     if (generation !== this.generation || ctx.state !== 'running') return false;
 
-    this.master ??= createMaster(ctx, this.muted ? 0 : this.volume);
-    this.buffers ??= createBuffers(ctx);
-    const synth = new Synthesizer(ctx, volume, this.master, this.buffers);
+    const level = this.muted ? 0 : this.volume;
+    this.daybreak = volume.music === 'breakbeat';
+    let output: GainNode;
+    if (this.daybreak) {
+      if (!this.daybreakOutput) {
+        this.daybreakOutput = ctx.createGain();
+        this.daybreakOutput.gain.value = level;
+        this.daybreakOutput.connect(ctx.destination);
+      }
+      output = this.daybreakOutput;
+    } else {
+      output = this.master ??= createMaster(ctx, level);
+      this.buffers ??= createBuffers(ctx);
+    }
+    const synth = new Synthesizer(ctx, volume, output, this.buffers);
     this.synth = synth;
     const offset = typeof position === 'number' ? position : position(LEAD);
     this.offset = offset;
@@ -119,26 +135,33 @@ export class AudioTransport {
     const stepTime = musicStepSeconds(volume.bpm);
     this.stepSeconds = stepTime;
     const endStep = volume.beats * 4;
-    let step = Math.max(0, Math.ceil((offset - GRID_EPSILON) / stepTime), this.playedThrough + 1);
+    const lookahead = this.daybreak ? DAYBREAK_LOOKAHEAD : LOOKAHEAD;
+    let cutoff = resume && this.daybreak ? Math.max(offset - GRID_EPSILON, this.daybreakThrough) : offset - GRID_EPSILON;
+    let step = this.daybreak ? Math.max(0, Math.floor(cutoff / stepTime))
+      : Math.max(0, Math.ceil(cutoff / stepTime), this.playedThrough + 1);
     this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
     const schedule = () => {
       if (generation !== this.generation || ctx.state !== 'running') return;
-      const horizon = ctx.currentTime + LOOKAHEAD;
+      const horizon = ctx.currentTime + lookahead;
       let late = false;
       while (this.nextStepAt < horizon) {
         const now = ctx.currentTime;
-        if (this.nextStepAt < now) {
-          const future = Math.min(endStep, Math.max(step + 1, Math.ceil((now - this.anchor) / stepTime)));
+        // DAYBREAK may still have swung or staggered notes after the grid tick.
+        if (this.nextStepAt + (this.daybreak ? stepTime : 0) < now) {
+          const future = Math.min(endStep, Math.max(step + 1, this.daybreak
+            ? Math.floor((now - this.anchor) / stepTime) : Math.ceil((now - this.anchor) / stepTime)));
           if (!late) this.diagnostics.lateCallbacks++;
           late = true;
           this.diagnostics.missedSteps += future - step;
           this.diagnostics.maxDelaySeconds = Math.max(this.diagnostics.maxDelaySeconds, now - this.nextStepAt);
           this.playedThrough = Math.max(this.playedThrough, future - 1);
+          if (this.daybreak) cutoff = Math.max(cutoff, now - this.anchor);
           step = future;
           this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
           continue;
         }
-        synth.playStep(step, this.nextStepAt);
+        if (this.daybreak) synth.playStep(step, this.nextStepAt, Math.max(cutoff, now - this.anchor));
+        else synth.playStep(step, this.nextStepAt);
         this.lastScheduledStep = step;
         step++;
         this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
@@ -165,8 +188,10 @@ export class AudioTransport {
       // Keep the last rendered step separate from the simulation's last committed tick.
       const rendered = Math.floor((this.context.currentTime - this.anchor + GRID_EPSILON) / this.stepSeconds);
       this.playedThrough = Math.max(this.playedThrough, Math.min(this.lastScheduledStep, rendered));
+      if (this.daybreak) this.daybreakThrough = Math.max(this.daybreakThrough, this.context.currentTime - this.anchor);
     } else if (!keepPosition) {
       this.playedThrough = -1;
+      this.daybreakThrough = -Infinity;
     }
     this.generation++;
     this.cancelActivation?.();
@@ -181,10 +206,12 @@ export class AudioTransport {
   setLevel(volume: number, muted: boolean) {
     this.volume = volume;
     this.muted = muted;
-    if (this.master && this.context) {
+    if (this.context) {
       const now = this.context.currentTime;
-      this.master.gain.cancelScheduledValues(now);
-      this.master.gain.setTargetAtTime(muted ? 0 : volume, now, 0.05);
+      for (const output of [this.master, this.daybreakOutput]) {
+        output?.gain.cancelScheduledValues(now);
+        output?.gain.setTargetAtTime(muted ? 0 : volume, now, 0.05);
+      }
     }
   }
 
@@ -196,13 +223,13 @@ export class AudioTransport {
       this.context.onstatechange = null;
       void this.context.close().catch(() => {});
     }
-    this.context = this.master = this.buffers = undefined;
+    this.context = this.master = this.daybreakOutput = this.buffers = undefined;
   }
 
   private audioContext() {
     if (this.context?.state === 'closed') {
       this.context.onstatechange = null;
-      this.context = this.master = this.buffers = undefined;
+      this.context = this.master = this.daybreakOutput = this.buffers = undefined;
       this.lastHover = -Infinity;
     }
     return this.context ??= this.createContext();

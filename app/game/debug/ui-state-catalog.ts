@@ -57,7 +57,7 @@ function system(id: string, name: string, patch: Partial<GameSnapshot>, trigger:
 export const uiStates: readonly UIState[] = [
   menu('elsewhere', 'ELSEWHERE Standard'),
   menu('impossible', 'ELSEWHERE Impossible', { difficulty: 'impossible', localRecord: escaped }),
-  menu('drift', 'DRIFT Standard', { volumeId: 'drift' }),
+  menu('drift', 'DAYBREAK Standard', { volumeId: 'drift' }),
   menu('descent', 'DESCENT Standard', { volumeId: 'descent' }),
   menu('orbit', 'ORBIT Standard', { volumeId: 'orbit' }),
   menu('sightseeing', 'Sightseeing', { mode: 'sightseeing', localRecord: { best: null, last: { score: 8421, outcome: 'ESCAPED' } } }),

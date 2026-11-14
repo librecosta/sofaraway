@@ -3,11 +3,13 @@ import { difficultiesFor } from '../core/difficulty';
 import { VOLUMES } from '../core/volumes';
 
 export const RECORDS_KEY = 'sofaraway.records.v1';
+type RecordId = VolumeId | 'daybreak';
+const recordId = (volume: VolumeId): RecordId => volume === 'drift' ? 'daybreak' : volume;
 
 interface RecordsV1 {
   version: 1;
-  standard: Partial<Record<VolumeId, Partial<Record<Difficulty, LocalRecord>>>>;
-  sightseeing: Partial<Record<VolumeId, { last: LastRun | null }>>;
+  standard: Partial<Record<RecordId, Partial<Record<Difficulty, LocalRecord>>>>;
+  sightseeing: Partial<Record<RecordId, { last: LastRun | null }>>;
 }
 
 export function emptyRecords(): RecordsV1 { return { version: 1, standard: {}, sightseeing: {} }; }
@@ -35,9 +37,10 @@ export function parseRecords(raw: string | null): RecordsV1 {
   try { source = object(JSON.parse(raw ?? 'null')); } catch { return records; }
   if (source.version !== 1) return records;
   const standard = object(source.standard), sightseeing = object(source.sightseeing);
-  for (const { id } of VOLUMES) {
+  const ids: RecordId[] = [...VOLUMES.map(volume => volume.id), 'daybreak'];
+  for (const id of ids) {
     const entries = object(standard[id]);
-    for (const difficulty of difficultiesFor(id)) {
+    for (const difficulty of difficultiesFor(id === 'daybreak' ? 'drift' : id)) {
       const entry = object(entries[difficulty]);
       let best = score(entry.best) ? entry.best : null;
       const last = lastRun(entry.last);
@@ -58,19 +61,20 @@ export function readRecords(fallback = emptyRecords()) {
 }
 
 export function recordFor(records: RecordsV1, volume: VolumeId, difficulty: Difficulty, mode: PlayMode): LocalRecord {
-  if (mode === 'sightseeing') return { best: null, last: records.sightseeing[volume]?.last ?? null };
-  return records.standard[volume]?.[difficulty] ?? { best: null, last: null };
+  const id = recordId(volume);
+  if (mode === 'sightseeing') return { best: null, last: records.sightseeing[id]?.last ?? null };
+  return records.standard[id]?.[difficulty] ?? { best: null, last: null };
 }
 
 export function recordRun(records: RecordsV1, volume: VolumeId, difficulty: Difficulty, mode: PlayMode, last: LastRun) {
   if (mode === 'sightseeing') {
-    records.sightseeing[volume] = { last };
+    records.sightseeing[recordId(volume)] = { last };
     return false;
   }
   const { best } = recordFor(records, volume, difficulty, mode);
   const total = totalRunScore(last);
   const newBest = !last.recovery && (best === null || total > best);
-  (records.standard[volume] ??= {})[difficulty] = { best: newBest ? total : best, last };
+  (records.standard[recordId(volume)] ??= {})[difficulty] = { best: newBest ? total : best, last };
   return newBest;
 }
 

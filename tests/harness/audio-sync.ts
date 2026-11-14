@@ -2,7 +2,8 @@ import { AudioTransport } from '../../app/game/audio/transport.client';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import type { VolumeId } from '../../app/game/contracts';
 import { FixedStepClock } from '../../app/game/core/clock';
-import { drumScore, musicStepSeconds } from '../../app/game/core/rhythmic-lights';
+import { rhythmTimeline } from '../../app/game/core/daybreak-score';
+import { drumOnsets, drumScore, musicStepSeconds } from '../../app/game/core/rhythmic-lights';
 import type { DynamicLightEnvelope } from '../../app/game/core/rhythmic-lights';
 import type { RunTimeline } from '../../app/game/core/clock';
 import type { RunGate, Simulation } from '../../app/game/core/simulation';
@@ -47,12 +48,15 @@ async function score(id: VolumeId) {
   }
   regions.push({ section: 'tail', boundary: volume.beats, from: volume.beats - 12, to: volume.beats });
   const levels = [];
-  const buffers = createBuffers(new OfflineAudioContext(2, 128, rate));
+  const daybreak = volume.music === 'breakbeat';
+  const buffers = daybreak ? undefined : createBuffers(new OfflineAudioContext(2, 128, rate));
   for (const region of regions) {
     const boundary = lead + (region.boundary - region.from) * stepSeconds * 4;
     const end = lead + (region.to - region.from) * stepSeconds * 4;
     const context = new OfflineAudioContext(2, Math.ceil((end + 2.0) * rate), rate);
-    const synth = new Synthesizer(context, volume, createMaster(context, 0.8), buffers);
+    const output = daybreak ? context.createGain() : createMaster(context, 0.8);
+    if (daybreak) output.connect(context.destination);
+    const synth = new Synthesizer(context, volume, output, buffers);
     for (let step = region.from * 4; step < region.to * 4; step++) {
       synth.playStep(step, lead + (step - region.from * 4) * stepSeconds);
     }
@@ -64,11 +68,19 @@ async function score(id: VolumeId) {
   }
 
   const context = new OfflineAudioContext(2, 128, rate);
-  const synth = new Synthesizer(context, volume, createMaster(context, 0.8), buffers);
   const events: { step: number; voice: typeof voices[number]; args: unknown[] }[] = [];
-  let step = 0;
-  for (const voice of voices) Reflect.set(synth, voice, (...args: unknown[]) => events.push({ step, voice, args }));
-  for (; step < volume.beats * 4; step++) synth.playStep(step, step * stepSeconds);
+  if (daybreak) {
+    for (const hit of rhythmTimeline()) {
+      if (hit.kind === 'section') continue;
+      const voice = hit.kind === 'kick' ? '_kick' : hit.kind === 'hat' ? '_hat' : '_snare';
+      events.push({ step: hit.bar * 16 + hit.at, voice, args: [hit.time, hit.strength, hit.kind] });
+    }
+  } else {
+    const synth = new Synthesizer(context, volume, createMaster(context, 0.8), buffers);
+    let step = 0;
+    for (const voice of voices) Reflect.set(synth.eventSource, voice, (...args: unknown[]) => events.push({ step, voice, args }));
+    for (; step < volume.beats * 4; step++) synth.playStep(step, step * stepSeconds);
+  }
   const bytes = new TextEncoder().encode(JSON.stringify(events));
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   const digest = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -102,7 +114,7 @@ function frameState(runtime: Runtime) {
     pausedAt: Reflect.get(runtime, 'pausedAt') as number,
     anchor: Reflect.get(audio, 'anchor') as number, offset: Reflect.get(audio, 'offset') as number,
     scheduler: Reflect.get(audio, 'timer') !== undefined, runBus: !!Reflect.get(audio, 'synth'),
-    contextState: ctx?.state ?? null, gain: (Reflect.get(audio, 'master') as GainNode | undefined)?.gain.value ?? null };
+    contextState: ctx?.state ?? null, gain: (Reflect.get(audio, sim.volume.music === 'breakbeat' ? 'daybreakOutput' : 'master') as GainNode | undefined)?.gain.value ?? null };
 }
 
 export function installSyncHarness(getRuntime: () => Runtime | undefined) {
@@ -131,13 +143,13 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
   };
 
   const playStep = Synthesizer.prototype.playStep;
-  Synthesizer.prototype.playStep = function (step, at) {
+  Synthesizer.prototype.playStep = function (step, at, after) {
     const ctx = getRuntime() && context();
     if (ctx && Reflect.get(this, 'ctx') === ctx) {
       if (!runs.has(this)) runs.set(this, ++runCount);
       steps.push({ run: runs.get(this)!, step, at, trigger: ctx.currentTime });
     }
-    playStep.call(this, step, at);
+    playStep.call(this, step, at, after);
   };
   const sample = (runtime: Runtime, scheduled?: number): Frame => {
     const graphics = Reflect.get(runtime, 'graphics') as { camera?: { fov: number } } | undefined;
@@ -191,20 +203,24 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
       const sim = Reflect.get(runtime, 'simulation') as Simulation;
       const grid = musicStepSeconds(sim.volume.bpm);
       const score = drumScore(sim.volume);
+      const daybreakKicks = sim.volume.music === 'breakbeat' ? new Map(drumOnsets(sim.volume)
+        .filter(event => event.kind === 'kick').map(event => [Math.floor(event.time / grid), event.time])) : undefined;
       const frames = beatFrames.slice();
       const run = steps.at(-1)?.run;
       return steps.filter(({ step, run: scheduledRun }) => scheduledRun === run && step > 0 && score[step].kick && step % 4 === 0)
         .flatMap(event => {
-          const planned = event.step * grid;
+          const offset = daybreakKicks ? (daybreakKicks.get(event.step) ?? event.step * grid) - event.step * grid : 0;
+          const planned = event.step * grid + offset;
+          const scheduled = event.at + offset;
           if ((frames.at(-1)?.time ?? 0) < planned + .05) return [];
           const near = frames.filter(frame => Math.abs(frame.time - planned) < .04);
           const peak = near.sort((a, b) => b.pulse - a.pulse)[0];
           if (!peak) return [];
-            const output = peak.output;
-          return [{ planned, scheduled: event.at, audioAnchor: peak.anchor, renderedAt: peak.at,
+          const output = peak.output;
+          return [{ planned, scheduled, audioAnchor: peak.anchor, renderedAt: peak.at,
             visualTime: peak.time, pulse: peak.pulse, errorMs: (peak.time - planned) * 1000,
               output: output.status === 'valid' ? { ...output, scheduledPerformanceTime:
-                output.outputPerformanceTime + (event.at - output.outputContextTime) * 1000 } : output }];
+                output.outputPerformanceTime + (scheduled - output.outputContextTime) * 1000 } : output }];
         });
     },
     clear() {

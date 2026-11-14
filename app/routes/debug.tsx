@@ -3,11 +3,14 @@ import type { CSSProperties } from 'react';
 import { BeatInspection } from '../components/BeatInspection';
 import { EndSequenceStudio } from '../components/EndSequenceStudio';
 import { UIStateStudio } from '../components/UIStateStudio';
+import { AudioTransport } from '../game/audio/transport.client';
 import type { VolumeId } from '../game/contracts';
 import type { PlayMode } from '../game/contracts';
 import { lightCues, lightPatterns } from '../game/core/lighting-score';
 import type { LightPattern } from '../game/core/lighting-score';
 import { PICKUP_BEAT } from '../game/core/pickups';
+import { chartFor } from '../game/core/chart';
+import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
 import { catalog, environmentCards, gateNotes, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
@@ -36,10 +39,46 @@ function Soundtrack() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [playing, setPlaying] = useState(false);
+  const audio = useRef<AudioTransport | null>(null);
+  const playback = useRef(0);
   useEffect(() => {
     setVolume(volumeById(new URLSearchParams(location.search).get('vol')).id);
     setReady(true);
+    return () => { playback.current++; audio.current?.dispose(); audio.current = null; };
   }, []);
+  useEffect(() => {
+    if (!playing) return;
+    const duration = volumeById(volume).beats * 60 / volumeById(volume).bpm;
+    const timer = window.setInterval(() => {
+      const time = audio.current?.time;
+      if (typeof time === 'number' && time >= duration) {
+        audio.current?.stop();
+        setPlaying(false);
+        setStatus('Playback complete');
+      }
+    }, 100);
+    return () => clearInterval(timer);
+  }, [playing, volume]);
+
+  function stop() {
+    playback.current++;
+    audio.current?.stop();
+    setPlaying(false);
+  }
+
+  async function play() {
+    const generation = ++playback.current;
+    try {
+      audio.current ??= new AudioTransport(() => { setPlaying(false); setStatus('Audio interrupted'); });
+      const started = await audio.current.start(volumeById(volume), 0);
+      if (generation !== playback.current) return;
+      setPlaying(started);
+      setStatus(started ? `Playing ${volumeById(volume).name}` : 'Audio unavailable. Try again.');
+    } catch {
+      if (generation === playback.current) setStatus('Audio unavailable. Try again.');
+    }
+  }
 
   async function download() {
     setBusy(true);
@@ -52,7 +91,7 @@ function Soundtrack() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `sofaraway-${volume}.wav`;
+      link.download = `sofaraway-${definition.name.toLowerCase()}.wav`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       setStatus(`Done · ${(blob.size / 1048576).toFixed(1)} MB · ${duration.toFixed(1)} s`);
@@ -71,17 +110,47 @@ function Soundtrack() {
         <div className={s.audioField}>
           <label htmlFor="debug-audio-volume">Volume</label>
           <select id="debug-audio-volume" value={volume} disabled={!ready || busy}
-            onChange={event => setVolume(volumeById(event.currentTarget.value).id)}>
+            onChange={event => { stop(); setVolume(volumeById(event.currentTarget.value).id); }}>
             {catalog.map(({ volume }) => <option key={volume.id} value={volume.id}>{volume.name}</option>)}
           </select>
         </div>
         <button type="button" disabled={!ready || busy} onClick={() => void download()}>
           {busy ? 'Rendering…' : 'Render to WAV'}
         </button>
+        <button type="button" disabled={!ready || busy} onClick={() => playing ? stop() : void play()}>
+          {playing ? 'Stop playback' : 'Play soundtrack'}
+        </button>
       </div>
       <p role="status" id="audio-status">{status}</p>
     </section>
   );
+}
+
+function DaybreakChart() {
+  const volume = volumeById('daybreak');
+  const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
+  const chart = chartFor(volume, difficulty);
+  const reference = referenceFor(volume);
+  const duration = volume.beats * 60 / volume.bpm;
+  let start = 0;
+  return <details>
+    <summary>DAYBREAK chart and ending</summary>
+    <label>Chart difficulty <select value={difficulty} onChange={e => setDifficulty(e.currentTarget.value as typeof difficulty)}>
+      <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
+    </select></label>
+    <ul>{volume.sections.map(section => {
+      const from = start;
+      start += section.beats;
+      const gates = chart.filter(gate => gate.section === section.name);
+      return <li key={section.name}>{section.name} · beats {from}–{start} · {gates.length} gates
+        {gates.length > 0 && <ul>{gates.map(gate => <li key={gate.beat}>
+          Beat {gate.beat} · station {reference.station(gate.beat, 'standard').toFixed(1)} · band {gate.sector + 1}
+        </li>)}</ul>}
+      </li>;
+    })}</ul>
+    <p>Song end · {duration} s · cruise station {reference.station(volume.beats, 'standard').toFixed(1)}</p>
+    <a href={`/?vol=daybreak&diff=${difficulty}&t=${duration + .8}&align=1&god=0&dbg=1`}>Inspect the result</a>
+  </details>;
 }
 
 const patternLabels: Record<LightPattern, string> = {
@@ -381,6 +450,7 @@ export default function DebugOverview() {
                     <a href={`/?vol=${volume.id}&t=${seconds}&align=1&god=0&dbg=1`}>Open this frame</a>
                     <a href={`#gates-${volume.id}`}>View {gates.length === 1 ? 'gate' : 'gates'}</a>
                   </div>
+                  {volume.id === 'drift' && <DaybreakChart />}
                 </div>
               </article>
             ))}

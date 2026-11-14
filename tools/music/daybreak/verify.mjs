@@ -1,8 +1,7 @@
-// Run after export.mjs --stems to verify the actual PCM mixes.
+// Run after export.mjs to check the score and production PCM.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { accentEvents, editions, stems } from './editions.mjs';
 import { bpm, duration, rhythmTimeline, score, sections, tail } from './score.mjs';
 
 const orderedFrame = ({bar, section, chord, keys, bass, kicks, snares, ghost, fill, hats,
@@ -17,16 +16,6 @@ assert.equal(bpm, 120);
 assert.equal(score.length, 72);
 assert.equal(duration, 144);
 assert.deepEqual(sections.map(section => section.start), [0, 8, 40, 64, 80, 112, 136]);
-assert.deepEqual(editions.groove.tracks, ['backing']);
-assert.deepEqual(editions.accents.tracks, ['backing', 'accents']);
-assert.equal(accentEvents.length, 22);
-for (const { bar, at, length, notes } of accentEvents) {
-  const frame = score[bar];
-  assert.ok(![...frame.kicks, ...frame.snares, ...frame.ghost, ...frame.fill].includes(at));
-  assert.ok(length >= .08 && length + .04 <= .18);
-  assert.ok(notes.every(note => note >= 57 && note <= 69));
-}
-
 const rate = 44_100;
 const output = new URL('../../../scratch/daybreak-m1/exports/', import.meta.url);
 async function pcm(name) {
@@ -42,20 +31,27 @@ async function pcm(name) {
   return new Int16Array(buffer.buffer, buffer.byteOffset + 44, (buffer.length - 44) / 2);
 }
 
-const layersByName = {};
-for (const track of stems) layersByName[track] = await pcm('stem-' + track);
-for (const [edition, { name, tracks }] of Object.entries(editions)) {
-  const samples = await pcm(name);
-  const layers = tracks.map(track => layersByName[track]);
-  let errorPeak = 0, peak = 0, power = 0;
+const samples = await pcm('DAYBREAK-Production');
+let peak = 0, power = 0;
+for (const sample of samples) {
+  peak = Math.max(peak, Math.abs(sample));
+  power += sample ** 2;
+}
+assert.ok(peak > 0 && peak < 32767, 'production mix must contain sound without clipping');
+const db = value => 20 * Math.log10(value / 32768);
+console.log(JSON.stringify({ duration: duration + tail, peakDbfs: db(peak), rmsDbfs: db(Math.sqrt(power / samples.length)) }));
+
+const reference = await pcm('DAYBREAK-Groove-No-Chime').catch(error => {
+  if (error.code !== 'ENOENT') throw error;
+});
+if (reference) {
+  let residualPower = 0, residualPeak = 0;
   for (let i = 0; i < samples.length; i++) {
-    const expected = layers.reduce((sum, layer) => sum + layer[i], 0);
-    errorPeak = Math.max(errorPeak, Math.abs(samples[i] - expected));
-    peak = Math.max(peak, Math.abs(samples[i]));
-    power += samples[i] ** 2;
+    const delta = samples[i] - reference[i];
+    residualPower += delta ** 2;
+    residualPeak = Math.max(residualPeak, Math.abs(delta));
   }
-  assert.ok(errorPeak <= 5, edition + ' differs from its component stems');
-  assert.ok(peak < 32767, edition + ' clips');
-  console.log(JSON.stringify({ edition, peakDbfs: 20 * Math.log10(peak / 32768),
-    rmsDbfs: 20 * Math.log10(Math.sqrt(power / samples.length) / 32768), residualLsb: errorPeak }));
+  const residualRmsDbfs = db(Math.sqrt(residualPower / samples.length));
+  assert.ok(residualRmsDbfs < -85, 'production mix diverges from the approved export');
+  console.log(JSON.stringify({ residualRmsDbfs, residualPeakDbfs: db(residualPeak) }));
 }

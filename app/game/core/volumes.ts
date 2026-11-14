@@ -1,8 +1,9 @@
 import type { BaseDifficulty, VolumeId } from '../contracts';
+import { bpm as daybreakBpm, sections as daybreakScoreSections } from './daybreak-score';
 
 export type GateKind = 'iris' | 'square' | 'diamond' | 'shutter' | 'lattice' | 'aperture';
 export type Topology = 'conduit' | 'canal' | 'shaft' | 'orbit';
-export type Music = 'techno' | 'downtempo' | 'industrial' | 'synthwave';
+export type Music = 'techno' | 'breakbeat' | 'industrial' | 'synthwave';
 export interface Section {
   name: string;
   beats: number;
@@ -53,15 +54,17 @@ const SECTIONS_I: readonly Section[] = [
     gateSequence: ['iris', 'square', 'iris', 'diamond', 'iris'] },
 ];
 
-/* downtempo: fewer, wider gates; the turn is the event, not the gap */
-const SECTIONS_II = [
-  { name: 'OPEN',   beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.10 },
-  { name: 'DRIFT',  beats: 64, gap: 6.0,  pattern: 'step',     energy: 0.35 },
-  { name: 'SWELL',  beats: 48, gap: 5.0,  pattern: 'opposite', energy: 0.55 },
-  { name: 'LULL',   beats: 32, gap: 8.0,  pattern: 'sweep',    energy: 0.20 },
-  { name: 'RISE',   beats: 48, gap: 4.0,  pattern: 'zigzag',   energy: 0.70 },
-  { name: 'OUT',    beats: 16, gap: 6.0,  pattern: 'sweep',    energy: 0.25 },
-];
+const daybreakPacing = {
+  OPEN: { gap: 999, energy: .12 },
+  GLIDE: { gap: 4, energy: .52 },
+  LIFT: { gap: 4, energy: .72 },
+  BREEZE: { gap: 8, energy: .27 },
+  SUNBURST: { gap: 3, energy: 1 },
+  RETURN: { gap: 4, energy: .61 },
+  OUTRO: { gap: 999, energy: .22 },
+} as const;
+const SECTIONS_II: readonly Section[] = daybreakScoreSections.map(({ name, startBeat, endBeat }) =>
+  ({ name, beats: endBeat - startBeat, pattern: 'step', ...daybreakPacing[name] }));
 
 const SECTIONS_III = [
   { name: 'MOUTH',  beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.15 },
@@ -101,15 +104,15 @@ export const VOLUMES: readonly VolumeDefinition[] = [
   },
   {
     id: 'drift',
-    name: 'DRIFT',
+    name: 'DAYBREAK',
     subtitle: 'VOL. II',
-    bpm: 96,
+    bpm: daybreakBpm,
     sections: SECTIONS_II,
     beats: total(SECTIONS_II),
     seed: 88121,
     topology: 'canal',          // floor and two low walls, sky above and a glazed side
     obstacle: 'shutter',        // horizontal slats, one band open
-    music: 'downtempo',
+    music: 'breakbeat',
     hue: [0.52, 0.60, 0.47, 0.68],
     lives: { easy: 4, normal: 3, hard: 2 },
   },
@@ -144,7 +147,7 @@ export const VOLUMES: readonly VolumeDefinition[] = [
 ];
 
 export function volumeById(id: string | null): VolumeDefinition {
-  return VOLUMES.find((v) => v.id === id) || VOLUMES[0];
+  return VOLUMES.find((v) => v.id === (id === 'daybreak' ? 'drift' : id)) || VOLUMES[0];
 }
 
 export function sectionAt(volume: VolumeDefinition, beat: number) {

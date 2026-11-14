@@ -186,7 +186,7 @@ export class Runtime implements GameRuntime {
     this.resumePending = false;
     this.audioPending = false;
     if (this.snapshot.phase === 'playing') {
-      this.pausedAt = Math.max(this.clock.elapsed, this.timeline.at(performance.now() / 1000));
+      this.pausedAt = this.runTime(performance.now() / 1000);
       if (this.pausedAt - this.clock.elapsed >= RECOVERY_GAP) this.recoveryUntil = this.pausedAt;
     }
     this.audio.stop(true);
@@ -424,6 +424,18 @@ export class Runtime implements GameRuntime {
     this.lastFrame = 0;
   }
 
+  private runTime(now: number) {
+    if (this.simulation?.volume.music === 'breakbeat' && !this.silent) {
+      const position = this.audio.time;
+      if (typeof position === 'number') {
+        // Keep the silent fallback aligned if the device stops advancing its audio clock.
+        this.timeline.anchor(now - position, position);
+        return Math.max(this.clock.elapsed, position);
+      }
+    }
+    return Math.max(this.clock.elapsed, this.timeline.at(now));
+  }
+
   private async startAudio(sim: Simulation, time: number | ((lead: number) => number), generation: number, resume = false) {
     try {
       return await this.audio.start(sim.volume, time, resume);
@@ -450,7 +462,7 @@ export class Runtime implements GameRuntime {
       if (!fixed) {
         let catchingUp = false;
         if (this.snapshot.phase === 'playing') {
-          const target = this.timeline.at(now / 1000);
+          const target = this.runTime(now / 1000);
           const debt = target - this.clock.elapsed;
           if ((dt >= RECOVERY_GAP || !hadFrame) && debt >= RECOVERY_GAP - STEP) this.recoveryUntil = target;
           catchingUp = this.clock.consume(target, () => {
@@ -536,7 +548,9 @@ export class Runtime implements GameRuntime {
     if (!fixed && this.snapshot.phase === 'playing') {
       const seconds = now / 1000;
       const followsAudio = this.lightAmount > 0 && !this.silent && !this.lightMotion?.matches;
-      renderTime = followsAudio ? this.audio.outputTimeAt(seconds) ?? seconds - this.audio.runOrigin : this.timeline.at(seconds);
+      const phase = this.timeline.at(seconds);
+      renderTime = followsAudio ? this.audio.outputTimeAt(seconds) ??
+        (sim.volume.music === 'breakbeat' ? phase : seconds - this.audio.runOrigin) : phase;
       if (this.pausedAt > 0 && renderTime < this.pausedAt) renderTime = this.lightTime;
     }
     const locked = !paused && graphics.draw(sim, fixed, updateScene, this.lighting(sim, renderTime));

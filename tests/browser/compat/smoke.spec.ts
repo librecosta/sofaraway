@@ -57,7 +57,7 @@ test('prerender, four volumes, a live run and restart', async ({ browser, page, 
   expect(errors).toEqual([]);
   if (!playable) return;
   const canvas = await page.locator('#gl').elementHandle();
-  for (const name of ['DRIFT', 'DESCENT', 'ORBIT', 'ELSEWHERE']) {
+  for (const name of ['DAYBREAK', 'DESCENT', 'ORBIT', 'ELSEWHERE']) {
     await page.getByRole('button', { name: 'next volume' }).click();
     await expect(page.locator('#vol-name')).toContainText(name);
     await expect(startButton(page)).toBeEnabled();

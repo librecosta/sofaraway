@@ -157,7 +157,7 @@ export function inspectCameraAndGates() {
       const sim = new Simulation(drift, flags, driftPath, mode);
       sim.start('normal', 0, undefined, mode);
       while (sim.beat < 56) sim.step(STEP, idleInput);
-      const gate = (Reflect.get(sim, 'chart') as RunGate[]).find(gate => gate.beat === (mode === 'standard' ? 64 : 70))!;
+      const gate = (Reflect.get(sim, 'chart') as RunGate[]).find(gate => gate.beat >= 64)!;
       while (!gate.judged) {
         const before = sim.trackDistance;
         const time = sim.time;

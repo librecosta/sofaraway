@@ -114,7 +114,7 @@ test('hydration loads the game on demand and keeps volume history working', asyn
   for (const volume of ['drift', 'descent', 'orbit']) {
     await page.goto('/?vol=' + volume + '&q=low');
     await expect(page.locator(start)).toBeEnabled();
-    await expect(name).toContainText(volume.toUpperCase());
+    await expect(name).toContainText(volume === 'drift' ? 'DAYBREAK' : volume.toUpperCase());
   }
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page).toHaveURL(/vol=elsewhere/);
@@ -182,7 +182,7 @@ test('missing WebGL2 keeps a usable fallback and Retry can recover', async ({ pa
   await page.evaluate(() => document.dispatchEvent(new Event('release-allow-webgl')));
   await retry.click();
   await expect(page.locator(start)).toBeEnabled();
-  await expect(page.locator('#vol-name')).toContainText('DRIFT');
+  await expect(page.locator('#vol-name')).toContainText('DAYBREAK');
   await expect(page.locator('canvas#gl')).toHaveCount(1);
 });
 

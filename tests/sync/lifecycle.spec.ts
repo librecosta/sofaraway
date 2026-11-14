@@ -4,10 +4,10 @@ import { STEP } from '../../app/game/core/clock';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { hasAudio, mount, openSync, phase, report, state, trace } from './support';
 
-test('dynamic structure lights peak on scheduled drum onsets in a live run', async ({ page }, info) => {
+for (const volume of ['descent', 'drift'] as const) test(`${volume} dynamic structure lights peak on scheduled drum onsets in a live run`, async ({ page }, info) => {
   test.skip(info.project.name !== 'chromium', 'The live timing budget is measured on Chromium.');
   const errors = await openSync(page);
-  await mount(page, 'descent');
+  await mount(page, volume);
   await page.evaluate(() => window.syncHarness.setDynamicLights());
   await page.locator('#start').click();
   await phase(page, 'playing');
@@ -22,7 +22,7 @@ test('dynamic structure lights peak on scheduled drum onsets in a live run', asy
     }
   }
   expect(errors).toEqual([]);
-  report('dynamic-lights', { measured });
+  report('dynamic-lights', { volume, measured });
 });
 
 test('real activation, pause, visibility, suspend and silent recovery', async ({ page, browser }, info) => {

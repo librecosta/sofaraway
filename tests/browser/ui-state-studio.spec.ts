@@ -150,7 +150,7 @@ test('Studio uses the requested browser viewport and keeps one corridor canvas a
     ext.loseContext = () => { root.dataset.studioReleased = 'true'; lose(); };
   });
   await scenario.selectOption('drift');
-  await expect(frame.locator('#vol-name')).toContainText('DRIFT');
+  await expect(frame.locator('#vol-name')).toContainText('DAYBREAK');
   await scenario.selectOption('pause-user');
   expect(await canvas!.evaluate(el => el === el.ownerDocument.querySelector('#gl'))).toBe(true);
   await studio.getByRole('button', { name: 'Close preview' }).click();

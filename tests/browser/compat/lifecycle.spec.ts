@@ -220,7 +220,7 @@ test('audio suspension and restart preserve progress with one scheduler', async 
   await expect(root).toHaveAttribute('data-audio-timers', '0');
   await expect(root).toHaveAttribute('data-audio-buses', '0');
   await page.getByRole('button', { name: 'next volume' }).click();
-  await expect(page.locator('#vol-name')).toContainText('DRIFT');
+  await expect(page.locator('#vol-name')).toContainText('DAYBREAK');
   await expect(startButton(page)).toBeEnabled();
   await expect(root).toHaveAttribute('data-audio-timers', '0');
   await startRun(page, info);

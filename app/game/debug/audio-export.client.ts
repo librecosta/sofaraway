@@ -1,5 +1,6 @@
 import { createBuffers, createMaster, Synthesizer } from '../audio/synthesizer.client';
 import type { VolumeDefinition } from '../core/volumes';
+import { renderDaybreak } from '../audio/daybreak-export.client';
 
 function encodeWav(buffer: AudioBuffer) {
   const { numberOfChannels: channels, length, sampleRate } = buffer;
@@ -40,6 +41,10 @@ export async function exportSoundtrack(volume: VolumeDefinition, seconds?: numbe
   const songDuration = volume.beats * 60 / volume.bpm;
   const duration = seconds !== undefined && Number.isFinite(seconds) && seconds > 0
     ? Math.min(seconds, songDuration) : songDuration;
+  if (volume.music === 'breakbeat') {
+    const buffer = await renderDaybreak(duration);
+    return { blob: encodeWav(buffer), duration: buffer.duration };
+  }
   const tail = duration < songDuration ? 2 : 4;
   const context = new OfflineAudioContext(2, Math.ceil(sampleRate * (duration + tail)), sampleRate);
   const synth = new Synthesizer(context, volume, createMaster(context, 0.8), createBuffers(context));

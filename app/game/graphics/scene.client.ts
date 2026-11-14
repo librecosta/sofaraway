@@ -184,12 +184,13 @@ class VolumeScene {
     this.updatePickup(sim);
 
     if (sim.phase === 'playing') {
-      const lensPulse = sim.mode === 'standard' ? (0.5 + 0.5 * Math.cos(sim.beat * Math.PI * 2)) ** 2 * 0.65 : 0;
+      const lensPulse = this.volume.id !== 'drift' && sim.mode === 'standard'
+        ? (0.5 + 0.5 * Math.cos(sim.beat * Math.PI * 2)) ** 2 * 0.65 : 0;
       this.setFov(BASE_FOV + lensPulse + sim.boostLens * 7 + Math.min(sim.speed, 56) * 0.045 + width);
     }
     if (sim.phase === 'menu') {
       this.setFov(BASE_FOV);
-      if (!this.scenic) this.tunnel.pulse((1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, dynamics);
+      if (!this.scenic) this.tunnel.pulse(this.volume.id === 'drift' ? 0 : (1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, dynamics);
       return { focus: null, locked: false };
     }
     if (sim.phase === 'results' || (sim.phase === 'crash' && previousPhase === 'crash')) {
@@ -204,7 +205,7 @@ class VolumeScene {
       this.hue = THREE.MathUtils.lerp(hue[index % hue.length], hue[(index + 1) % hue.length],
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
       this.tunnel.setHue((this.hue + 1) % 1);
-      this.tunnel.pulse(pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
+      this.tunnel.pulse(this.volume.id === 'drift' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
     }
 

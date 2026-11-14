@@ -56,7 +56,7 @@ test('mobile portrait and landscape keep settings, pause and results operable', 
   await pause.tap();
   await dialog.getByRole('button', { name: 'BACK TO MENU' }).tap();
   await expect(start).toBeEnabled();
-  await page.goto('/?vol=drift&q=low&t=141&god=0&align=1');
+  await page.goto('/?vol=drift&q=low&t=145&god=0&align=1');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
   await expect(page.locator('[data-act=restart]')).toBeInViewport();
   record(info, 'PASS', 'Native taps, portrait/landscape resize, touch pause/resume/exit and results');

@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { STEP } from '../../app/game/core/clock';
+import { onsetLead } from '../../app/game/core/daybreak-score';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [105326, 23928, 119039, 65069];
-const gateCounts = [141, 40, 158, 91];
+const normalScores = [105326, 43721, 119039, 65069];
+const gateCounts = [141, 65, 158, 91];
 
-test('Sightseeing on DRIFT plays the entire original song on real audio time', async ({ page }) => {
+test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];
   const duration = volume.beats * 60 / volume.bpm;
   test.setTimeout((duration + 45) * 1000);
@@ -26,7 +27,8 @@ test('Sightseeing on DRIFT plays the entire original song on real audio time', a
   expect(end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: false });
   expect(end!.elapsed).toBeCloseTo(duration, 5);
   expect(end!.wall - firstBeforeAnchor!.wall).toBeGreaterThanOrEqual((duration - 0.15) * 1000);
-  expect(end!.wall - firstBeforeAnchor!.wall).toBeLessThan((duration + 1) * 1000);
+  if (!end || !('contextTime' in end.output)) throw new Error('DAYBREAK ended without a live audio clock');
+  expect(end.output.contextTime - end.anchor).toBeCloseTo(duration, 1);
   expect(result).toMatchObject({ lives: 5, passed: result.total, judged: result.total });
   expect(await page.evaluate(() => window.b0Harness.snapshot().result?.title)).toBe('ESCAPED');
   expect(errors).toEqual([]);
@@ -88,8 +90,11 @@ for (const [index, volume] of VOLUMES.entries()) {
       ...Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'steps')), result });
     expect(data.steps.map(item => [item.run, item.step])).toEqual(Array.from({ length: volume.beats * 4 }, (_, i) => [first.run, i]));
     expect(gridError).toBeLessThan(1e-9);
-    expect(Math.min(...leads)).toBeGreaterThanOrEqual(-1e-9);
-    expect(Math.max(...leads)).toBeLessThanOrEqual(0.120 + 1e-9);
+    // Every DAYBREAK onset follows the grid tick by at least onsetLead.
+    const earliestOnset = volume.music === 'breakbeat' ? onsetLead : 0;
+    expect(Math.min(...leads) + earliestOnset).toBeGreaterThanOrEqual(-1e-9);
+    const lookahead = volume.music === 'breakbeat' ? .22 : .12;
+    expect(Math.max(...leads)).toBeLessThanOrEqual(lookahead + 1e-9);
     expect(data.firstBeforeAnchor).toMatchObject({ beat: 0, elapsed: 0, simTime: 0 });
     expect(data.firstTick?.elapsed).toBeGreaterThanOrEqual(STEP);
     expect(data.minQuantization).toBeGreaterThanOrEqual(-1e-9);
@@ -98,7 +103,10 @@ for (const [index, volume] of VOLUMES.entries()) {
     let boundary = 0;
     for (const [index, section] of volume.sections.entries()) {
       expect(data.sections[index].beat - boundary).toBeGreaterThanOrEqual(-1e-8);
-      expect(data.sections[index].beat - boundary).toBeLessThanOrEqual(STEP * volume.bpm / 60 + 1e-8);
+      // DAYBREAK samples a device clock in audio quanta. A render can first
+      // observe the new section after the clock has committed several ticks.
+      const observation = volume.music === 'breakbeat' ? .15 : STEP;
+      expect(data.sections[index].beat - boundary).toBeLessThanOrEqual(observation * volume.bpm / 60 + 1e-8);
       boundary += section.beats;
     }
     expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeGreaterThanOrEqual(-1e-8);

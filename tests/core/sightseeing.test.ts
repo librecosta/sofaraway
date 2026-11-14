@@ -18,7 +18,7 @@ const cases = [
   { volume: elsewhere, side: 'left', seed: 0, count: 53 },
   { volume: elsewhere, side: 'left', seed: 1, count: 49 },
   { volume: elsewhere, side: 'right', seed: 1, count: 53 },
-  { volume: VOLUMES[1], side: 'center', seed: 0, count: 13 },
+  { volume: VOLUMES[1], side: 'center', seed: 0, count: 21 },
   { volume: VOLUMES[2], side: 'center', seed: 0, count: 53 },
   { volume: VOLUMES[3], side: 'center', seed: 0, count: 31 },
 ] as const;

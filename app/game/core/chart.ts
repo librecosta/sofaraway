@@ -9,6 +9,7 @@
  * ------------------------------------------------------------------ */
 
 import type { Difficulty } from '../contracts';
+import { drums } from './daybreak-score';
 import { IMPOSSIBLE_LIVES, IMPOSSIBLE_SCORE_MULTIPLIER, IMPOSSIBLE_SPEED_FACTOR, resolveDifficulty } from './difficulty';
 import { impossibleChart } from './impossible-chart';
 import type { GateKind, VolumeDefinition } from './volumes';
@@ -63,6 +64,29 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
   let beat = 0;
   let prev = 2;          // start up
 
+  if (volume.music === 'breakbeat') {
+    for (const section of volume.sections) {
+      const end = beat + section.beats;
+      const start = beat;
+      beat = end;
+      if (section.gap >= 900) continue;
+      const kicks = drums.slice(start / 4, end / 4).flat().filter(hit => hit.kind === 'kick')
+        .map(hit => Math.round(hit.time * volume.bpm / 15) / 4);
+      for (let target = start + (section.name === 'BREEZE' ? 4 : 0); target < end - 1; target += section.gap) {
+        // Keep the nominal gap wide enough for a full cross-canal move under Boost.
+        // The closest kick within half a beat can pull the crossing off the grid.
+        const anchor = kicks.reduce((best, kick) => Math.abs(kick - target) < Math.abs(best - target) ? kick : best, Infinity);
+        if (out.length === 0) prev = Math.floor(rng() * 3);
+        else prev = (prev + (rng() < .5 ? 1 : 2)) % 3;
+        const stationBeat = Math.max(out.length ? out[out.length - 1].beat + 2.5 : start,
+          Math.abs(anchor - target) <= .5 ? anchor : target);
+        out.push({ beat: stationBeat, sector: prev,
+          section: section.name, kind: volume.obstacle });
+      }
+    }
+    return out;
+  }
+
   for (const sec of volume.sections) {
     const end = beat + sec.beats;
     let b = beat;
@@ -88,6 +112,13 @@ export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed 
   difficulty = resolveDifficulty(volume.id, difficulty);
   if (difficulty === 'impossible') return impossibleChart(base);
   if (difficulty !== 'easy') return base;
+  if (volume.music === 'breakbeat') {
+    let section = '', index = 0;
+    return base.filter(gate => {
+      if (section !== gate.section) { section = gate.section; index = 0; }
+      return index++ % 3 !== 1;
+    });
+  }
 
   const out: ChartGate[] = [];
   let last = -99;

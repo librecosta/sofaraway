@@ -12,8 +12,9 @@ export async function openSync(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/?sync');
-  await page.waitForFunction(() => !!window.syncHarness);
+  const response = await page.goto('/?sync');
+  expect(response?.ok(), 'Sync harness response').toBe(true);
+  await page.waitForFunction(() => !!window.syncHarness, undefined, { timeout: 10_000 });
   await page.evaluate(() => {
     for (const [id, action] of [
       ['start', () => window.b0Harness.start()],

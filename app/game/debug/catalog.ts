@@ -30,6 +30,6 @@ export const pickupCards = [
 ] as const;
 
 export const environmentCards = [
-  { id: 'sky', name: 'Canal sky', detail: 'Sky gradient · Drift' },
+  { id: 'sky', name: 'Canal sky', detail: 'Sky gradient · DAYBREAK' },
   { id: 'stars', name: 'Starfield', detail: 'Equirectangular sky · Orbit' },
 ] as const;

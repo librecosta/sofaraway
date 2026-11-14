@@ -32,6 +32,22 @@ test('recoverable legacy bonus counts toward Best and each new Encore run compar
   expect(recordFor(parseRecords(JSON.stringify(records)), 'elsewhere', 'normal', 'standard').best).toBe(10900);
 });
 
+test('DAYBREAK records remain independent of legacy DRIFT scores after a round trip', () => {
+  const last = { score: 800, outcome: 'ESCAPED' } as const;
+  const legacy = { standard: { drift: { normal: { best: 1200, last } } }, sightseeing: { drift: { last } } };
+  const records = parseRecords(JSON.stringify({ version: 1, ...legacy }));
+  expect(recordFor(records, 'drift', 'normal', 'standard')).toEqual({ best: null, last: null });
+  expect(recordFor(records, 'drift', 'normal', 'sightseeing').last).toBeNull();
+  const daybreak = { ...last, score: 400 };
+  expect(recordRun(records, 'drift', 'normal', 'standard', daybreak)).toBe(true);
+  recordRun(records, 'drift', 'normal', 'sightseeing', daybreak);
+  const reloaded = parseRecords(JSON.stringify(records));
+  expect(reloaded.standard.drift).toEqual(legacy.standard.drift);
+  expect(reloaded.sightseeing.drift).toEqual(legacy.sightseeing.drift);
+  expect(recordFor(reloaded, 'drift', 'normal', 'standard')).toEqual({ best: 400, last: daybreak });
+  expect(recordFor(reloaded, 'drift', 'normal', 'sightseeing').last).toEqual(daybreak);
+});
+
 test('records reject invalid or unknown storage values and tolerate a missing browser', () => {
   for (const raw of [null, '{bad', 'null', '[]', '{"version":2}', '{"version":"1"}']) expect(parseRecords(raw)).toEqual(emptyRecords());
   const raw = '{"version":1,"standard":{"elsewhere":{"hard":{"best":1e999,"last":{"score":-1,"outcome":"ESCAPED"}},' +
