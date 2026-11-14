@@ -21,3 +21,6 @@ build/
 test-results/
 playwright-report/
 *.log
+
+# Local DAYBREAK soundtrack renders
+/scratch/daybreak-m1/exports/
