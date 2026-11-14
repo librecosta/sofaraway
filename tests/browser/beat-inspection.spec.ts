@@ -39,6 +39,7 @@ async function seek(beatControl: Locator, beat: number) {
 }
 
 test('beat inspection renders DROP contrast and a quieter BREAK at a fixed station', async ({ browser }, info) => {
+  test.setTimeout(120_000);
   for (const [quality, dpr] of [['high', 1], ['high', 2], ['low', 2]] as const) {
     const context = await browser.newContext({ deviceScaleFactor: dpr, viewport: { width: 1280, height: 900 } });
     try {

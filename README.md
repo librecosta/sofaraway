@@ -21,7 +21,7 @@ different arrangement — but the same engine underneath.
 | | World | Glass | Music | Length | Gates (Normal) |
 |---|---|---|---|---|---|
 | **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 141 / 145 / 157 (Main / Challenge / Bonus) |
-| **II · DAYBREAK** | open canal, sky above | **shutter** — one of three slats missing, horizontal or vertical | breakbeat · 120 | 2:24 | 65 |
+| **II · DAYBREAK** | enclosed skyglass cabin | **funnel / fan** — eight fixed profiles with one missing pane | breakbeat · 120 | 2:24 | 65 |
 | **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 3:38 | 158 |
 | **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:12 | 91 |
 

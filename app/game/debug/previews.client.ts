@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Diagnostics } from '../contracts';
 import { STEP } from '../core/clock';
 import { opening } from '../core/collision';
+import { isDaybreakGate } from '../core/daybreak-gates';
 import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
@@ -12,7 +13,7 @@ import { Graphics } from '../graphics/scene.client';
 import type { MaterialLibrary } from '../graphics/materials/library.client';
 import { surfaceIds, surfacePresets } from '../graphics/materials/presets';
 import type { SurfaceChannel, SurfaceMaterialId } from '../graphics/materials/presets';
-import { catalog, pickupCards } from './catalog';
+import { cabinViews, catalog, pickupCards } from './catalog';
 
 const flags: Diagnostics = {
   fixedTime: null, autoplay: false, god: false, align: true, boost: false,
@@ -73,6 +74,14 @@ export function renderWorlds(root: HTMLElement) {
       graphics.load(volume, sim.path);
       graphics.draw(sim, true);
       paint(root, volume.id, canvas);
+      if (volume.id === 'drift') {
+        const next = sim.previewGates.find(gate => !gate.judged && gate.worldStation > sim.trackDistance + 5);
+        const station = next ? next.worldStation - 7 : sim.trackDistance;
+        for (const { id, yaw, pitch } of cabinViews) {
+          graphics.draw(sim, true, true, { beat: sim.beat, station, yaw, pitch });
+          paint(root, id, canvas);
+        }
+      }
     }
   } finally {
     graphics.dispose();
@@ -88,6 +97,7 @@ export class ModelPreviews {
   private readonly lab = new THREE.Scene();
   private environment?: THREE.WebGLRenderTarget;
   private angle = -20;
+  private gateAngle = 0;
   private animation = 0;
   private scanning = false;
   private lastScan = 0;
@@ -140,13 +150,16 @@ export class ModelPreviews {
     }
   }
 
-  drawGates() {
+  drawGates(angle = this.gateAngle) {
+    this.gateAngle = angle;
+    if (this.lost) return;
     this.frame(7.15);
     const geometries = new GateGeometries();
     try {
       for (const { volume, gates } of catalog) {
         for (const kind of gates) {
           const gate = new GateVisual(geometries, kind, opening(kind, 1), 0);
+          if (isDaybreakGate(kind)) gate.meshes[0].rotation.y = THREE.MathUtils.degToRad(angle);
           if (gate.meshes[1]) gate.meshes[1].position.z = -THICKNESS;
           this.scene.add(...gate.meshes);
           try {

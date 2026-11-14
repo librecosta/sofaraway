@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
+import { daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
+import type { DaybreakGateKind } from '../core/daybreak-gates';
 import type { GateKind } from '../core/volumes';
 
-export type GlassKind = Extract<GateKind, 'iris' | 'square' | 'diamond'>;
+export type ClassicGlassKind = Extract<GateKind, 'iris' | 'square' | 'diamond'>;
+export type GlassKind = ClassicGlassKind | DaybreakGateKind;
 export const GLASS_THICKNESS = 0.38;
 const BEVEL_WIDTH = 0.035;
 const BEVEL_DEPTH = 0.055;
@@ -12,7 +15,7 @@ const TURN = Math.PI * 2;
 const WEDGE = Math.PI / 8;
 
 export function isOpticalGlass(kind: GateKind): kind is GlassKind {
-  return kind === 'iris' || kind === 'square' || kind === 'diamond';
+  return kind === 'iris' || kind === 'square' || kind === 'diamond' || isDaybreakGate(kind);
 }
 
 function hull(inset: number) {
@@ -57,7 +60,7 @@ function irisContour(open: number, inset: number, outside: THREE.Vector2[]) {
   return [rayEnd(upper, inset), ...corners, rayEnd(lower, -inset), ...arc];
 }
 
-function profiles(kind: GlassKind, open: number, inset: number) {
+function profiles(kind: ClassicGlassKind, open: number, inset: number) {
   const outside = hull(inset);
   if (kind === 'iris') return [irisContour(open, inset, outside)];
   const half = SQUARE_HALF + inset;
@@ -67,10 +70,18 @@ function profiles(kind: GlassKind, open: number, inset: number) {
   return [outside, hole.map(([x, y]) => new THREE.Vector2(x, y))];
 }
 
+function insetPane(pane: THREE.Vector2[]) {
+  return pane.map((p, i) => {
+    const previous = pane[(i + pane.length - 1) % pane.length];
+    const next = pane[(i + 1) % pane.length];
+    const a = new THREE.Vector2(previous.y - p.y, p.x - previous.x).normalize();
+    const b = new THREE.Vector2(p.y - next.y, next.x - p.x).normalize();
+    return p.clone().addScaledVector(a.clone().add(b), BEVEL_WIDTH / (1 + a.dot(b)));
+  });
+}
+
 /** One indexed mesh for both faces, the vertical throat and the two bevel strips. */
 export function buildGlassGeometry(kind: GlassKind, open: number) {
-  const bevel = profiles(kind, open, BEVEL_WIDTH);
-  const throat = profiles(kind, open, 0);
   const positions: number[] = [];
   const walls: number[] = [];
   const indices: number[] = [];
@@ -82,26 +93,37 @@ export function buildGlassGeometry(kind: GlassKind, open: number) {
     }
     return first;
   };
-  const faceTriangles = THREE.ShapeUtils.triangulateShape(bevel[0], bevel.slice(1));
-  for (const z of [0, GLASS_THICKNESS]) {
-    const first = append(bevel, z, 0);
-    for (const [a, b, c] of faceTriangles) {
-      if (z === 0) indices.push(first + c, first + b, first + a);
-      else indices.push(first + a, first + b, first + c);
-    }
-  }
-  const rings = [append(bevel, 0, 1), append(throat, BEVEL_DEPTH, 1),
-    append(throat, GLASS_THICKNESS - BEVEL_DEPTH, 1), append(bevel, GLASS_THICKNESS, 1)];
-  let offset = 0;
-  for (const loop of throat) {
-    for (let row = 0; row < rings.length - 1; row++) {
-      for (let i = 0; i < loop.length; i++) {
-        const next = (i + 1) % loop.length;
-        const a = rings[row] + offset, b = rings[row + 1] + offset;
-        indices.push(a + i, a + next, b + i, b + i, a + next, b + next);
+  const appendPane = (bevel: THREE.Vector2[][], throat: THREE.Vector2[][]) => {
+    const faceTriangles = THREE.ShapeUtils.triangulateShape(bevel[0], bevel.slice(1));
+    for (const z of [0, GLASS_THICKNESS]) {
+      const first = append(bevel, z, 0);
+      for (const [a, b, c] of faceTriangles) {
+        if (z === 0) indices.push(first + c, first + b, first + a);
+        else indices.push(first + a, first + b, first + c);
       }
     }
-    offset += loop.length;
+    const rings = [append(bevel, 0, 1), append(throat, BEVEL_DEPTH, 1),
+      append(throat, GLASS_THICKNESS - BEVEL_DEPTH, 1), append(bevel, GLASS_THICKNESS, 1)];
+    let offset = 0;
+    for (const loop of throat) {
+      for (let row = 0; row < rings.length - 1; row++) {
+        for (let i = 0; i < loop.length; i++) {
+          const next = (i + 1) % loop.length;
+          const a = rings[row] + offset, b = rings[row + 1] + offset;
+          indices.push(a + i, a + next, b + i, b + i, a + next, b + next);
+        }
+      }
+      offset += loop.length;
+    }
+  };
+  if (isDaybreakGate(kind)) {
+    for (const pane of daybreakGates[kind].solid) {
+      const throat = pane.map(([x, y]) => new THREE.Vector2(x, y));
+      const bevel = insetPane(throat);
+      appendPane([bevel.reverse()], [throat.reverse()]);
+    }
+  } else {
+    appendPane(profiles(kind, open, BEVEL_WIDTH), profiles(kind, open, 0));
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

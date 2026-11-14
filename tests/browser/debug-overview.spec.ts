@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { daybreakGateKinds } from '../../app/game/core/daybreak-gates';
 
 test('the Debug page scrolls with the results preview and reaches its section links', async ({ page }) => {
   const scrollY = () => page.evaluate(() => window.scrollY);
@@ -104,7 +105,7 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('link', { name: 'Debug overview' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(24);
+  await expect(previews).toHaveCount(34);
   await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
   for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Environment', 'Soundtrack']) {
     await expect(page.getByRole('heading', { name })).toBeVisible();
@@ -120,7 +121,8 @@ test('the unified overview renders lit materials, effects and the existing model
   }));
   expect(samples).toEqual([
     'shield', 'resonance', 'lumen', 'elsewhere', 'drift', 'descent', 'orbit',
-    'iris', 'square', 'diamond', 'shutter', 'lattice', 'aperture',
+    'daybreak-cabin-ahead', 'daybreak-cabin-side', 'daybreak-cabin-roof',
+    'iris', 'square', 'diamond', ...daybreakGateKinds, 'lattice', 'aperture',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
     'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
     'sky', 'stars',
@@ -130,6 +132,12 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('slider', { name: 'View angle', exact: true }).focus();
   await page.keyboard.press('End');
   expect(await shield.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(first);
+
+  const gate = page.getByRole('img', { name: 'Funnel · Down gate' });
+  const face = await gate.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+  await page.getByRole('slider', { name: 'DAYBREAK specimen angle' }).focus();
+  await page.keyboard.press('End');
+  expect(await gate.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(face);
 
   const raw = page.locator('canvas[data-preview=surface-channel]');
   const before = await raw.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());

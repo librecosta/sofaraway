@@ -163,7 +163,7 @@ export class Simulation {
     const authored = chartFor(this.volume, difficulty, rules.seed);
     const gates = authored.map(gate => {
       let axis: Axis = 0;
-      if (!gate.inserted && gate.kind !== 'square' && gate.kind !== 'diamond') {
+      if (this.volume.id !== 'drift' && !gate.inserted && gate.kind !== 'square' && gate.kind !== 'diamond') {
         rng = (rng * 1103515245 + 12345) & 0x7fffffff;
         axis = rng / 0x7fffffff < 0.5 ? 0 : 1;
       }

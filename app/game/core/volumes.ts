@@ -1,7 +1,9 @@
 import type { BaseDifficulty, VolumeId } from '../contracts';
 import { bpm as daybreakBpm, sections as daybreakScoreSections } from './daybreak-score';
+import { daybreakGateKinds } from './daybreak-gates';
+import type { DaybreakGateKind } from './daybreak-gates';
 
-export type GateKind = 'iris' | 'square' | 'diamond' | 'shutter' | 'lattice' | 'aperture';
+export type GateKind = 'iris' | 'square' | 'diamond' | 'shutter' | 'lattice' | 'aperture' | DaybreakGateKind;
 export type Topology = 'conduit' | 'canal' | 'shaft' | 'orbit';
 export type Music = 'techno' | 'breakbeat' | 'industrial' | 'synthwave';
 export interface Section {
@@ -110,11 +112,11 @@ export const VOLUMES: readonly VolumeDefinition[] = [
     sections: SECTIONS_II,
     beats: total(SECTIONS_II),
     seed: 88121,
-    topology: 'canal',          // floor and two low walls, sky above and a glazed side
-    obstacle: 'shutter',        // horizontal slats, one band open
+    topology: 'canal',          // enclosed observation cabin
+    obstacle: daybreakGateKinds[0],
     music: 'breakbeat',
     hue: [0.52, 0.60, 0.47, 0.68],
-    lives: { easy: 4, normal: 3, hard: 2 },
+    lives: { easy: 3, normal: 2, hard: 1 },
   },
   {
     id: 'descent',

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HOLE_R, lanePoint, SECTION, WALL } from '../core/collision';
 import type { Axis } from '../core/collision';
+import { daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
 import type { GateKind } from '../core/volumes';
 import { buildGlassGeometry, GLASS_THICKNESS, isOpticalGlass } from './glass-geometry';
 import type { GlassKind } from './glass-geometry';
@@ -9,6 +10,8 @@ import { GLASS_FRAG, GLASS_VERT } from './glass-optics';
 export const THICKNESS = GLASS_THICKNESS;
 
 const styles = { iris: 0, square: 1, diamond: 2, shutter: 1, lattice: 2, aperture: 3 } as const;
+const cut = (edge?: (typeof daybreakGates)[keyof typeof daybreakGates]['rim'][number]) =>
+  edge ? new THREE.Vector4(...edge[0], ...edge[1]) : new THREE.Vector4(0, 0, 0, 0);
 
 const VERT = /* glsl */`
 varying vec2 vUv;
@@ -152,6 +155,7 @@ export class GateVisual {
 
   constructor(geometries: GateGeometries, obstacle: GateKind, open: number, axis: Axis) {
     const glass = isOpticalGlass(obstacle);
+    const polygon = isDaybreakGate(obstacle) ? daybreakGates[obstacle] : undefined;
     const geometry = geometries.get(obstacle, open);
     this.mat = new THREE.ShaderMaterial({
       vertexShader: glass ? GLASS_VERT : VERT,
@@ -162,7 +166,9 @@ export class GateVisual {
         uTime: { value: 0 },
         uHit: { value: 0 },
         uFade: { value: 1 },
-        uStyle: { value: styles[obstacle] },
+        uStyle: { value: isDaybreakGate(obstacle) ? 3 : styles[obstacle] },
+        ...(polygon ? { uCutA: { value: cut(polygon.rim[0]) }, uCutB: { value: cut(polygon.rim[1]) },
+          uJoint: { value: cut(polygon.seam[0]) } } : {}),
         ...(glass ? { uMicroContrast: { value: 1 } } : {
           uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
           uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },

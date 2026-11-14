@@ -32,9 +32,10 @@ test('recoverable legacy bonus counts toward Best and each new Encore run compar
   expect(recordFor(parseRecords(JSON.stringify(records)), 'elsewhere', 'normal', 'standard').best).toBe(10900);
 });
 
-test('DAYBREAK records remain independent of legacy DRIFT scores after a round trip', () => {
+test('Skyglass records remain independent of both legacy charts after a round trip', () => {
   const last = { score: 800, outcome: 'ESCAPED' } as const;
-  const legacy = { standard: { drift: { normal: { best: 1200, last } } }, sightseeing: { drift: { last } } };
+  const legacy = { standard: { drift: { normal: { best: 1200, last } }, daybreak: { normal: { best: 1900, last } } },
+    sightseeing: { drift: { last }, daybreak: { last } } };
   const records = parseRecords(JSON.stringify({ version: 1, ...legacy }));
   expect(recordFor(records, 'drift', 'normal', 'standard')).toEqual({ best: null, last: null });
   expect(recordFor(records, 'drift', 'normal', 'sightseeing').last).toBeNull();
@@ -44,6 +45,8 @@ test('DAYBREAK records remain independent of legacy DRIFT scores after a round t
   const reloaded = parseRecords(JSON.stringify(records));
   expect(reloaded.standard.drift).toEqual(legacy.standard.drift);
   expect(reloaded.sightseeing.drift).toEqual(legacy.sightseeing.drift);
+  expect(reloaded.standard.daybreak).toEqual(legacy.standard.daybreak);
+  expect(reloaded.sightseeing.daybreak).toEqual(legacy.sightseeing.daybreak);
   expect(recordFor(reloaded, 'drift', 'normal', 'standard')).toEqual({ best: 400, last: daybreak });
   expect(recordFor(reloaded, 'drift', 'normal', 'sightseeing').last).toEqual(daybreak);
 });

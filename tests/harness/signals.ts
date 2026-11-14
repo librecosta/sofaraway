@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import { canPass, lanePoint, opening } from '../../app/game/core/collision';
 import type { Axis, Point } from '../../app/game/core/collision';
+import { daybreakGateKinds, daybreakGates } from '../../app/game/core/daybreak-gates';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateKind } from '../../app/game/core/volumes';
 import type { VolumeId } from '../../app/game/contracts';
@@ -32,7 +33,20 @@ export function shaderMismatches(id: VolumeId) {
     scene.remove(gate.meshes[0]);
     gate.dispose();
   }
-  for (const axis of [0, 1] as const) {
+  if (id === 'drift') {
+    for (const kind of daybreakGateKinds) {
+      const { rim, seam, target } = daybreakGates[kind];
+      const points: Point[] = [[...target]];
+      for (let x = -3.15; x <= 3.2; x += .70) for (let y = -2.35; y <= 2.4; y += .58) points.push([x, y]);
+      for (const [[x, y], [qx, qy]] of [...rim, ...seam]) {
+        const dx = qx - x, dy = qy - y, length = Math.hypot(dx, dy);
+        for (const t of [.15, .5, .85]) for (const offset of [-.045, -.004, .004, .045]) {
+          points.push([x + dx * t - dy / length * offset, y + dy * t + dx / length * offset]);
+        }
+      }
+      check(kind, 0, 0, points);
+    }
+  } else for (const axis of [0, 1] as const) {
     for (let sector = 0; sector < 9; sector++) {
       const open = opening(obstacle, sector);
       const [cx, cy] = lanePoint(obstacle, open, axis);

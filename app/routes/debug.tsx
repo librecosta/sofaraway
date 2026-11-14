@@ -12,7 +12,7 @@ import { PICKUP_BEAT } from '../game/core/pickups';
 import { chartFor } from '../game/core/chart';
 import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
-import { catalog, environmentCards, gateNotes, pickupCards } from '../game/debug/catalog';
+import { cabinViews, catalog, environmentCards, gateDescription, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
 import { curveExamples, scenicExamples } from '../game/debug/scenic-catalog';
 import type { ScenicPreview } from '../game/debug/scenic-preview.client';
@@ -144,7 +144,7 @@ function DaybreakChart() {
       const gates = chart.filter(gate => gate.section === section.name);
       return <li key={section.name}>{section.name} · beats {from}–{start} · {gates.length} gates
         {gates.length > 0 && <ul>{gates.map(gate => <li key={gate.beat}>
-          Beat {gate.beat} · station {reference.station(gate.beat, 'standard').toFixed(1)} · band {gate.sector + 1}
+          Beat {gate.beat} · station {reference.station(gate.beat, 'standard').toFixed(1)} · {gateDescription(gate.kind).label}
         </li>)}</ul>}
       </li>;
     })}</ul>
@@ -331,6 +331,7 @@ export default function DebugOverview() {
   const root = useRef<HTMLElement>(null);
   const models = useRef<ModelPreviews>(null);
   const [angle, setAngle] = useState(initialAngle);
+  const [gateAngle, setGateAngle] = useState(0);
   const [modelStatus, setModelStatus] = useState('Loading the 3D previews…');
   const [worldStatus, setWorldStatus] = useState('Rendering the four worlds…');
   const [materialStatus, setMaterialStatus] = useState('');
@@ -400,7 +401,7 @@ export default function DebugOverview() {
       <header className={s.header}>
         <a href="/" className={s.brand}>SoFaraway</a>
         <nav aria-label="Debug sections">
-          <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#gates">Gates</a>
+          <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#daybreak-cabin">Skyglass</a><a href="#gates">Gates</a>
           <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#lighting">Lighting</a><a href="#s-curve">S-Curve</a>
           <a href="#outro">Ending</a><a href="#ui-states">UI States</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
@@ -457,6 +458,16 @@ export default function DebugOverview() {
           </div>
         </section>
 
+        <section id="daybreak-cabin" className={s.section}>
+          <h2>DAYBREAK · Skyglass cabin</h2>
+          <div className={s.trio}>
+            {cabinViews.map(({ id, label }) => <figure key={id} className={s.card}>
+              <Preview id={id} label={label} width={640} height={360} />
+              <figcaption className={s.caption}>{label}</figcaption>
+            </figure>)}
+          </div>
+        </section>
+
         <section id="gates" className={s.section}>
           <h2>Gate library</h2>
           <p>Face-on views of the glass and its opening. Directional gates show one example.</p>
@@ -464,13 +475,26 @@ export default function DebugOverview() {
             {catalog.map(({ volume, gates }) => (
               <div key={volume.id} id={`gates-${volume.id}`} className={gates.length > 1 ? s.gateGroupWide : s.gateGroup}>
                 <h3>{volume.subtitle} / {volume.name}</h3>
+                {volume.id === 'drift' && <div className={s.angle}>
+                  <label htmlFor="debug-gate-angle">DAYBREAK specimen angle</label>
+                  <input id="debug-gate-angle" type="range" min="-45" max="45" value={gateAngle} disabled={!modelReady}
+                    onChange={event => {
+                      const value = event.currentTarget.valueAsNumber;
+                      setGateAngle(value);
+                      models.current?.drawGates(value);
+                    }} />
+                  <output htmlFor="debug-gate-angle">{gateAngle}°</output>
+                </div>}
                 <div className={gates.length > 1 ? s.trio : s.gateSingle}>
-                  {gates.map(kind => (
+                  {gates.map(kind => {
+                    const { label, note } = gateDescription(kind);
+                    return (
                     <figure key={kind} className={s.card}>
-                      <Preview id={kind} label={`${kind} gate`} />
-                      <figcaption className={s.caption}><strong className={s.gateName}>{kind}</strong><p>{gateNotes[kind]}</p></figcaption>
+                      <Preview id={kind} label={`${label} gate`} />
+                      <figcaption className={s.caption}><strong className={s.gateName}>{label}</strong><p>{note}</p></figcaption>
                     </figure>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

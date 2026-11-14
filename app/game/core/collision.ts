@@ -1,6 +1,8 @@
 import type { GateKind } from './volumes';
+import { daybreakGates, daybreakOpening, isDaybreakGate } from './daybreak-gates';
+import { SECTION } from './section';
 
-export const SECTION = { a: 3.75, b: 2.95, ch: 1.20 } as const;
+export { SECTION } from './section';
 export const WALL = { w: SECTION.a * 2 + 0.20, h: SECTION.b * 2 + 0.20 };
 export const HUB_R = 1.02;
 export const SQUARE_HALF = 1.35;
@@ -30,13 +32,14 @@ export const playerViewOffset = (x: number, y: number, extraWidth = 0) =>
   clampSection(x * 0.88, y * 0.88, 0.62, extraWidth);
 
 export function opening(obstacle: GateKind, sector: number) {
-  if (obstacle === 'square' || obstacle === 'diamond') return 0;
+  if (obstacle === 'square' || obstacle === 'diamond' || isDaybreakGate(obstacle)) return 0;
   const lanes = obstacle === 'lattice' ? 9 : obstacle === 'shutter' ? 3 : 8;
   const pick = ((sector % lanes) + lanes) % lanes;
   return obstacle === 'lattice' && pick === 4 ? 5 : pick;
 }
 
 export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point {
+  if (isDaybreakGate(obstacle)) return [...daybreakGates[obstacle].target];
   if (obstacle === 'square' || obstacle === 'diamond') return [0, 0];
   if (obstacle === 'lattice') {
     return [
@@ -54,6 +57,7 @@ export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point 
 
 /** The shader clips to the same octagonal section. Inputs are clamped inside it. */
 export function canPass(obstacle: GateKind, open: number, axis: Axis, x: number, y: number) {
+  if (isDaybreakGate(obstacle)) return daybreakOpening(obstacle, x, y);
   const u = x / WALL.w + 0.5;
   const v = y / WALL.h + 0.5;
   switch (obstacle) {

@@ -374,10 +374,11 @@ export class PostFX {
     const r = this.renderer;
 
     if (this.quality.dof) {
-      // 1. depth-only pass (gates excluded: they are additive, not geometry)
+      // 1. depth-only pass through the gates and clear observation glass.
       const gateVis: THREE.Object3D[] = [];
       scene.traverse((o) => {
-        if (o instanceof THREE.Mesh && o.visible && o.material?.blending === THREE.AdditiveBlending) {
+        if (o instanceof THREE.Mesh && o.visible &&
+            (o.material?.blending === THREE.AdditiveBlending || o.material?.userData?.skipFocusDepth)) {
           gateVis.push(o);
           o.visible = false;
         }

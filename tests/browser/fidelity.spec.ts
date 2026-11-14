@@ -80,6 +80,15 @@ test('ELSEWHERE glass separates optical tiers, filters subpixel lines and has be
   expect(result.released).toBe(3);
 });
 
+test('DAYBREAK skyglass closes the bent cabin and releases its streamed geometry', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const result = await page.evaluate(() => window.b0Harness.inspectDaybreakCabin());
+  expect(result).toMatchObject({ seamError: 0, misses: [], shared: true, depthTest: true, depthWrite: false,
+    transparent: true, doubleSide: true, streamed: { geometriesDisposed: 2, materialsDisposed: 0 }, materialsDisposed: 1 });
+  expect(result.liveCanopyMeshes).toBe(result.chunks);
+  expect(result.chunks).toBeLessThanOrEqual(4);
+});
+
 test('disconnecting a run isolates its dry signal and reverb from the next run', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   const [before, gap, after] = await page.evaluate(() => window.b0Harness.stoppedRunSignal());

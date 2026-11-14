@@ -168,6 +168,7 @@ class VolumeScene {
     this.camera.quaternion.setFromRotationMatrix(this.basis);
     this.camera.rotateZ(roll);
     if (lighting?.yaw) this.camera.rotateY(lighting.yaw);
+    if (lighting?.pitch) this.camera.rotateX(lighting.pitch);
     const previousPhase = this.phase;
     this.phase = sim.phase;
 
@@ -212,7 +213,7 @@ class VolumeScene {
     let focus = 46;
     let aimed: SceneGate | undefined;
     const scale = modeScale(sim.mode);
-    const microContrast = this.volume.id === 'elsewhere' ? glassMicroContrast(sim.speed) : 1;
+    const microContrast = this.volume.id === 'elsewhere' || this.volume.id === 'drift' ? glassMicroContrast(sim.speed) : 1;
     for (const gate of previews) {
       const route = 'index' in gate ? undefined : gate.route;
       let visual = this.visuals.get(gate);

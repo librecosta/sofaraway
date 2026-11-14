@@ -28,9 +28,12 @@ uniform vec3 uColor;
 uniform float uTime;
 uniform float uHit;
 uniform float uFade;
-uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond
+uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond, 3: DAYBREAK
 uniform float uOpen;
 uniform float uMicroContrast;
+uniform vec4 uCutA;
+uniform vec4 uCutB;
+uniform vec4 uJoint;
 
 const float A = ${SECTION.a};
 const float B = ${SECTION.b};
@@ -44,6 +47,10 @@ const float INV_SQRT2 = ${Math.SQRT1_2};
 float segmentDistance(vec2 p, vec2 a, vec2 b) {
   vec2 d = b - a;
   return length(p - a - d * clamp(dot(p - a, d) / dot(d, d), 0.0, 1.0));
+}
+
+float cutDistance(vec2 p, vec4 cut) {
+  return all(equal(cut.xy, cut.zw)) ? 100.0 : segmentDistance(p, cut.xy, cut.zw);
 }
 
 float boxSdf(vec2 p, float halfSize) {
@@ -124,13 +131,18 @@ void main() {
     // This mask applies to the entire seam contribution, including its halo.
     // The exposed portion of the hub boundary belongs to L1 above.
     seamMask = step(HUB, r);
-  } else {
+  } else if (uStyle < 2.5) {
     bool diamond = uStyle > 1.5;
     vec2 pane = diamond ? vec2(p.x + p.y, p.x - p.y) * INV_SQRT2 : p;
     rim = boxSdf(pane, diamond ? ${DIAMOND_EXTENT} * INV_SQRT2 : ${SQUARE_HALF});
     // Match the CPU's strict inequalities before distance normalization.
     opening = diamond ? q.x + q.y < ${DIAMOND_EXTENT} : max(q.x, q.y) < ${SQUARE_HALF};
     seam = diamond ? min(q.x, q.y) : abs(q.x - q.y) * INV_SQRT2;
+  } else {
+    // The two solid pane meshes already bound the aperture, including the bevel.
+    opening = false;
+    rim = min(cutDistance(p, uCutA), cutDistance(p, uCutB));
+    seam = cutDistance(p, uJoint);
   }
   // The wall vertices are already clipped by the aperture profile. A
   // coplanar radial wall must survive rounding on the half-open sector edge.

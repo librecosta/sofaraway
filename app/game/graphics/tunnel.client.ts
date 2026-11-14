@@ -30,18 +30,22 @@ const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
 const SCENIC_POINT_INTENSITIES = [16, 21, 25] as const;
+const CANAL_LIP = .55;
+const CANOPY_HOOP = 21;
+const canopy = [
+  [-SECTION.a, CANAL_LIP], [-SECTION.a, SECTION.b - SECTION.ch], [-SECTION.a + SECTION.ch, SECTION.b],
+  [SECTION.a - SECTION.ch, SECTION.b], [SECTION.a, SECTION.b - SECTION.ch], [SECTION.a, CANAL_LIP],
+] as const;
 
-/* conduit: a closed octagon.  canal: an open U — floor, two low walls,
-   nothing overhead — with a glazed side handled by the shell material. */
+// The canal's solid lower shell joins the separately batched glass canopy.
 function profile(topology: Topology) {
   const { a, b, ch } = SECTION;
   if (topology === 'canal') {
-    const lip = 0.55;
     return {
       closed: false,
       pts: [
-        [-a, lip], [-a, -b + ch], [-a + ch, -b],
-        [a - ch, -b], [a, -b + ch], [a, lip],
+        [-a, CANAL_LIP], [-a, -b + ch], [-a + ch, -b],
+        [a - ch, -b], [a, -b + ch], [a, CANAL_LIP],
       ],
     };
   }
@@ -49,6 +53,42 @@ function profile(topology: Topology) {
     closed: true,
     pts: octagon,
   };
+}
+
+function canopyMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false,
+    userData: { skipFocusDepth: true },
+    vertexShader: /* glsl */`
+      varying vec3 vNormal;
+      varying vec3 vEye;
+      varying vec2 vPanel;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalMatrix * normal;
+        vEye = -mv.xyz;
+        vPanel = uv;
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */`
+      varying vec3 vNormal;
+      varying vec3 vEye;
+      varying vec2 vPanel;
+      void main() {
+        float grazing = pow(1.0 - abs(dot(normalize(vNormal), normalize(vEye))), 3.0);
+        float edge = min(vPanel.x, 1.0 - vPanel.x);
+        float inset = max(0.018, fwidth(vPanel.x));
+        float gasket = (1.0 - smoothstep(0.0, inset, edge)) * min(1.0, 0.018 / inset);
+        float stationPhase = abs(fract(vPanel.y + 0.5) - 0.5);
+        float hoopWidth = max(0.008, fwidth(vPanel.y));
+        float hoop = (1.0 - smoothstep(0.0, hoopWidth, stationPhase)) * min(1.0, 0.008 / hoopWidth);
+        vec3 glass = mix(vec3(0.14, 0.22, 0.30), vec3(0.24, 0.36, 0.45), grazing);
+        float trim = max(gasket, hoop);
+        gl_FragColor = vec4(mix(glass, vec3(0.18, 0.36, 0.48), trim), 0.015 + 0.09 * grazing + 0.60 * trim);
+      }
+    `,
+  });
 }
 
 function frame(): PathFrame {
@@ -66,6 +106,7 @@ export class Tunnel {
   private shellMat!: THREE.MeshStandardMaterial;
   private ribMat!: THREE.MeshStandardMaterial;
   private braceMat!: THREE.MeshStandardMaterial;
+  private readonly canopyMat?: THREE.ShaderMaterial;
   private shellMaterials?: THREE.MeshStandardMaterial[];
   readonly surfaces?: MaterialLibrary;
   private rimMat!: THREE.MeshBasicMaterial;
@@ -87,6 +128,7 @@ export class Tunnel {
     this.wire = null;
 
     this.surfaces = tex instanceof MaterialLibrary ? tex : undefined;
+    if (topology === 'canal') this.canopyMat = canopyMaterial();
     this._buildMaterials(tex);
     this._buildLights();
     this._buildWire();
@@ -198,6 +240,7 @@ export class Tunnel {
     const rim = { pos: [] as number[], nor: [] as number[], idx: [] as number[], rgb: ringLight ? [] as number[] : undefined };
     const strip = { pos: [] as number[], idx: [] as number[], rgb: ringLight ? [] as number[] : undefined };
     const brace = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
+    const glass = { pos: [] as number[], nor: [] as number[], uv: [] as number[], idx: [] as number[] };
 
     const C = frame();
     const D = frame();
@@ -208,6 +251,39 @@ export class Tunnel {
       v3.copy(fr.p).addScaledVector(fr.r, px).addScaledVector(fr.u, py);
       arr.pos.push(v3.x, v3.y, v3.z);
     };
+    const shellHeight = (y: number, scale: number) => this.canopyMat && y === CANAL_LIP ? y : y * scale;
+
+    if (this.canopyMat) {
+      for (let k = 0; k < rings.length - 1; k++) {
+        const first = ringFrames[k], last = ringFrames[k + 1];
+        for (let i = 0; i < canopy.length - 1; i++) {
+          const p = canopy[i], q = canopy[i + 1];
+          const dx = q[0] - p[0], dy = q[1] - p[1], length = Math.hypot(dx, dy);
+          const base = glass.pos.length / 3;
+          for (const fr of [first, last]) {
+            put(glass, fr, p[0], p[1]);
+            put(glass, fr, q[0], q[1]);
+            nWall.copy(fr.r).multiplyScalar(dy / length).addScaledVector(fr.u, -dx / length);
+            glass.nor.push(...nWall, ...nWall);
+          }
+          const v0 = rings[k] / CANOPY_HOOP, v1 = rings[k + 1] / CANOPY_HOOP;
+          glass.uv.push(0, v0, 1, v0, 0, v1, 1, v1);
+          glass.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        }
+
+        // The waist cap bridges the recess of the original solid shell.
+        for (const sign of [-1, 1]) {
+          const base = rib.pos.length / 3;
+          for (const [index, fr] of [first, last].entries()) {
+            put(rib, fr, sign * SECTION.a * .965, CANAL_LIP);
+            put(rib, fr, sign * SECTION.a * 1.004, CANAL_LIP);
+            rib.nor.push(...fr.u, ...fr.u);
+            rib.uv?.push(0, rings[k + index], .14, rings[k + index]);
+          }
+          rib.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        }
+      }
+    }
 
     /* ---- shell: quad strips between consecutive rings ---- */
     for (let k = 0; !ghost && k < rings.length - 1; k++) {
@@ -235,15 +311,16 @@ export class Tunnel {
 
         const u0 = perim[i] / totalPerim, u1 = perim[Math.min(i + 1, edges)] / totalPerim;
 
-        const lp = (t: number) => [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
+        const lp = (t: number) => this.canopyMat && t === 1 ? p1 :
+          [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
 
         const quad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number, ua: number, ub: number, va: number, vb: number, nf: THREE.Vector3, group = 0) => {
           const q0 = lp(t0), q1 = lp(t1);
           const base = shell.pos.length / 3;
-          put(shell, fa, q0[0] * ka, q0[1] * ka);
-          put(shell, fa, q1[0] * ka, q1[1] * ka);
-          put(shell, fb, q1[0] * kb, q1[1] * kb);
-          put(shell, fb, q0[0] * kb, q0[1] * kb);
+          put(shell, fa, q0[0] * ka, shellHeight(q0[1], ka));
+          put(shell, fa, q1[0] * ka, shellHeight(q1[1], ka));
+          put(shell, fb, q1[0] * kb, shellHeight(q1[1], kb));
+          put(shell, fb, q0[0] * kb, shellHeight(q0[1], kb));
           for (let q = 0; q < 4; q++) shell.nor.push(nf.x, nf.y, nf.z);
           shell.uv.push(ua, va, ub, va, ub, vb, ua, vb);
           shellGroups[group].push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -288,30 +365,34 @@ export class Tunnel {
       // One owner per grid ring, including when two streamed chunks meet.
       if (m0 && (k === rings.length - 1 || rings[k] % RING !== 0)) continue;
       const A = ringFrames[k];
+      const addRing = (target: { pos: number[]; nor: number[]; idx: number[]; uv?: number[] },
+        p0: readonly number[], p1: readonly number[], a: number, b: number) => {
+        const base = target.pos.length / 3;
+        for (const [px, py] of [
+          [p0[0] * a, p0[1] * a], [p1[0] * a, p1[1] * a],
+          [p1[0] * b, p1[1] * b], [p0[0] * b, p0[1] * b],
+        ]) {
+          v3.copy(A.p).addScaledVector(A.r, px).addScaledVector(A.u, py);
+          target.pos.push(v3.x, v3.y, v3.z);
+          target.nor.push(A.f.x, A.f.y, A.f.z);
+          if (target.uv) {
+            const [u, v] = surfacePresets['panel-reinforced'].tile;
+            target.uv.push(px / u, py / v);
+          }
+        }
+        target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      };
       for (let i = 0; i < edges; i++) {
         const p0 = P[i], p1 = P[(i + 1) % n];
-        const addRing = (target: { pos: number[]; nor: number[]; idx: number[]; uv?: number[] }, a: number, b: number) => {
-          const base = target.pos.length / 3;
-          for (const [px, py] of [
-            [p0[0] * a, p0[1] * a], [p1[0] * a, p1[1] * a],
-            [p1[0] * b, p1[1] * b], [p0[0] * b, p0[1] * b],
-          ]) {
-            v3.copy(A.p).addScaledVector(A.r, px).addScaledVector(A.u, py);
-            target.pos.push(v3.x, v3.y, v3.z);
-            target.nor.push(A.f.x, A.f.y, A.f.z);
-            if (target.uv) {
-              const [u, v] = surfacePresets['panel-reinforced'].tile;
-              target.uv.push(px / u, py / v);
-            }
-          }
-          target.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        };
-        addRing(rib, IN, R);
-        addRing(rim, RIMW, IN);
+        addRing(rib, p0, p1, IN, R);
+        addRing(rim, p0, p1, RIMW, IN);
         if (rim.rgb) {
           const gain = ringLight![k];
           for (let j = 0; j < 4; j++) rim.rgb.push(gain, gain, gain);
         }
+      }
+      if (this.canopyMat && s0 <= rings[k] && rings[k] < s1 && rings[k] % CANOPY_HOOP === 0) {
+        for (let i = 0; i < canopy.length - 1; i++) addRing(rib, canopy[i], canopy[i + 1], .976, 1.018);
       }
     }
 
@@ -404,8 +485,10 @@ export class Tunnel {
       m.name = name;
       meshes.push(m);
       this.group.add(m);
+      return m;
     };
 
+    if (this.canopyMat) add(geoOf(glass), this.canopyMat, 'canal-skyglass').renderOrder = 4;
     if (brace.pos.length) add(geoOf(brace), this.braceMat, 'tunnel-braces');
     if (shell.pos.length) {
       if (this.shellMaterials) shell.idx = shellGroups.flat();
@@ -480,7 +563,7 @@ export class Tunnel {
     this.chunks.length = 0;
     this.group.clear();
     this.wire?.geometry.dispose();
-    for (const material of [this.rimMat, this.stripMat, this.wireMat, ...(!this.surfaces ? [this.shellMat, this.ribMat] : [])]) {
+    for (const material of [this.rimMat, this.stripMat, this.wireMat, this.canopyMat, ...(!this.surfaces ? [this.shellMat, this.ribMat] : [])]) {
       material?.dispose();
     }
   }
