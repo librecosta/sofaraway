@@ -10,7 +10,7 @@ test('one renderer survives volume changes and the run can pause, resume, and di
     const original = document.querySelector('canvas')!;
     const gl = original.getContext('webgl2')!;
     const seen = [];
-    for (const id of ['drift', 'descent', 'orbit', 'elsewhere'] as const) {
+    for (const id of ['daybreak', 'descent', 'orbit', 'elsewhere'] as const) {
       await test.start(true);
       test.returnToMenu();
       await test.select(id);
@@ -27,7 +27,7 @@ test('one renderer survives volume changes and the run can pause, resume, and di
     return { seen, paused: paused.phase, resumed: resumed.phase, rendererReused, disposed: test.snapshot().phase };
   });
   expect(result).toEqual({
-    seen: ['drift', 'descent', 'orbit', 'elsewhere'],
+    seen: ['daybreak', 'descent', 'orbit', 'elsewhere'],
     paused: 'paused', resumed: 'playing', rendererReused: true, disposed: 'disposed',
   });
   await expect(page.locator('canvas')).toHaveCount(0);
@@ -116,7 +116,7 @@ test('context recovery and cached navigation preserve progress and a single fram
 
 test('forward and backward streaming evicts chunk-owned resources', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
-  for (const id of ['elsewhere', 'drift', 'descent', 'orbit'] as const) {
+  for (const id of ['elsewhere', 'daybreak', 'descent', 'orbit'] as const) {
     const stream = await page.evaluate(id => window.b0Harness.streamResources(id), id);
     expect(stream.expectedDisposals).toBeGreaterThan(0);
     expect(stream.currentDisposals).toBe(stream.expectedDisposals);
@@ -181,7 +181,7 @@ test('repeated switches and runs keep resource counts bounded', async ({ page })
     const samples: Metrics[] = [];
     await test.mount({ quality: 'low' });
     for (let lap = 0; lap < 3; lap++) {
-      for (const id of ['drift', 'descent', 'orbit', 'elsewhere'] as const) {
+      for (const id of ['daybreak', 'descent', 'orbit', 'elsewhere'] as const) {
         await test.select(id);
         await test.start(true);
         await new Promise(resolve => setTimeout(resolve, 100));

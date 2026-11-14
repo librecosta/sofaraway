@@ -4,7 +4,7 @@ import { STEP } from '../../app/game/core/clock';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { hasAudio, mount, openSync, phase, report, state, trace } from './support';
 
-for (const volume of ['descent', 'drift'] as const) test(`${volume} dynamic structure lights peak on scheduled drum onsets in a live run`, async ({ page }, info) => {
+for (const volume of ['descent', 'daybreak'] as const) test(`${volume} dynamic structure lights peak on scheduled drum onsets in a live run`, async ({ page }, info) => {
   test.skip(info.project.name !== 'chromium', 'The live timing budget is measured on Chromium.');
   const errors = await openSync(page);
   await mount(page, volume);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SECTION } from '../core/collision';
+import { SECTION_OUTLINE } from '../core/section';
 import type { RouteSide } from '../core/branches';
 import { frameLightLevel, octagon } from '../core/lighting-atlas';
 import type { LightingZone } from '../core/lighting-atlas';
@@ -32,20 +33,18 @@ const KEEP_AHEAD = 430;
 const SCENIC_POINT_INTENSITIES = [16, 21, 25] as const;
 const CANAL_LIP = .55;
 const CANOPY_HOOP = 21;
+const [floorLeft, floorRight, lowerRight, upperRight, roofRight, roofLeft, upperLeft, lowerLeft] = SECTION_OUTLINE;
 const canopy = [
-  [-SECTION.a, CANAL_LIP], [-SECTION.a, SECTION.b - SECTION.ch], [-SECTION.a + SECTION.ch, SECTION.b],
-  [SECTION.a - SECTION.ch, SECTION.b], [SECTION.a, SECTION.b - SECTION.ch], [SECTION.a, CANAL_LIP],
+  [-SECTION.a, CANAL_LIP], upperLeft, roofLeft, roofRight, upperRight, [SECTION.a, CANAL_LIP],
 ] as const;
 
 // The canal's solid lower shell joins the separately batched glass canopy.
 function profile(topology: Topology) {
-  const { a, b, ch } = SECTION;
   if (topology === 'canal') {
     return {
       closed: false,
       pts: [
-        [-a, CANAL_LIP], [-a, -b + ch], [-a + ch, -b],
-        [a - ch, -b], [a, -b + ch], [a, CANAL_LIP],
+        canopy[0], lowerLeft, floorLeft, floorRight, lowerRight, canopy[5],
       ],
     };
   }

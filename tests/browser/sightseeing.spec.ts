@@ -32,7 +32,7 @@ test('every sightseeing volume and ELSEWHERE route completes in the results UI',
     { volume: VOLUMES[0], side: 'center', gates: 48, route: 'MAIN' },
     { volume: VOLUMES[0], side: 'right', gates: 49, route: 'CHALLENGE' },
     { volume: VOLUMES[0], side: 'left', gates: 53, route: 'BONUS' },
-    { volume: VOLUMES[1], side: 'center', gates: 21 },
+    { volume: VOLUMES[1], side: 'center', gates: 32 },
     { volume: VOLUMES[2], side: 'center', gates: 53 },
     { volume: VOLUMES[3], side: 'center', gates: 31 },
   ];
@@ -66,7 +66,7 @@ test('aligned harness runs leave records empty in both modes', async ({ page }) 
   await page.goto(harness);
   for (const mode of ['sightseeing', 'standard'] as const) {
     const paused = await page.evaluate(async mode => {
-      await window.b0Harness.mount({ volumeId: 'drift', mode, quality: 'low',
+      await window.b0Harness.mount({ volumeId: 'daybreak', mode, quality: 'low',
         diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: false,
           mobileQuality: false, post: true, record: false, debug: false } });
       await window.b0Harness.start(true);

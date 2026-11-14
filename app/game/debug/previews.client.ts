@@ -55,7 +55,7 @@ export function renderRawSurfaces(root: HTMLElement, materials: MaterialLibrary)
 }
 
 export function renderEnvironment(root: HTMLElement) {
-  for (const [volumeId, id] of [['drift', 'sky'], ['orbit', 'stars']] as const) {
+  for (const [volumeId, id] of [['daybreak', 'sky'], ['orbit', 'stars']] as const) {
     const sky = makeSky(volumeById(volumeId));
     if (!sky) continue;
     try { paint(root, id, sky.image); } finally { sky.dispose(); }
@@ -74,7 +74,7 @@ export function renderWorlds(root: HTMLElement) {
       graphics.load(volume, sim.path);
       graphics.draw(sim, true);
       paint(root, volume.id, canvas);
-      if (volume.id === 'drift') {
+      if (volume.id === 'daybreak') {
         const next = sim.previewGates.find(gate => !gate.judged && gate.worldStation > sim.trackDistance + 5);
         const station = next ? next.worldStation - 7 : sim.trackDistance;
         for (const { id, yaw, pitch } of cabinViews) {
@@ -150,7 +150,7 @@ export class ModelPreviews {
     }
   }
 
-  drawGates(angle = this.gateAngle) {
+  drawGates(angle = this.gateAngle, daybreakOnly = false) {
     this.gateAngle = angle;
     if (this.lost) return;
     this.frame(7.15);
@@ -158,7 +158,10 @@ export class ModelPreviews {
     try {
       for (const { volume, gates } of catalog) {
         for (const kind of gates) {
-          const gate = new GateVisual(geometries, kind, opening(kind, 1), 0);
+          if (daybreakOnly && !isDaybreakGate(kind)) continue;
+          const specimen = this.root.querySelector<HTMLCanvasElement>(`canvas[data-preview="${kind}"]`);
+          const open = isDaybreakGate(kind) ? Number(specimen?.dataset.open) : opening(kind, 1);
+          const gate = new GateVisual(geometries, kind, open, 0);
           if (isDaybreakGate(kind)) gate.meshes[0].rotation.y = THREE.MathUtils.degToRad(angle);
           if (gate.meshes[1]) gate.meshes[1].position.z = -THICKNESS;
           this.scene.add(...gate.meshes);
@@ -166,6 +169,7 @@ export class ModelPreviews {
             gate.update(0, volume.hue[0], 8, 1, false);
             this.renderer.render(this.scene, this.camera);
             paint(this.root, kind, this.renderer.domElement);
+            if (specimen && isDaybreakGate(kind)) specimen.dataset.renderedOpening = String(open);
           } finally {
             this.scene.remove(...gate.meshes);
             gate.dispose();

@@ -23,7 +23,7 @@ test('DPR 3 presents a reachable menu and keeps the run moving', async ({ browse
 });
 
 test('mobile portrait and landscape keep settings, pause and results operable', async ({ page }, info) => {
-  if (!await ready(page, info, '/?q=low&dbg=1&vol=drift')) return;
+  if (!await ready(page, info, '/?q=low&dbg=1&vol=daybreak')) return;
   const start = startButton(page);
   const portrait = page.viewportSize()!;
   const bounds = async () => {
@@ -56,14 +56,14 @@ test('mobile portrait and landscape keep settings, pause and results operable', 
   await pause.tap();
   await dialog.getByRole('button', { name: 'BACK TO MENU' }).tap();
   await expect(start).toBeEnabled();
-  await page.goto('/?vol=drift&q=low&t=145&god=0&align=1');
+  await page.goto('/?vol=daybreak&q=low&t=145&god=0&align=1');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
   await expect(page.locator('[data-act=restart]')).toBeInViewport();
   record(info, 'PASS', 'Native taps, portrait/landscape resize, touch pause/resume/exit and results');
 });
 
 test('touch movement uses only the primary contact and releases on cancellation', async ({ page, context, browserName }, info) => {
-  if (!await ready(page, info, '/?vol=drift&q=low&dbg=1')) return;
+  if (!await ready(page, info, '/?vol=daybreak&q=low&dbg=1')) return;
   await startRun(page, info, 'tap');
   if (browserName === 'chromium') {
     const client = await context.newCDPSession(page);

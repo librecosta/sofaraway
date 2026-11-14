@@ -5,9 +5,9 @@ import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 
-const expectedCounts = [[140, 141, 141], [44, 65, 65], [158, 158, 158], [91, 91, 91]];
+const expectedCounts = [[140, 141, 141], [65, 97, 97], [158, 158, 158], [91, 91, 91]];
 // ELSEWHERE defaults to Main. DESCENT and ORBIT retain their A0 scores.
-const expectedScores = [[66201, 105326, 156826], [17471, 43721, 64821],
+const expectedScores = [[66201, 105326, 156826], [27896, 69321, 103221],
   [75314, 119039, 177339], [41444, 65069, 96569]];
 
 for (const [index, volume] of VOLUMES.entries()) {

@@ -149,7 +149,7 @@ test('Studio uses the requested browser viewport and keeps one corridor canvas a
     const root = el.ownerDocument.defaultView!.parent.document.documentElement;
     ext.loseContext = () => { root.dataset.studioReleased = 'true'; lose(); };
   });
-  await scenario.selectOption('drift');
+  await scenario.selectOption('daybreak');
   await expect(frame.locator('#vol-name')).toContainText('DAYBREAK');
   await scenario.selectOption('pause-user');
   expect(await canvas!.evaluate(el => el === el.ownerDocument.querySelector('#gl'))).toBe(true);

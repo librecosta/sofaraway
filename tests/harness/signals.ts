@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import { canPass, lanePoint, opening } from '../../app/game/core/collision';
 import type { Axis, Point } from '../../app/game/core/collision';
-import { daybreakGateKinds, daybreakGates } from '../../app/game/core/daybreak-gates';
+import { daybreakGateKinds, daybreakGates, daybreakProfile } from '../../app/game/core/daybreak-gates';
+import { SECTION, SECTION_OUTLINE } from '../../app/game/core/section';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateKind } from '../../app/game/core/volumes';
 import type { VolumeId } from '../../app/game/contracts';
@@ -21,7 +22,8 @@ export function shaderMismatches(id: VolumeId) {
     const gate = new GateVisual(geometries, kind, open, axis);
     scene.add(gate.meshes[0]);
     for (const [x, y] of points) {
-      if (Math.abs(x) > 3.4 || Math.abs(y) > 2.6 || Math.abs(x) + Math.abs(y) > 4.85) continue;
+      const [a, b, diagonal] = id === 'daybreak' ? [SECTION.a, SECTION.b, SECTION.a + SECTION.b - SECTION.ch] : [3.4, 2.6, 4.85];
+      if (Math.abs(x) >= a || Math.abs(y) >= b || Math.abs(x) + Math.abs(y) >= diagonal) continue;
       camera.position.set(x, y, 3);
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
@@ -33,18 +35,22 @@ export function shaderMismatches(id: VolumeId) {
     scene.remove(gate.meshes[0]);
     gate.dispose();
   }
-  if (id === 'drift') {
-    for (const kind of daybreakGateKinds) {
-      const { rim, seam, target } = daybreakGates[kind];
-      const points: Point[] = [[...target]];
+  if (id === 'daybreak') {
+    const nearShell = SECTION_OUTLINE.flatMap(([x, y], index) => {
+      const [qx, qy] = SECTION_OUTLINE[(index + 1) % SECTION_OUTLINE.length];
+      return [.15, .5, .85].map((t): Point => [(.998 * (x + (qx - x) * t)), (.998 * (y + (qy - y) * t))]);
+    });
+    for (const kind of daybreakGateKinds) for (const open of daybreakGates[kind].openings.keys()) {
+      const { rim, target } = daybreakProfile(kind, open);
+      const points: Point[] = [[...target], [0, 0], ...nearShell];
       for (let x = -3.15; x <= 3.2; x += .70) for (let y = -2.35; y <= 2.4; y += .58) points.push([x, y]);
-      for (const [[x, y], [qx, qy]] of [...rim, ...seam]) {
+      for (const [[x, y], [qx, qy]] of rim) {
         const dx = qx - x, dy = qy - y, length = Math.hypot(dx, dy);
         for (const t of [.15, .5, .85]) for (const offset of [-.045, -.004, .004, .045]) {
           points.push([x + dx * t - dy / length * offset, y + dy * t + dx / length * offset]);
         }
       }
-      check(kind, 0, 0, points);
+      check(kind, open, 0, points);
     }
   } else for (const axis of [0, 1] as const) {
     for (let sector = 0; sector < 9; sector++) {

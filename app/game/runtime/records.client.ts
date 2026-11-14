@@ -3,8 +3,9 @@ import { difficultiesFor } from '../core/difficulty';
 import { VOLUMES } from '../core/volumes';
 
 export const RECORDS_KEY = 'sofaraway.records.v1';
-type RecordId = VolumeId | 'daybreak' | 'daybreak-skyglass';
-const recordId = (volume: VolumeId): RecordId => volume === 'drift' ? 'daybreak-skyglass' : volume;
+const daybreakRecordIds = ['drift', 'daybreak-skyglass', 'daybreak-crystal'] as const;
+type RecordId = VolumeId | typeof daybreakRecordIds[number];
+const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-crystal' : volume;
 
 interface RecordsV1 {
   version: 1;
@@ -37,10 +38,10 @@ export function parseRecords(raw: string | null): RecordsV1 {
   try { source = object(JSON.parse(raw ?? 'null')); } catch { return records; }
   if (source.version !== 1) return records;
   const standard = object(source.standard), sightseeing = object(source.sightseeing);
-  const ids: RecordId[] = [...VOLUMES.map(volume => volume.id), 'daybreak', 'daybreak-skyglass'];
-  for (const id of ids) {
+  const ids = [...VOLUMES.map(({ id }) => ({ id, volume: id })), ...daybreakRecordIds.map(id => ({ id, volume: 'daybreak' as const }))];
+  for (const { id, volume } of ids) {
     const entries = object(standard[id]);
-    for (const difficulty of difficultiesFor(id === 'daybreak' || id === 'daybreak-skyglass' ? 'drift' : id)) {
+    for (const difficulty of difficultiesFor(volume)) {
       const entry = object(entries[difficulty]);
       let best = score(entry.best) ? entry.best : null;
       const last = lastRun(entry.last);

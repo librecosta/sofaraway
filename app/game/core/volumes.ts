@@ -3,7 +3,7 @@ import { bpm as daybreakBpm, sections as daybreakScoreSections } from './daybrea
 import { daybreakGateKinds } from './daybreak-gates';
 import type { DaybreakGateKind } from './daybreak-gates';
 
-export type GateKind = 'iris' | 'square' | 'diamond' | 'shutter' | 'lattice' | 'aperture' | DaybreakGateKind;
+export type GateKind = 'iris' | 'square' | 'diamond' | 'lattice' | 'aperture' | DaybreakGateKind;
 export type Topology = 'conduit' | 'canal' | 'shaft' | 'orbit';
 export type Music = 'techno' | 'breakbeat' | 'industrial' | 'synthwave';
 export interface Section {
@@ -105,7 +105,7 @@ export const VOLUMES: readonly VolumeDefinition[] = [
     lives: { easy: 3, normal: 2, hard: 1 },
   },
   {
-    id: 'drift',
+    id: 'daybreak',
     name: 'DAYBREAK',
     subtitle: 'VOL. II',
     bpm: daybreakBpm,
@@ -149,7 +149,7 @@ export const VOLUMES: readonly VolumeDefinition[] = [
 ];
 
 export function volumeById(id: string | null): VolumeDefinition {
-  return VOLUMES.find((v) => v.id === (id === 'daybreak' ? 'drift' : id)) || VOLUMES[0];
+  return VOLUMES.find((v) => v.id === (id === 'drift' ? 'daybreak' : id)) || VOLUMES[0];
 }
 
 export function sectionAt(volume: VolumeDefinition, beat: number) {

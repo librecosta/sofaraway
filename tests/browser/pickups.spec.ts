@@ -94,7 +94,7 @@ for (const { kind, boost, feedback, badge } of cases) {
       advance(303.99);
       const abandoned = trackRelease(pickup()!);
       runtime.returnToMenu();
-      await runtime.selectVolume('drift');
+      await runtime.selectVolume('daybreak');
       const glError = graphics.gl.getError();
       const cleanup = abandoned();
       await runtime.selectVolume('elsewhere');

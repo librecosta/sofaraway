@@ -9,7 +9,7 @@
  * ------------------------------------------------------------------ */
 
 import type { Difficulty } from '../contracts';
-import { daybreakGateKinds } from './daybreak-gates';
+import type { DaybreakGateKind } from './daybreak-gates';
 import { drums } from './daybreak-score';
 import { IMPOSSIBLE_LIVES, IMPOSSIBLE_SCORE_MULTIPLIER, IMPOSSIBLE_SPEED_FACTOR, resolveDifficulty } from './difficulty';
 import { impossibleChart } from './impossible-chart';
@@ -34,13 +34,39 @@ function mulberry32(a: number) {
 
 const wrap = (s: number) => ((s % 8) + 8) % 8;
 
-const daybreakPhrases: Readonly<Record<string, readonly number[]>> = {
-  GLIDE: [0, 0, 2, 1, 3, 2, 0, 3],
-  LIFT: [4, 2, 7, 1, 4, 3, 5, 0, 6, 7, 2, 0],
-  BREEZE: [4, 0, 7, 2],
-  SUNBURST: [1, 5, 3, 4, 2, 6, 0, 7, 5, 2, 6, 7],
-  RETURN: [7, 3, 6, 0, 5, 2, 4, 1],
+const crystal = 'daybreak-crystal', rotated = 'daybreak-crystal-45';
+const vertical = 'daybreak-vertical', horizontal = 'daybreak-horizontal';
+const daybreakPhrases: Readonly<Record<string, readonly (readonly [DaybreakGateKind, number])[]>> = {
+  GLIDE: [[vertical, 0], [rotated, 0], [crystal, 1], [rotated, 1], [crystal, 2], [horizontal, 0], [crystal, 3], [rotated, 3]],
+  LIFT: [[crystal, 0], [vertical, 0], [rotated, 3], [rotated, 0], [horizontal, 0], [crystal, 1],
+    [vertical, 0], [rotated, 1], [crystal, 2], [horizontal, 0], [rotated, 2], [crystal, 3]],
+  BREEZE: [[horizontal, 0], [rotated, 3], [crystal, 0], [vertical, 0]],
+  SUNBURST: [[rotated, 0], [crystal, 1], [rotated, 1], [crystal, 2], [rotated, 2], [crystal, 3],
+    [vertical, 0], [rotated, 3], [crystal, 0], [horizontal, 0], [rotated, 0], [crystal, 1]],
+  RETURN: [[rotated, 1], [vertical, 0], [crystal, 2], [horizontal, 0], [rotated, 2], [crystal, 3], [rotated, 3], [crystal, 0]],
 };
+
+/** The original DAYBREAK pacing grid still drives speed and world stations. */
+export function daybreakPacing(volume: VolumeDefinition) {
+  const sections: { name: string; beats: number[] }[] = [];
+  let start = 0, previous = -Infinity;
+  for (const section of volume.sections) {
+    const end = start + section.beats;
+    const beats: number[] = [];
+    if (section.gap < 900) {
+      const kicks = drums.slice(start / 4, end / 4).flat().filter(hit => hit.kind === 'kick')
+        .map(hit => Math.round(hit.time * volume.bpm / 15) / 4);
+      for (let target = start + (section.name === 'BREEZE' ? 4 : 0); target < end - 1; target += section.gap) {
+        const anchor = kicks.reduce((best, kick) => Math.abs(kick - target) < Math.abs(best - target) ? kick : best, Infinity);
+        previous = Math.max(previous + 2.5, start, Math.abs(anchor - target) <= .5 ? anchor : target);
+        beats.push(previous);
+      }
+    }
+    sections.push({ name: section.name, beats });
+    start = end;
+  }
+  return sections;
+}
 
 function nextSector(pattern: string, prev: number, i: number, rng: () => number) {
   switch (pattern) {
@@ -74,22 +100,16 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
   let prev = 2;          // start up
 
   if (volume.music === 'breakbeat') {
-    for (const section of volume.sections) {
-      const end = beat + section.beats;
-      const start = beat;
-      beat = end;
-      if (section.gap >= 900) continue;
-      const kicks = drums.slice(start / 4, end / 4).flat().filter(hit => hit.kind === 'kick')
-        .map(hit => Math.round(hit.time * volume.bpm / 15) / 4);
-      const phrase = daybreakPhrases[section.name];
-      for (let target = start + (section.name === 'BREEZE' ? 4 : 0), i = 0; target < end - 1; target += section.gap, i++) {
-        // Keep the nominal gap wide enough for a full cross-canal move under Boost.
-        // The closest kick within half a beat can pull the crossing off the grid.
-        const anchor = kicks.reduce((best, kick) => Math.abs(kick - target) < Math.abs(best - target) ? kick : best, Infinity);
-        const stationBeat = Math.max(out.length ? out[out.length - 1].beat + 2.5 : start,
-          Math.abs(anchor - target) <= .5 ? anchor : target);
-        out.push({ beat: stationBeat, sector: 0,
-          section: section.name, kind: daybreakGateKinds[phrase[i % phrase.length]] });
+    for (const { name, beats } of daybreakPacing(volume)) {
+      const phrase = daybreakPhrases[name];
+      for (const [i, anchor] of beats.entries()) {
+        const [kind, sector] = phrase[i % phrase.length];
+        out.push({ beat: anchor, sector, section: name, kind });
+        // Echo alternating anchors with the same opening. The added crossing
+        // raises cadence without asking for a full lateral move in half a gap.
+        if (i % 2 === 0 && i + 1 < beats.length) {
+          out.push({ beat: (anchor + beats[i + 1]) / 2, sector, section: name, kind });
+        }
       }
     }
     return out;

@@ -10,6 +10,7 @@ import { lightCues, lightPatterns } from '../game/core/lighting-score';
 import type { LightPattern } from '../game/core/lighting-score';
 import { PICKUP_BEAT } from '../game/core/pickups';
 import { chartFor } from '../game/core/chart';
+import { daybreakGates, isDaybreakGate } from '../game/core/daybreak-gates';
 import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
 import { cabinViews, catalog, environmentCards, gateDescription, pickupCards } from '../game/debug/catalog';
@@ -27,10 +28,10 @@ export const meta = () => [
 
 const initialAngle = -20;
 
-function Preview({ id, label, width = 432, height = 270 }: {
-  id: string; label: string; width?: number; height?: number;
+function Preview({ id, label, width = 432, height = 270, open }: {
+  id: string; label: string; width?: number; height?: number; open?: number;
 }) {
-  return <canvas data-preview={id} className={s.preview} role="img" aria-label={label}
+  return <canvas data-preview={id} data-open={open} className={s.preview} role="img" aria-label={label}
     width={width} height={height}>{label}</canvas>;
 }
 
@@ -145,6 +146,7 @@ function DaybreakChart() {
       return <li key={section.name}>{section.name} · beats {from}–{start} · {gates.length} gates
         {gates.length > 0 && <ul>{gates.map(gate => <li key={gate.beat}>
           Beat {gate.beat} · station {reference.station(gate.beat, 'standard').toFixed(1)} · {gateDescription(gate.kind).label}
+          {isDaybreakGate(gate.kind) && <> · {daybreakGates[gate.kind].openings[gate.sector]}</>}
         </li>)}</ul>}
       </li>;
     })}</ul>
@@ -332,6 +334,8 @@ export default function DebugOverview() {
   const models = useRef<ModelPreviews>(null);
   const [angle, setAngle] = useState(initialAngle);
   const [gateAngle, setGateAngle] = useState(0);
+  const [gateOpenings, setGateOpenings] = useState<Partial<Record<keyof typeof daybreakGates, number>>>({});
+  useEffect(() => { models.current?.drawGates(gateAngle, true); }, [gateAngle, gateOpenings]);
   const [modelStatus, setModelStatus] = useState('Loading the 3D previews…');
   const [worldStatus, setWorldStatus] = useState('Rendering the four worlds…');
   const [materialStatus, setMaterialStatus] = useState('');
@@ -451,7 +455,7 @@ export default function DebugOverview() {
                     <a href={`/?vol=${volume.id}&t=${seconds}&align=1&god=0&dbg=1`}>Open this frame</a>
                     <a href={`#gates-${volume.id}`}>View {gates.length === 1 ? 'gate' : 'gates'}</a>
                   </div>
-                  {volume.id === 'drift' && <DaybreakChart />}
+                  {volume.id === 'daybreak' && <DaybreakChart />}
                 </div>
               </article>
             ))}
@@ -470,29 +474,40 @@ export default function DebugOverview() {
 
         <section id="gates" className={s.section}>
           <h2>Gate library</h2>
-          <p>Face-on views of the glass and its opening. Directional gates show one example.</p>
+          <p>Inspect the glass and its opening. DAYBREAK includes every opening and both complete crystal layouts.</p>
           <div className={s.gateLibrary}>
             {catalog.map(({ volume, gates }) => (
               <div key={volume.id} id={`gates-${volume.id}`} className={gates.length > 1 ? s.gateGroupWide : s.gateGroup}>
                 <h3>{volume.subtitle} / {volume.name}</h3>
-                {volume.id === 'drift' && <div className={s.angle}>
+                {volume.id === 'daybreak' && <div className={s.angle}>
                   <label htmlFor="debug-gate-angle">DAYBREAK specimen angle</label>
                   <input id="debug-gate-angle" type="range" min="-45" max="45" value={gateAngle} disabled={!modelReady}
-                    onChange={event => {
-                      const value = event.currentTarget.valueAsNumber;
-                      setGateAngle(value);
-                      models.current?.drawGates(value);
-                    }} />
+                    onChange={event => setGateAngle(event.currentTarget.valueAsNumber)} />
                   <output htmlFor="debug-gate-angle">{gateAngle}°</output>
                 </div>}
                 <div className={gates.length > 1 ? s.trio : s.gateSingle}>
                   {gates.map(kind => {
                     const { label, note } = gateDescription(kind);
+                    const openings = isDaybreakGate(kind) ? daybreakGates[kind].openings : undefined;
+                    const open = isDaybreakGate(kind) ? gateOpenings[kind] ?? (openings?.length === 4 ? -1 : 0) : undefined;
                     return (
-                    <figure key={kind} className={s.card}>
-                      <Preview id={kind} label={`${label} gate`} />
-                      <figcaption className={s.caption}><strong className={s.gateName}>{label}</strong><p>{note}</p></figcaption>
-                    </figure>
+                      <figure key={kind} className={s.card}>
+                        <Preview id={kind} label={`${label} gate`} open={open} />
+                        <figcaption className={s.caption}>
+                          <strong className={s.gateName}>{label}</strong><p>{note}</p>
+                          {isDaybreakGate(kind) && daybreakGates[kind].openings.length > 1 && <label className={s.surfaceSelect}>{label} opening <select
+                            aria-label={`${label} opening`} value={open}
+                            disabled={!modelReady} onChange={event => {
+                              const value = Number(event.currentTarget.value);
+                              setGateOpenings(previous => ({ ...previous, [kind]: value }));
+                            }}>
+                            {openings?.length === 4 && <option value={-1}>Complete layout</option>}
+                            {openings?.map((name, index) => <option key={name} value={index}>
+                              {openings.length === 4 ? `${index + 1} · ${name}` : name}
+                            </option>)}
+                          </select></label>}
+                        </figcaption>
+                      </figure>
                     );
                   })}
                 </div>

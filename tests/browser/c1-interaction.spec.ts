@@ -186,8 +186,8 @@ test('the settings-only dynamic lights switch persists and pulses through silent
 });
 
 test('fixed scenes respond in all four volumes while reduced motion leaves the baseline intact', async ({ page }) => {
-  for (const volume of ['elsewhere', 'drift', 'descent', 'orbit']) {
-    const t = ({ elsewhere: 97.58, drift: 109.15, descent: 103.72, orbit: 100.08 })[volume];
+  for (const volume of ['elsewhere', 'daybreak', 'descent', 'orbit']) {
+    const t = ({ elsewhere: 97.58, daybreak: 109.15, descent: 103.72, orbit: 100.08 })[volume];
     const url = `/?t=${t}&vol=${volume}&q=low&dbg=1&ui=0&align=1`;
     await page.goto(url);
     await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBe(1);
@@ -212,11 +212,11 @@ test('starting while the wheel is moving starts the intended course', async ({ p
   await wheel.press('ArrowDown');
   await expect(wheel).toHaveAttribute('data-moving', 'true');
   await wheel.press('x');
-  await expect(page).toHaveURL(/vol=drift/);
+  await expect(page).toHaveURL(/vol=daybreak/);
   await expect(page.locator('#hud')).toBeVisible();
   await expect(volume(page)).toContainText('DAYBREAK');
   expect((await diagnostics(page)).phase).toBe('playing');
-  expect((await diagnostics(page)).renderedVolume).toBe('drift');
+  expect((await diagnostics(page)).renderedVolume).toBe('daybreak');
 });
 
 test('sound button shares mute with Settings while hover controls the music tooltip', async ({ page }) => {
@@ -308,6 +308,6 @@ test('course and mode choices keep the menu corridor running until the start but
   await expect(page.locator('#hud')).toBeHidden();
   await page.getByRole('button', { name: 'START · PRESS X', exact: true }).click();
   await expect(page.locator('#hud')).toBeVisible();
-  await expect.poll(async () => (await diagnostics(page)).renderedVolume).toBe('drift');
+  await expect.poll(async () => (await diagnostics(page)).renderedVolume).toBe('daybreak');
   expect((await diagnostics(page)).renderedMode).toBe('sightseeing');
 });

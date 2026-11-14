@@ -185,13 +185,13 @@ class VolumeScene {
     this.updatePickup(sim);
 
     if (sim.phase === 'playing') {
-      const lensPulse = this.volume.id !== 'drift' && sim.mode === 'standard'
+      const lensPulse = this.volume.id !== 'daybreak' && sim.mode === 'standard'
         ? (0.5 + 0.5 * Math.cos(sim.beat * Math.PI * 2)) ** 2 * 0.65 : 0;
       this.setFov(BASE_FOV + lensPulse + sim.boostLens * 7 + Math.min(sim.speed, 56) * 0.045 + width);
     }
     if (sim.phase === 'menu') {
       this.setFov(BASE_FOV);
-      if (!this.scenic) this.tunnel.pulse(this.volume.id === 'drift' ? 0 : (1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, dynamics);
+      if (!this.scenic) this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : (1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, dynamics);
       return { focus: null, locked: false };
     }
     if (sim.phase === 'results' || (sim.phase === 'crash' && previousPhase === 'crash')) {
@@ -206,14 +206,14 @@ class VolumeScene {
       this.hue = THREE.MathUtils.lerp(hue[index % hue.length], hue[(index + 1) % hue.length],
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
       this.tunnel.setHue((this.hue + 1) % 1);
-      this.tunnel.pulse(this.volume.id === 'drift' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
+      this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
     }
 
     let focus = 46;
     let aimed: SceneGate | undefined;
     const scale = modeScale(sim.mode);
-    const microContrast = this.volume.id === 'elsewhere' || this.volume.id === 'drift' ? glassMicroContrast(sim.speed) : 1;
+    const microContrast = this.volume.id === 'elsewhere' || this.volume.id === 'daybreak' ? glassMicroContrast(sim.speed) : 1;
     for (const gate of previews) {
       const route = 'index' in gate ? undefined : gate.route;
       let visual = this.visuals.get(gate);

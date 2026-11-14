@@ -3,14 +3,14 @@ import { daybreakGateKinds, daybreakGates, isDaybreakGate } from '../core/daybre
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
 
-const sceneTimes = { elsewhere: 36, drift: 32, descent: 45, orbit: 38 };
+const sceneTimes = { elsewhere: 36, daybreak: 32, descent: 45, orbit: 38 };
 
 export const catalog = VOLUMES.map(volume => {
   const chart = chartFor(volume, 'normal');
   return {
     volume,
     seconds: sceneTimes[volume.id],
-    gates: volume.id === 'drift' ? daybreakGateKinds : [...new Set(chart.map(gate => gate.kind))],
+    gates: volume.id === 'daybreak' ? daybreakGateKinds : [...new Set(chart.map(gate => gate.kind))],
     gateCount: chart.length,
   };
 });
@@ -19,16 +19,15 @@ const gateNotes = {
   iris: 'One open wedge around a solid hub.',
   square: 'Fixed square opening at the centre.',
   diamond: 'Fixed diamond opening at the centre.',
-  shutter: 'One open band. The slats can run across or down.',
   lattice: 'One missing outer plate. The centre stays solid.',
   aperture: 'A round opening offset from the centre.',
 };
 
 export function gateDescription(kind: GateKind) {
   if (isDaybreakGate(kind)) {
-    const { label, family, missing } = daybreakGates[kind];
-    const pane = family === 'A' ? 'middle' : ['left', 'upper-right', 'lower'][missing];
-    return { label, note: `${family} · Fixed profile. The ${pane} pane of the original layout is open.` };
+    const { label, openings } = daybreakGates[kind];
+    return { label, note: openings.length === 4 ? 'One radial slice opens around a solid octagonal hub.'
+      : kind === 'daybreak-vertical' ? 'Fixed tall opening with four clipped corners.' : 'Fixed wide hexagonal opening.' };
   }
   return { label: kind, note: gateNotes[kind] };
 }

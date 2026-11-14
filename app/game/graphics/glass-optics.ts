@@ -1,5 +1,8 @@
 import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
 
+export const GLASS_RIM_SEGMENTS = 8;
+export const GLASS_SEAM_SEGMENTS = 16;
+
 export function glassMicroContrast(speed: number) {
   const t = Math.max(0, Math.min(1, (speed - 28) / (43 - 28)));
   return 1 - 0.20 * t * t * (3 - 2 * t);
@@ -31,9 +34,10 @@ uniform float uFade;
 uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond, 3: DAYBREAK
 uniform float uOpen;
 uniform float uMicroContrast;
-uniform vec4 uCutA;
-uniform vec4 uCutB;
-uniform vec4 uJoint;
+uniform vec4 uOpeningEdges[${GLASS_RIM_SEGMENTS}];
+uniform vec4 uPaneSeams[${GLASS_SEAM_SEGMENTS}];
+uniform int uOpeningEdgeCount;
+uniform int uPaneSeamCount;
 
 const float A = ${SECTION.a};
 const float B = ${SECTION.b};
@@ -47,10 +51,6 @@ const float INV_SQRT2 = ${Math.SQRT1_2};
 float segmentDistance(vec2 p, vec2 a, vec2 b) {
   vec2 d = b - a;
   return length(p - a - d * clamp(dot(p - a, d) / dot(d, d), 0.0, 1.0));
-}
-
-float cutDistance(vec2 p, vec4 cut) {
-  return all(equal(cut.xy, cut.zw)) ? 100.0 : segmentDistance(p, cut.xy, cut.zw);
 }
 
 float boxSdf(vec2 p, float halfSize) {
@@ -139,10 +139,20 @@ void main() {
     opening = diamond ? q.x + q.y < ${DIAMOND_EXTENT} : max(q.x, q.y) < ${SQUARE_HALF};
     seam = diamond ? min(q.x, q.y) : abs(q.x - q.y) * INV_SQRT2;
   } else {
-    // The two solid pane meshes already bound the aperture, including the bevel.
+    // Polygon meshes already bound the aperture, including the bevel.
     opening = false;
-    rim = min(cutDistance(p, uCutA), cutDistance(p, uCutB));
-    seam = cutDistance(p, uJoint);
+    rim = 100.0;
+    seam = 100.0;
+    for (int i = 0; i < ${GLASS_RIM_SEGMENTS}; i++) {
+      if (i >= uOpeningEdgeCount) break;
+      vec4 edge = uOpeningEdges[i];
+      rim = min(rim, segmentDistance(p, edge.xy, edge.zw));
+    }
+    for (int i = 0; i < ${GLASS_SEAM_SEGMENTS}; i++) {
+      if (i >= uPaneSeamCount) break;
+      vec4 edge = uPaneSeams[i];
+      seam = min(seam, segmentDistance(p, edge.xy, edge.zw));
+    }
   }
   // The wall vertices are already clipped by the aperture profile. A
   // coplanar radial wall must survive rounding on the half-open sector edge.

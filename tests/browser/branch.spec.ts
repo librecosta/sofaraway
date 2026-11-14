@@ -143,7 +143,7 @@ for (const mode of ['standard', 'sightseeing'] as const) test(`${mode} branch su
     const next = window.b0Harness.branchState();
     const abandoned = window.b0Harness.advanceAndPause(329);
     window.b0Harness.returnToMenu();
-    await window.b0Harness.select('drift');
+    await window.b0Harness.select('daybreak');
     const switched = window.b0Harness.branchState();
     window.b0Harness.dispose();
     return { merged, next, abandoned, switched };

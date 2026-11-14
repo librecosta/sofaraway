@@ -1,7 +1,7 @@
 import type { BranchLayout, RouteKind, RouteSide } from './core/branches';
 import type { EncoreResult, OutroPhase } from './core/encore';
 
-export type VolumeId = 'elsewhere' | 'drift' | 'descent' | 'orbit';
+export type VolumeId = 'elsewhere' | 'daybreak' | 'descent' | 'orbit';
 export const playModes = ['standard', 'sightseeing'] as const;
 export type PlayMode = typeof playModes[number];
 export const difficulties = ['easy', 'normal', 'hard'] as const;

@@ -32,23 +32,26 @@ test('recoverable legacy bonus counts toward Best and each new Encore run compar
   expect(recordFor(parseRecords(JSON.stringify(records)), 'elsewhere', 'normal', 'standard').best).toBe(10900);
 });
 
-test('Skyglass records remain independent of both legacy charts after a round trip', () => {
+test('Crystal records remain independent of all legacy charts after a round trip', () => {
   const last = { score: 800, outcome: 'ESCAPED' } as const;
   const legacy = { standard: { drift: { normal: { best: 1200, last } }, daybreak: { normal: { best: 1900, last } } },
-    sightseeing: { drift: { last }, daybreak: { last } } };
-  const records = parseRecords(JSON.stringify({ version: 1, ...legacy }));
-  expect(recordFor(records, 'drift', 'normal', 'standard')).toEqual({ best: null, last: null });
-  expect(recordFor(records, 'drift', 'normal', 'sightseeing').last).toBeNull();
+    sightseeing: { drift: { last }, daybreak: { last }, 'daybreak-skyglass': { last } } };
+  const skyglass = { normal: { best: 2500, last } };
+  const records = parseRecords(JSON.stringify({ version: 1, ...legacy, standard: { ...legacy.standard, 'daybreak-skyglass': skyglass } }));
+  expect(recordFor(records, 'daybreak', 'normal', 'standard')).toEqual({ best: null, last: null });
+  expect(recordFor(records, 'daybreak', 'normal', 'sightseeing').last).toBeNull();
   const daybreak = { ...last, score: 400 };
-  expect(recordRun(records, 'drift', 'normal', 'standard', daybreak)).toBe(true);
-  recordRun(records, 'drift', 'normal', 'sightseeing', daybreak);
+  expect(recordRun(records, 'daybreak', 'normal', 'standard', daybreak)).toBe(true);
+  recordRun(records, 'daybreak', 'normal', 'sightseeing', daybreak);
   const reloaded = parseRecords(JSON.stringify(records));
   expect(reloaded.standard.drift).toEqual(legacy.standard.drift);
   expect(reloaded.sightseeing.drift).toEqual(legacy.sightseeing.drift);
   expect(reloaded.standard.daybreak).toEqual(legacy.standard.daybreak);
   expect(reloaded.sightseeing.daybreak).toEqual(legacy.sightseeing.daybreak);
-  expect(recordFor(reloaded, 'drift', 'normal', 'standard')).toEqual({ best: 400, last: daybreak });
-  expect(recordFor(reloaded, 'drift', 'normal', 'sightseeing').last).toEqual(daybreak);
+  expect(reloaded.standard['daybreak-skyglass']).toEqual(skyglass);
+  expect(reloaded.sightseeing['daybreak-skyglass']).toEqual(legacy.sightseeing['daybreak-skyglass']);
+  expect(recordFor(reloaded, 'daybreak', 'normal', 'standard')).toEqual({ best: 400, last: daybreak });
+  expect(recordFor(reloaded, 'daybreak', 'normal', 'sightseeing').last).toEqual(daybreak);
 });
 
 test('records reject invalid or unknown storage values and tolerate a missing browser', () => {

@@ -111,10 +111,10 @@ test('hydration loads the game on demand and keeps volume history working', asyn
   await expect(page.locator(start)).toBeEnabled();
   await expect(name).toContainText('ELSEWHERE');
 
-  for (const volume of ['drift', 'descent', 'orbit']) {
+  for (const volume of ['daybreak', 'descent', 'orbit']) {
     await page.goto('/?vol=' + volume + '&q=low');
     await expect(page.locator(start)).toBeEnabled();
-    await expect(name).toContainText(volume === 'drift' ? 'DAYBREAK' : volume.toUpperCase());
+    await expect(name).toContainText(volume.toUpperCase());
   }
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page).toHaveURL(/vol=elsewhere/);
@@ -172,7 +172,7 @@ test('missing WebGL2 keeps a usable fallback and Retry can recover', async ({ pa
       return type === 'webgl2' && !available ? null : Reflect.apply(original, this, [type, ...options]);
     } as typeof original;
   });
-  await page.goto('/?vol=drift&q=low');
+  await page.goto('/?vol=daybreak&q=low');
   const dialog = page.getByRole('dialog', { name: 'GRAPHICS UNSUPPORTED' });
   const retry = dialog.getByRole('button', { name: 'TRY AGAIN' });
   await expect(dialog.getByRole('alert')).toContainText(/WebGL2/i);

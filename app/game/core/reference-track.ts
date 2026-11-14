@@ -1,6 +1,6 @@
 import type { PlayMode } from '../contracts';
 import { REJOIN_BEAT, routeCharts, SPLIT_BEAT } from './branches';
-import { chartFor } from './chart';
+import { chartFor, daybreakPacing } from './chart';
 import { STEP } from './clock';
 import { SIGHTSEEING_SPEED } from './sightseeing';
 import type { VolumeDefinition } from './volumes';
@@ -26,7 +26,8 @@ export class ReferenceTrack {
     this.duration = volume.beats * this.secondsPerBeat;
     const normal = chartFor(volume, 'normal');
     const inJunction = (beat: number) => beat >= SPLIT_BEAT && beat < REJOIN_BEAT;
-    const gates = volume.id === 'elsewhere'
+    const gates = volume.id === 'daybreak' ? daybreakPacing(volume).flatMap(section => section.beats.map(beat => ({ beat })))
+      : volume.id === 'elsewhere'
       ? [...normal.filter(gate => !inJunction(gate.beat)),
         ...routeCharts(normal.filter(gate => inJunction(gate.beat))).main].sort((a, b) => a.beat - b.beat)
       : normal;

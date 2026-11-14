@@ -1,17 +1,20 @@
 import * as THREE from 'three';
 import { HOLE_R, lanePoint, SECTION, WALL } from '../core/collision';
 import type { Axis } from '../core/collision';
-import { daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
+import { daybreakProfile, isDaybreakGate } from '../core/daybreak-gates';
 import type { GateKind } from '../core/volumes';
 import { buildGlassGeometry, GLASS_THICKNESS, isOpticalGlass } from './glass-geometry';
-import type { GlassKind } from './glass-geometry';
-import { GLASS_FRAG, GLASS_VERT } from './glass-optics';
+import { GLASS_FRAG, GLASS_RIM_SEGMENTS, GLASS_SEAM_SEGMENTS, GLASS_VERT } from './glass-optics';
 
 export const THICKNESS = GLASS_THICKNESS;
 
-const styles = { iris: 0, square: 1, diamond: 2, shutter: 1, lattice: 2, aperture: 3 } as const;
-const cut = (edge?: (typeof daybreakGates)[keyof typeof daybreakGates]['rim'][number]) =>
-  edge ? new THREE.Vector4(...edge[0], ...edge[1]) : new THREE.Vector4(0, 0, 0, 0);
+const styles = { iris: 0, square: 1, diamond: 2, lattice: 2, aperture: 3 } as const;
+type Edges = ReturnType<typeof daybreakProfile>['rim'];
+const packEdges = (edges: Edges, count: number) => {
+  const values = new Float32Array(count * 4);
+  for (const [i, [from, to]] of edges.entries()) values.set([...from, ...to], i * 4);
+  return values;
+};
 
 const VERT = /* glsl */`
 varying vec2 vUv;
@@ -37,7 +40,6 @@ uniform float uFade;
 uniform vec3  uHull;
 uniform vec2  uSize;
 uniform float uStyle;
-uniform float uAxis;
 uniform vec2  uHolePos;  // aperture centre in section units
 
 void main(){
@@ -96,43 +98,18 @@ void main(){
     return;
   }
 
-  /* ---- shutter glass: three horizontal bands, one of them open ---- */
-  if (uStyle > 0.5) {
-    float t = mix(vUv.y, vUv.x, uAxis);
-    float b = t * 3.0;
-    int band = int(floor(b));
-    if (abs(float(band) - uOpen) < 0.5) discard;
-
-    float f = fract(b);
-    float edge = min(f, 1.0 - f);
-
-    float slat = 0.5 + 0.5 * sin(t * 240.0 - uTime * 6.0);
-    float bandTone = 0.5 + 0.5 * sin(t * 18.0 + uTime * 1.1);
-    float rimT = exp(-edge * 24.0);
-
-    vec3 glass = uColor * (0.42 + 0.65 * slat) * (0.55 + 0.7 * bandTone);
-    glass *= mix(0.6, 1.25, t);
-    vec3 col = glass + uColor * rimT * 1.5;
-
-    float a = 0.08 + 0.065 * slat + rimT * 0.5;
-    a *= uFade;
-
-    gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
-    return;
-  }
-
   discard;
 }
 `;
 
 /** Owned by the volume (or a preview). Individual gates only own their material. */
 export class GateGeometries {
-  private readonly cache = new Map<GlassKind | number, THREE.BufferGeometry>();
+  private readonly cache = new Map<string, THREE.BufferGeometry>();
   private plane?: THREE.PlaneGeometry;
 
   get(kind: GateKind, open: number) {
     if (!isOpticalGlass(kind)) return this.plane ??= new THREE.PlaneGeometry(WALL.w, WALL.h);
-    const key = kind === 'iris' ? open : kind;
+    const key = kind === 'iris' || isDaybreakGate(kind) ? `${kind}:${open}` : kind;
     let geometry = this.cache.get(key);
     if (!geometry) {
       geometry = buildGlassGeometry(kind, open);
@@ -155,7 +132,7 @@ export class GateVisual {
 
   constructor(geometries: GateGeometries, obstacle: GateKind, open: number, axis: Axis) {
     const glass = isOpticalGlass(obstacle);
-    const polygon = isDaybreakGate(obstacle) ? daybreakGates[obstacle] : undefined;
+    const polygon = isDaybreakGate(obstacle) ? daybreakProfile(obstacle, open) : undefined;
     const geometry = geometries.get(obstacle, open);
     this.mat = new THREE.ShaderMaterial({
       vertexShader: glass ? GLASS_VERT : VERT,
@@ -167,12 +144,15 @@ export class GateVisual {
         uHit: { value: 0 },
         uFade: { value: 1 },
         uStyle: { value: isDaybreakGate(obstacle) ? 3 : styles[obstacle] },
-        ...(polygon ? { uCutA: { value: cut(polygon.rim[0]) }, uCutB: { value: cut(polygon.rim[1]) },
-          uJoint: { value: cut(polygon.seam[0]) } } : {}),
+        ...(polygon ? {
+          uOpeningEdges: { value: packEdges(polygon.rim, GLASS_RIM_SEGMENTS) },
+          uPaneSeams: { value: packEdges(polygon.seams, GLASS_SEAM_SEGMENTS) },
+          uOpeningEdgeCount: { value: polygon.rim.length },
+          uPaneSeamCount: { value: polygon.seams.length },
+        } : {}),
         ...(glass ? { uMicroContrast: { value: 1 } } : {
           uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
           uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
-          uAxis: { value: axis },
           uHolePos: { value: new THREE.Vector2(...lanePoint(obstacle, open, axis)) },
         }),
       },

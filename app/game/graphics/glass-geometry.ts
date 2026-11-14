@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
-import { daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
+import { daybreakProfile, isCabinEdge, isDaybreakGate } from '../core/daybreak-gates';
 import type { DaybreakGateKind } from '../core/daybreak-gates';
 import type { GateKind } from '../core/volumes';
 
@@ -71,12 +71,20 @@ function profiles(kind: ClassicGlassKind, open: number, inset: number) {
 }
 
 function insetPane(pane: THREE.Vector2[]) {
+  const inset = pane.map((p, i) => {
+    const next = pane[(i + 1) % pane.length];
+    return isCabinEdge([p.x, p.y], [next.x, next.y]) ? 0 : BEVEL_WIDTH;
+  });
   return pane.map((p, i) => {
-    const previous = pane[(i + pane.length - 1) % pane.length];
+    const last = (i + pane.length - 1) % pane.length;
+    const previous = pane[last];
     const next = pane[(i + 1) % pane.length];
     const a = new THREE.Vector2(previous.y - p.y, p.x - previous.x).normalize();
     const b = new THREE.Vector2(p.y - next.y, next.x - p.x).normalize();
-    return p.clone().addScaledVector(a.clone().add(b), BEVEL_WIDTH / (1 + a.dot(b)));
+    const dot = a.dot(b);
+    const bevel = p.clone().addScaledVector(a.clone().add(b), (inset[last] + inset[i]) / (2 * (1 + dot)));
+    if (inset[last] !== inset[i]) bevel.addScaledVector(a.sub(b), (inset[last] - inset[i]) / (2 * (1 - dot)));
+    return bevel;
   });
 }
 
@@ -117,11 +125,12 @@ export function buildGlassGeometry(kind: GlassKind, open: number) {
     }
   };
   if (isDaybreakGate(kind)) {
-    for (const pane of daybreakGates[kind].solid) {
-      const throat = pane.map(([x, y]) => new THREE.Vector2(x, y));
-      const bevel = insetPane(throat);
-      appendPane([bevel.reverse()], [throat.reverse()]);
-    }
+    const { pane, hole } = daybreakProfile(kind, open);
+    const vectors = (polygon: typeof pane) => polygon.map(([x, y]) => new THREE.Vector2(x, y));
+    const contours = [vectors(pane).reverse()];
+    if (hole) contours.push(vectors(hole));
+    const bevel = contours.map(loop => insetPane([...loop].reverse()).reverse());
+    appendPane(bevel, contours);
   } else {
     appendPane(profiles(kind, open, BEVEL_WIDTH), profiles(kind, open, 0));
   }

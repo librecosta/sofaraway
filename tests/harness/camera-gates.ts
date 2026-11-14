@@ -149,12 +149,12 @@ export function inspectCameraAndGates() {
         }
       }
     }
-    const drift = VOLUMES[1];
-    const driftPath = new Simulation(drift).path;
-    graphics.load(drift, driftPath);
+    const daybreak = VOLUMES[1];
+    const daybreakPath = new Simulation(daybreak).path;
+    graphics.load(daybreak, daybreakPath);
     const scene = Reflect.get(graphics, 'volume') as { visuals: Map<RunGate, GateVisual>; path: Path };
     const runToGate = (mode: PlayMode, boosting: boolean) => {
-      const sim = new Simulation(drift, flags, driftPath, mode);
+      const sim = new Simulation(daybreak, flags, daybreakPath, mode);
       sim.start('normal', 0, undefined, mode);
       while (sim.beat < 56) sim.step(STEP, idleInput);
       const gate = (Reflect.get(sim, 'chart') as RunGate[]).find(gate => gate.beat >= 64)!;

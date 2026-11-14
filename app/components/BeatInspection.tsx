@@ -166,7 +166,7 @@ export function BeatInspection() {
       <div className={s.channelControls} role="group" aria-label="Beat phase">
         <button disabled={!ready || kick === undefined} onClick={() => seek(kick!)}>Kick Peak</button>
         <button disabled={!ready || snare === undefined} onClick={() => seek(snare!)}>Snare Peak</button>
-        {id === 'drift' && <button disabled={!ready || fill === undefined} onClick={() => seek(fill!)}>Fill Peak</button>}
+        {id === 'daybreak' && <button disabled={!ready || fill === undefined} onClick={() => seek(fill!)}>Fill Peak</button>}
         <button disabled={!ready || (kick === undefined && snare === undefined)} onClick={() => seek(valley())}>Beat Valley</button>
         <button disabled={!ready} onClick={() => playing ? seek(shownBeat.current) : setPlaying(true)}>
           {playing ? 'Pause' : 'Play continuously'}

@@ -6,7 +6,7 @@ test('@perf comparable frame, resource and restart samples', async ({ browser })
   const profiles = [
     ...VOLUMES.map(({ id }) => [id, 'low', 960, 540, 1, false] as const),
     ['elsewhere', 'high', 960, 540, 2, false],
-    ['drift', 'auto', 393, 720, 2, true],
+    ['daybreak', 'auto', 393, 720, 2, true],
   ] as const;
   for (const [vol, q, width, height, dpr, mobile] of profiles) {
     const context = await browser.newContext({

@@ -139,7 +139,7 @@ test('DAYBREAK lighting peaks at an authored onset with the same rendered statio
   await studio.getByRole('button', { name: 'Open beat inspection' }).click();
   const canvas = studio.getByRole('img');
   await expect(canvas).toHaveAttribute('data-ready', 'true');
-  await studio.getByLabel('Volume', { exact: true }).selectOption('drift');
+  await studio.getByLabel('Volume', { exact: true }).selectOption('daybreak');
   await studio.getByLabel('Section', { exact: true }).selectOption({ label: 'SUNBURST' });
   await studio.getByLabel('Quality', { exact: true }).selectOption('low');
   await studio.getByRole('button', { name: 'Go to beat’s station' }).click();

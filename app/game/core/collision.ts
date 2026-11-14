@@ -1,5 +1,5 @@
 import type { GateKind } from './volumes';
-import { daybreakGates, daybreakOpening, isDaybreakGate } from './daybreak-gates';
+import { daybreakGates, daybreakOpening, daybreakProfile, isDaybreakGate } from './daybreak-gates';
 import { SECTION } from './section';
 
 export { SECTION } from './section';
@@ -32,14 +32,14 @@ export const playerViewOffset = (x: number, y: number, extraWidth = 0) =>
   clampSection(x * 0.88, y * 0.88, 0.62, extraWidth);
 
 export function opening(obstacle: GateKind, sector: number) {
-  if (obstacle === 'square' || obstacle === 'diamond' || isDaybreakGate(obstacle)) return 0;
-  const lanes = obstacle === 'lattice' ? 9 : obstacle === 'shutter' ? 3 : 8;
+  if (obstacle === 'square' || obstacle === 'diamond') return 0;
+  const lanes = isDaybreakGate(obstacle) ? daybreakGates[obstacle].openings.length : obstacle === 'lattice' ? 9 : 8;
   const pick = ((sector % lanes) + lanes) % lanes;
   return obstacle === 'lattice' && pick === 4 ? 5 : pick;
 }
 
 export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point {
-  if (isDaybreakGate(obstacle)) return [...daybreakGates[obstacle].target];
+  if (isDaybreakGate(obstacle)) return [...daybreakProfile(obstacle, index).target];
   if (obstacle === 'square' || obstacle === 'diamond') return [0, 0];
   if (obstacle === 'lattice') {
     return [
@@ -47,17 +47,13 @@ export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point 
       ((Math.floor(index / 3) + 0.5) / 3 - 0.5) * WALL.h,
     ];
   }
-  if (obstacle === 'shutter') {
-    const v = (index + 0.5) / 3 - 0.5;
-    return axis ? [v * WALL.w, 0] : [0, v * WALL.h];
-  }
   const angle = index * Math.PI / 4;
   return [Math.cos(angle) * 2.15, Math.sin(angle) * 2.15];
 }
 
 /** The shader clips to the same octagonal section. Inputs are clamped inside it. */
 export function canPass(obstacle: GateKind, open: number, axis: Axis, x: number, y: number) {
-  if (isDaybreakGate(obstacle)) return daybreakOpening(obstacle, x, y);
+  if (isDaybreakGate(obstacle)) return daybreakOpening(obstacle, open, x, y);
   const u = x / WALL.w + 0.5;
   const v = y / WALL.h + 0.5;
   switch (obstacle) {
@@ -71,8 +67,6 @@ export function canPass(obstacle: GateKind, open: number, axis: Axis, x: number,
     }
     case 'lattice':
       return open !== 4 && Math.floor(v * 3) * 3 + Math.floor(u * 3) === open;
-    case 'shutter':
-      return Math.floor((axis ? u : v) * 3) === open;
     case 'iris': {
       if (Math.hypot(x, y) < HUB_R) return false;
       const turn = Math.PI * 2;

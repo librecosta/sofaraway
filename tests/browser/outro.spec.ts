@@ -224,7 +224,7 @@ test('live Encore survives context loss, retries, and menu return with bounded m
     const replay = window.b0Harness.advanceAndPause(350);
     const repeated = window.b0Harness.snapshot();
     window.b0Harness.returnToMenu();
-    await window.b0Harness.select('drift');
+    await window.b0Harness.select('daybreak');
     return { replay, repeated, next: window.b0Harness.branchState() };
   });
   await page.keyboard.up('Shift');

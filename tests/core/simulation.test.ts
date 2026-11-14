@@ -44,7 +44,7 @@ describe.each(VOLUMES.flatMap((volume, index) => {
   });
 });
 
-test('point collision respects all four opening shapes', () => {
+test('point collision respects the gate opening boundaries', () => {
   expect(canPass('iris', 0, 0, 1, 0)).toBe(false);
   expect(canPass('iris', 0, 0, 1.02, 0)).toBe(true);
   expect(canPass('lattice', 5, 0, 1.26, 0)).toBe(false);
@@ -52,9 +52,9 @@ test('point collision respects all four opening shapes', () => {
   expect(opening('lattice', 4)).toBe(5);
   expect(canPass('aperture', 0, 0, 1.05, 0)).toBe(false);
   expect(canPass('aperture', 0, 0, 2.15, 0.94)).toBe(true);
-  expect(canPass('shutter', 2, 0, 0, 2)).toBe(true);
-  expect(canPass('shutter', 2, 1, 0, 2)).toBe(false);
-  expect(canPass('shutter', 2, 1, ...lanePoint('shutter', 2, 1))).toBe(true);
+  expect(canPass('daybreak-horizontal', 0, 0, 1.5, 0)).toBe(true);
+  expect(canPass('daybreak-vertical', 0, 0, 1.5, 0)).toBe(false);
+  expect(canPass('daybreak-vertical', 0, 0, ...lanePoint('daybreak-vertical', 0, 0))).toBe(true);
 });
 
 test('a hard run can terminate once, settle, and restart cleanly', () => {

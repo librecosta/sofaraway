@@ -53,7 +53,7 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
   await expect(difficulty).toHaveText('NORMAL');
   await expect(record).toContainText(/BEST SCORE\s*—/);
-  await page.goto('/?vol=drift&diff=impossible&t=2&dbg=1&q=low');
+  await page.goto('/?vol=daybreak&diff=impossible&t=2&dbg=1&q=low');
   await expect(page.locator('#errbox')).toContainText('"speed":24');
   expect(await page.evaluate(() => localStorage.getItem('sofaraway.best'))).toBe('999999');
 });
@@ -146,7 +146,7 @@ test('blocked storage leaves the real menu and a finished run usable', async ({ 
 });
 
 test('the real Sightseeing result saves a Last Visit while a fixed capture cannot overwrite records', async ({ page }) => {
-  await page.goto('http://127.0.0.1:8091/?vol=drift&q=low');
+  await page.goto('http://127.0.0.1:8091/?vol=daybreak&q=low');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   const result = await page.evaluate(async key => {
     const moduleUrl = performance.getEntriesByType('resource').find(entry =>
@@ -175,9 +175,9 @@ test('the real Sightseeing result saves a Last Visit while a fixed capture canno
   }, key);
   expect(result.snapshot).toMatchObject({ mode: 'sightseeing', phase: 'results', newBest: false });
   expect(JSON.parse(result.raw)).toEqual({ version: 1, standard: {}, sightseeing: {
-    'daybreak-skyglass': { last: { score: result.snapshot.score, outcome: result.snapshot.result?.title } },
+    'daybreak-crystal': { last: { score: result.snapshot.score, outcome: result.snapshot.result?.title } },
   } });
-  await page.goto('http://127.0.0.1:8091/?vol=drift&t=144.8&align=1&q=low');
+  await page.goto('http://127.0.0.1:8091/?vol=daybreak&t=144.8&align=1&q=low');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(result.raw);
 });

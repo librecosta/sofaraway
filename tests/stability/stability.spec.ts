@@ -19,8 +19,8 @@ const profiles: { volume: VolumeId; quality: QualityTier; width: number; height:
   { volume: 'descent', quality: 'high', width: 960, height: 540, dpr: 1 },
   { volume: 'orbit', quality: 'low', width: 960, height: 540, dpr: 1 },
   { volume: 'orbit', quality: 'high', width: 960, height: 540, dpr: 1 },
-  { volume: 'drift', quality: 'auto', width: 390, height: 664, dpr: 2, mobile: true },
-  { volume: 'drift', quality: 'auto', width: 390, height: 664, dpr: 3, mobile: true },
+  { volume: 'daybreak', quality: 'auto', width: 390, height: 664, dpr: 2, mobile: true },
+  { volume: 'daybreak', quality: 'auto', width: 390, height: 664, dpr: 3, mobile: true },
 ];
 
 function log(scenario: string, fields: object) {
@@ -143,7 +143,7 @@ test('ending remains legible through the light cue and leaves the other volumes 
     await studio.getByRole('button', { name: 'Afterglow Peak' }).click();
     await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
     await canvas.screenshot({ path: info.outputPath('sightseeing.png') });
-    if (haveReference) for (const id of ['drift', 'descent', 'orbit']) {
+    if (haveReference) for (const id of ['daybreak', 'descent', 'orbit']) {
       const shots: Buffer[] = [];
       for (const build of [reference, candidate]) {
         await page.goto(`${build.client}/?vol=${id}&t=83&q=high&align=1&ui=0&dbg=1`);
@@ -272,7 +272,7 @@ test('benchmark WebKit mobile compositor at DPR 2 and 3', async () => {
         const errors = captureErrors(page);
         try {
           await openHarness(page, build);
-          const init = await page.evaluate(() => window.stability.mount('drift', 'auto'));
+          const init = await page.evaluate(() => window.stability.mount('daybreak', 'auto'));
           await page.evaluate(() => window.stability.start());
           const play = await page.evaluate(() => window.stability.capture(3600));
           const live = await page.evaluate(() => window.stability.metrics());
@@ -334,7 +334,7 @@ test('ELSEWHERE material views and unaffected volumes @m0', async ({ browser }, 
       ['elsewhere', 'tunnel', '36', 'high', 'standard'],
       ['elsewhere', 'floor', '45', 'low', 'sightseeing'],
       ['elsewhere', 'junction', '156.328125', 'high', 'standard'],
-      ...(['drift', 'descent', 'orbit'] as const).map(id => [id, id, '83', 'high', 'standard']),
+      ...(['daybreak', 'descent', 'orbit'] as const).map(id => [id, id, '83', 'high', 'standard']),
     ];
     for (const [id, name, time, quality, mode] of cases) {
       const images: Buffer[] = [];
@@ -464,7 +464,7 @@ test('fixed chapter frames preserve a low key, legible ELSEWHERE and other-volum
       }
       return ['elsewhere', name, time, quality, boost, mode, side] as const;
     }),
-    ...(['drift', 'descent', 'orbit'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
+    ...(['daybreak', 'descent', 'orbit'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
     for (const [id, name, time, quality, boost, mode, side] of all) {
       const captured: Buffer[] = [];
       const brightness: { shadow: number; middle: number; glare: number; mean: number; total: number }[] = [];
@@ -615,7 +615,7 @@ test('switching away from mixed gates keeps GPU resource counts bounded', async 
     };
     try {
       // Warm the renderer's sky geometry and shader before comparing counts.
-      await game.mount({ volumeId: 'drift', quality: 'high', diagnostics: {
+      await game.mount({ volumeId: 'daybreak', quality: 'high', diagnostics: {
         fixedTime: 113, autoplay: false, god: false, align: true, boost: false,
         mobileQuality: false, post: true, record: false, debug: true,
       } });
@@ -625,7 +625,7 @@ test('switching away from mixed gates keeps GPU resource counts bounded', async 
       const result = [counts()];
       for (let repeat = 0; repeat < 3; repeat++) {
         game.returnToMenu();
-        await game.select('drift');
+        await game.select('daybreak');
         game.returnToMenu();
         await game.select('elsewhere');
         result.push(counts());

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
 import type { Difficulty, GameRuntime, GameSnapshot, PlayMode, QualityTier, VolumeId } from '../game/contracts';
 import { volumeById } from '../game/core/volumes';
@@ -31,7 +31,10 @@ function useMenuSnapshot(runtime: GameRuntime | null) {
 
 export function GameViewport() {
   const [search, setSearch] = useSearchParams();
-  const requested = volumeById(search.get('vol')).id;
+  const { pathname, hash } = useLocation();
+  const navigate = useNavigate();
+  const rawVolume = search.get('vol');
+  const requested = volumeById(rawVolume).id;
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [mount, setMount] = useState(0);
   const [panel, setPanel] = useState<'settings' | 'credits' | null>(null);
@@ -49,6 +52,13 @@ export function GameViewport() {
   const volumeTarget = useRef<VolumeId | null>(null);
   const previousRequest = useRef<VolumeId | null>(null);
   const keys = useRef<(key: string, event: KeyboardEvent) => boolean>(() => false);
+
+  useEffect(() => {
+    if (rawVolume !== 'drift') return;
+    const params = new URLSearchParams(search);
+    params.set('vol', requested);
+    void navigate({ pathname, search: `?${params.toString()}`, hash }, { replace: true, preventScrollReset: true });
+  }, [hash, navigate, pathname, rawVolume, requested, search]);
 
   function chooseVolume(id: VolumeId) {
     if (search.get('vol') === id) return;
