@@ -21,6 +21,10 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
   expect(debug.status()).toBe(308);
   expect(debug.headers()['location']).toBe('/debug/?vol=orbit');
   expect(await (await request.get('/debug/')).text()).toContain('name="robots" content="noindex"');
+  const inspector = await request.get('/debug/audio');
+  expect(inspector.status()).toBe(200);
+  expect(await inspector.text()).toContain('SoFaraway / Audio Inspector');
+  expect(await html.text()).not.toMatch(/<link[^>]+rel="modulepreload"[^>]+debug\.audio/);
 
   for (const path of ['/missing', '/missing/nested/', '/assets/obsolete-abcdef99.js', '/__spa-fallback.html']) {
     const response = await request.get(path);
@@ -35,11 +39,11 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
   const files = (await readdir('build/client', { recursive: true, withFileTypes: true }))
     .filter(file => file.isFile())
     .map(file => relative('build/client', file.parentPath + '/' + file.name).replaceAll('\\', '/'));
-  expect(files).toEqual(expect.arrayContaining(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'tools/render-audio.html',
+  expect(files).toEqual(expect.arrayContaining(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'debug/audio/index.html', 'tools/render-audio.html',
     'THIRD-PARTY-NOTICES.txt', 'licenses/SoFaraway.txt', 'licenses/OFL-Chakra-Petch.txt', 'licenses/OFL-Rajdhani.txt']));
   expect(await readFile('build/client/licenses/SoFaraway.txt', 'utf8')).toBe(await readFile('LICENSE', 'utf8'));
   const fingerprinted = /^assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
-  const metadata = new Set(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'tools/render-audio.html',
+  const metadata = new Set(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'debug/audio/index.html', 'tools/render-audio.html',
     'THIRD-PARTY-NOTICES.txt', 'licenses/SoFaraway.txt', 'licenses/OFL-Chakra-Petch.txt', 'licenses/OFL-Rajdhani.txt',
     '_headers', 'edgeone.json']);
   expect(files.filter(path => !fingerprinted.test(path) && !metadata.has(path))).toEqual([]);

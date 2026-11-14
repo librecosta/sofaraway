@@ -202,8 +202,9 @@ test('materials and the soundtrack controls are available without WebGL2', async
   await expect(page.locator('#environment canvas[data-ready=true]')).toHaveCount(2);
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
   await expect(page.locator('canvas[data-preview=surface-channel]')).toHaveAttribute('data-channel', 'normal');
-  await expect(page.getByRole('button', { name: 'Render to WAV' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();
+  await page.getByRole('link', { name: 'Open Audio Inspector' }).click();
+  await expect(page.getByRole('button', { name: 'Render to WAV' })).toBeEnabled();
 });
 
 test('the debug material renderer restores one context and redraws the lit specimens', async ({ page }) => {

@@ -43,38 +43,47 @@ export function oscillator(ctx: BaseAudioContext, destination: AudioNode, type: 
   return node;
 }
 
-export function envelope(ctx: BaseAudioContext, destination: AudioNode, time: number, length: number, level: number, attack: number, decay: number, sustain: number, release: number) {
+export function envelope(ctx: BaseAudioContext, destination: AudioNode, time: number, length: number, level: number, attack: number, decay: number, sustain: number, release: number, age = 0) {
   const out = gain(ctx, destination, 0);
   const hold = Math.min(time + length, time + attack + decay);
   const off = time + length, end = off + release;
-  out.gain.setValueAtTime(floor, time);
-  out.gain.linearRampToValueAtTime(level, time + attack);
-  out.gain.exponentialRampToValueAtTime(Math.max(floor, level * sustain), hold);
-  out.gain.setValueAtTime(Math.max(floor, level * sustain), off);
+  const sustained = Math.max(floor, level * sustain);
+  const resume = time + age;
+  const peak = time + attack;
+  const value = age === 0 ? floor : resume < peak ? floor + (level - floor) * age / attack
+    : resume < hold ? level * (sustained / level) ** ((resume - peak) / (hold - peak))
+    : resume < off ? sustained : sustained * (floor / sustained) ** ((resume - off) / release);
+  out.gain.setValueAtTime(value, resume);
+  if (peak > resume) out.gain.linearRampToValueAtTime(level, peak);
+  if (hold > resume) out.gain.exponentialRampToValueAtTime(sustained, hold);
+  if (off > resume) out.gain.setValueAtTime(sustained, off);
   out.gain.exponentialRampToValueAtTime(floor, end);
   return { out, end };
 }
 
-export function brightPluck(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, position: number) {
-  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .005, .11, .41, .085);
-  const cutoff = filter(ctx, out, 'lowpass', 3100, .86);
-  cutoff.frequency.setValueAtTime(3550, time);
-  cutoff.frequency.exponentialRampToValueAtTime(1430, time + .1);
-  const hz = noteHz(note);
-  oscillator(ctx, gain(ctx, cutoff, .76), 'triangle', hz, time, end, -3);
-  oscillator(ctx, gain(ctx, cutoff, .29), 'sawtooth', hz, time, end, 4);
-  oscillator(ctx, gain(ctx, cutoff, .12), 'sine', hz * 2, time, end);
+function filterSweep(cutoff: AudioParam, time: number, age: number, from: number, to: number, length: number) {
+  cutoff.setValueAtTime(from * (to / from) ** Math.min(1, age / length), time + age);
+  if (age < length) cutoff.exponentialRampToValueAtTime(to, time + length);
 }
 
-export function bassNote(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number) {
-  const { out, end } = envelope(ctx, bus, time, length, level, .011, .16, .57, .075);
-  const cutoff = filter(ctx, out, 'lowpass', 510, .68);
-  cutoff.frequency.setValueAtTime(860, time);
-  cutoff.frequency.exponentialRampToValueAtTime(390, time + .115);
+export function brightPluck(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, position: number, age = 0) {
+  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .005, .11, .41, .085, age);
+  const cutoff = filter(ctx, out, 'lowpass', 3100, .86);
+  filterSweep(cutoff.frequency, time, age, 3550, 1430, .1);
   const hz = noteHz(note);
-  oscillator(ctx, gain(ctx, cutoff, .79), 'triangle', hz, time, end);
-  oscillator(ctx, gain(ctx, cutoff, .30), 'sawtooth', hz, time, end);
-  oscillator(ctx, gain(ctx, cutoff, .18), 'sine', hz, time, end);
+  oscillator(ctx, gain(ctx, cutoff, .76), 'triangle', hz, time + age, end, -3);
+  oscillator(ctx, gain(ctx, cutoff, .29), 'sawtooth', hz, time + age, end, 4);
+  oscillator(ctx, gain(ctx, cutoff, .12), 'sine', hz * 2, time + age, end);
+}
+
+export function bassNote(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, age = 0) {
+  const { out, end } = envelope(ctx, bus, time, length, level, .011, .16, .57, .075, age);
+  const cutoff = filter(ctx, out, 'lowpass', 510, .68);
+  filterSweep(cutoff.frequency, time, age, 860, 390, .115);
+  const hz = noteHz(note);
+  oscillator(ctx, gain(ctx, cutoff, .79), 'triangle', hz, time + age, end);
+  oscillator(ctx, gain(ctx, cutoff, .30), 'sawtooth', hz, time + age, end);
+  oscillator(ctx, gain(ctx, cutoff, .18), 'sine', hz, time + age, end);
 }
 
 function noiseAt(ctx: BaseAudioContext, noise: AudioBuffer, bus: AudioNode, time: number, duration: number, random: () => number) {

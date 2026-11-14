@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { BeatInspection } from '../components/BeatInspection';
 import { EndSequenceStudio } from '../components/EndSequenceStudio';
 import { UIStateStudio } from '../components/UIStateStudio';
-import { AudioTransport } from '../game/audio/transport.client';
 import type { VolumeId } from '../game/contracts';
 import type { PlayMode } from '../game/contracts';
 import { lightCues, lightPatterns } from '../game/core/lighting-score';
@@ -36,95 +36,13 @@ function Preview({ id, label, width = 432, height = 270, open }: {
 }
 
 function Soundtrack() {
-  const [volume, setVolume] = useState<VolumeId>('elsewhere');
-  const [ready, setReady] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
-  const [playing, setPlaying] = useState(false);
-  const audio = useRef<AudioTransport | null>(null);
-  const playback = useRef(0);
-  useEffect(() => {
-    setVolume(volumeById(new URLSearchParams(location.search).get('vol')).id);
-    setReady(true);
-    return () => { playback.current++; audio.current?.dispose(); audio.current = null; };
-  }, []);
-  useEffect(() => {
-    if (!playing) return;
-    const duration = volumeById(volume).beats * 60 / volumeById(volume).bpm;
-    const timer = window.setInterval(() => {
-      const time = audio.current?.time;
-      if (typeof time === 'number' && time >= duration) {
-        audio.current?.stop();
-        setPlaying(false);
-        setStatus('Playback complete');
-      }
-    }, 100);
-    return () => clearInterval(timer);
-  }, [playing, volume]);
-
-  function stop() {
-    playback.current++;
-    audio.current?.stop();
-    setPlaying(false);
-  }
-
-  async function play() {
-    const generation = ++playback.current;
-    try {
-      audio.current ??= new AudioTransport(() => { setPlaying(false); setStatus('Audio interrupted'); });
-      const started = await audio.current.start(volumeById(volume), 0);
-      if (generation !== playback.current) return;
-      setPlaying(started);
-      setStatus(started ? `Playing ${volumeById(volume).name}` : 'Audio unavailable. Try again.');
-    } catch {
-      if (generation === playback.current) setStatus('Audio unavailable. Try again.');
-    }
-  }
-
-  async function download() {
-    setBusy(true);
-    const definition = volumeById(volume);
-    setStatus(`Rendering ${definition.name}…`);
-    try {
-      const { exportSoundtrack } = await import('../game/debug/audio-export.client');
-      const seconds = Number(new URLSearchParams(location.search).get('secs'));
-      const { blob, duration } = await exportSoundtrack(definition, seconds);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `sofaraway-${definition.name.toLowerCase()}.wav`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setStatus(`Done · ${(blob.size / 1048576).toFixed(1)} MB · ${duration.toFixed(1)} s`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Soundtrack render failed.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section id="audio" className={s.section}>
-      <h2>Soundtrack</h2>
-      <p>Export a WAV using the same synthesizer and score as the game.</p>
-      <div className={s.audioControls}>
-        <div className={s.audioField}>
-          <label htmlFor="debug-audio-volume">Volume</label>
-          <select id="debug-audio-volume" value={volume} disabled={!ready || busy}
-            onChange={event => { stop(); setVolume(volumeById(event.currentTarget.value).id); }}>
-            {catalog.map(({ volume }) => <option key={volume.id} value={volume.id}>{volume.name}</option>)}
-          </select>
-        </div>
-        <button type="button" disabled={!ready || busy} onClick={() => void download()}>
-          {busy ? 'Rendering…' : 'Render to WAV'}
-        </button>
-        <button type="button" disabled={!ready || busy} onClick={() => playing ? stop() : void play()}>
-          {playing ? 'Stop playback' : 'Play soundtrack'}
-        </button>
-      </div>
-      <p role="status" id="audio-status">{status}</p>
-    </section>
-  );
+  const [params] = useSearchParams();
+  const query = params.toString();
+  return <section id="audio" className={s.section}>
+    <h2>Soundtrack</h2>
+    <p>Inspect the soundtrack, audition individual DAYBREAK instruments or export the official mix as WAV.</p>
+    <Link to={'/debug/audio/' + (query ? '?' + query : '')}>Open Audio Inspector</Link>
+  </section>;
 }
 
 function DaybreakChart() {

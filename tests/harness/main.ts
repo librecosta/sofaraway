@@ -113,4 +113,5 @@ declare global {
 window.b0Harness = harness;
 const params = new URLSearchParams(location.search);
 if (params.has('stability')) void import('./stability');
+if (params.has('audio-inspector')) void import('./audio-inspector');
 if (params.has('sync')) void import('./audio-sync').then(({ installSyncHarness }) => installSyncHarness(() => runtime));

@@ -102,19 +102,6 @@ body:has(.page) { margin: 0; background: #081014; }
   .scenicControls { border-left: 0; border-top: 1px solid var(--rule); }
 }
 
-.audioControls { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem 1rem; margin: .75rem 0 .6rem; }
-.audioField { display: grid; gap: .2rem; color: var(--muted); }
-.audioControls :is(select, button) {
-  padding: .65rem .8rem;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--rule);
-  font: inherit;
-  min-height: 44px;
-}
-.audioControls button { border-color: var(--accent); color: var(--accent); cursor: pointer; }
-.audioControls button:not(:disabled):hover { background: #193137; }
-.audioControls :disabled { opacity: .6; cursor: default; }
 
 @media (max-width: 760px) {
   .header nav { order: 1; width: 100%; }

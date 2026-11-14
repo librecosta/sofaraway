@@ -92,8 +92,9 @@ include a two-color comparison.
 Encore, Afterglow and results. Seek by world station or fly a ten-second segment.
 **UI State Studio** at `/debug/#ui-states` opens production menus, overlays,
 results and recovery states in six viewport sizes without touching records or settings.
-**Soundtrack** exports a WAV for the selected
-volume from the same synthesizer. Use `/debug/?vol=orbit#audio` to preselect ORBIT.
+**Audio Inspector** at `/debug/audio/` displays DAYBREAK's seven waveforms on
+one timeline, with track cues, solo, mute and gain. All four volumes support
+master playback and WAV export. Use `/debug/audio/?vol=orbit` to preselect ORBIT.
 
 ### In-game debug parameters
 

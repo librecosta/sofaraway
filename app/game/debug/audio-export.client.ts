@@ -35,14 +35,15 @@ function encodeWav(buffer: AudioBuffer) {
   return new Blob([bytes], { type: 'audio/wav' });
 }
 
-export async function exportSoundtrack(volume: VolumeDefinition, seconds?: number) {
+export async function exportSoundtrack(volume: VolumeDefinition, seconds?: number, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   if (typeof OfflineAudioContext !== 'function') throw new Error('Offline audio is unavailable in this browser.');
   const sampleRate = 44_100;
   const songDuration = volume.beats * 60 / volume.bpm;
   const duration = seconds !== undefined && Number.isFinite(seconds) && seconds > 0
     ? Math.min(seconds, songDuration) : songDuration;
   if (volume.music === 'breakbeat') {
-    const buffer = await renderDaybreak(duration);
+    const buffer = await renderDaybreak(duration, signal);
     return { blob: encodeWav(buffer), duration: buffer.duration };
   }
   const tail = duration < songDuration ? 2 : 4;
@@ -52,5 +53,6 @@ export async function exportSoundtrack(volume: VolumeDefinition, seconds?: numbe
   const steps = duration === songDuration ? volume.beats * 4 : Math.ceil(duration / stepTime);
   for (let step = 0; step < steps; step++) synth.playStep(step, 0.12 + step * stepTime);
   const buffer = await context.startRendering();
+  signal?.throwIfAborted();
   return { blob: encodeWav(buffer), duration: buffer.duration };
 }

@@ -52,7 +52,7 @@ function midiToFreq(m: number) {
   return 440 * Math.pow(2, (m - 69) / 12);
 }
 
-export function createMaster(c: BaseAudioContext, level: number) {
+export function createMaster(c: BaseAudioContext, level: number, destination: AudioNode = c.destination) {
   const master = c.createGain();
   master.gain.value = level;
 
@@ -77,33 +77,33 @@ export function createMaster(c: BaseAudioContext, level: number) {
   master.connect(comp);
   comp.connect(output);
   output.connect(peakGuard);
-  peakGuard.connect(c.destination);
+  peakGuard.connect(destination);
 
   return master;
 }
 
-function noise(c: BaseAudioContext, seconds: number) {
+function noise(c: BaseAudioContext, seconds: number, random: () => number) {
   const len = Math.floor(c.sampleRate * seconds);
   const buf = c.createBuffer(1, len, c.sampleRate);
   const d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  for (let i = 0; i < len; i++) d[i] = random() * 2 - 1;
   return buf;
 }
 
-function impulse(c: BaseAudioContext, seconds: number, decay: number) {
+function impulse(c: BaseAudioContext, seconds: number, decay: number, random: () => number) {
   const len = Math.floor(c.sampleRate * seconds);
   const buf = c.createBuffer(2, len, c.sampleRate);
   for (let ch = 0; ch < 2; ch++) {
     const d = buf.getChannelData(ch);
     for (let i = 0; i < len; i++) {
-      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      d[i] = (random() * 2 - 1) * Math.pow(1 - i / len, decay);
     }
   }
   return buf;
 }
 
-export function createBuffers(ctx: BaseAudioContext) {
-  return { noise: noise(ctx, 2.0), impulse: impulse(ctx, 1.9, 2.4) };
+export function createBuffers(ctx: BaseAudioContext, random = Math.random) {
+  return { noise: noise(ctx, 2.0, random), impulse: impulse(ctx, 1.9, 2.4, random) };
 }
 
 export class Synthesizer {

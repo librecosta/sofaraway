@@ -16,7 +16,7 @@ test('prerenders the page and hydrates one client canvas', async ({ request, pag
 
 test('the old audio address leads to the unified WAV exporter', async ({ page }) => {
   await page.goto('/tools/render-audio.html?vol=orbit&secs=2');
-  await expect(page).toHaveURL(/\/debug\/\?vol=orbit&secs=2#audio$/);
+  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=orbit&secs=2$/);
   await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('orbit');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Render to WAV' }).click();
@@ -26,14 +26,16 @@ test('the old audio address leads to the unified WAV exporter', async ({ page })
 
 test('DAYBREAK Debug previews the live soundtrack, WAV export and the new chart', async ({ page }) => {
   await page.goto('/debug/?vol=daybreak&secs=2#audio');
+  await page.getByRole('link', { name: 'Open Audio Inspector' }).click();
   await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('daybreak');
-  await page.getByRole('button', { name: 'Play soundtrack' }).click();
-  await expect(page.locator('#audio-status')).toHaveText('Playing DAYBREAK');
-  await page.getByRole('button', { name: 'Stop playback' }).click();
+  await page.getByRole('button', { name: 'Play all' }).click();
+  await expect(page.getByText('Playing', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Render to WAV' }).click();
   expect((await download).suggestedFilename()).toBe('sofaraway-daybreak.wav');
   await expect(page.locator('#audio-status')).toHaveText(/Done.*4\.0 s/);
+  await page.goBack();
   await page.getByText('DAYBREAK chart and ending').click();
   await expect(page.getByText(/SUNBURST · beats 160–224 · 31 gates/)).toBeVisible();
   await expect(page.getByText(/Song end · 144 s/)).toBeVisible();
