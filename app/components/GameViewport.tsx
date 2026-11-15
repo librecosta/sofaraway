@@ -121,10 +121,12 @@ export function GameViewport() {
           cursor.current.style.transform = `translate3d(${state.x}px,${state.y}px,0)`;
           cursor.current.className = c(!state.visible && 'hidden', state.hover && 'hover', state.down && 'down', state.locked && 'lock');
         },
-        flash(opacity, color) {
+        flash(opacity, color, daylight = 0) {
           if (!flash.current) return;
           flash.current.style.backgroundColor = color;
           flash.current.style.opacity = String(opacity);
+          const styles = flash.current.parentElement?.style;
+          if (styles && Number(styles.getPropertyValue('--escape-white')) !== daylight) styles.setProperty('--escape-white', String(daylight));
         },
         debug(text) { if (debug.current) debug.current.textContent = text; },
         key: (key, event) => keys.current(key, event),

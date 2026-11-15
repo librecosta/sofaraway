@@ -2,7 +2,7 @@ import type { ChartGate } from './chart';
 import { clamp } from './collision';
 import { runRandomWord } from './run-seed';
 import { impossibleRoutes } from './impossible-chart';
-import type { Difficulty } from '../contracts';
+import type { Difficulty, PlayMode } from '../contracts';
 
 export const BRANCH_PREVIEW_BEAT = 315;
 export const SPLIT_BEAT = 320;
@@ -23,6 +23,26 @@ export type RouteSide = 'left' | 'center' | 'right';
 export type BranchLayout = Readonly<Record<RouteSide, RouteKind>>;
 export const routeSides = ['left', 'center', 'right'] as const;
 
+export interface BranchSpec {
+  readonly preview: number;
+  readonly split: number;
+  readonly open: Record<PlayMode, number>;
+  readonly merge: Record<PlayMode, number>;
+  readonly rejoin: number;
+  readonly guideEnd: number;
+  readonly spacing: number;
+  readonly rise: number;
+  readonly sightseeingPattern: 'authored' | 'even';
+  readonly charts: typeof routeCharts;
+}
+
+export const elsewhereBranch: BranchSpec = {
+  preview: BRANCH_PREVIEW_BEAT, split: SPLIT_BEAT, rejoin: REJOIN_BEAT, guideEnd: BRANCH_GUIDANCE_END,
+  open: { standard: BRANCH_OPEN_BEAT, sightseeing: SIGHTSEEING_OPEN_BEAT },
+  merge: { standard: MERGE_BEAT, sightseeing: SIGHTSEEING_MERGE_BEAT }, spacing: BRANCH_SPACING, rise: 0,
+  sightseeingPattern: 'authored', charts: routeCharts,
+};
+
 export function branchLayout(seed: number): BranchLayout {
   return runRandomWord(seed, ROUTE_STREAM) % 2 === 0
     ? { left: 'challenge', center: 'main', right: 'score' }
@@ -38,13 +58,13 @@ function ease(t: number) {
   return u * u * u * (10 + u * (-15 + 6 * u));
 }
 
-export function branchSpread(station: number, start: number, open: number, merge: number, end: number) {
-  return BRANCH_SPACING * ease((station - start) / (open - start)) * (1 - ease((station - merge) / (end - merge)));
+export function branchSpread(station: number, start: number, open: number, merge: number, end: number, spacing = BRANCH_SPACING) {
+  return spacing * ease((station - start) / (open - start)) * (1 - ease((station - merge) / (end - merge)));
 }
 
-export function branchSteeringWidth(station: number, start: number, split: number, open: number) {
+export function branchSteeringWidth(station: number, start: number, split: number, open: number, spacing = BRANCH_SPACING) {
   if (station <= start || station >= open) return 0;
-  return Math.min(6, BRANCH_SPACING * ease((station - start) / (open - start)) * 0.7)
+  return Math.min(6, spacing * ease((station - start) / (open - start)) * 0.7)
     * (1 - ease((station - split) / (open - split)));
 }
 

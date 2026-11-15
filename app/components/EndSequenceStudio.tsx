@@ -3,6 +3,7 @@ import type { Difficulty, GameSnapshot, PlayMode, QualityTier } from '../game/co
 import { ROUTE_LABELS } from '../game/core/branches';
 import type { RouteKind } from '../game/core/branches';
 import { modeScale } from '../game/core/reference-track';
+import { volumeById } from '../game/core/volumes';
 import { movements, outroPresets, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
 import type { OutroInspection, OutroMovement, OutroPreset } from '../game/debug/outro-inspection';
 import type { OutroPreview } from '../game/debug/outro-preview.client';
@@ -14,11 +15,14 @@ const noAction = () => {};
 
 export function EndSequenceStudio() {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const continuity = useRef<HTMLOutputElement>(null);
   const viewer = useRef<OutroPreview>(null);
   const [open, setOpen] = useState(false);
   const [available, setAvailable] = useState(false);
   const [status, setStatus] = useState('');
   const [mode, setMode] = useState<PlayMode>('standard');
+  const [volume, setVolume] = useState(outroVolume);
+  const daybreak = volume.id === 'daybreak';
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [route, setRoute] = useState<RouteKind>('main');
   const [seed, setSeed] = useState(0);
@@ -30,6 +34,7 @@ export function EndSequenceStudio() {
   const [quality, setQuality] = useState<QualityTier>('high');
   const [movement, setMovement] = useState<OutroMovement>('Paused');
   const [flying, setFlying] = useState(false);
+  const [roam, setRoam] = useState<{ phase: 'menu' | 'results'; minutes: number }>();
   const [resultPreset, setResultPreset] = useState<typeof resultPresets[number]>('Main Complete');
   const [result, setResult] = useState<GameSnapshot>();
 
@@ -48,8 +53,8 @@ export function EndSequenceStudio() {
         setFlying(false);
         setAvailable(restored);
         setStatus(restored ? '' : 'WebGL interrupted. Waiting to restore the ending.');
-      });
-      const next = viewer.current.select(mode, seed, route, difficulty);
+      }, summary => { if (continuity.current) continuity.current.textContent = summary; });
+      const next = viewer.current.select(mode, seed, route, difficulty, volume);
       setInspection(next);
       if (!inspection) setStation(next.view('main-last').station);
       setStatus('');
@@ -72,8 +77,9 @@ export function EndSequenceStudio() {
 
   useEffect(() => {
     if (!available || !inspection || flying) return;
-    viewer.current?.draw(station, beat, movement, angle);
-  }, [available, inspection, station, beat, movement, angle, flying]);
+    if (roam) viewer.current?.roam(roam.phase, roam.minutes, angle);
+    else viewer.current?.draw(station, beat, movement, angle, preset === 'results-world');
+  }, [available, inspection, station, beat, movement, angle, flying, preset, roam]);
 
   useEffect(() => {
     if (!available || !inspection || !flying || movement === 'Paused') return;
@@ -83,40 +89,44 @@ export function EndSequenceStudio() {
     const draw = (now: number) => {
       const elapsed = Math.min(10, (now - start) / 1000);
       const distance = inspection.stationAfter(station, speed * elapsed);
-      viewer.current?.draw(distance, Math.min(outroVolume.beats, beat + elapsed * outroVolume.bpm / 60), movement, angle);
+      viewer.current?.draw(distance, Math.min(volume.beats, beat + elapsed * volume.bpm / 60), movement, angle);
       if (elapsed < 10 && distance < inspection.max) frame = requestAnimationFrame(draw);
       else setFlying(false);
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [available, inspection, flying, station, beat, movement, angle]);
+  }, [available, inspection, flying, station, beat, movement, angle, volume]);
 
   const resultDifficulty = mode === 'sightseeing' ? 'normal' : difficulty;
   useEffect(() => {
-    setResult(previewResults(seed, resultPreset, resultDifficulty));
-  }, [seed, resultPreset, resultDifficulty]);
+    setResult(previewResults(seed, resultPreset, resultDifficulty, volume));
+  }, [seed, resultPreset, resultDifficulty, volume]);
 
   const view = inspection && preset ? inspection.view(preset) : undefined;
   const relative = inspection ? station - inspection.plan.mainLastStation : 0;
   const seek = (next: OutroPreset) => {
     if (!inspection) return;
+    setRoam(undefined);
     setFlying(false);
     setPreset(next);
     const view = inspection.view(next);
     setStation(view.station);
     if ('musicBeat' in view && view.musicBeat !== undefined) setBeat(view.musicBeat);
-    if (next === 'music-end') setBeat(outroVolume.beats);
+    if (next === 'music-end') setBeat(volume.beats);
   };
-  const changePlan = (nextMode: PlayMode, nextSeed: number, nextRoute: RouteKind, nextDifficulty = difficulty) => {
+  const changePlan = (nextMode: PlayMode, nextSeed: number, nextRoute: RouteKind, nextDifficulty = difficulty, nextVolume = volume) => {
     setFlying(false);
-    const next = viewer.current?.select(nextMode, nextSeed, nextRoute, nextDifficulty);
+    setRoam(undefined);
+    const next = viewer.current?.select(nextMode, nextSeed, nextRoute, nextDifficulty, nextVolume);
     if (next) {
-      const selected = nextMode === 'sightseeing' && preset.startsWith('encore-') ? 'afterglow-entry' : preset;
+      const selected = nextVolume !== volume ? 'main-last' : nextMode === 'sightseeing' && preset.startsWith('encore-') ? 'afterglow-entry' : preset;
       setPreset(selected);
       setStation(selected ? next.view(selected).station :
         Math.max(next.min, Math.min(next.max, next.plan.mainLastStation + relative * modeScale(nextMode) / modeScale(mode))));
       setInspection(next);
     }
+    if (nextVolume !== volume) setBeat(nextVolume.beats - 16);
+    setVolume(nextVolume);
     setMode(nextMode);
     setSeed(nextSeed);
     setRoute(nextRoute);
@@ -129,10 +139,17 @@ export function EndSequenceStudio() {
     <div className={s.scenicDesk}>
       <div className={s.scenicView}>
         {!open && <button type="button" className={s.scan} onClick={() => setOpen(true)}>Open live ending</button>}
-        {open && <canvas className={s.preview} ref={canvas} width={800} height={450} role="img" aria-label="Live ELSEWHERE ending" />}
+        {open && <div className={s.endingFrame}>
+          <canvas className={s.preview} ref={canvas} width={800} height={450} role="img" aria-label={`Live ${volume.name} ending`} />
+          <span className={s.endingWhite} aria-hidden="true" />
+        </div>}
         {status && <p role="status">{status}</p>}
       </div>
       <div className={s.scenicControls}>
+        <label>World <select aria-label="World" value={volume.id} onChange={e => {
+          const next = volumeById(e.currentTarget.value);
+          changePlan(mode, seed, route, 'normal', next);
+        }}><option value="elsewhere">ELSEWHERE</option><option value="daybreak">DAYBREAK</option></select></label>
         <label>Play mode <select disabled={!available} value={mode} onChange={e => changePlan(e.currentTarget.value as PlayMode, seed, route)}>
           <option value="standard">Standard</option><option value="sightseeing">Sightseeing</option>
         </select></label>
@@ -141,7 +158,8 @@ export function EndSequenceStudio() {
         </select></label>
         <label>Chart difficulty <select disabled={mode === 'sightseeing'} value={mode === 'sightseeing' ? 'normal' : difficulty}
           onChange={e => changePlan(mode, seed, route, e.currentTarget.value as Difficulty)}>
-          <option value="normal">Normal</option><option value="impossible">Impossible</option>
+          {daybreak && <option value="easy">Easy</option>}<option value="normal">Normal</option>
+          {daybreak ? <option value="hard">Hard</option> : <option value="impossible">Impossible</option>}
         </select></label>
         <label>Run seed <input disabled={!available} className={s.seed} type="number" min="0" max="4294967294" step="1" value={seed}
           onChange={e => {
@@ -151,11 +169,11 @@ export function EndSequenceStudio() {
         <label>Spatial position <input type="range" step="any" disabled={!available} value={relative}
           min={inspection ? inspection.min - inspection.plan.mainLastStation : -160}
           max={inspection ? inspection.max - inspection.plan.mainLastStation : 0}
-          onChange={e => { setFlying(false); setPreset(''); setStation(inspection!.plan.mainLastStation + e.currentTarget.valueAsNumber); }} />
+          onChange={e => { setFlying(false); setRoam(undefined); setPreset(''); setStation(inspection!.plan.mainLastStation + e.currentTarget.valueAsNumber); }} />
           <output>{inspection ? `${relative.toFixed(1)} from main last · World station ${station.toFixed(2)}` : 'World station'}</output>
         </label>
-        <label>Music beat <input type="range" min="0" max={outroVolume.beats} step=".1" value={beat}
-          onChange={e => { setFlying(false); setBeat(e.currentTarget.valueAsNumber); }} /><output>{beat.toFixed(1)}</output></label>
+        <label>Music beat <input type="range" min="0" max={volume.beats} step=".1" value={beat}
+          onChange={e => { setFlying(false); setRoam(undefined); setBeat(e.currentTarget.valueAsNumber); }} /><output>{beat.toFixed(1)}</output></label>
         <label>Ending view angle <input type="range" min="-36" max="36" value={angle}
           onChange={e => setAngle(e.currentTarget.valueAsNumber)} /><output>{angle}°</output></label>
         <label>Preview quality <select value={quality} onChange={e => setQuality(e.currentTarget.value as QualityTier)}>
@@ -164,7 +182,7 @@ export function EndSequenceStudio() {
         <label>Movement <select value={movement} onChange={e => { setFlying(false); setMovement(e.currentTarget.value as OutroMovement); }}>
           {movements.map(value => <option key={value}>{value}</option>)}
         </select></label>
-        <button className={s.scan} type="button" disabled={!available || movement === 'Paused'} onClick={() => setFlying(!flying)}>
+        <button className={s.scan} type="button" disabled={!available || movement === 'Paused' || !!roam} onClick={() => setFlying(!flying)}>
           {flying ? 'Stop and reset' : 'Play 10s'}
         </button>
         {open && <button className={s.scan} type="button" onClick={() => {
@@ -174,9 +192,17 @@ export function EndSequenceStudio() {
     </div>
     <fieldset className={s.curveControls}>
       <legend>Course and ending positions</legend>
-      {outroPresets.map(([id, label]) => <button type="button" className={s.scan} key={id} aria-pressed={preset === id}
-        disabled={!available || (mode === 'sightseeing' && id.startsWith('encore-'))} onClick={() => seek(id)}>{label}</button>)}
+      {outroPresets.slice(0, daybreak ? undefined : 12).map(([id, label]) => <button type="button" className={s.scan} key={id} aria-pressed={!roam && preset === id}
+        disabled={!available || (mode === 'sightseeing' && id.startsWith('encore-'))} onClick={() => seek(id)}>
+        {daybreak && id === 'build' ? 'LIFT Gates' : daybreak && id === 'drop' ? 'SUNBURST Gates' : daybreak && id === 'finale' ? 'RETURN Gates' : label}</button>)}
     </fieldset>
+    {daybreak && <fieldset className={s.curveControls}>
+      <legend>World Continuity</legend>
+      {(['menu', 'results'] as const).flatMap(phase => [5, 15, 30].map(minutes => <button type="button" key={`${phase}-${minutes}`}
+        className={s.scan} disabled={!available} aria-pressed={roam?.phase === phase && roam.minutes === minutes}
+        onClick={() => { setFlying(false); setRoam({ phase, minutes }); }}>{phase === 'menu' ? 'Menu' : 'Results'} · {minutes} min</button>))}
+      <output ref={continuity} />
+    </fieldset>}
     {mode === 'sightseeing' && <p>Sightseeing continues directly to Afterglow after the transition.</p>}
     {view && 'gate' in view && view.gate && <p>Encore {view.gate.index + 1} · {view.gate.kind} · Gate station {view.gate.worldStation.toFixed(2)}</p>}
     <div className={s.surfaceSelect}>

@@ -85,6 +85,8 @@ body:has(.page) { margin: 0; background: #081014; }
   align-items: start; border: 1px solid var(--rule); background: var(--surface); margin-top: .9rem; }
 .scenicView { display: grid; place-items: center; background: #081216; min-height: 14rem; }
 .scenicView p { padding: .55rem .85rem; }
+.endingFrame { position: relative; width: 100%; }
+.endingWhite { position: absolute; inset: 0; pointer-events: none; background: #fff; opacity: var(--escape-white, 0); }
 .scenicControls { display: grid; gap: .65rem; padding: .9rem; border-left: 1px solid var(--rule); }
 .scenicControls label { display: grid; gap: .15rem; color: var(--muted); font-size: .88rem; }
 .scenicControls select { width: 100%; min-height: 2.3rem; background: #081014; color: var(--text);

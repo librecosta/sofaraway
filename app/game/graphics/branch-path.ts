@@ -1,8 +1,7 @@
 import * as THREE from 'three';
-import { branchSpread, branchSteeringWidth, BRANCH_GUIDANCE_END, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, MERGE_BEAT, REJOIN_BEAT,
-  SIGHTSEEING_MERGE_BEAT, SIGHTSEEING_OPEN_BEAT, SPLIT_BEAT } from '../core/branches';
+import { branchSpread, branchSteeringWidth, elsewhereBranch } from '../core/branches';
 import type { PlayMode } from '../contracts';
-import type { RouteSide } from '../core/branches';
+import type { BranchSpec, RouteSide } from '../core/branches';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale } from '../core/reference-track';
 import type { ReferenceTrack } from '../core/reference-track';
 import type { Path, PathFrame } from './path';
@@ -26,16 +25,17 @@ export class BranchPath {
   private readonly stationStep: number;
   private readonly arcs: Record<'left' | 'right', Float64Array>;
 
-  constructor(readonly base: Path, private readonly reference: ReferenceTrack, private readonly mode: PlayMode) {
-    this.start = this.distanceAt(BRANCH_PREVIEW_BEAT);
-    this.split = this.distanceAt(SPLIT_BEAT);
-    this.end = this.distanceAt(REJOIN_BEAT);
-    this.openBeat = mode === 'sightseeing' ? SIGHTSEEING_OPEN_BEAT : BRANCH_OPEN_BEAT;
-    this.mergeBeat = mode === 'sightseeing' ? SIGHTSEEING_MERGE_BEAT : MERGE_BEAT;
+  constructor(readonly base: Path, private readonly reference: ReferenceTrack, private readonly mode: PlayMode,
+    readonly spec: BranchSpec = elsewhereBranch) {
+    this.start = this.distanceAt(spec.preview);
+    this.split = this.distanceAt(spec.split);
+    this.end = this.distanceAt(spec.rejoin);
+    this.openBeat = spec.open[mode];
+    this.mergeBeat = spec.merge[mode];
     this.open = this.distanceAt(this.openBeat);
     this.merge = this.distanceAt(this.mergeBeat);
     this.guideStart = Math.min(this.start, this.split - cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(mode) * 1.8);
-    this.guideEnd = this.distanceAt(BRANCH_GUIDANCE_END);
+    this.guideEnd = this.distanceAt(spec.guideEnd);
     const count = Math.ceil((this.end - this.split) / 0.25);
     this.stationStep = (this.end - this.split) / count;
     this.arcs = { left: this.measure('left', count), right: this.measure('right', count) };
@@ -43,10 +43,15 @@ export class BranchPath {
 
   distanceAt(beat: number) { return this.reference.station(beat, this.mode); }
 
-  steeringWidth(station: number) { return branchSteeringWidth(station, this.start, this.split, this.open); }
+  steeringWidth(station: number) { return branchSteeringWidth(station, this.start, this.split, this.open, this.spec.spacing); }
 
   spreadAt(distance: number, start: number) {
-    return branchSpread(distance, start, this.open, this.merge, this.end);
+    return branchSpread(distance, start, this.open, this.merge, this.end, this.spec.spacing);
+  }
+
+  private offset(sample: PathFrame, distance: number, sign: number) {
+    const spread = this.spreadAt(distance, this.split);
+    sample.p.addScaledVector(sample.r, sign * spread).addScaledVector(sample.u, this.spec.rise * spread / this.spec.spacing);
   }
 
   arcAt(station: number, side: RouteSide) {
@@ -80,7 +85,7 @@ export class BranchPath {
     for (let i = 1; i <= count; i++) {
       const station = this.split + i * this.stationStep;
       this.base.sample(station, sample);
-      sample.p.addScaledVector(sample.r, sign * this.spreadAt(station, this.split));
+      this.offset(sample, station, sign);
       table[i] = table[i - 1] + previous.distanceTo(sample.p);
       previous.copy(sample.p);
     }
@@ -91,12 +96,18 @@ export class BranchPath {
     this.base.sample(distance, out);
     if (side === 'center' || distance <= this.split || distance >= this.end) return out;
     const sign = side === 'left' ? -1 : 1;
-    out.p.addScaledVector(out.r, sign * this.spreadAt(distance, this.split));
+    this.offset(out, distance, sign);
     const ds = Math.min(0.25, distance - this.split, this.end - distance);
     this.base.sample(distance - ds, this.before);
     this.base.sample(distance + ds, this.after);
-    out.f.addScaledVector(this.before.r, -sign * this.spreadAt(distance - ds, this.split) / (2 * ds))
-      .addScaledVector(this.after.r, sign * this.spreadAt(distance + ds, this.split) / (2 * ds)).normalize();
+    if (this.spec.rise) {
+      this.offset(this.before, distance - ds, sign);
+      this.offset(this.after, distance + ds, sign);
+      out.f.subVectors(this.after.p, this.before.p).normalize();
+    } else {
+      out.f.addScaledVector(this.before.r, -sign * this.spreadAt(distance - ds, this.split) / (2 * ds))
+        .addScaledVector(this.after.r, sign * this.spreadAt(distance + ds, this.split) / (2 * ds)).normalize();
+    }
     out.r.crossVectors(out.f, out.u).normalize();
     out.u.crossVectors(out.r, out.f).normalize();
     return out;

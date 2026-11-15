@@ -129,6 +129,8 @@ function instrumentRenderer(value: Graphics) {
 
 time(FixedStepClock.prototype, 'consume', 'simulation');
 time(Tunnel.prototype, '_buildChunk', 'chunk');
+time(Tunnel.prototype, 'buildDistant', 'farChunk');
+time(Tunnel.prototype, '_disposeChunk', 'chunkRelease');
 time(Path.prototype, 'straight', 'pathStep');
 time(Path.prototype, 'bend', 'pathStep');
 time(PMREMGenerator.prototype, 'fromEquirectangular', 'pmrem');
@@ -268,8 +270,8 @@ const stability = {
   },
   async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard',
     side: RouteSide = 'left', iterations = 480, animateLights = false,
-    sample?: { station: number; fly?: boolean; inspection?: boolean; difficulty?: Difficulty; dynamic?: boolean }) {
-    const definition = volumeById('elsewhere');
+    sample?: { station: number; fly?: boolean; inspection?: boolean; difficulty?: Difficulty; dynamic?: boolean; volumeId?: VolumeId }) {
+    const definition = volumeById(sample?.volumeId ?? 'elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
       boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: side };
     const output = document.createElement('canvas');
@@ -293,7 +295,7 @@ const stability = {
       if (sample && sim.outroPlan) for (let i = 0; i < 40; i++) makeOutroPlan(definition, mode, i, sim.outroPlan.mainLastStation, difficulty);
       const encorePlanMs = sample ? (performance.now() - planBuildStarted) / 40 : undefined;
       const inspectionStarted = performance.now();
-      const inspection = sample?.inspection ? new OutroInspection(mode, 0, 'main', path, difficulty) : undefined;
+      const inspection = sample?.inspection ? new OutroInspection(mode, 0, 'main', path, difficulty, definition) : undefined;
       const inspectionBuildMs = inspection ? performance.now() - inspectionStarted : undefined;
       const station = sample?.station ?? sim.reference.station(beat, mode);
       const input = boost ? { ...idleInput, boosting: true } : idleInput;

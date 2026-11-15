@@ -109,3 +109,18 @@ export function composeElsewhere(volume: VolumeDefinition, mode: PlayMode): Corr
   straightTo(corridorLength(volume, mode));
   return segments;
 }
+
+export function composeDaybreak(volume: VolumeDefinition, mode: PlayMode): CorridorSegment[] {
+  const reference = referenceFor(volume);
+  const station = (beat: number) => reference.station(beat, mode);
+  const segments: CorridorSegment[] = [];
+  let from = 0;
+  for (const [first, last, ratio] of [[4, 40, .065], [88, 123, -.075], [165, 206, .072]] as const) {
+    const s0 = station(first), s1 = station(last);
+    segments.push({ type: 'straight', s0: from, s1: s0 },
+      { type: 's-curve', s0, s1, ...fitCurve(s1 - s0, (s1 - s0) * ratio) });
+    from = s1;
+  }
+  segments.push({ type: 'straight', s0: from, s1: Math.ceil(corridorLength(volume, mode) / 210) * 210 });
+  return segments;
+}

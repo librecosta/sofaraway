@@ -105,7 +105,7 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('link', { name: 'Debug overview' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(30);
+  await expect(previews).toHaveCount(29);
   await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
   for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Environment', 'Soundtrack']) {
     await expect(page.getByRole('heading', { name })).toBeVisible();

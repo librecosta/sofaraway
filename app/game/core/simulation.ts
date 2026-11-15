@@ -1,6 +1,5 @@
 import type { Difficulty, PlayMode, RunResult } from '../contracts';
-import { branchLayout, BRANCH_SIDE_THRESHOLD, REJOIN_BEAT,
-  ROUTE_GATE_MULTIPLIERS, routeCharts, selectSide, SPLIT_BEAT } from './branches';
+import { branchLayout, BRANCH_SIDE_THRESHOLD, ROUTE_GATE_MULTIPLIERS, routeSides, selectSide } from './branches';
 import type { BranchRun, RouteKind, RouteSide } from './branches';
 import { chartFor, difficultySettings } from './chart';
 import type { ChartGate } from './chart';
@@ -9,10 +8,10 @@ import type { Axis } from './collision';
 import { resolveDifficulty } from './difficulty';
 import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
+import { daylightFade, gameplayFor } from './gameplay';
 import { steer } from './input';
 import type { InputFrame } from './input';
-import { LUMEN_POINTS, PICKUP_APPEAR_BEAT, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_RADIUS,
-  pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
+import { LUMEN_POINTS, pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
 import type { RunPickup } from './pickups';
 import { CAPTURE_RUN_SEED } from './run-seed';
 import { BOOST_MULTIPLIER, CRUISE_RESPONSE, CRUISE_SPEED, cruiseTarget, modeScale,
@@ -90,6 +89,7 @@ export class Simulation {
   private invulnUntil = 0;
   private settleAt = 0;
   private recoil = 0;
+  private settleSpeed = 0;
   private messageUntil = 0;
   private mult = 1;
   private runDifficulty: Difficulty = 'normal';
@@ -97,6 +97,7 @@ export class Simulation {
   private playMode: PlayMode;
   private readonly paths = new Map<PlayMode, Path>();
   readonly reference;
+  readonly gameplay;
   private readonly junctions = new Map<PlayMode, BranchPath>();
   private suffixBySide?: Record<RouteSide, RunGate[]>;
   private referenceProgress = 0;
@@ -109,7 +110,8 @@ export class Simulation {
     mode: PlayMode = 'standard',
   ) {
     this.playMode = mode;
-    if (path) this.paths.set(volume.id === 'elsewhere' ? mode : 'standard', path);
+    this.gameplay = gameplayFor(volume.id);
+    if (path) this.paths.set(this.gameplay.branch ? mode : 'standard', path);
     this.secondsPerBeat = 60 / volume.bpm;
     this.reference = referenceFor(volume);
   }
@@ -117,11 +119,28 @@ export class Simulation {
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
   get mainGates(): readonly RunGate[] { return this.chart; }
   get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
-  private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && !!this.branch?.side; }
+  private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && (!this.branch || !!this.branch.side); }
+  get escapeWhite() {
+    const ending = this.gameplay.ending;
+    const duration = ending?.beats ?? 12;
+    const elapsed = this.beat - (this.volume.beats - duration);
+    const phase = ending && elapsed < 1e-9 ? 0 : clamp(elapsed / duration, 0, 1);
+    if (!ending) return this.phase === 'playing' || this.phase === 'crash' ? phase : 0;
+    if (this.result?.title === 'TERMINATED' || this.phase === 'menu') return 0;
+    if (this.result?.title === 'ESCAPED') return Math.exp(-Math.max(0, this.time - (this.settleAt - .58)) * 3.8);
+    const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
+    if (ending.protectGates && next && this.phase === 'playing') {
+      const ahead = next.routeStation - this.distance;
+      const target = cruiseTarget(this.referenceProgress) * modeScale(this.mode) * (this.boosting ? BOOST_MULTIPLIER : 1);
+      const reach = (this.volume.beats - this.beat) * this.secondsPerBeat * Math.max(this.speed, target);
+      return daylightFade(phase, ahead, reach);
+    }
+    return daylightFade(phase);
+  }
   get mode() { return this.playMode; }
   get difficulty() { return this.runDifficulty; }
   get path() {
-    const mode = this.volume.id === 'elsewhere' ? this.mode : 'standard';
+    const mode = this.gameplay.branch ? this.mode : 'standard';
     let path = this.paths.get(mode);
     if (!path) {
       path = buildRunPath(this.volume, mode);
@@ -169,24 +188,25 @@ export class Simulation {
       }
       return makeGate(gate, axis);
     });
-    const elsewhere = this.volume.id === 'elsewhere';
-    this.branch = elsewhere ? { layout: branchLayout(runSeed), side: null } : null;
-    if (elsewhere) {
+    const { branch, pickup, encore } = this.gameplay;
+    this.branch = branch ? { layout: branchLayout(runSeed), side: null } : null;
+    if (branch) {
       let path = this.junctions.get(mode);
       if (!path) {
-        path = new BranchPath(this.path, this.reference, mode);
+        path = new BranchPath(this.path, this.reference, mode, branch);
         this.junctions.set(mode, path);
       }
       this.junctionPath = path;
       const { left, right } = this.branch!.layout;
       const sideFor = (route: RouteKind): RouteSide => left === route ? 'left' : right === route ? 'right' : 'center';
-      const { main, challenge, score } = routeCharts(authored.filter(gate => gate.beat >= SPLIT_BEAT && gate.beat < REJOIN_BEAT), difficulty);
+      const inside = (gate: { beat: number }) => gate.beat >= branch.split && gate.beat < branch.rejoin;
+      const { main, challenge, score } = branch.charts(authored.filter(inside), difficulty);
       this.branchGates = {
         main: main.map(gate => makeGate(gate, 0, 'main')),
         challenge: challenge.map(gate => makeGate(gate, 0, 'challenge', sideFor('challenge'))),
         score: score.map(gate => makeGate(gate, 0, 'score', sideFor('score'))),
       };
-      this.chart = gates.filter(gate => gate.beat < SPLIT_BEAT || gate.beat >= REJOIN_BEAT);
+      this.chart = gates.filter(gate => !inside(gate));
     } else {
       this.branchGates = null;
       this.chart = gates;
@@ -197,8 +217,8 @@ export class Simulation {
       if (this.branchGates) {
         const { main, challenge, score } = this.branchGates;
         this.branchGates = {
-          main: sightseeingRoute(main, 'main'), challenge: sightseeingRoute(challenge, 'challenge'),
-          score: sightseeingRoute(score, 'score'),
+          main: sightseeingRoute(main, 'main', branch), challenge: sightseeingRoute(challenge, 'challenge', branch),
+          score: sightseeingRoute(score, 'score', branch),
         };
       }
     }
@@ -219,13 +239,16 @@ export class Simulation {
     this.previewEncore = [];
     this.encore = undefined;
     this.encoreCursor = this.encoreReveal = 0;
-    this.outroPlan = elsewhere ? makeOutroPlan(this.volume, mode, runSeed,
-      Math.max(...this.chart.map(gate => gate.worldStation)), difficulty) : undefined;
+    const junction = this.junctionPath;
+    const last = Math.max(this.chart.at(-1)?.worldStation ?? START_DISTANCE, this.branchGates?.main.at(-1)?.worldStation ?? START_DISTANCE);
+    this.outroPlan = encore ? makeOutroPlan(this.volume, mode, runSeed, last,
+      difficulty, junction && encore !== 'legacy' ? seconds => Math.min(...routeSides.map(side =>
+        this.reference.boostAt(seconds, mode, rules.speedFactor, arc => junction.stationAt(arc, side)))) : undefined) : undefined;
     this.runDifficulty = difficulty;
     this.speedFactor = rules.speedFactor;
-    this.pickup = elsewhere ? { kind: pickupKind, status: 'pending' } : null;
-    this.pickupStation = elsewhere ? station(PICKUP_BEAT) : Infinity;
-    this.pickupPreviewStation = elsewhere ? station(PICKUP_APPEAR_BEAT) : Infinity;
+    this.pickup = pickup ? { kind: pickupKind, status: 'pending' } : null;
+    this.pickupStation = pickup ? station(pickup.beat) : Infinity;
+    this.pickupPreviewStation = pickup ? station(pickup.preview) : Infinity;
     this.pickupTime = -Infinity;
     this.shield = false;
     this.resonance = 0;
@@ -235,6 +258,7 @@ export class Simulation {
     this.speed = CRUISE_SPEED * (sightseeing ? SIGHTSEEING_SPEED : this.speedFactor);
     this.boosting = false;
     this.boostLens = 0;
+    this.settleSpeed = 3;
     this.hitTime = -Infinity;
     this.message = '';
     this.result = null;
@@ -280,7 +304,16 @@ export class Simulation {
       return;
     }
     if (this.phase === 'results') {
-      this.distance += 3 * dt;
+      if (!this.gameplay.world?.settleResults) {
+        this.distance += 3 * dt;
+        return;
+      }
+      const decay = -Math.expm1(-dt / 3);
+      this.distance = Math.min(this.path.length - 440, this.distance + this.settleSpeed * 3 * decay);
+      this.settleSpeed *= 1 - decay;
+      camera.x *= 1 - decay;
+      camera.y *= 1 - decay;
+      camera.roll *= 1 - decay;
       return;
     }
     if (this.phase === 'crash') {
@@ -359,7 +392,7 @@ export class Simulation {
       this.judged++;
       this.judge(gate, localX, localY, tickStart + elapsed * fraction, neutralize);
       if (this.outroPlan && this.mainComplete && this.beat + 1e-9 < this.volume.beats) {
-        this.message = this.mode === 'standard' ? 'MAIN COMPLETE · ENCORE AHEAD' : 'MAIN COMPLETE';
+        this.message = this.outroPlan.gates.length ? 'MAIN COMPLETE · ENCORE AHEAD' : 'MAIN COMPLETE';
         this.messageUntil = this.time + 1.3;
       }
       if (this.lives === 0) {
@@ -390,7 +423,8 @@ export class Simulation {
   }
 
   private resolvePickup(pickup: RunPickup, x: number, y: number) {
-    if (Math.hypot(x - PICKUP_LOCAL_X, y - PICKUP_LOCAL_Y) > PICKUP_RADIUS) {
+    const spec = this.gameplay.pickup!;
+    if (Math.hypot(x - spec.x, y - spec.y) > spec.radius) {
       this.pickup = { kind: pickup.kind, status: 'missed' };
       return;
     }
@@ -416,7 +450,7 @@ export class Simulation {
     while (this.chart[this.reveal]?.routeStation <= through) {
       this.previewGates.push(this.chart[this.reveal++]);
     }
-    const encore = this.branch?.side ? this.outroPlan?.gates : undefined;
+    const encore = !this.branch || this.branch.side ? this.outroPlan?.gates : undefined;
     while (encore && encore[this.encoreReveal]?.routeStation <= through) {
       this.previewEncore.push(encore[this.encoreReveal++]);
     }

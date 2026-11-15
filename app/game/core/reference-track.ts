@@ -1,6 +1,6 @@
 import type { PlayMode } from '../contracts';
-import { REJOIN_BEAT, routeCharts, SPLIT_BEAT } from './branches';
-import { chartFor, daybreakPacing } from './chart';
+import { chartFor } from './chart';
+import { gameplayFor } from './gameplay';
 import { STEP } from './clock';
 import { SIGHTSEEING_SPEED } from './sightseeing';
 import type { VolumeDefinition } from './volumes';
@@ -25,11 +25,10 @@ export class ReferenceTrack {
     this.secondsPerBeat = 60 / volume.bpm;
     this.duration = volume.beats * this.secondsPerBeat;
     const normal = chartFor(volume, 'normal');
-    const inJunction = (beat: number) => beat >= SPLIT_BEAT && beat < REJOIN_BEAT;
-    const gates = volume.id === 'daybreak' ? daybreakPacing(volume).flatMap(section => section.beats.map(beat => ({ beat })))
-      : volume.id === 'elsewhere'
-      ? [...normal.filter(gate => !inJunction(gate.beat)),
-        ...routeCharts(normal.filter(gate => inJunction(gate.beat))).main].sort((a, b) => a.beat - b.beat)
+    const branch = gameplayFor(volume.id).branch;
+    const inJunction = (beat: number) => branch && beat >= branch.split && beat < branch.rejoin;
+    const gates = branch ? [...normal.filter(gate => !inJunction(gate.beat)),
+      ...branch.charts(normal.filter(gate => inJunction(gate.beat))).main].sort((a, b) => a.beat - b.beat)
       : normal;
     this.samples = new Float64Array(Math.ceil(volume.beats * this.secondsPerBeat / STEP) + 1);
     let speed = CRUISE_SPEED, count = 0;
@@ -62,15 +61,21 @@ export class ReferenceTrack {
     const scale = modeScale(mode) * speedFactor;
     const cached = this.boostFinishes.get(scale);
     if (cached !== undefined) return cached;
+    const station = this.boostAt(this.duration, mode, speedFactor);
+    this.boostFinishes.set(scale, station);
+    return station;
+  }
+
+  boostAt(seconds: number, mode: PlayMode, speedFactor = 1, worldAt?: (arc: number) => number) {
+    const scale = modeScale(mode) * speedFactor;
     let station = START_DISTANCE, speed = CRUISE_SPEED * scale, count = 0;
-    for (let i = 0; i < this.samples.length - 1; i++) {
-      const dt = Math.min(STEP, this.duration - i * STEP);
-      count = this.countThrough(station, mode, count);
+    for (let i = 0; i * STEP < seconds - 1e-9; i++) {
+      const dt = Math.min(STEP, seconds - i * STEP);
+      count = this.countThrough(worldAt?.(station) ?? station, mode, count);
       speed += (cruiseTarget(count) * BOOST_MULTIPLIER * scale - speed) * dt * 4;
       station += speed * dt;
     }
-    this.boostFinishes.set(scale, station);
-    return station;
+    return worldAt?.(station) ?? station;
   }
 }
 

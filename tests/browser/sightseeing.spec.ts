@@ -27,12 +27,12 @@ test('mode is keyboard accessible and switching back restores the Standard diffi
   await expect.poll(() => page.evaluate(() => localStorage.getItem('sofaraway.mode'))).toBe('standard');
 });
 
-test('every sightseeing volume and ELSEWHERE route completes in the results UI', async ({ page }) => {
+test('every sightseeing volume completes in the results UI with the selected route', async ({ page }) => {
   const scenarios = [
     { volume: VOLUMES[0], side: 'center', gates: 48, route: 'MAIN' },
     { volume: VOLUMES[0], side: 'right', gates: 49, route: 'CHALLENGE' },
     { volume: VOLUMES[0], side: 'left', gates: 53, route: 'BONUS' },
-    { volume: VOLUMES[1], side: 'center', gates: 32 },
+    { volume: VOLUMES[1], side: 'center', gates: 39, route: 'MAIN' },
     { volume: VOLUMES[2], side: 'center', gates: 53 },
     { volume: VOLUMES[3], side: 'center', gates: 31 },
   ];

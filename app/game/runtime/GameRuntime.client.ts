@@ -18,7 +18,7 @@ import { emptyRecords, readRecords, recordFor, recordRun, writeRecords } from '.
 
 export interface RuntimeView {
   pointer(view: PointerView): void;
-  flash(opacity: number, color: string): void;
+  flash(opacity: number, color: string, daylight?: number): void;
   debug(text: string): void;
   key?(key: string, event: KeyboardEvent): boolean;
   muted?(value: boolean): void;
@@ -123,7 +123,7 @@ export class Runtime implements GameRuntime {
     const { volumeId, mode } = this.snapshot;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
-    if (sim.volume.id !== volumeId || (volumeId === 'elsewhere' && sim.mode !== mode)) {
+    if (sim.volume.id !== volumeId || (sim.gameplay.branch && sim.mode !== mode)) {
       // Unlock within the initiating gesture and let the menu paint STARTING before building.
       if (!silent) this.primeAudio();
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -164,7 +164,7 @@ export class Runtime implements GameRuntime {
     }
     const fixedSeed = this.options?.runSeed;
     const seed = fixedSeed ?? createRunSeed();
-    this.pendingPickupDraw = fixedSeed === undefined && sim.volume.id === 'elsewhere';
+    this.pendingPickupDraw = fixedSeed === undefined && !!sim.gameplay.pickup;
     sim.start(this.snapshot.difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, this.snapshot.mode);
     try {
       if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
@@ -460,6 +460,12 @@ export class Runtime implements GameRuntime {
     const fixed = this.options?.diagnostics.fixedTime != null;
     try {
       if (!fixed) {
+        if (this.snapshot.phase === 'menu' && sim.volume.id !== this.snapshot.volumeId) {
+          this.loadVolume(this.snapshot.volumeId);
+          this.switchMs = performance.now() - now;
+          this.schedule();
+          return;
+        }
         let catchingUp = false;
         if (this.snapshot.phase === 'playing') {
           const target = this.runTime(now / 1000);
@@ -560,13 +566,13 @@ export class Runtime implements GameRuntime {
     }
     if (!paused) {
       const hit = Math.max(0, 1 - (sim.time - sim.hitTime) / 0.38);
-      const end = sim.phase === 'playing' || sim.phase === 'crash'
-        ? clamp((sim.beat - (sim.volume.beats - 12)) / 12, 0, 1) : 0;
+      const end = sim.escapeWhite;
       const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
       const pickup = Math.max(0, 1 - (sim.time - sim.pickupTime) / 0.24) * 0.13;
-      const flash = Math.max(hit * 0.9, end * 0.95, start * 0.9);
-      this.view.flash(sim.phase === 'results' ? 0 : Math.max(flash, pickup),
-        hit ? '#ff5a5a' : pickup > flash ? '#74ffdc' : '#fff');
+      const daylight = !!sim.gameplay.ending;
+      const flash = Math.max(hit * 0.9, end * (daylight ? .99 : .95), start * 0.9);
+      this.view.flash(sim.phase === 'results' && !daylight ? 0 : Math.max(flash, pickup),
+        (daylight ? hit * .9 > end : !!hit) ? '#ff5a5a' : pickup > flash ? '#74ffdc' : '#fff', daylight ? end : undefined);
     }
     if (this.recorder && graphics.camera) {
       this.recorder.sample(now / 1000, graphics.camera, sim, sim.camera);

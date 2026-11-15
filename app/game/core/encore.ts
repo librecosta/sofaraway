@@ -2,9 +2,10 @@ import type { Difficulty, PlayMode } from '../contracts';
 import { opening } from './collision';
 import type { Axis } from './collision';
 import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
+import { gameplayFor } from './gameplay';
 import { referenceFor } from './reference-track';
 import { runRandomWord } from './run-seed';
-import type { VolumeDefinition } from './volumes';
+import type { GateKind, VolumeDefinition } from './volumes';
 
 export const ENCORE_GATE_COUNT = 24;
 export const IMPOSSIBLE_ENCORE_COUNT = 36;
@@ -19,7 +20,7 @@ export type AfterglowStage = 'release' | 'flow' | 'luminous' | 'closing';
 export interface AfterglowSection { readonly stage: AfterglowStage; readonly start: number; readonly end: number }
 export interface EncoreGate {
   readonly index: number;
-  readonly kind: 'iris' | 'square' | 'diamond';
+  readonly kind: GateKind;
   readonly sector: number;
   readonly open: number;
   readonly axis: Axis;
@@ -56,26 +57,36 @@ export interface OutroPlan {
 }
 
 export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: number, mainLastStation: number,
-  difficulty: Difficulty = 'normal'): OutroPlan {
+  difficulty: Difficulty = 'normal', reserveStation?: (seconds: number) => number): OutroPlan {
   const impossible = mode === 'standard' && difficulty === 'impossible';
   const musicEndStation = referenceFor(volume).boostFinish(mode, impossible ? IMPOSSIBLE_SPEED_FACTOR : 1);
   // After rejoin, branch arc offsets carry through to the ending. The closing
   // frame has extra depth so either side can reach the end without seeing a seam.
   const end = musicEndStation + 72;
-  let station = mainLastStation + ENCORE_FIRST_OFFSET;
+  const rule = gameplayFor(volume.id).encore;
+  const spec = rule === 'legacy' ? undefined : rule;
+  const release = spec ? 42 : 120;
+  const cutoff = spec && mode === 'standard'
+    ? reserveStation?.(volume.beats * 60 / volume.bpm - spec.reserve) ?? musicEndStation - 550 : Infinity;
+  const first = mainLastStation + (spec?.first ?? ENCORE_FIRST_OFFSET);
+  let station = spec ? Math.max(first, referenceFor(volume).station(volume.beats, mode) + 12) : first;
   const gates: EncoreGate[] = [];
   const word = (index: number, field: number) => runRandomWord(seed, ENCORE_STREAM ^ Math.imul(1 + index * 3 + field, 0x9e3779b9));
-  const gateCount = mode === 'sightseeing' ? 0 : impossible ? IMPOSSIBLE_ENCORE_COUNT : ENCORE_GATE_COUNT;
+  const minSpacing = spec?.minSpacing ?? ENCORE_MIN_SPACING;
+  const maxSpacing = spec?.maxSpacing ?? ENCORE_MAX_SPACING;
+  const gateCount = mode === 'sightseeing' ? 0 : spec ? Math.max(0, Math.ceil((cutoff - station) / minSpacing))
+    : impossible ? IMPOSSIBLE_ENCORE_COUNT : ENCORE_GATE_COUNT;
   for (let index = 0; index < gateCount; index++) {
-    if (index) station += ENCORE_MIN_SPACING + (ENCORE_MAX_SPACING - ENCORE_MIN_SPACING) * word(index, 0) / 0xffffffff;
+    if (index) station += minSpacing + (maxSpacing - minSpacing) * word(index, 0) / 0xffffffff;
+    if (station + release > cutoff) break;
     const slot = index % 3;
     const swap = word(index - slot, 1) % 2;
-    const kind = slot === 0 ? 'iris' : slot - 1 === swap ? 'square' : 'diamond';
-    const sector = kind === 'iris' ? word(index, 2) % 8 : 0;
+    const kind = spec?.kinds[index % spec.kinds.length] ?? (slot === 0 ? 'iris' : slot - 1 === swap ? 'square' : 'diamond');
+    const sector = kind === 'iris' ? word(index, 2) % 8 : kind === 'daybreak-crystal' ? word(index, 2) % 4 : 0;
     gates.push({ index, kind, sector, open: opening(kind, sector), axis: 0,
       worldStation: station, routeStation: station, judged: false, passed: false, clean: false, neutralized: false });
   }
-  const start = gates.length ? station + 120 : mainLastStation + 45;
+  const start = gates.length ? gates[gates.length - 1].worldStation + release : mainLastStation + (spec ? 14 : 45);
   const afterglow: AfterglowSection[] = [];
   let from = start;
   for (const [stage, fraction] of [['release', .14], ['flow', .45], ['luminous', .74], ['closing', 1]] as const) {

@@ -74,6 +74,8 @@ test.each(playModes)('%s Boost reaches the same pickup earlier, clear of neighbo
 test('song end leaves an unreachable station unjudged and includes it in planned accuracy', () => {
   const sim = new Simulation(VOLUMES[1], { align: true });
   sim.start('normal');
+  while (!sim.route && sim.phase === 'playing') sim.step(STEP, idleInput);
+  expect(sim.route).toBe('main');
   const final = gatesOf(sim).at(-1)!;
   const planned = gatesOf(sim).length;
   const station = sim.reference.station(sim.volume.beats, sim.mode) + 50;

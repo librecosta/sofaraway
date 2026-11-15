@@ -289,18 +289,19 @@ test('menu and results emit distinct UI tones through the mute setting', async (
   await expect.poll(tones).toContain('sine');
 });
 
-test('course and mode choices keep the menu corridor running until the start button is pressed', async ({ page }) => {
+test('course selection replaces the menu corridor and mode changes defer the run path until Start', async ({ page }) => {
   await page.goto('/?vol=elsewhere&q=low&dbg=1');
   await expect(start(page)).toBeEnabled();
-  const original = await diagnostics(page);
   await page.getByRole('button', { name: 'Next volume' }).click();
   await expect(volume(page)).toContainText('DAYBREAK');
+  await expect.poll(async () => (await diagnostics(page)).renderedVolume).toBe('daybreak');
+  const original = await diagnostics(page);
   await page.getByRole('button', { name: 'Next play mode' }).click();
   await expect(page.getByText('5 LIVES · ⅓ SPEED')).toBeVisible();
+  await expect.poll(async () => (await diagnostics(page)).distance).toBeGreaterThan(original.distance);
   const menu = await diagnostics(page);
-  expect(menu.renderedVolume).toBe('elsewhere');
+  expect(menu.renderedVolume).toBe('daybreak');
   expect(menu.renderedMode).toBe('standard');
-  expect(menu.distance).toBeGreaterThan(original.distance);
   await page.evaluate(() => (document.activeElement as HTMLElement).blur());
   await page.keyboard.press('Space');
   await expect(page.locator('#hud')).toBeHidden();

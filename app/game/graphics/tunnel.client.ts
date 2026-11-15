@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { SECTION } from '../core/collision';
-import { SECTION_OUTLINE } from '../core/section';
 import type { RouteSide } from '../core/branches';
 import { frameLightLevel, octagon } from '../core/lighting-atlas';
 import type { LightingZone } from '../core/lighting-atlas';
@@ -9,6 +8,8 @@ import { steadyLights } from '../core/rhythmic-lights';
 import type { DynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { Topology } from '../core/volumes';
 import type { BranchPath } from './branch-path';
+import { START_DISTANCE } from '../core/reference-track';
+import { CABIN_HOOP, CABIN_WAIST, cabinEnvelope, cabinLower, cabinUpper } from './cabin-geometry';
 import type { Path, PathFrame } from './path';
 import type { buildTextures } from './textures.client';
 import { MaterialLibrary } from './materials/library.client';
@@ -31,21 +32,16 @@ const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
 const SCENIC_POINT_INTENSITIES = [16, 21, 25] as const;
-const CANAL_LIP = .55;
-const CANOPY_HOOP = 21;
-const [floorLeft, floorRight, lowerRight, upperRight, roofRight, roofLeft, upperLeft, lowerLeft] = SECTION_OUTLINE;
-const canopy = [
-  [-SECTION.a, CANAL_LIP], upperLeft, roofLeft, roofRight, upperRight, [SECTION.a, CANAL_LIP],
-] as const;
+const CANAL_LIP = CABIN_WAIST;
+const CANOPY_HOOP = CABIN_HOOP;
+const canopy = cabinUpper;
 
 // The canal's solid lower shell joins the separately batched glass canopy.
 function profile(topology: Topology) {
   if (topology === 'canal') {
     return {
       closed: false,
-      pts: [
-        canopy[0], lowerLeft, floorLeft, floorRight, lowerRight, canopy[5],
-      ],
+      pts: cabinLower,
     };
   }
   return {
@@ -58,6 +54,7 @@ function canopyMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false,
     userData: { skipFocusDepth: true },
+    uniforms: { daylight: { value: 0 } },
     vertexShader: /* glsl */`
       varying vec3 vNormal;
       varying vec3 vEye;
@@ -71,6 +68,7 @@ function canopyMaterial() {
       }
     `,
     fragmentShader: /* glsl */`
+      uniform float daylight;
       varying vec3 vNormal;
       varying vec3 vEye;
       varying vec2 vPanel;
@@ -84,7 +82,9 @@ function canopyMaterial() {
         float hoop = (1.0 - smoothstep(0.0, hoopWidth, stationPhase)) * min(1.0, 0.008 / hoopWidth);
         vec3 glass = mix(vec3(0.14, 0.22, 0.30), vec3(0.24, 0.36, 0.45), grazing);
         float trim = max(gasket, hoop);
-        gl_FragColor = vec4(mix(glass, vec3(0.18, 0.36, 0.48), trim), 0.015 + 0.09 * grazing + 0.60 * trim);
+        vec3 baseline = mix(glass, vec3(0.18, 0.36, 0.48), trim);
+        gl_FragColor = vec4(mix(baseline, vec3(0.92, 0.79, 0.62), daylight * (0.28 + 0.45 * grazing)),
+          0.015 + 0.09 * grazing + 0.60 * trim);
       }
     `,
   });
@@ -119,12 +119,16 @@ export class Tunnel {
   private readonly ringFrames: PathFrame[] = [];
   private readonly mainLight = new THREE.Color();
   private junction?: { start: number; end: number };
+  private readonly distant = new Map<number, Chunk>();
+  private readonly initialLength: number;
+  private farThrough = Math.floor(START_DISTANCE / CHUNK) * CHUNK - CHUNK;
 
   constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path,
-    private readonly topology: Topology, private readonly atlas: readonly LightingZone[] = []) {
+    private readonly topology: Topology, private readonly atlas: readonly LightingZone[] = [], private readonly continuous = false) {
     this.group = new THREE.Group();
     this.chunks = [];
     this.wire = null;
+    this.initialLength = path.length;
 
     this.surfaces = tex instanceof MaterialLibrary ? tex : undefined;
     if (topology === 'canal') this.canopyMat = canopyMaterial();
@@ -520,6 +524,23 @@ export class Tunnel {
   }
 
   get junctionShell() { return this.shellMat; }
+  get junctionCanopy() { return this.canopyMat; }
+
+  setDaylight(amount: number) {
+    if (!this.canopyMat) return;
+    this.canopyMat.uniforms.daylight.value = amount;
+    this.ambient.intensity = (this.surfaces ? .66 : .45) + amount * .28;
+    this.hemi.intensity = .55 + amount * .34;
+  }
+
+  get continuity() {
+    let farBytes = 0;
+    for (const chunk of this.distant.values()) for (const { geometry } of chunk.meshes) {
+      for (const attribute of Object.values(geometry.attributes)) farBytes += attribute.array.byteLength;
+      farBytes += geometry.index?.array.byteLength ?? 0;
+    }
+    return { near: this.chunks.map(({ s0, s1 }) => [s0, s1]), far: this.distant.size, farThrough: this.farThrough, farBytes };
+  }
 
   get surfaceMaterials() { return this.shellMaterials && [...this.shellMaterials, this.ribMat, this.braceMat]; }
 
@@ -539,6 +560,11 @@ export class Tunnel {
     // Preserve the streaming intervals even where the junction owns the shell.
     const old = this.junction;
     this.junction = junction;
+    for (const [station, chunk] of this.distant) {
+      if (![old, junction].some(cut => cut && chunk.s0 < cut.end && chunk.s1 > cut.start)) continue;
+      this._disposeChunk(chunk);
+      this.distant.set(station, this.buildDistant(chunk.s0, chunk.s1));
+    }
     if (behindCamera) return;
     for (let i = 0; i < this.chunks.length; i++) {
       const chunk = this.chunks[i];
@@ -557,9 +583,26 @@ export class Tunnel {
     return { s0, s1, meshes };
   }
 
+  private buildDistant(s0: number, s1: number): Chunk {
+    const gap = this.junction;
+    const ranges = !gap || s1 <= gap.start || s0 >= gap.end ? [[s0, s1]] :
+      [[s0, Math.min(s1, gap.start)], [Math.max(s0, gap.end), s1]].filter(([from, to]) => to > from);
+    const spans = ranges.map(([from, to]) => ({ from, to, sample: (s: number, fr: PathFrame) => this.path.sample(s, fr) }));
+    const meshes = spans.length ? [false, true].map(upper => {
+      const mesh = new THREE.Mesh(cabinEnvelope(spans, CANOPY_HOOP, upper), upper ? this.canopyMat : this.shellMat);
+      mesh.name = upper ? 'far-skyglass' : 'far-cabin';
+      mesh.renderOrder = upper ? 3 : 0;
+      this.group.add(mesh);
+      return mesh;
+    }) : [];
+    return { s0, s1, meshes };
+  }
+
   dispose() {
     for (const chunk of this.chunks) this._disposeChunk(chunk);
     this.chunks.length = 0;
+    for (const chunk of this.distant.values()) this._disposeChunk(chunk);
+    this.distant.clear();
     this.group.clear();
     this.wire?.geometry.dispose();
     for (const material of [this.rimMat, this.stripMat, this.wireMat, this.canopyMat, ...(!this.surfaces ? [this.shellMat, this.ribMat] : [])]) {
@@ -583,7 +626,7 @@ export class Tunnel {
 
     let lo = Infinity, hi = -Infinity;
     for (const c of this.chunks) { lo = Math.min(lo, c.s0); hi = Math.max(hi, c.s1); }
-    if (!this.chunks.length) { lo = hi = this.surfaces ? Math.floor(s / CHUNK) * CHUNK : s; }
+    if (!this.chunks.length) { lo = hi = this.surfaces || this.continuous ? Math.floor(s / CHUNK) * CHUNK : s; }
 
     // build forward
     let guard = 0;
@@ -604,6 +647,22 @@ export class Tunnel {
       if (b - a < 1) break;
       this.chunks.push(this.streamChunk(a, b));
       lo = a;
+    }
+    if (this.continuous) {
+      while (this.farThrough < this.path.length - 1e-7) {
+        const start = this.farThrough;
+        this.farThrough = Math.min(this.path.length, start + CHUNK);
+        this.distant.set(start, this.buildDistant(start, this.farThrough));
+      }
+      for (const [station, chunk] of this.distant) {
+        if (station >= this.initialLength && chunk.s1 < need0 - KEEP_AHEAD && menu) {
+          this._disposeChunk(chunk);
+          this.distant.delete(station);
+        } else {
+          const covered = this.chunks.some(near => near.s0 <= chunk.s0 && near.s1 >= chunk.s1);
+          for (const mesh of chunk.meshes) mesh.visible = !covered;
+        }
+      }
     }
   }
 
@@ -629,7 +688,7 @@ export class Tunnel {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
     this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * dynamics.fixtureGain);
     this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * dynamics.rimGain);
-    this.hemi.intensity = .55;
+    this.hemi.intensity = .55 + (this.canopyMat?.uniforms.daylight.value ?? 0) * .34;
     for (const light of this.lights) light.intensity = 30 * dynamics.physicalGain;
   }
 

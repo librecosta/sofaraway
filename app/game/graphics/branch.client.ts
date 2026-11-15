@@ -4,6 +4,7 @@ import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
 import { routeSwatches, routeTone } from '../core/lighting-score';
 import type { LightingState, LightTone } from '../core/lighting-score';
 import { SECTION } from '../core/collision';
+import { CABIN_WAIST, cabinEnvelope, cabinLower, cabinUpper } from './cabin-geometry';
 import { BranchPath, pathFrame } from './branch-path';
 import type { PathFrame } from './path';
 import { surfaceUV } from './materials/uv';
@@ -118,33 +119,101 @@ export class BranchVisual {
   private readonly level = new THREE.Vector3(1, 1, 1);
   private readonly tint = Array.from({ length: 3 }, () => new THREE.Color(0xffffff));
 
-  constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material) {
-    this.group.name = 'elsewhere-junction';
+  constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material, private readonly canopy?: THREE.Material) {
+    this.group.name = canopy ? 'skyglass-junction' : 'elsewhere-junction';
     const housing = new Quads();
     const rails = new Quads();
     const entry = path.distanceAt(path.openBeat);
     const exit = path.distanceAt(path.mergeBeat);
-    this.sweep(housing, 'center', path.start, entry, true);
-    this.sweep(housing, 'center', exit, path.end, true);
-    this.dividers(housing, path.openBeat);
-    this.dividers(housing, path.mergeBeat);
+    if (canopy) {
+      this.cabin(shell, canopy);
+    } else {
+      this.sweep(housing, 'center', path.start, entry, true);
+      this.sweep(housing, 'center', exit, path.end, true);
+      this.dividers(housing, path.openBeat);
+      this.dividers(housing, path.mergeBeat);
+    }
     for (const side of routeSides) {
       const route = layout[side], style = styles[route];
       rails.lane = routeIndex[route];
-      this.sweep(housing, side, entry, exit, false);
-      this.frames(rails, side, entry, exit, style.spacing, style.width, new THREE.Color().setScalar(style.brightness));
-      const guide = new THREE.Color().setScalar(.63);
+      if (!canopy) this.sweep(housing, side, entry, exit, false);
+      this.frames(rails, side, entry, exit, canopy ? 21 : style.spacing, style.width, new THREE.Color().setScalar(style.brightness));
+      const guide = new THREE.Color().setScalar(canopy ? .32 : .63);
       this.guide(rails, side, path.split, entry, guide);
       this.guide(rails, side, exit, path.end, guide);
       this.sign(side, route);
     }
-    const housingMesh = new THREE.Mesh(housing.geometry(), shell);
-    housingMesh.name = 'junction-shell';
+    if (!canopy) {
+      const housingMesh = new THREE.Mesh(housing.geometry(), shell);
+      housingMesh.name = 'junction-shell';
+      this.group.add(housingMesh);
+    }
     const glow = guideMaterial(this.level, this.tint);
     this.materials.push(glow);
     const railMesh = new THREE.Mesh(rails.geometry(), glow);
     railMesh.name = 'junction-guides';
-    this.group.add(housingMesh, railMesh);
+    this.group.add(railMesh);
+  }
+
+  private cabin(shell: THREE.Material, canopy: THREE.Material) {
+    const { path } = this;
+    const span = (side: RouteSide, from: number, to: number) => ({
+      from, to, sample: (s: number, frame: PathFrame) => path.sample(s, side, frame),
+    });
+    const expand = (from: number, to: number) => ({
+      ...span('center', from, to),
+      widen: (station: number) => path.spreadAt(station, path.start),
+      raise: (station: number) => path.spec.rise * path.spreadAt(station, path.start) / path.spec.spacing,
+    });
+    const spans = [expand(path.start, path.open), expand(path.merge, path.end),
+      ...routeSides.map(side => span(side, path.open, path.merge))];
+    for (const upper of [false, true]) {
+      const mesh = new THREE.Mesh(cabinEnvelope(spans, 3, upper), upper ? canopy : shell);
+      mesh.name = upper ? 'junction-skyglass' : 'junction-shell';
+      mesh.renderOrder = upper ? 4 : 0;
+      this.group.add(mesh);
+    }
+    this.cabinPortals(shell, canopy);
+  }
+
+  private cabinPortals(shell: THREE.Material, canopy: THREE.Material) {
+    const { spacing, rise } = this.path.spec;
+    const silhouette = [...cabinLower, ...cabinUpper.slice(1, -1).reverse()];
+    const outer = silhouette.map(([x, y]) => new THREE.Vector2(x + Math.sign(x) * (spacing + .005),
+      y + (y > CABIN_WAIST ? rise : 0) + (y < 0 ? -.005 : .005)));
+    const holes = [-1, 0, 1].map(side => silhouette.map(([x, y]) =>
+      new THREE.Vector2(x * .999 + spacing * side, y * .999 + (side ? rise : 0))));
+    const points = [outer, ...holes].flat();
+    const faces = THREE.ShapeUtils.triangulateShape(outer, holes);
+    const cut = (polygon: THREE.Vector2[], keepUpper: boolean) => polygon.flatMap((point, i) => {
+      const next = polygon[(i + 1) % polygon.length];
+      const a = point.y - CABIN_WAIST, b = next.y - CABIN_WAIST;
+      const kept = keepUpper ? a >= 0 : a <= 0;
+      const crossing = a * b < 0 ? [point.clone().lerp(next, a / (a - b))] : [];
+      return kept ? [point, ...crossing] : crossing;
+    });
+    for (const upper of [false, true]) {
+      const pos: number[] = [], uv: number[] = [];
+      const world = new THREE.Vector3();
+      const panels = faces.map(face => cut(face.map(index => points[index]), upper));
+      for (const station of [this.path.open, this.path.merge]) {
+        const frame = this.path.sample(station, 'center', this.near);
+        for (const panel of panels) for (let i = 1; i < panel.length - 1; i++) {
+          for (const { x, y } of [panel[0], panel[i], panel[i + 1]]) {
+            pos.push(...world.copy(frame.p).addScaledVector(frame.r, x).addScaledVector(frame.u, y));
+            uv.push(...(upper ? [.35 + x / 120, y / 21 + .29] : surfaceUV('alloy-satin-dark', x, 0, 0, y)));
+          }
+        }
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      geometry.computeVertexNormals();
+      const mesh = new THREE.Mesh(geometry, upper ? canopy : shell);
+      mesh.name = upper ? 'junction-glass-portals' : 'junction-solid-portals';
+      mesh.renderOrder = upper ? 4 : 0;
+      this.group.add(mesh);
+    }
   }
 
   updateLighting(state: LightingState, gain = 1) {
@@ -225,9 +294,9 @@ export class BranchVisual {
     canvas.width = 384; canvas.height = 96;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#10171d';
+    ctx.fillStyle = this.canopy ? '#b9d7df' : '#10171d';
     ctx.fillRect(0, 0, 384, 96);
-    const swatch = routeSwatches[route];
+    const swatch = this.canopy ? { main: '#163d4b', challenge: '#49395d', score: '#1d5144' }[route] : routeSwatches[route];
     ctx.strokeStyle = ctx.fillStyle = swatch;
     ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, 378, 90);

@@ -5,9 +5,9 @@ import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 
-const expectedCounts = [[140, 141, 141], [65, 97, 97], [158, 158, 158], [91, 91, 91]];
+const expectedCounts = [[140, 141, 141], [81, 120, 120], [158, 158, 158], [91, 91, 91]];
 // ELSEWHERE defaults to Main. DESCENT and ORBIT retain their A0 scores.
-const expectedScores = [[66201, 105326, 156826], [27896, 69321, 103221],
+const expectedScores = [[66201, 105326, 156826], [35970, 89395, 133295],
   [75314, 119039, 177339], [41444, 65069, 96569]];
 
 for (const [index, volume] of VOLUMES.entries()) {
@@ -28,8 +28,8 @@ for (const [index, volume] of VOLUMES.entries()) {
       await expect(page.locator('#over-score')).toHaveText(String(expectedScores[index][i]));
       const debug = await page.locator('#errbox').evaluate(el => JSON.parse(el.textContent!));
       expect(debug.hitCount).toBe(0);
-      // Gate align aims at the next Iris, outside the pickup radius, preserving the no-pickup baseline.
-      expect(debug.pickup).toEqual(volume.id === 'elsewhere' ? { kind: expect.any(String), status: 'missed' } : null);
+      const pickup = volume.id === 'elsewhere' ? 'missed' : volume.id === 'daybreak' ? i ? 'collected' : 'missed' : null;
+      expect(debug.pickup).toEqual(pickup ? { kind: expect.any(String), status: pickup } : null);
     }
     expect(errors).toEqual([]);
   });

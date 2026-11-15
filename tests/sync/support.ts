@@ -33,14 +33,14 @@ export async function openSync(page: Page) {
   return errors;
 }
 
-export async function mount(page: Page, volumeId: VolumeId, mode: PlayMode = 'standard', difficulty: Difficulty = 'normal') {
-  const phase = await page.evaluate(async ({ volumeId, mode, difficulty }) => {
-    const snap = await window.b0Harness.mount({ volumeId, mode, difficulty, quality: 'low',
+export async function mount(page: Page, volumeId: VolumeId, mode: PlayMode = 'standard', difficulty: Difficulty = 'normal', runSeed?: number) {
+  const phase = await page.evaluate(async ({ volumeId, mode, difficulty, runSeed }) => {
+    const snap = await window.b0Harness.mount({ volumeId, mode, difficulty, runSeed, quality: 'low',
       diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: false,
         mobileQuality: false, post: true, record: false, debug: false } });
     window.syncHarness.clear();
     return snap.phase;
-  }, { volumeId, mode, difficulty });
+  }, { volumeId, mode, difficulty, runSeed });
   expect(phase).toBe('menu');
 }
 

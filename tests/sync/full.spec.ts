@@ -4,8 +4,8 @@ import { onsetLead } from '../../app/game/core/daybreak-score';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [105326, 69321, 119039, 65069];
-const gateCounts = [141, 97, 158, 91];
+const normalScores = [105326, 89395, 119039, 65069];
+const gateCounts = [141, 120, 158, 91];
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];
@@ -70,7 +70,7 @@ for (const [index, volume] of VOLUMES.entries()) {
     const duration = volume.beats * 60 / volume.bpm;
     test.setTimeout((duration + 45) * 1000);
     const errors = await openSync(page);
-    await mount(page, volume.id);
+    await mount(page, volume.id, 'standard', 'normal', volume.id === 'daybreak' ? 0 : undefined);
     await page.locator('#start').click();
     await phase(page, 'playing');
     await page.waitForFunction(() => ['paused', 'crash', 'results', 'error'].includes(window.b0Harness.snapshot().phase),

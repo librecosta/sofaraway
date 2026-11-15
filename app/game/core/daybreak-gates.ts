@@ -4,12 +4,11 @@ export type GateVertex = readonly [x: number, y: number];
 type Polygon = readonly GateVertex[];
 type Edge = readonly [from: GateVertex, to: GateVertex];
 
-export const daybreakGateKinds = ['daybreak-crystal', 'daybreak-crystal-45', 'daybreak-vertical', 'daybreak-horizontal'] as const;
+export const daybreakGateKinds = ['daybreak-crystal', 'daybreak-vertical', 'daybreak-horizontal'] as const;
 export type DaybreakGateKind = typeof daybreakGateKinds[number];
 
 export const daybreakGates = {
   'daybreak-crystal': { label: 'Crystal', openings: ['Upper left', 'Upper right', 'Lower right', 'Lower left'] },
-  'daybreak-crystal-45': { label: 'Crystal 45°', openings: ['Top', 'Right', 'Bottom', 'Left'] },
   'daybreak-vertical': { label: 'Vertical', openings: ['Center'] },
   'daybreak-horizontal': { label: 'Horizontal', openings: ['Center'] },
 } as const;
@@ -64,8 +63,8 @@ interface DaybreakProfile {
   readonly target: GateVertex;
 }
 
-function crystalProfiles(firstSector: number): DaybreakProfile[] {
-  const start = (firstSector - .5) * sliceAngle;
+function crystalProfiles(): DaybreakProfile[] {
+  const start = 2.5 * sliceAngle;
   const radius = HUB_APOTHEM / Math.cos(sliceAngle / 2);
   const hub = Array.from({ length: 8 }, (_, i): GateVertex => {
     const angle = start + i * sliceAngle;
@@ -99,8 +98,7 @@ const horizontalWindow = [[-1.85, 0], [-.96, -1.12], [.96, -1.12], [1.85, 0], [.
 const verticalConnectors = [-1, 1].flatMap(x => [-1, 1].map((y): GateVertex => [x * .895, y * 1.415]));
 
 const profiles = {
-  'daybreak-crystal': crystalProfiles(3),
-  'daybreak-crystal-45': crystalProfiles(2),
+  'daybreak-crystal': crystalProfiles(),
   'daybreak-vertical': [centeredWindow(verticalWindow, verticalConnectors)],
   'daybreak-horizontal': [centeredWindow(horizontalWindow, horizontalWindow)],
 };

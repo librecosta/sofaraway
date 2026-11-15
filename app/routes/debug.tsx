@@ -392,7 +392,7 @@ export default function DebugOverview() {
 
         <section id="gates" className={s.section}>
           <h2>Gate library</h2>
-          <p>Inspect the glass and its opening. DAYBREAK includes every opening and both complete crystal layouts.</p>
+          <p>Inspect the glass and its opening. DAYBREAK includes the complete Crystal layout and all six openings.</p>
           <div className={s.gateLibrary}>
             {catalog.map(({ volume, gates }) => (
               <div key={volume.id} id={`gates-${volume.id}`} className={gates.length > 1 ? s.gateGroupWide : s.gateGroup}>

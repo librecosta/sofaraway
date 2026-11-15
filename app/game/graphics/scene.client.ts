@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { canPass, playerViewOffset } from '../core/collision';
-import { PICKUP_LOCAL_X, PICKUP_LOCAL_Y } from '../core/pickups';
+import { gameplayFor } from '../core/gameplay';
 import { modeScale } from '../core/reference-track';
 import { makeAfterglowAtlas, makeLightingAtlas } from '../core/lighting-atlas';
 import { ease } from '../core/lighting-score';
@@ -12,7 +12,7 @@ import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
-import { makeEnvMap, makeSky } from './environment.client';
+import { makeDaylightSky, makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
 import { MaterialLibrary } from './materials/library.client';
@@ -34,7 +34,7 @@ type SceneGate = RunGate | EncoreGate;
 export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance' | 'beat' | 'time' | 'phase' |
   'mode' | 'route' | 'branch' | 'branchGates' | 'junctionPath' | 'steeringWidth' | 'routeGuide' | 'routeSide' |
   'previewGates' | 'previewEncore' | 'outroPlan' | 'speed' | 'boostLens' | 'boosting' | 'hitTime' |
-  'pickup' | 'pickupVisible' | 'pickupStation' | 'pickupPreviewStation'>;
+  'pickup' | 'pickupVisible' | 'pickupStation' | 'pickupPreviewStation'> & { escapeWhite?: number };
 
 export class UnsupportedGraphics extends Error {}
 
@@ -48,10 +48,12 @@ class VolumeScene {
   readonly scenic?: CorridorLights;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
   private readonly routeFog = new THREE.Color();
+  private readonly daylightFog = new THREE.Color(0xffd8a7);
   private readonly gateGeometries = new GateGeometries();
   private readonly visuals = new Map<SceneGate, GateVisual>();
   private outro?: OutroPlan;
   private sky?: THREE.CanvasTexture | null;
+  private daylightSky?: ReturnType<typeof makeDaylightSky>;
   private readonly cameraFrame = frame();
   private readonly gateFrame = frame();
   private readonly pickupFrame = frame();
@@ -65,18 +67,27 @@ class VolumeScene {
   private junction?: BranchVisual;
   private disposeJunctionPrograms?: () => void;
   private readonly surfaceLibrary?: MaterialLibrary;
+  private readonly gameplay;
 
   constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary,
     environment: THREE.Texture | null, readonly path: Path, mode: PlayMode) {
     this.hue = volume.hue[0];
+    this.gameplay = gameplayFor(volume.id);
+    if (this.gameplay.world?.continuous) {
+      this.camera.far = 1800;
+      this.camera.updateProjectionMatrix();
+    }
     this.surfaceLibrary = textures instanceof MaterialLibrary ? textures : undefined;
     this.scene.fog = this.fog;
     try {
       const atlas = makeLightingAtlas(volume, mode);
-      this.tunnel = new Tunnel(textures, this.path, volume.topology, atlas);
+      this.tunnel = new Tunnel(textures, this.path, volume.topology, atlas, this.gameplay.world?.continuous);
       this.scene.add(this.tunnel.group);
       this.sky = makeSky(volume);
-      this.scene.background = this.sky;
+      if (this.gameplay.ending && this.sky) {
+        this.daylightSky = makeDaylightSky(this.sky);
+        this.scene.add(this.daylightSky);
+      } else this.scene.background = this.sky;
       this.scene.environment = environment;
       if (volume.id === 'elsewhere') {
         // Keep the existing PMREM and temper its contribution under the new local rig.
@@ -107,7 +118,7 @@ class VolumeScene {
     for (const preview of previews) this.scene.add(preview);
     try {
       this.tunnel.surfaces?.upload(renderer);
-      if (this.volume.id === 'elsewhere' && !this.disposeJunctionPrograms) {
+      if (this.gameplay.branch && !this.disposeJunctionPrograms) {
         this.disposeJunctionPrograms = prepareJunctionPrograms(renderer, this.scene, this.camera);
       } else {
         renderer.compile(this.scene, this.camera);
@@ -171,9 +182,21 @@ class VolumeScene {
     if (lighting?.pitch) this.camera.rotateX(lighting.pitch);
     const previousPhase = this.phase;
     this.phase = sim.phase;
+    let daylight = 0;
+    if (this.gameplay.ending) {
+      const release = sim.outroPlan ? ease((distance - sim.outroPlan.afterglowStart) / 330) : 0;
+      const escaped = sim.phase === 'results' && distance > (sim.outroPlan?.mainLastStation ?? Infinity);
+      daylight = Math.max(release * .36, sim.escapeWhite ?? 0, escaped ? .15 : 0);
+      if (this.daylightSky) {
+        this.daylightSky.position.copy(this.camera.position);
+        this.daylightSky.material.uniforms.daylight.value = daylight;
+      }
+      this.tunnel.setDaylight(daylight);
+      if (sim.phase === 'results' || sim.phase === 'crash') this.fog.color.setHSL(this.hue, .75, .030).lerp(this.daylightFog, daylight * .55);
+    }
 
     const mainPreviews = junction && sim.routeGuide && sim.branch && !sim.branch.side && sim.branchGates
-      ? [...sim.previewGates, sim.branchGates.main[0], sim.branchGates.challenge[0], sim.branchGates.score[0]]
+      ? [...sim.previewGates, ...[sim.branchGates.main[0], sim.branchGates.challenge[0], sim.branchGates.score[0]].filter(Boolean)]
       : sim.previewGates;
     const previews: readonly SceneGate[] = sim.previewEncore.length ? [...mainPreviews, ...sim.previewEncore] : mainPreviews;
     for (const [gate, visual] of this.visuals) {
@@ -208,6 +231,9 @@ class VolumeScene {
       this.tunnel.setHue((this.hue + 1) % 1);
       this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
+      if (this.gameplay.ending) {
+        this.fog.color.lerp(this.daylightFog, daylight * .55);
+      }
     }
 
     let focus = 46;
@@ -257,10 +283,10 @@ class VolumeScene {
     const path = sim.junctionPath;
     const layout = sim.branch?.layout;
     const past = path && sim.trackDistance > path.end + 95;
-    if (path && layout && !past && sim.trackDistance >= path.guideStart - 100) {
+    if (path && layout && (this.gameplay.world?.continuous || (!past && sim.trackDistance >= path.guideStart - 100))) {
       if (this.junction?.path === path && this.junction.layout === layout) return;
       this.junction?.dispose();
-      this.junction = new BranchVisual(path, layout, this.tunnel.junctionShell);
+      this.junction = new BranchVisual(path, layout, this.tunnel.junctionShell, this.tunnel.junctionCanopy);
       this.scene.add(this.junction.group);
       this.tunnel.setJunction(this.junction.path);
     } else if (this.junction) {
@@ -271,6 +297,7 @@ class VolumeScene {
   }
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
+  get continuity() { return this.gameplay.world?.continuous ? this.tunnel.continuity : undefined; }
   get encoreMeshes() {
     let count = 0;
     for (const [gate, visual] of this.visuals) if ('index' in gate) count += visual.meshes.length;
@@ -279,7 +306,8 @@ class VolumeScene {
   get routeLighting() { return this.junction ? { ...this.junction.tones } : undefined; }
 
   private updatePickup(sim: SceneState) {
-    if (sim.phase !== 'playing' || !sim.pickupVisible || !sim.pickup) {
+    const spec = this.gameplay.pickup;
+    if (!spec || sim.phase !== 'playing' || !sim.pickupVisible || !sim.pickup) {
       this.pickup?.dispose();
       this.pickup = undefined;
       return;
@@ -290,7 +318,7 @@ class VolumeScene {
     }
     const { p, r, u, f } = this.path.sample(sim.pickupStation, this.pickupFrame);
     const group = this.pickup.group;
-    group.position.copy(p).addScaledVector(r, PICKUP_LOCAL_X).addScaledVector(u, PICKUP_LOCAL_Y);
+    group.position.copy(p).addScaledVector(r, spec.x).addScaledVector(u, spec.y);
     this.basis.makeBasis(r, u, this.backwards.copy(f).negate());
     group.quaternion.setFromRotationMatrix(this.basis);
     this.pickup.update(sim.beat, (sim.pickupStation - sim.distance) / (sim.pickupStation - sim.pickupPreviewStation));
@@ -308,6 +336,8 @@ class VolumeScene {
     this.tunnel?.dispose();
     this.scenic?.dispose();
     this.surfaceLibrary?.dispose();
+    this.daylightSky?.geometry.dispose();
+    this.daylightSky?.material.dispose();
     this.sky?.dispose();
     this.scene.clear();
   }
@@ -562,6 +592,7 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
+      continuity: this.volume?.continuity,
       encoreMeshes: this.volume?.encoreMeshes ?? 0,
       routeLighting: this.volume?.routeLighting,
       scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,

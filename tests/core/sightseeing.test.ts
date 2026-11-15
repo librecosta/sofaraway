@@ -18,7 +18,9 @@ const cases = [
   { volume: elsewhere, side: 'left', seed: 0, count: 53 },
   { volume: elsewhere, side: 'left', seed: 1, count: 49 },
   { volume: elsewhere, side: 'right', seed: 1, count: 53 },
-  { volume: VOLUMES[1], side: 'center', seed: 0, count: 32 },
+  { volume: VOLUMES[1], side: 'center', seed: 0, count: 39 },
+  { volume: VOLUMES[1], side: 'right', seed: 0, count: 39 },
+  { volume: VOLUMES[1], side: 'left', seed: 0, count: 43 },
   { volume: VOLUMES[2], side: 'center', seed: 0, count: 53 },
   { volume: VOLUMES[3], side: 'center', seed: 0, count: 31 },
 ] as const;
@@ -30,7 +32,7 @@ test.each(cases)('$volume.id $side seed $seed keeps authored gates reachable wit
   sim.start('hard', seed, undefined, 'sightseeing');
   standard.start('normal', seed);
   retry.start('easy', seed, undefined, 'sightseeing');
-  const route = volume === elsewhere ? branchLayout(seed)[side] : undefined;
+  const route = sim.branch ? branchLayout(seed)[side] : undefined;
   const common = chartOf(sim).slice();
   expect(common.map(gateKey)).toEqual(chartOf(retry).map(gateKey));
   const full = [...chartOf(standard), ...(route ? standard.branchGates![route] : [])];
@@ -39,7 +41,8 @@ test.each(cases)('$volume.id $side seed $seed keeps authored gates reachable wit
   expect(chart.every(gate => full.some(authored => gateKey(gate) === gateKey(authored)))).toBe(true);
   expect(new Set(chart.map(gate => sectionAt(volume, gate.beat)?.name)))
     .toEqual(new Set(full.map(gate => sectionAt(volume, gate.beat)?.name)));
-  expect(Math.min(...chart.slice(1).map((gate, i) => gate.beat - chart[i].beat))).toBeGreaterThanOrEqual(3);
+  const gap = volume.id === 'daybreak' && route === 'score' ? 1.75 : 3;
+  expect(Math.min(...chart.slice(1).map((gate, i) => gate.beat - chart[i].beat))).toBeGreaterThanOrEqual(gap);
   expect(sim.lives).toBe(5);
 
   const ticks = Math.ceil((volume.beats * sim.secondsPerBeat + 0.8) / STEP);
@@ -50,7 +53,7 @@ test.each(cases)('$volume.id $side seed $seed keeps authored gates reachable wit
     const previous = chart[before - 1];
     let input = idleInput;
     if (next && sim.time - previousCrossing >= 0.15 - 1e-9) {
-      const [x, y] = sim.branch && !sim.branch.side && next.beat >= SPLIT_BEAT
+      const [x, y] = sim.branch && !sim.branch.side && next.beat >= sim.junctionPath!.spec.split
         ? [side === 'left' ? -3.2 : side === 'right' ? 3.2 : 0, 0] : lanePoint(next.kind, next.open, next.axis);
       input = { ...idleInput, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) };
     }

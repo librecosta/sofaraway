@@ -37,7 +37,7 @@ test('DAYBREAK Debug previews the live soundtrack, WAV export and the new chart'
   await expect(page.locator('#audio-status')).toHaveText(/Done.*4\.0 s/);
   await page.goBack();
   await page.getByText('DAYBREAK chart and ending').click();
-  await expect(page.getByText(/SUNBURST · beats 160–224 · 31 gates/)).toBeVisible();
+  await expect(page.getByText(/SUNBURST · beats 160–224 · 38 gates/)).toBeVisible();
   await expect(page.getByText(/Song end · 144 s/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'Inspect the result' })).toHaveAttribute('href', /vol=daybreak.*t=144\.8/);
 });

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlayMode } from '../contracts';
-import { composeElsewhere, corridorLength, curveOffset, curveSlope } from '../core/corridor-composition';
+import { composeDaybreak, composeElsewhere, corridorLength, curveOffset, curveSlope } from '../core/corridor-composition';
 import type { CorridorSegment } from '../core/corridor-composition';
 import type { Topology, VolumeDefinition } from '../core/volumes';
 
@@ -34,7 +34,8 @@ export class Path {
   private sampleFrom = 0;
   private runPath?: { frames: number; segments: number };
 
-  constructor(private readonly straightLen: number, private readonly radius: number, topology: Topology) {
+  constructor(private readonly straightLen: number, private readonly radius: number, topology: Topology,
+    private readonly straightExtension = false) {
     this.frames = [];
     this.length = 0;
     this.segments = [];
@@ -63,7 +64,8 @@ export class Path {
   extendMenu(through: number, keepFrom: number) {
     if (through <= this.length) return;
     const run = this.runPath ??= { frames: this.frames.length, segments: this.segments.length };
-    this.extend(through);
+    if (this.straightExtension) this.straight(Math.ceil((through - this.length) / 210) * 210);
+    else this.extend(through);
     // Retain the original run path and one sample before the live streaming window.
     let frame = run.frames;
     while (frame + 1 < this.frames.length && this.frames[frame + 1].s < keepFrom) frame++;
@@ -283,5 +285,6 @@ export function buildPath(totalLength: number, straightLen = 150, radius = 46, t
 
 export function buildRunPath(volume: VolumeDefinition, mode: PlayMode = 'standard') {
   if (volume.id === 'elsewhere') return new Path(150, 46, volume.topology).author(composeElsewhere(volume, mode));
+  if (volume.id === 'daybreak') return new Path(150, 46, volume.topology, true).author(composeDaybreak(volume, mode));
   return buildPath(corridorLength(volume), 150, 46, volume.topology);
 }
