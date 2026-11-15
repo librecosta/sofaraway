@@ -1,4 +1,4 @@
-import type { DaybreakStem } from '../../audio/daybreak.client';
+import type { DaybreakStem } from '../../core/daybreak-score';
 import { inspectorSource } from './source.client';
 import { defaultMix } from './track-adapter';
 import type { InspectorScore, Mix, TrackId } from './track-adapter';
@@ -6,7 +6,6 @@ import type { InspectorScore, Mix, TrackId } from './track-adapter';
 export type PlaybackState = 'Ready' | 'Starting' | 'Playing' | 'Paused' | 'Stopped' | 'Ended' | 'Audio unavailable';
 const fade = .018;
 const lookahead = .22;
-const recoveryWindow = 6;
 type Playback = { anchor: number; bus: GainNode; source: ReturnType<typeof inspectorSource> };
 
 export class InspectorTransport {
@@ -119,9 +118,8 @@ export class InspectorTransport {
       this.nowPlaying = { anchor, bus, source };
       bus.connect(ctx.destination);
       let after = this.offset - 1e-8;
-      let next = Math.max(0, Math.floor((this.offset - recoveryWindow) / this.score.step));
+      let next = Math.floor(this.offset / this.score.step);
       const total = this.score.volume.beats * 4;
-      let restore = true;
       const schedule = () => {
         if (revision !== this.revision || ctx.state !== 'running') return;
         const now = ctx.currentTime;
@@ -132,15 +130,14 @@ export class InspectorTransport {
           this.report('Ended');
           return;
         }
-        if (!restore && anchor + (next + 1) * this.score.step < now) {
+        if (anchor + (next + 1) * this.score.step < now) {
           after = Math.max(after, now - anchor);
           next = Math.max(next, Math.floor(after / this.score.step));
         }
         while (next < total && anchor + next * this.score.step < now + lookahead) {
-          source.playStep(next, anchor + next * this.score.step, after, restore);
+          source.playStep(next, anchor + next * this.score.step, after);
           next++;
         }
-        restore = false;
       };
       this.scheduler = window.setInterval(schedule, 24);
       schedule();

@@ -1,14 +1,13 @@
-import { drums, master, onset, score, step, swing } from '../core/daybreak-score';
-import { bassNote, brightPluck, envelope, filter, gain, hat, kick, noteHz, oscillator, pan,
-  randomSource, rate, roomImpulse, snare, warmSubBass, warmSubRelease } from './daybreak-voices.client';
+import { drums, master, step } from '../core/daybreak-score';
+import type { DaybreakStem } from '../core/daybreak-score';
+import { filter, gain, hat, kick, randomSource, rate, roomImpulse, snare } from './daybreak-voices.client';
 
 const noiseDraws = { kick: 1, snare: 3, ghost: 2, fill: 3, hat: 2 };
 const buffersByRate = new Map<number, ReturnType<typeof prepare>>();
 
-export const daybreakStemSends = { kick: .055, snare: .055, hats: .055, bass: 0, keys: .32, atmos: .50 };
-export type DaybreakStem = keyof typeof daybreakStemSends;
+export const daybreakRoomSend = .055;
 type StemInputs = Record<DaybreakStem, AudioNode>;
-type InspectorRouting = (mix: AudioNode, impulse: AudioBuffer) => { inputs: StemInputs; duck: AudioParam };
+type InspectorRouting = (mix: AudioNode, impulse: AudioBuffer) => StemInputs;
 
 export function daybreakRoom(ctx: BaseAudioContext, output: AudioNode, impulse: AudioBuffer) {
   const room = ctx.createConvolver();
@@ -34,7 +33,6 @@ function prepare(ctx: BaseAudioContext) {
 export class DaybreakSynthesizer {
   private readonly runBus: GainNode;
   private readonly inputs: StemInputs;
-  private readonly duck: AudioParam;
   private readonly buffers: ReturnType<typeof prepare>;
 
   constructor(private readonly ctx: BaseAudioContext, output: AudioNode, route?: InspectorRouting) {
@@ -47,33 +45,24 @@ export class DaybreakSynthesizer {
     this.runBus = gain(ctx, output, master);
     const mix = filter(ctx, this.runBus, 'highpass', 29);
     if (route) {
-      const { inputs, duck } = route(mix, buffers.impulse);
-      this.inputs = inputs;
-      this.duck = duck;
+      this.inputs = route(mix, buffers.impulse);
     } else {
       const room = daybreakRoom(ctx, mix, buffers.impulse);
-      const drums = gain(ctx, mix, 1), bass = gain(ctx, mix, 1);
-      const keys = gain(ctx, mix, 1), atmos = gain(ctx, mix, .74);
-      drums.connect(gain(ctx, room, daybreakStemSends.kick));
-      keys.connect(gain(ctx, room, daybreakStemSends.keys));
-      atmos.connect(gain(ctx, room, daybreakStemSends.atmos));
-      this.inputs = { kick: drums, snare: drums, hats: drums, bass, keys, atmos };
-      this.duck = bass.gain;
+      const drums = gain(ctx, mix, 1);
+      drums.connect(gain(ctx, room, daybreakRoomSend));
+      this.inputs = { kick: drums, snare: drums, hats: drums };
     }
   }
 
   dispose() { this.runBus.disconnect(); }
 
-  playStep(index: number, time: number, after = -Infinity, restore = false) {
+  playStep(index: number, time: number, after = -Infinity) {
     const bar = Math.floor(index / 16), at = index % 16;
-    const frame = score[bar];
-    if (!frame) return;
+    const hits = this.buffers.hits[bar];
+    if (!hits) return;
     const ctx = this.ctx;
     const anchor = time - index * step;
-    const atTime = (position: number, shuffle: number) => anchor + onset(bar, position, shuffle);
-    const { chord } = frame;
-    const warmBass = frame.section !== 'OPEN' && frame.section !== 'OUTRO';
-    for (const event of this.buffers.hits[bar]) {
+    for (const event of hits) {
       if (event.at !== at || event.time <= after) continue;
       let draw = 0;
       const random = () => event.draws[draw++];
@@ -82,9 +71,6 @@ export class DaybreakSynthesizer {
       switch (event.kind) {
         case 'kick':
           kick(ctx, this.inputs.kick, this.buffers.noise, start, strength, random);
-          this.duck.setValueAtTime(1, start);
-          this.duck.linearRampToValueAtTime(warmBass ? .8 : .51, start + .007);
-          this.duck.linearRampToValueAtTime(1, start + .085);
           break;
         case 'snare':
         case 'ghost':
@@ -98,42 +84,6 @@ export class DaybreakSynthesizer {
           hat(ctx, this.inputs.hats, this.buffers.noise, start, strength * (.86 + .28 * random()), event.pan, event.open, random);
           break;
       }
-    }
-    const ageAt = (onsetTime: number, lifespan: number) => {
-      if (onsetTime > after) return 0;
-      const age = after - onsetTime;
-      return restore && age < lifespan ? age : Infinity;
-    };
-    const playBass = warmBass ? warmSubBass : bassNote;
-    const bassRelease = warmBass ? warmSubRelease : .075;
-    for (const [position, interval, length, velocity = 1] of frame.bass) {
-      if (position !== at) continue;
-      const age = ageAt(onset(bar, at, swing / 2), length * step + bassRelease);
-      if (!Number.isFinite(age)) continue;
-      playBass(ctx, this.inputs.bass, chord.bass + interval, atTime(at, swing / 2), length * step,
-        .143 * (interval ? .83 : 1) * frame.bassLevel * velocity, age);
-    }
-    for (const [position, length, level] of frame.keys) {
-      if (position !== at) continue;
-      chord.keys.forEach((note, i) => {
-        const age = ageAt(onset(bar, at, swing) + i * .006, length * step + .085);
-        if (!Number.isFinite(age)) return;
-        const pan = (i / (chord.keys.length - 1) - .5) * 1.05;
-        const volume = .034 * level * (i === 0 ? .82 : 1) * frame.keysLevel;
-        brightPluck(ctx, this.inputs.keys, note, atTime(at, swing) + i * .006, length * step, volume, pan, age);
-      });
-    }
-    if (at === 1 && frame.swell) {
-      const peak = frame.swell === 'peak';
-      chord.keys.slice(-2).forEach((note, i) => {
-        const length = peak ? .78 : 1.07;
-        const age = ageAt(onset(bar, at) + i * .018, length + .31);
-        if (!Number.isFinite(age)) return;
-        const start = atTime(at, 0) + i * .018;
-        const cloud = envelope(ctx, pan(ctx, this.inputs.atmos, i ? .62 : -.59), start,
-          length, peak ? .019 : .015, .19, .25, .62, .31, age);
-        oscillator(ctx, cloud.out, 'sine', noteHz(note + 12), start + age, cloud.end, i ? 4 : -4);
-      });
     }
   }
 }

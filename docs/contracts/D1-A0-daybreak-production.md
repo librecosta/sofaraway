@@ -14,15 +14,23 @@ VOL. II is DAYBREAK. The game keeps the `drift` ID and accepts both `?vol=drift`
 
 ## Score and playback
 
-[The score](../../app/game/core/daybreak-score.ts) holds the approved 120 BPM Groove-No-Chime backing. Drums, bass, short chord strokes and the quiet atmosphere share the original voicing and timing. [The live synthesizer](../../app/game/audio/daybreak.client.ts) and [offline renderer](../../app/game/audio/daybreak-export.client.ts) schedule the same events and voice code. The live output bus applies the player’s volume setting after the approved mix. The active audio clock drives the DAYBREAK run, with a monotonic fallback for silent play. Resume preserves the run position and skips individual onsets already rendered, including onsets that fall after a sixteenth-note grid tick.
+[The score](../../app/game/core/daybreak-score.ts) carries the percussion from the original 120 BPM Groove-No-Chime backing. [The live synthesizer](../../app/game/audio/daybreak.client.ts) and [offline renderer](../../app/game/audio/daybreak-export.client.ts) schedule the same events and voice code. The live output bus applies the player’s volume setting after the mix. The active audio clock drives the DAYBREAK run, with a monotonic fallback for silent play. Resume preserves the run position and skips individual onsets already rendered, including onsets that fall after a sixteenth-note grid tick.
 
-The run ends after 144 seconds of song time. The WAV export includes a two-second tail. Against the local approved WAV at 44.1 kHz, the production render had a residual RMS of −98.76 dBFS. The exported mix measured −16.6 LUFS integrated, −3.34 dBFS sample peak and −17.90 dBFS RMS.
+The run ends after 144 seconds of song time. The WAV export includes a two-second tail. At the original integration milestone, the render had a residual RMS of −98.76 dBFS against the Groove-No-Chime reference at 44.1 kHz. That mix measured −16.6 LUFS integrated, −3.34 dBFS sample peak and −17.90 dBFS RMS.
 
 ### D1-M3-F1 Bass foundation
 
 From GLIDE through RETURN, the Bass follows the authored chord bass and the main Kick accents in compact four-bar phrases. The center-panned mono voice uses a sine fundamental, a quiet triangle and a small second harmonic, with a 240–185 Hz low-pass and a 48 ms attack. Kick ducking reaches 80% gain in these sections and 51% in OPEN and OUTRO, where the score and voice follow the original arrangement. The Audio Inspector uses the same voice and seek envelope as the production synth.
 
 In four GLIDE and SUNBURST excerpts, Bass solo retained the 50–125 Hz band within −0.3 to +1.2 dB of D1-M3 while cutting 250–1,000 Hz by about 26–34 dB. The 144-second production mix measured −17.50 LUFS integrated and −3.71 dBFS sample peak, with zero clipped samples. The OPEN and OUTRO Bass residual against D1-M3 was at least 128 dB below signal RMS.
+
+### Keys-led mix
+
+The previous mix set Keys to 150% and Bass to 20% of their former bus levels, with one warm bass note per bar in OPEN and OUTRO.
+
+### Current percussion mix
+
+DAYBREAK now uses Kick, Snare and Hats. The score omits the isolated Kick at 142.016 seconds. The first hit remains at 2.016 seconds and the last hit falls at 140.766 seconds. The game, WAV export, Audio Inspector and Dynamic Lights share the authored drum events on the original 144-second timeline.
 
 ## Gates and lighting
 

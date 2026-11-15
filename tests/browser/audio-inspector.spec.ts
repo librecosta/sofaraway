@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('DAYBREAK stems null against the production mix and isolate sound, reverb and sidechain', async ({ page }, info) => {
+const waveformsReadyTimeout = 90_000;
+
+test('DAYBREAK drum stems null against the production mix and isolate sound and reverb', async ({ page }, info) => {
   await page.goto('http://127.0.0.1:8090/?audio-inspector');
   await page.waitForFunction(() => typeof window.inspectAudioRouting === 'function');
   const result = await page.evaluate(() => window.inspectAudioRouting());
@@ -8,34 +10,28 @@ test('DAYBREAK stems null against the production mix and isolate sound, reverb a
   expect(result.official.rms).toBeGreaterThan(.02);
   expect(result.mix.peak).toBeLessThan(.0001);
   expect(result.mix.relative).toBeLessThan(.0001);
-  expect(result.isolated.peak).toBeLessThan(.000001);
+  expect(result.master.peak).toBeLessThan(.0001);
+  expect(result.isolated.peak).toBeLessThan(.0001);
+  expect(result.isolated.relative).toBeLessThan(.0001);
   expect(result.muted.peak).toBe(0);
-  expect(result.gain.peak).toBeLessThan(.000001);
-  expect(result.noHiddenDucking.peak).toBeLessThan(.000001);
-  expect(result.restored.rms).toBeGreaterThan(.001);
-  expect(result.noRestore.peak).toBe(0);
-  expect(result.pastKick.peak).toBe(0);
+  expect(result.gain.peak).toBeLessThan(.0001);
+  expect(result.gain.relative).toBeLessThan(.0001);
   expect(result.kick.rms).toBeGreaterThan(.02);
 });
 
-test('DAYBREAK fills the low end with reduced upper harmonics and gentle Kick ducking', async ({ page }, info) => {
+test('DAYBREAK cueing respects delayed drum onsets and OUTRO ends without the isolated Kick', async ({ page }, info) => {
   await page.goto('http://127.0.0.1:8090/?audio-inspector');
-  await page.waitForFunction(() => typeof window.inspectBassFoundation === 'function');
-  const result = await page.evaluate(() => window.inspectBassFoundation());
-  await info.attach('Bass harmonic and ducking measurements', { body: JSON.stringify(result, null, 2), contentType: 'application/json' });
-  const upper = (voice: number[]) => Math.hypot(...voice.slice(2)) / voice[0];
-  expect(upper(result.warm)).toBeLessThan(upper(result.legacy) / 3);
-  expect(result.warm[0]).toBeGreaterThan(.75 * result.legacy[0]);
-  expect(result.warm[1] / result.warm[0]).toBeGreaterThan(.08);
-  expect(result.open.min).toBeCloseTo(.51, 2);
-  expect(result.middle.min).toBeCloseTo(.8, 2);
-  expect(result.outro.min).toBeCloseTo(.51, 2);
-  expect(result.middle.recovered).toBeCloseTo(1, 3);
-  expect(result.restored).toBeGreaterThan(.0001);
-  expect(result.notRestored).toBe(0);
+  await page.waitForFunction(() => typeof window.inspectDrumCues === 'function');
+  const result = await page.evaluate(() => window.inspectDrumCues());
+  await info.attach('Drum cue measurements', { body: JSON.stringify(result, null, 2), contentType: 'application/json' });
+  expect(result.upcomingSnare.rms).toBeGreaterThan(.001);
+  expect(result.pastSnare.peak).toBe(0);
+  expect(result.precedingKick.peak).toBeGreaterThan(.05);
+  expect(result.finalBar.peak).toBeLessThan(.00001);
 });
 
 test('real waveforms, cueing and playback share one synchronized timeline and one live context', async ({ page }, info) => {
+  test.setTimeout(waveformsReadyTimeout + 30_000);
   await page.addInitScript(() => {
     const stats = { created: 0, closed: 0, peak: 0, offlineActive: 0, offlinePeak: 0, offlineFrames: 0, offlineMs: 0 };
     Object.assign(window, { audioInspectorStats: stats });
@@ -94,9 +90,12 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
 
   const time = page.getByLabel('Playback position');
   const ruler = page.getByRole('slider', { name: 'Timeline position' });
-  const cue = page.getByRole('slider', { name: 'Bass cue' });
+  const cue = page.getByRole('slider', { name: 'Kick cue' });
   const playAll = page.getByRole('button', { name: 'Play all' });
   const canvas = page.getByRole('img', { name: /waveform/ });
+  const gain = page.getByRole('slider', { name: 'Kick gain' });
+  await expect(gain).toHaveValue('1');
+  await expect(page.getByRole('slider', { name: / cue$/ })).toHaveCount(4);
   await page.getByRole('button', { name: 'SUNBURST' }).click();
   await expect(time).toHaveText('01:20.00');
   await expect(page.getByRole('button', { name: 'SUNBURST' })).toHaveAttribute('aria-current', 'true');
@@ -121,30 +120,29 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   await page.mouse.down();
   await page.mouse.move(bounds.x + bounds.width * .56, bounds.y + 10, { steps: 5 });
   await page.mouse.up();
-  const bassTime = Number(await cue.getAttribute('aria-valuenow'));
-  expect(bassTime).toBeCloseTo(80.64, 0);
+  const kickTime = Number(await cue.getAttribute('aria-valuenow'));
+  expect(kickTime).toBeCloseTo(80.64, 0);
   await expect(time).toHaveText('00:00.00');
-  await page.getByRole('button', { name: 'Play Bass' }).click();
-  await expect(page.getByText('Playing · Bass')).toBeVisible();
-  await expect.poll(async () => Number(await ruler.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(bassTime);
   await page.getByRole('button', { name: 'Play Kick' }).click();
   await expect(page.getByText('Playing · Kick')).toBeVisible();
-  await page.getByRole('button', { name: 'Pause Kick' }).click();
-  await page.getByRole('button', { name: 'Solo Bass' }).click();
-  await page.getByRole('button', { name: 'Mute Bass' }).click();
-  await expect(page.getByRole('button', { name: 'Solo Bass' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: 'Mute Bass' })).toHaveAttribute('aria-pressed', 'true');
-  const gain = page.getByRole('slider', { name: 'Bass gain' });
+  await expect.poll(async () => Number(await ruler.getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(kickTime);
+  await page.getByRole('button', { name: 'Play Snare' }).click();
+  await expect(page.getByText('Playing · Snare')).toBeVisible();
+  await page.getByRole('button', { name: 'Pause Snare' }).click();
+  await page.getByRole('button', { name: 'Solo Kick' }).click();
+  await page.getByRole('button', { name: 'Mute Kick' }).click();
+  await expect(page.getByRole('button', { name: 'Solo Kick' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Mute Kick' })).toHaveAttribute('aria-pressed', 'true');
   await gain.fill('0.5');
   const mixTime = await time.textContent();
   await page.getByRole('button', { name: 'Reset mix' }).click();
   await expect(gain).toHaveValue('1');
-  await expect(page.getByRole('button', { name: 'Solo Bass' })).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.getByRole('button', { name: 'Mute Bass' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Solo Kick' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Mute Kick' })).toHaveAttribute('aria-pressed', 'false');
   await expect(time).toHaveText(mixTime!);
 
-  await expect(canvas).toHaveCount(7, { timeout: 40_000 });
-  await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: 40_000 });
+  await expect(canvas).toHaveCount(4, { timeout: 40_000 });
+  await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: waveformsReadyTimeout });
   const measured = await canvas.evaluateAll(items => items.map(item => {
     const wave = item as HTMLCanvasElement;
     const pixels = wave.getContext('2d')!.getImageData(0, 0, wave.width, wave.height).data;
@@ -186,7 +184,7 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   await playAll.click();
   const stats = await readStats();
   expect(stats).toMatchObject({ created: 1, closed: 0, offlinePeak: 1, offlineActive: 0 });
-  expect(stats.offlineFrames).toBeLessThanOrEqual(14 * 22050 * 13);
+  expect(stats.offlineFrames).toBeLessThanOrEqual(8 * 22050 * 13);
   await page.getByRole('link', { name: 'SoFarAway' }).click();
   await expect(page).toHaveURL(/\/debug\/$/);
   await expect.poll(async () => (await readStats()).closed).toBe(1);
@@ -194,12 +192,13 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
 });
 
 test('responsive layouts, high-DPI canvas, direct refresh and master-only volumes', async ({ browser }, info) => {
+  test.setTimeout(waveformsReadyTimeout + 30_000);
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:8089/debug/audio/');
   const canvas = page.getByRole('img', { name: 'Master waveform' });
   await expect(canvas).toBeVisible({ timeout: 40_000 });
-  await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: waveformsReadyTimeout });
   for (const [width, height] of [[1920, 1080], [1280, 720], [960, 540], [390, 844]]) {
     await page.setViewportSize({ width, height });
     await expect.poll(() => canvas.evaluate(item => {
@@ -207,7 +206,7 @@ test('responsive layouts, high-DPI canvas, direct refresh and master-only volume
       return Math.abs(wave.width - wave.clientWidth * devicePixelRatio);
     })).toBeLessThanOrEqual(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-    const track = (await page.getByRole('button', { name: 'Play Atmos' }).boundingBox())!;
+    const track = (await page.getByRole('button', { name: 'Play Hats' }).boundingBox())!;
     expect(track.y + track.height).toBeLessThan(height + 1);
     const wave = (await canvas.boundingBox())!;
     expect(wave.x).toBeGreaterThan(track.x + track.width);

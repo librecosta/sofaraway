@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import type { DaybreakStem } from '../../game/audio/daybreak.client';
+import type { DaybreakStem } from '../../game/core/daybreak-score';
 import { InspectorTransport } from '../../game/debug/audio/inspector-transport.client';
 import type { PlaybackState } from '../../game/debug/audio/inspector-transport.client';
 import { defaultMix, trackInfo } from '../../game/debug/audio/track-adapter';

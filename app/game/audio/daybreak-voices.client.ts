@@ -1,6 +1,5 @@
 export const rate = 44100;
 const floor = 0.00005;
-export const noteHz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
 export function randomSource(seed: number) {
   return () => {
@@ -16,7 +15,7 @@ export function gain(ctx: BaseAudioContext, destination: AudioNode, value: numbe
   return node;
 }
 
-export function pan(ctx: BaseAudioContext, destination: AudioNode, position: number) {
+function pan(ctx: BaseAudioContext, destination: AudioNode, position: number) {
   const node = ctx.createStereoPanner();
   node.pan.value = position;
   node.connect(destination);
@@ -32,71 +31,27 @@ export function filter(ctx: BaseAudioContext, destination: AudioNode, type: Biqu
   return node;
 }
 
-export function oscillator(ctx: BaseAudioContext, destination: AudioNode, type: OscillatorType, hz: number, time: number, end: number, detune = 0) {
+function oscillator(ctx: BaseAudioContext, destination: AudioNode, type: OscillatorType, hz: number, time: number, end: number) {
   const node = ctx.createOscillator();
   node.type = type;
   node.frequency.value = hz;
-  node.detune.value = detune;
   node.connect(destination);
   node.start(time);
   node.stop(end);
   return node;
 }
 
-export function envelope(ctx: BaseAudioContext, destination: AudioNode, time: number, length: number, level: number, attack: number, decay: number, sustain: number, release: number, age = 0) {
+function envelope(ctx: BaseAudioContext, destination: AudioNode, time: number, length: number, level: number, attack: number, decay: number, sustain: number, release: number) {
   const out = gain(ctx, destination, 0);
   const hold = Math.min(time + length, time + attack + decay);
   const off = time + length, end = off + release;
   const sustained = Math.max(floor, level * sustain);
-  const resume = time + age;
-  const peak = time + attack;
-  const value = age === 0 ? floor : resume < peak ? floor + (level - floor) * age / attack
-    : resume < hold ? level * (sustained / level) ** ((resume - peak) / (hold - peak))
-    : resume < off ? sustained : sustained * (floor / sustained) ** ((resume - off) / release);
-  out.gain.setValueAtTime(value, resume);
-  if (peak > resume) out.gain.linearRampToValueAtTime(level, peak);
-  if (hold > resume) out.gain.exponentialRampToValueAtTime(sustained, hold);
-  if (off > resume) out.gain.setValueAtTime(sustained, off);
+  out.gain.setValueAtTime(floor, time);
+  out.gain.linearRampToValueAtTime(level, time + attack);
+  out.gain.exponentialRampToValueAtTime(sustained, hold);
+  out.gain.setValueAtTime(sustained, off);
   out.gain.exponentialRampToValueAtTime(floor, end);
   return { out, end };
-}
-
-function filterSweep(cutoff: AudioParam, time: number, age: number, from: number, to: number, length: number) {
-  cutoff.setValueAtTime(from * (to / from) ** Math.min(1, age / length), time + age);
-  if (age < length) cutoff.exponentialRampToValueAtTime(to, time + length);
-}
-
-export function brightPluck(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, position: number, age = 0) {
-  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .005, .11, .41, .085, age);
-  const cutoff = filter(ctx, out, 'lowpass', 3100, .86);
-  filterSweep(cutoff.frequency, time, age, 3550, 1430, .1);
-  const hz = noteHz(note);
-  oscillator(ctx, gain(ctx, cutoff, .76), 'triangle', hz, time + age, end, -3);
-  oscillator(ctx, gain(ctx, cutoff, .29), 'sawtooth', hz, time + age, end, 4);
-  oscillator(ctx, gain(ctx, cutoff, .12), 'sine', hz * 2, time + age, end);
-}
-
-export function bassNote(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, age = 0) {
-  const { out, end } = envelope(ctx, bus, time, length, level, .011, .16, .57, .075, age);
-  const cutoff = filter(ctx, out, 'lowpass', 510, .68);
-  filterSweep(cutoff.frequency, time, age, 860, 390, .115);
-  const hz = noteHz(note);
-  oscillator(ctx, gain(ctx, cutoff, .79), 'triangle', hz, time + age, end);
-  oscillator(ctx, gain(ctx, cutoff, .30), 'sawtooth', hz, time + age, end);
-  oscillator(ctx, gain(ctx, cutoff, .18), 'sine', hz, time + age, end);
-}
-
-export const warmSubRelease = .15;
-
-export function warmSubBass(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, age = 0) {
-  const { out, end } = envelope(ctx, bus, time, length, level, .048, .193, .64, warmSubRelease, age);
-  const cutoff = filter(ctx, out, 'lowpass', 240, .66);
-  filterSweep(cutoff.frequency, time, age, 240, 185, .25);
-  const hz = noteHz(note), start = time + age;
-  oscillator(ctx, gain(ctx, cutoff, .87), 'sine', hz, start, end);
-  oscillator(ctx, gain(ctx, cutoff, .15), 'triangle', hz, start, end);
-  // A quiet second harmonic carries the note on smaller speakers.
-  oscillator(ctx, gain(ctx, cutoff, .19), 'sine', hz * 2, start, end);
 }
 
 function noiseAt(ctx: BaseAudioContext, noise: AudioBuffer, bus: AudioNode, time: number, duration: number, random: () => number) {
