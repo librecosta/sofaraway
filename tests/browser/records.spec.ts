@@ -175,7 +175,7 @@ test('the real Sightseeing result saves a Last Visit while a fixed capture canno
   }, key);
   expect(result.snapshot).toMatchObject({ mode: 'sightseeing', phase: 'results', newBest: false });
   expect(JSON.parse(result.raw)).toEqual({ version: 1, standard: {}, sightseeing: {
-    'daybreak-gameplay': { last: { score: result.snapshot.score, outcome: result.snapshot.result?.title } },
+    'daybreak-choreography': { last: { score: result.snapshot.score, outcome: result.snapshot.result?.title } },
   } });
   await page.goto('http://127.0.0.1:8091/?vol=daybreak&t=144.8&align=1&q=low');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');

@@ -1,5 +1,6 @@
 import type { Difficulty, PlayMode } from '../contracts';
 import { opening } from './collision';
+import { crystalOpenings } from './daybreak-gates';
 import type { Axis } from './collision';
 import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
 import { gameplayFor } from './gameplay';
@@ -82,7 +83,7 @@ export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: nu
     const slot = index % 3;
     const swap = word(index - slot, 1) % 2;
     const kind = spec?.kinds[index % spec.kinds.length] ?? (slot === 0 ? 'iris' : slot - 1 === swap ? 'square' : 'diamond');
-    const sector = kind === 'iris' ? word(index, 2) % 8 : kind === 'daybreak-crystal' ? word(index, 2) % 4 : 0;
+    const sector = kind === 'iris' ? word(index, 2) % 8 : kind === 'daybreak-crystal' ? word(index, 2) % crystalOpenings.length : 0;
     gates.push({ index, kind, sector, open: opening(kind, sector), axis: 0,
       worldStation: station, routeStation: station, judged: false, passed: false, clean: false, neutralized: false });
   }

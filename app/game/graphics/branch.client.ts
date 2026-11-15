@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { BRANCH_SPACING, ROUTE_LABELS, routeSides, SPLIT_BEAT } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
-import { routeSwatches, routeTone } from '../core/lighting-score';
-import type { LightingState, LightTone } from '../core/lighting-score';
+import { daybreakRouteSwatches, daybreakRouteTones, ease, routeSwatches, routeTone } from '../core/lighting-score';
+import type { LightTone } from '../core/lighting-score';
 import { SECTION } from '../core/collision';
 import { CABIN_WAIST, cabinEnvelope, cabinLower, cabinUpper } from './cabin-geometry';
 import { BranchPath, pathFrame } from './branch-path';
@@ -17,6 +17,8 @@ const styles = {
 } satisfies Record<RouteKind, { spacing: number; width: number; brightness: number }>;
 
 const routeIndex = { main: 0, challenge: 1, score: 2 } satisfies Record<RouteKind, number>;
+const daylightRailColors = Object.fromEntries(Object.entries(daybreakRouteSwatches).map(([route, color]) =>
+  [route, linearSwatch(color)])) as Record<RouteKind, THREE.Color>;
 function guideMaterial(level: THREE.Vector3, tint: THREE.Color[]) {
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, vertexColors: true, toneMapped: false });
   material.onBeforeCompile = shader => {
@@ -118,6 +120,7 @@ export class BranchVisual {
   private readonly far = pathFrame();
   private readonly level = new THREE.Vector3(1, 1, 1);
   private readonly tint = Array.from({ length: 3 }, () => new THREE.Color(0xffffff));
+  get lightLevel() { return this.level.x; }
 
   constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material, private readonly canopy?: THREE.Material) {
     this.group.name = canopy ? 'skyglass-junction' : 'elsewhere-junction';
@@ -137,10 +140,14 @@ export class BranchVisual {
       const route = layout[side], style = styles[route];
       rails.lane = routeIndex[route];
       if (!canopy) this.sweep(housing, side, entry, exit, false);
-      this.frames(rails, side, entry, exit, canopy ? 21 : style.spacing, style.width, new THREE.Color().setScalar(style.brightness));
-      const guide = new THREE.Color().setScalar(canopy ? .32 : .63);
-      this.guide(rails, side, path.split, entry, guide);
-      this.guide(rails, side, exit, path.end, guide);
+      this.frames(rails, side, entry, exit, canopy ? 14 : style.spacing, style.width, new THREE.Color().setScalar(style.brightness));
+      const guide = new THREE.Color().setScalar(.63);
+      if (canopy) {
+        this.cabinRails(rails, side);
+      } else {
+        this.guide(rails, side, path.split, entry, guide);
+        this.guide(rails, side, exit, path.end, guide);
+      }
       this.sign(side, route);
     }
     if (!canopy) {
@@ -153,6 +160,7 @@ export class BranchVisual {
     const railMesh = new THREE.Mesh(rails.geometry(), glow);
     railMesh.name = 'junction-guides';
     this.group.add(railMesh);
+    if (canopy) this.updateLighting(path.spec.split, 1);
   }
 
   private cabin(shell: THREE.Material, canopy: THREE.Material) {
@@ -216,11 +224,13 @@ export class BranchVisual {
     }
   }
 
-  updateLighting(state: LightingState, gain = 1) {
-    this.level.setScalar(state.branch * gain);
+  updateLighting(beat: number, base: number, gain = 1) {
+    this.level.setScalar(this.canopy ? 1.19 * THREE.MathUtils.lerp(1, gain, .51) : base * gain);
     for (const route of ['main', 'challenge', 'score'] as const) {
-      const tone = this.tones[route] = routeTone(route, state.beat);
-      this.tint[routeIndex[route]].setHSL(tone.hue, tone.saturation, .56);
+      const tone = this.tones[route] = this.canopy ? daybreakRouteTones[route] : routeTone(route, beat);
+      const color = this.tint[routeIndex[route]];
+      if (this.canopy) color.copy(daylightRailColors[route]);
+      else color.setHSL(tone.hue, tone.saturation, .56);
     }
   }
 
@@ -289,6 +299,28 @@ export class BranchVisual {
     }
   }
 
+  private cabinRails(target: Quads, side: RouteSide) {
+    const { path } = this;
+    // The floor marks the chosen lane all the way through the shared throats.
+    // The waist rails stop at the portals where the three cabins share a wall.
+    const sweep = (from: number, through: number, x: number, y: number, width: number, wall: boolean) => {
+      const count = Math.ceil((through - from) / 3);
+      for (let i = 0; i < count; i++) {
+        const lo = THREE.MathUtils.lerp(from, through, i / count), hi = THREE.MathUtils.lerp(from, through, (i + 1) / count);
+        const level = ease(((lo + hi) * .5 - from) / 12) * ease((through - (lo + hi) * .5) / 12);
+        const color = new THREE.Color().setScalar(level * (wall ? .73 : .58));
+        const first = path.sample(lo, side, this.near), last = path.sample(hi, side, this.far);
+        const p: Point = wall ? [x, y - width] : [x - width, y];
+        const q: Point = wall ? [x, y + width] : [x + width, y];
+        target.quad(first, last, p, q, q, p, 0, 1, color);
+      }
+    };
+    const guideStart = path.split + (side === 'center' ? 0 : (path.open - path.split) * .44);
+    const guideEnd = path.merge + (path.end - path.merge) * (side === 'center' ? 1 : .53);
+    sweep(guideStart, guideEnd, 0, -b + .065, .052, false);
+    for (const sign of [-1, 1]) sweep(path.open, path.merge, sign * (a - .035), CABIN_WAIST - .20, .044, true);
+  }
+
   private sign(side: RouteSide, route: RouteKind) {
     const canvas = document.createElement('canvas');
     canvas.width = 384; canvas.height = 96;
@@ -296,7 +328,7 @@ export class BranchVisual {
     if (!ctx) return;
     ctx.fillStyle = this.canopy ? '#b9d7df' : '#10171d';
     ctx.fillRect(0, 0, 384, 96);
-    const swatch = this.canopy ? { main: '#163d4b', challenge: '#49395d', score: '#1d5144' }[route] : routeSwatches[route];
+    const swatch = this.canopy ? { main: '#163d4b', challenge: '#5a2547', score: '#604018' }[route] : routeSwatches[route];
     ctx.strokeStyle = ctx.fillStyle = swatch;
     ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, 378, 90);

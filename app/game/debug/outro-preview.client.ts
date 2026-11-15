@@ -1,5 +1,6 @@
 import type { Diagnostics, Difficulty, PlayMode, QualityTier } from '../contracts';
 import type { RouteKind } from '../core/branches';
+import { dynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { VolumeDefinition } from '../core/volumes';
 import { Graphics } from '../graphics/scene.client';
 import { OutroInspection, outroVolume } from './outro-inspection';
@@ -16,6 +17,7 @@ export class OutroPreview {
   private volume = outroVolume;
   private quality: QualityTier = 'high';
   private lost = false;
+  private dynamic = false;
   private inspection?: OutroInspection;
   private view?: [number, number, OutroMovement, number, boolean?];
   private roaming?: ['menu' | 'results', number, number];
@@ -50,6 +52,12 @@ export class OutroPreview {
     this.redraw();
   }
 
+  setDynamic(value: boolean) {
+    if (this.dynamic === value) return;
+    this.dynamic = value;
+    this.redraw();
+  }
+
   draw(station: number, beat: number, movement: OutroMovement, angle: number, results = false) {
     this.roaming = undefined;
     this.view = [station, beat, movement, angle, results];
@@ -65,7 +73,9 @@ export class OutroPreview {
 
   private paint(state: SceneState, angle: number) {
     const inspection = this.inspection!;
-    this.graphics.draw(state, true, true, { beat: state.beat, yaw: angle * Math.PI / 180 });
+    const dynamics = this.dynamic && this.volume.id === 'daybreak'
+      ? dynamicLightEnvelope(this.volume, state.time, 1, matchMedia('(prefers-reduced-motion: reduce)').matches) : undefined;
+    this.graphics.draw(state, true, true, { beat: state.beat, yaw: angle * Math.PI / 180, dynamics });
     const metrics = this.graphics.metrics();
     const station = state.trackDistance;
     const stage = inspection.plan.afterglow.find(slice => station >= slice.start && station <= slice.end)?.stage;
@@ -75,6 +85,9 @@ export class OutroPreview {
       beat: state.beat.toFixed(3), hue: metrics.scenicLights?.hue, afterglow: metrics.scenicLights?.afterglow ?? stage ?? '',
       mode: state.mode, phase: state.phase, difficulty: inspection.sim.difficulty, route: state.route, seed: inspection.plan.seed,
       pickup: state.pickupVisible, escapeWhite: white, junctionMeshes: metrics.junctionMeshes,
+      junctionLight: metrics.junctionLightLevel?.toFixed(4) ?? '', routeHologram: JSON.stringify(metrics.routeHologram ?? null),
+      previewGates: JSON.stringify(state.previewGates.filter(gate => gate.routeStation > state.distance).slice(0, 3)
+        .map(gate => [gate.kind, gate.open, +(gate.routeStation - state.distance).toFixed(2)])),
       encoreMeshes: metrics.encoreMeshes, pathLength: inspection.sim.path.length,
       gateStations: JSON.stringify(state.previewEncore.map(gate => [gate.index + 1, gate.kind, gate.worldStation])) });
     const world = metrics.continuity;

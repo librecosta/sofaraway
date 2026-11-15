@@ -73,7 +73,7 @@ export class OutroInspection {
   view(preset: OutroPreset) {
     const { sim, volume, side } = this;
     const path = sim.junctionPath!;
-    if (preset === 'branch-preview') return { station: path.start - 18 * modeScale(sim.mode), musicBeat: path.spec.preview };
+    if (preset === 'branch-preview') return { station: path.start + 9 * modeScale(sim.mode), musicBeat: path.spec.preview };
     if (preset === 'branch-entry') return { station: path.open - 30 * modeScale(sim.mode), musicBeat: path.openBeat };
     if (preset === 'branch-rejoin') return { station: path.merge - 24 * modeScale(sim.mode), musicBeat: path.mergeBeat };
     if (preset === 'pickup') return { station: sim.pickupStation - 15 * modeScale(sim.mode), musicBeat: sim.gameplay.pickup!.beat };
@@ -84,7 +84,11 @@ export class OutroInspection {
       return { station: station + (preset === 'results-world' ? 9 : 0), musicBeat };
     }
     if (preset === 'branch') {
-      const gate = this.sim.branchGates![this.route][0];
+      const gates = sim.branchGates![this.route];
+      const gate = volume.id === 'daybreak'
+        ? gates.find(gate => gate.worldStation >= path.open + 35 * modeScale(sim.mode) &&
+          (this.route === 'score' || gate.kind === 'daybreak-crystal')) ?? gates[Math.floor(gates.length / 3)]
+        : gates[0];
       return { station: gate.worldStation - 13 * modeScale(this.sim.mode), musicBeat: gate.beat };
     }
     if (preset in chapters) {
@@ -111,7 +115,10 @@ export class OutroInspection {
     const trackDistance = clamp(station, this.min, this.max);
     const beat = clamp(musicBeat, 0, this.volume.beats);
     const junctionPath = sim.junctionPath!;
-    const distance = junctionPath.arcAt(trackDistance, side);
+    const previewingBranch = this.volume.id === 'daybreak' && trackDistance < junctionPath.split;
+    const layout = sim.branch!.layout;
+    const guide = this.volume.id === 'daybreak' && !results && trackDistance >= junctionPath.guideStart && trackDistance < junctionPath.guideEnd;
+    const distance = previewingBranch ? trackDistance : junctionPath.arcAt(trackDistance, side);
     const scale = modeScale(sim.mode);
     const through = distance + GATE_LOAD_AHEAD * scale;
     const visible = (s: number) => s >= distance - GATE_RELEASE_BEHIND && s <= through;
@@ -122,9 +129,11 @@ export class OutroInspection {
     const remaining = this.volume.beats - beat;
     const lookahead = remaining * sim.secondsPerBeat * cruiseTarget(Infinity) * BOOST_MULTIPLIER * scale;
     const pickupVisible = trackDistance >= sim.pickupPreviewStation && trackDistance < sim.pickupStation;
-    return { mode: sim.mode, route: this.route, branch: { layout: sim.branch!.layout, side }, branchGates: sim.branchGates,
+    return { mode: sim.mode, route: previewingBranch ? null : this.route,
+      branch: { layout, side: previewingBranch ? null : side }, branchGates: sim.branchGates,
       junctionPath, phase: results ? 'results' : 'playing', camera: sim.camera, trackDistance, distance, beat, time: beat * sim.secondsPerBeat,
-      steeringWidth: 0, routeGuide: null, routeSide: null, previewGates, previewEncore, outroPlan: plan,
+      steeringWidth: 0, routeGuide: guide ? layout : null, routeSide: guide ? previewingBranch ? 'center' : side : null,
+      previewGates, previewEncore, outroPlan: plan,
       speed: cruiseTarget(Infinity) * scale * difficultySettings(this.volume, sim.difficulty).speedFactor
         * (boosting ? BOOST_MULTIPLIER : 1), boosting, boostLens: Number(boosting),
       escapeWhite: sim.gameplay.ending && !results

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ROUTE_LABELS, routeSides } from '../core/branches';
 import type { BranchLayout, RouteKind, RouteSide } from '../core/branches';
-import { routeSwatches as colors } from '../core/lighting-score';
+import { daybreakRouteSwatches, routeSwatches } from '../core/lighting-score';
 import { routeGlyphs } from './route-glyphs';
 
 const depth = 8;
@@ -68,9 +68,9 @@ function label(word: string) {
   return geometry;
 }
 
-function material() {
+function material(daylight: boolean) {
   return new THREE.ShaderMaterial({
-    uniforms: { tint: { value: new THREE.Color() }, emphasis: { value: 0 }, time: { value: 0 } },
+    uniforms: { tint: { value: new THREE.Color() }, emphasis: { value: 0 }, time: { value: 0 }, daylight: { value: Number(daylight) } },
     transparent: true,
     vertexShader: `
       attribute float rim;
@@ -90,6 +90,7 @@ function material() {
       uniform vec3 tint;
       uniform float emphasis;
       uniform float time;
+      uniform float daylight;
       void main() {
         float phase = modelY * 3.5 - time * 0.76;
         float gap = abs(fract(phase) - 0.5);
@@ -100,6 +101,8 @@ function material() {
         float edgeLight = 0.5 + 0.42 * max(0.0, normalize(surface).y);
         vec3 outline = bright * edgeLight * (0.77 + 0.23 * emphasis);
         float fill = 0.055 + 0.09 * halo + (0.34 + 0.25 * emphasis) * line;
+        outline = mix(outline, mix(bright * .34, bright, max(0.0, normalize(surface).y)), daylight);
+        fill = mix(fill, .18 + .25 * line + .16 * emphasis, daylight);
         gl_FragColor = vec4(mix(bright, outline, solid), mix(fill, 1.0, solid));
       }`,
   });
@@ -112,18 +115,25 @@ export class RouteHologram {
   private readonly labels = {
     main: label(ROUTE_LABELS.main), challenge: label(ROUTE_LABELS.challenge), score: label(ROUTE_LABELS.score),
   };
-  private readonly markers = routeSides.map(side => {
-    const root = new THREE.Group();
-    const surface = material();
-    const arrowMesh = new THREE.Mesh(arrow(side), surface);
-    const word = new THREE.Mesh(this.labels.main, surface);
-    word.position.set(0, -0.99, 0.031);
-    word.scale.y = 1.3;
-    root.rotation.x = -Math.PI / 2;
-    root.add(arrowMesh, word);
-    this.scene.add(root);
-    return { root, surface, arrowMesh, word };
-  });
+  private readonly markers;
+  private readonly swatches;
+  visibleLabels: Record<RouteSide, string> | undefined;
+
+  constructor(private readonly daylight = false) {
+    this.swatches = daylight ? daybreakRouteSwatches : routeSwatches;
+    this.markers = routeSides.map(side => {
+      const root = new THREE.Group();
+      const surface = material(daylight);
+      const arrowMesh = new THREE.Mesh(arrow(side), surface);
+      const word = new THREE.Mesh(this.labels.main, surface);
+      word.position.set(0, -0.99, 0.031);
+      word.scale.y = 1.3;
+      root.rotation.x = -Math.PI / 2;
+      root.add(arrowMesh, word);
+      this.scene.add(root);
+      return { root, surface, arrowMesh, word };
+    });
+  }
 
   resize(aspect: number) {
     this.camera.aspect = aspect;
@@ -134,7 +144,7 @@ export class RouteHologram {
     const spacing = Math.min(1.94, halfX * 0.55);
     const size = Math.min(0.86, halfX * 0.26);
     // Place the center on a ray in the lower view. The markers themselves lie in XZ.
-    const lowerY = -halfY * 0.55;
+    const lowerY = -halfY * (this.daylight ? 0.59 : 0.55);
     const floorY = lowerY * Math.cos(lookDown) - depth * Math.sin(lookDown);
     const floorZ = -depth * Math.cos(lookDown) - lowerY * Math.sin(lookDown);
     for (const [index, { root }] of this.markers.entries()) {
@@ -145,12 +155,13 @@ export class RouteHologram {
 
   prepare(renderer: THREE.WebGLRenderer) { renderer.compile(this.scene, this.camera); }
 
-  render(renderer: THREE.WebGLRenderer, layout: BranchLayout, selected: RouteSide | null, locked: boolean, time: number) {
+  render(renderer: THREE.WebGLRenderer, layout: BranchLayout | null, selected: RouteSide | null, locked: boolean, time: number) {
+    if (!layout) { this.visibleLabels = undefined; return; }
     for (const [index, { surface, word }] of this.markers.entries()) {
       const side = routeSides[index];
       const route = layout[side];
       word.geometry = this.labels[route];
-      surface.uniforms.tint.value.set(colors[route]);
+      surface.uniforms.tint.value.set(this.swatches[route]);
       surface.uniforms.emphasis.value = selected === side ? 1 : locked ? 0.16 : 0.42;
       surface.uniforms.time.value = time;
     }
@@ -159,6 +170,7 @@ export class RouteHologram {
       renderer.autoClear = false;
       renderer.clearDepth();
       renderer.render(this.scene, this.camera);
+      this.visibleLabels = { left: ROUTE_LABELS[layout.left], center: ROUTE_LABELS[layout.center], right: ROUTE_LABELS[layout.right] };
     } finally {
       renderer.autoClear = autoClear;
     }

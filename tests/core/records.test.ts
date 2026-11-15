@@ -32,14 +32,15 @@ test('recoverable legacy bonus counts toward Best and each new Encore run compar
   expect(recordFor(parseRecords(JSON.stringify(records)), 'elsewhere', 'normal', 'standard').best).toBe(10900);
 });
 
-test('DAYBREAK gameplay records remain independent of all legacy charts after a round trip', () => {
+test('DAYBREAK choreography records remain independent of all legacy charts after a round trip', () => {
   const last = { score: 800, outcome: 'ESCAPED' } as const;
   const legacy = { standard: { drift: { normal: { best: 1200, last } }, daybreak: { normal: { best: 1900, last } } },
     sightseeing: { drift: { last }, daybreak: { last }, 'daybreak-skyglass': { last } } };
   const skyglass = { normal: { best: 2500, last } };
   const crystal = { normal: { best: 3200, last } };
+  const gameplay = { normal: { best: 4100, last } };
   const records = parseRecords(JSON.stringify({ version: 1, ...legacy,
-    standard: { ...legacy.standard, 'daybreak-skyglass': skyglass, 'daybreak-crystal': crystal } }));
+    standard: { ...legacy.standard, 'daybreak-skyglass': skyglass, 'daybreak-crystal': crystal, 'daybreak-gameplay': gameplay } }));
   expect(recordFor(records, 'daybreak', 'normal', 'standard')).toEqual({ best: null, last: null });
   expect(recordFor(records, 'daybreak', 'normal', 'sightseeing').last).toBeNull();
   const daybreak = { ...last, score: 400 };
@@ -52,6 +53,7 @@ test('DAYBREAK gameplay records remain independent of all legacy charts after a 
   expect(reloaded.sightseeing.daybreak).toEqual(legacy.sightseeing.daybreak);
   expect(reloaded.standard['daybreak-skyglass']).toEqual(skyglass);
   expect(reloaded.standard['daybreak-crystal']).toEqual(crystal);
+  expect(reloaded.standard['daybreak-gameplay']).toEqual(gameplay);
   expect(reloaded.sightseeing['daybreak-skyglass']).toEqual(legacy.sightseeing['daybreak-skyglass']);
   expect(recordFor(reloaded, 'daybreak', 'normal', 'standard')).toEqual({ best: 400, last: daybreak });
   expect(recordFor(reloaded, 'daybreak', 'normal', 'sightseeing').last).toEqual(daybreak);

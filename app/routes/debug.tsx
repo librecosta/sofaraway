@@ -407,7 +407,7 @@ export default function DebugOverview() {
                   {gates.map(kind => {
                     const { label, note } = gateDescription(kind);
                     const openings = isDaybreakGate(kind) ? daybreakGates[kind].openings : undefined;
-                    const open = isDaybreakGate(kind) ? gateOpenings[kind] ?? (openings?.length === 4 ? -1 : 0) : undefined;
+                    const open = isDaybreakGate(kind) ? gateOpenings[kind] ?? (kind === 'daybreak-crystal' ? -1 : 0) : undefined;
                     return (
                       <figure key={kind} className={s.card}>
                         <Preview id={kind} label={`${label} gate`} open={open} />
@@ -419,10 +419,8 @@ export default function DebugOverview() {
                               const value = Number(event.currentTarget.value);
                               setGateOpenings(previous => ({ ...previous, [kind]: value }));
                             }}>
-                            {openings?.length === 4 && <option value={-1}>Complete layout</option>}
-                            {openings?.map((name, index) => <option key={name} value={index}>
-                              {openings.length === 4 ? `${index + 1} · ${name}` : name}
-                            </option>)}
+                            <option value={-1}>Complete layout</option>
+                            {openings?.map((name, index) => <option key={name} value={index}>{index + 1} · {name}</option>)}
                           </select></label>}
                         </figcaption>
                       </figure>

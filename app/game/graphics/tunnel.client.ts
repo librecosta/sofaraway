@@ -3,7 +3,7 @@ import { SECTION } from '../core/collision';
 import type { RouteSide } from '../core/branches';
 import { frameLightLevel, octagon } from '../core/lighting-atlas';
 import type { LightingZone } from '../core/lighting-atlas';
-import type { LightingState } from '../core/lighting-score';
+import type { LightingState, LightTone } from '../core/lighting-score';
 import { steadyLights } from '../core/rhythmic-lights';
 import type { DynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { Topology } from '../core/volumes';
@@ -32,6 +32,8 @@ const CHUNK = 210;
 const KEEP_BEHIND = 90;
 const KEEP_AHEAD = 430;
 const SCENIC_POINT_INTENSITIES = [16, 21, 25] as const;
+const junctionGround = new THREE.Color(0x46677a);
+const junctionSky = new THREE.Color(0xafcbd8);
 const CANAL_LIP = CABIN_WAIST;
 const CANOPY_HOOP = CABIN_HOOP;
 const canopy = cabinUpper;
@@ -526,11 +528,12 @@ export class Tunnel {
   get junctionShell() { return this.shellMat; }
   get junctionCanopy() { return this.canopyMat; }
 
-  setDaylight(amount: number) {
+  setDaylight(amount: number, junctionFill = 0) {
     if (!this.canopyMat) return;
     this.canopyMat.uniforms.daylight.value = amount;
-    this.ambient.intensity = (this.surfaces ? .66 : .45) + amount * .28;
-    this.hemi.intensity = .55 + amount * .34;
+    this.ambient.intensity = (this.surfaces ? .66 : .45) + amount * .28 + junctionFill * .25;
+    this.hemi.intensity = .55 + amount * .34 + junctionFill * .30;
+    this.hemi.groundColor.setHex(0x08090b).lerp(junctionGround, junctionFill);
   }
 
   get continuity() {
@@ -688,8 +691,16 @@ export class Tunnel {
     const c = new THREE.Color().setHSL(this.hue === undefined ? 0.45 : this.hue, 1.0, 0.5);
     this.stripMat.color.copy(c).multiplyScalar((1 + p * 1.3) * dynamics.fixtureGain);
     this.rimMat.color.copy(c).multiplyScalar((0.55 + p * 1.0) * dynamics.rimGain);
-    this.hemi.intensity = .55 + (this.canopyMat?.uniforms.daylight.value ?? 0) * .34;
+    if (!this.canopyMat) this.hemi.intensity = .55;
     for (const light of this.lights) light.intensity = 30 * dynamics.physicalGain;
+  }
+
+  tintJunctionLights(amount: number, tone?: LightTone) {
+    this.ambient.color.lerp(junctionSky, .34 * amount);
+    this.hemi.color.lerp(junctionSky, .46 * amount);
+    if (!tone) return;
+    const tint = this.mainLight.setHSL(tone.hue, tone.saturation, .63);
+    for (const light of this.lights) light.color.lerp(tint, .25 * amount);
   }
 
   setScenic(base: THREE.Color, sky: THREE.Color, ground: THREE.Color, state: LightingState,

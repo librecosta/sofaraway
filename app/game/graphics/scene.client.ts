@@ -101,8 +101,8 @@ class VolumeScene {
           material.emissiveIntensity = material.name === 'floor-grip' ? .26 : .36;
           material.emissive.copy(this.scenic.base);
         }
-        this.hologram = new RouteHologram();
       }
+      if (this.gameplay.branch) this.hologram = new RouteHologram(!!this.gameplay.world?.continuous);
     } catch (error) {
       this.dispose();
       throw error;
@@ -151,6 +151,7 @@ class VolumeScene {
       this.scenic.setAfterglow(atlas);
     }
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
+    const junction = this.junction;
     if (this.scenic) {
       const state = this.scenic.update(distance, lightBeat, lighting?.pattern, sim.phase !== 'menu', dynamics.fixtureGain);
       const { base, sky, ground } = this.scenic;
@@ -158,17 +159,15 @@ class VolumeScene {
       this.saturation = state.saturation;
       this.tunnel.setScenic(base, sky, ground, state, dynamics);
       this.fog.color.copy(this.scenic.fog);
-      const junction = this.junction;
       if (junction) {
-        junction.updateLighting(state, dynamics.rimGain);
+        junction.updateLighting(state.beat, state.branch, dynamics.rimGain);
         if (sim.route && distance >= junction.path.split && distance < junction.path.end) {
           const { hue, saturation } = junction.tones[sim.route];
           const envelope = ease((distance - junction.path.split) / 14) * ease((junction.path.end - distance) / 14);
           this.fog.color.lerp(this.routeFog.setHSL(hue, saturation * .65, .105).multiplyScalar(.041), .48 * envelope);
         }
       }
-    }
-    const junction = this.junction;
+    } else junction?.updateLighting(lightBeat, 1, dynamics.rimGain);
     const cameraFrame = junction && sim.branch?.side
       ? junction.path.sample(distance, sim.branch.side, this.cameraFrame)
       : this.path.sample(distance, this.cameraFrame);
@@ -183,6 +182,7 @@ class VolumeScene {
     const previousPhase = this.phase;
     this.phase = sim.phase;
     let daylight = 0;
+    let junctionFill = 0;
     if (this.gameplay.ending) {
       const release = sim.outroPlan ? ease((distance - sim.outroPlan.afterglowStart) / 330) : 0;
       const escaped = sim.phase === 'results' && distance > (sim.outroPlan?.mainLastStation ?? Infinity);
@@ -191,7 +191,8 @@ class VolumeScene {
         this.daylightSky.position.copy(this.camera.position);
         this.daylightSky.material.uniforms.daylight.value = daylight;
       }
-      this.tunnel.setDaylight(daylight);
+      if (junction) junctionFill = ease((distance - junction.path.start) / 24) * ease((junction.path.end - distance) / 24);
+      this.tunnel.setDaylight(daylight, junctionFill);
       if (sim.phase === 'results' || sim.phase === 'crash') this.fog.color.setHSL(this.hue, .75, .030).lerp(this.daylightFog, daylight * .55);
     }
 
@@ -230,6 +231,7 @@ class VolumeScene {
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
       this.tunnel.setHue((this.hue + 1) % 1);
       this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
+      if (junction && junctionFill > 0) this.tunnel.tintJunctionLights(junctionFill, sim.route ? junction.tones[sim.route] : undefined);
       this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
       if (this.gameplay.ending) {
         this.fog.color.lerp(this.daylightFog, daylight * .55);
@@ -304,6 +306,7 @@ class VolumeScene {
     return count;
   }
   get routeLighting() { return this.junction ? { ...this.junction.tones } : undefined; }
+  get junctionLightLevel() { return this.junction?.lightLevel; }
 
   private updatePickup(sim: SceneState) {
     const spec = this.gameplay.pickup;
@@ -579,8 +582,7 @@ export class Graphics {
       this.renderer.setRenderTarget(null);
       this.withCoreShaders(() => this.renderer.render(scene, camera));
     }
-    const routeGuide = sim.routeGuide;
-    if (routeGuide) this.volume.hologram?.render(this.renderer, routeGuide, sim.routeSide, !!sim.route, sim.time);
+    this.volume.hologram?.render(this.renderer, sim.routeGuide, sim.routeSide, !!sim.route, sim.time);
     return this.locked;
   }
 
@@ -595,6 +597,8 @@ export class Graphics {
       continuity: this.volume?.continuity,
       encoreMeshes: this.volume?.encoreMeshes ?? 0,
       routeLighting: this.volume?.routeLighting,
+      junctionLightLevel: this.volume?.junctionLightLevel,
+      routeHologram: this.volume?.hologram?.visibleLabels,
       scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,
         active: this.volume.tunnel.activePhysicalLights,
         fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups,

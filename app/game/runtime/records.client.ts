@@ -3,9 +3,9 @@ import { difficultiesFor } from '../core/difficulty';
 import { VOLUMES } from '../core/volumes';
 
 export const RECORDS_KEY = 'sofaraway.records.v1';
-const daybreakRecordIds = ['drift', 'daybreak-skyglass', 'daybreak-crystal', 'daybreak-gameplay'] as const;
+const daybreakRecordIds = ['drift', 'daybreak-skyglass', 'daybreak-crystal', 'daybreak-gameplay', 'daybreak-choreography'] as const;
 type RecordId = VolumeId | typeof daybreakRecordIds[number];
-const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-gameplay' : volume;
+const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-choreography' : volume;
 
 interface RecordsV1 {
   version: 1;

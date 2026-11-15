@@ -2,51 +2,35 @@ import type { PlayMode } from '../contracts';
 import { chartFor } from './chart';
 import { gameplayFor } from './gameplay';
 import { STEP } from './clock';
+import { BOOST_MULTIPLIER, CRUISE_SPEED, cruiseTarget, referenceMotion } from './reference-motion';
 import { SIGHTSEEING_SPEED } from './sightseeing';
 import type { VolumeDefinition } from './volumes';
 
+export { BOOST_MULTIPLIER, CRUISE_RESPONSE, CRUISE_SPEED, cruiseTarget, SPEED_BONUS } from './reference-motion';
 export const START_DISTANCE = 4200;
-export const CRUISE_SPEED = 24;
-export const SPEED_BONUS = 10;
-export const CRUISE_RESPONSE = 1.6;
-export const BOOST_MULTIPLIER = 1.45;
-
-export const cruiseTarget = (count: number) => CRUISE_SPEED + Math.min(count * 0.22, SPEED_BONUS);
 export const modeScale = (mode: PlayMode) => mode === 'sightseeing' ? SIGHTSEEING_SPEED : 1;
 
 export class ReferenceTrack {
   private readonly boostFinishes = new Map<number, number>();
-  private readonly samples: Float64Array;
-  private readonly secondsPerBeat: number;
+  private readonly sample: ReturnType<typeof referenceMotion>;
   private readonly duration: number;
   private readonly gateStations: number[];
 
   constructor(volume: VolumeDefinition) {
-    this.secondsPerBeat = 60 / volume.bpm;
-    this.duration = volume.beats * this.secondsPerBeat;
+    const secondsPerBeat = 60 / volume.bpm;
+    this.duration = volume.beats * secondsPerBeat;
     const normal = chartFor(volume, 'normal');
     const branch = gameplayFor(volume.id).branch;
     const inJunction = (beat: number) => branch && beat >= branch.split && beat < branch.rejoin;
     const gates = branch ? [...normal.filter(gate => !inJunction(gate.beat)),
       ...branch.charts(normal.filter(gate => inJunction(gate.beat))).main].sort((a, b) => a.beat - b.beat)
       : normal;
-    this.samples = new Float64Array(Math.ceil(volume.beats * this.secondsPerBeat / STEP) + 1);
-    let speed = CRUISE_SPEED, count = 0;
-    for (let i = 0; i < this.samples.length - 1; i++) {
-      const beat = i * STEP / this.secondsPerBeat;
-      while (gates[count]?.beat <= beat + 1e-9) count++;
-      speed += (cruiseTarget(count) - speed) * CRUISE_RESPONSE * STEP;
-      this.samples[i + 1] = this.samples[i] + speed * STEP;
-    }
+    this.sample = referenceMotion(volume.beats, secondsPerBeat, gates);
     this.gateStations = gates.map(gate => this.station(gate.beat, 'standard'));
   }
 
   station(beat: number, mode: PlayMode) {
-    const tick = Math.min(this.samples.length - 1, Math.max(0, beat * this.secondsPerBeat / STEP));
-    const index = Math.floor(tick);
-    const start = this.samples[index];
-    const end = this.samples[index + 1] ?? start;
-    return START_DISTANCE + (start + (end - start) * (tick - index)) * modeScale(mode);
+    return START_DISTANCE + this.sample(beat) * modeScale(mode);
   }
 
   countThrough(station: number, mode: PlayMode, previousCount: number) {

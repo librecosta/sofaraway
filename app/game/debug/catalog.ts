@@ -25,8 +25,8 @@ const gateNotes = {
 
 export function gateDescription(kind: GateKind) {
   if (isDaybreakGate(kind)) {
-    const { label, openings } = daybreakGates[kind];
-    return { label, note: openings.length === 4 ? 'One radial slice opens around a solid octagonal hub.'
+    const { label } = daybreakGates[kind];
+    return { label, note: kind === 'daybreak-crystal' ? 'One of eight radial slices opens around a solid octagonal hub.'
       : kind === 'daybreak-vertical' ? 'Fixed tall opening with four clipped corners.' : 'Fixed wide hexagonal opening.' };
   }
   return { label: kind, note: gateNotes[kind] };

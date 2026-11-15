@@ -9,7 +9,7 @@ import { resolveDifficulty } from './difficulty';
 import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
 import { daylightFade, gameplayFor } from './gameplay';
-import { steer } from './input';
+import { steer, steeringDamping } from './input';
 import type { InputFrame } from './input';
 import { LUMEN_POINTS, pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
 import type { RunPickup } from './pickups';
@@ -359,7 +359,7 @@ export class Simulation {
         [camera.tx, camera.ty] = lanePoint(next.kind, next.open, next.axis);
       }
     }
-    const damp = 1 - Math.exp(-dt * 20);
+    const damp = steeringDamping(dt);
     camera.x += (camera.tx - camera.x) * damp;
     camera.y += (camera.ty - camera.y) * damp;
     camera.roll += (-camera.x * 0.028 * (SECTION.a / (SECTION.a + width)) - camera.roll) * (1 - Math.exp(-dt * 8));

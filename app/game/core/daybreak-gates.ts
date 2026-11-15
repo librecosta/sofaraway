@@ -7,8 +7,10 @@ type Edge = readonly [from: GateVertex, to: GateVertex];
 export const daybreakGateKinds = ['daybreak-crystal', 'daybreak-vertical', 'daybreak-horizontal'] as const;
 export type DaybreakGateKind = typeof daybreakGateKinds[number];
 
+export const crystalOpenings = ['Right', 'Upper right', 'Top', 'Upper left', 'Left', 'Lower left', 'Bottom', 'Lower right'] as const;
+
 export const daybreakGates = {
-  'daybreak-crystal': { label: 'Crystal', openings: ['Upper left', 'Upper right', 'Lower right', 'Lower left'] },
+  'daybreak-crystal': { label: 'Crystal', openings: crystalOpenings },
   'daybreak-vertical': { label: 'Vertical', openings: ['Center'] },
   'daybreak-horizontal': { label: 'Horizontal', openings: ['Center'] },
 } as const;
@@ -64,7 +66,7 @@ interface DaybreakProfile {
 }
 
 function crystalProfiles(): DaybreakProfile[] {
-  const start = 2.5 * sliceAngle;
+  const start = -.5 * sliceAngle;
   const radius = HUB_APOTHEM / Math.cos(sliceAngle / 2);
   const hub = Array.from({ length: 8 }, (_, i): GateVertex => {
     const angle = start + i * sliceAngle;
@@ -73,8 +75,8 @@ function crystalProfiles(): DaybreakProfile[] {
   const outside = hub.map((_, i) => cabinRay(start + i * sliceAngle));
   const spokes = hub.map((point, i): Edge => [point, outside[i]]);
   const hubEdges = edges(hub);
-  const variants = Array.from({ length: 4 }, (_, open): DaybreakProfile => {
-    const i = (8 - 2 * open) % 8, next = (i + 1) % 8;
+  const variants = crystalOpenings.map((_, i): DaybreakProfile => {
+    const next = (i + 1) % crystalOpenings.length;
     const low = start + i * sliceAngle;
     const high = low + sliceAngle;
     const gap = [hub[i], outside[i], ...cabinCorners(low, sliceAngle), outside[next], hub[next]];
@@ -104,7 +106,7 @@ const profiles = {
 };
 
 export function daybreakProfile(kind: DaybreakGateKind, open: number): DaybreakProfile {
-  return profiles[kind][open === -1 ? 4 : open];
+  return profiles[kind][open === -1 ? crystalOpenings.length : open];
 }
 
 export function daybreakOpening(kind: DaybreakGateKind, open: number, x: number, y: number) {

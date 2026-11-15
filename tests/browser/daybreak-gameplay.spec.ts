@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { branchLayout, ROUTE_LABELS } from '../../app/game/core/branches';
 import { OutroInspection } from '../../app/game/debug/outro-inspection';
 import { volumeById } from '../../app/game/core/volumes';
 import type {} from '../harness/main';
@@ -99,4 +100,70 @@ test('selecting DAYBREAK replaces the visible menu scene before the player start
   await expect(diagnostics).toContainText('"renderedVolume":"daybreak"');
   await expect(diagnostics).toContainText('"phase":"menu"');
   await expect(page.locator('canvas#gl')).toHaveCount(1);
+});
+
+test('DAYBREAK junction renders its seeded arrows and lit glass routes in the real scene', async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/debug/#outro');
+  const studio = page.locator('#outro');
+  await studio.getByRole('button', { name: 'Open live ending' }).click();
+  await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-station', /\d+/);
+  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
+  const go = (name: string) => studio.getByRole('button', { name, exact: true }).click();
+  const capture = async (name: string) => {
+    const path = info.outputPath(`${name}.png`);
+    const image = await canvas.screenshot({ path });
+    await info.attach(name, { path, contentType: 'image/png' });
+    return image;
+  };
+  const expectedLabels = (seed: number) => JSON.stringify(Object.fromEntries(
+    Object.entries(branchLayout(seed)).map(([side, route]) => [side, ROUTE_LABELS[route]])));
+  await go('Branch Preview');
+  await expect(canvas).toHaveAttribute('data-route-hologram', expectedLabels(0));
+  const first = await capture('branch-preview-seed0');
+  await studio.getByLabel('Run seed').fill('1');
+  await expect(canvas).toHaveAttribute('data-route-hologram', expectedLabels(1));
+  expect(await capture('branch-preview-seed1')).not.toEqual(first);
+  await go('Branch Entrance');
+  await expect(canvas).toHaveAttribute('data-route-hologram', expectedLabels(1));
+  await capture('branch-entrance');
+
+  const interiors = new Set<string>();
+  for (const route of ['MAIN', 'CHALLENGE', 'BONUS'] as const) {
+    await go(`${route} Interior`);
+    await expect(canvas).toHaveAttribute('data-route-hologram', 'null');
+    await expect(canvas).toHaveAttribute('data-junction-light', '1.1900');
+    await expect(canvas).toHaveAttribute('data-preview-gates', /daybreak-(crystal|horizontal|vertical)/);
+    interiors.add((await capture(`${route.toLowerCase()}-interior-off`)).toString('base64'));
+  }
+  expect(interiors.size).toBe(3);
+  const dynamic = studio.getByLabel('Dynamic Lights preview');
+  const station = await canvas.getAttribute('data-station');
+  await dynamic.check();
+  await expect(canvas).not.toHaveAttribute('data-junction-light', '1.1900');
+  await expect(canvas).toHaveAttribute('data-station', station!);
+  expect(interiors.has((await capture('bonus-interior-on')).toString('base64'))).toBe(false);
+  await dynamic.uncheck();
+  await go('Branch Rejoin');
+  await expect(canvas).toHaveAttribute('data-route-hologram', 'null');
+  await capture('branch-rejoin');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await go('Branch Preview');
+  await expect(canvas).toHaveAttribute('data-route-hologram', expectedLabels(1));
+  await capture('branch-preview-narrow');
+
+  await page.goto('/?vol=daybreak&t=112.5&align=1&god=0&q=low&dbg=1');
+  const liveDiagnostics = page.locator('#errbox');
+  await expect(liveDiagnostics).toContainText(`"routeHologram":${expectedLabels(0)}`);
+  await expect(page.locator('#route-hint')).toHaveCount(1);
+  const portrait = info.outputPath('branch-guide-portrait.png');
+  await page.locator('#gl').screenshot({ path: portrait });
+  await info.attach('branch-guide-portrait', { path: portrait, contentType: 'image/png' });
+  await page.goto('/?vol=daybreak&t=120&align=1&god=0&q=low&dbg=1&lights=true');
+  await expect(liveDiagnostics).toContainText('"routeLighting"');
+  await expect(liveDiagnostics).not.toContainText('"routeHologram"');
+  const lit = JSON.parse((await liveDiagnostics.textContent())!);
+  expect(lit.dynamics.amount).toBe(1);
+  expect(lit.junctionLightLevel).not.toBe(1.19);
 });

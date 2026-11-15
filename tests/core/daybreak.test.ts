@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { createHash } from 'node:crypto';
 import { difficulties } from '../../app/game/contracts';
 import { chartFor } from '../../app/game/core/chart';
 import { branchLayout, routeSides } from '../../app/game/core/branches';
@@ -7,7 +8,7 @@ import type { Difficulty, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, clamp, HUB_R, lanePoint } from '../../app/game/core/collision';
 import { rhythmTimeline } from '../../app/game/core/daybreak-score';
-import { daybreakGateKinds, daybreakGates, daybreakProfile, isCabinEdge } from '../../app/game/core/daybreak-gates';
+import { crystalOpenings, daybreakGateKinds, daybreakGates, daybreakProfile, isCabinEdge } from '../../app/game/core/daybreak-gates';
 import type { GateVertex } from '../../app/game/core/daybreak-gates';
 import { idleInput } from '../../app/game/core/input';
 import { SECTION_OUTLINE } from '../../app/game/core/section';
@@ -27,7 +28,7 @@ test('DAYBREAK retains its score boundaries and uses three fixed gate profiles',
     const chart = chartFor(volume, difficulty);
     expect(chart).toEqual(chartFor(volume, difficulty));
     expect(volume.sections.map(({ name }) => chart.filter(gate => gate.section === name).length))
-      .toEqual(difficulty === 'easy' ? [0, 19, 15, 5, 25, 17, 0] : [0, 28, 22, 7, 38, 25, 0]);
+      .toEqual([0, 28, 22, 7, 38, 25, 0]);
     expect(new Set(chart.map(gate => gate.kind))).toEqual(new Set(daybreakGateKinds));
     for (const [i, gate] of chart.entries()) {
       expect(sectionAt(volume, gate.beat)?.name).toBe(gate.section);
@@ -41,11 +42,32 @@ test('the real kick, snare and fill onsets drive the Main gates and the referenc
     .map(hit => hit.beat));
   const chart = chartFor(volume, 'normal');
   expect(chart.every(gate => onsets.has(gate.beat))).toBe(true);
+  expect(createHash('sha256').update(JSON.stringify(chart.map(gate => gate.beat))).digest('hex'))
+    .toBe('9825a2767e304e28b1a172478bf293a4c3a0c0f74c4b6b738ff05be5455cbe5f');
   const sim = new Simulation(volume);
   for (const beat of [16, 64, 138, 184, 268, 288]) {
     const station = sim.reference.station(beat, 'standard');
     expect(sim.reference.countThrough(station, 'standard', 0)).toBe(chart.filter(gate => gate.beat <= beat).length);
   }
+});
+
+test('the authored routes move around the octagon and return through center windows', () => {
+  const chart = chartFor(volume, 'normal');
+  const crystalSectors = (section: string) => new Set(chart.filter(gate => gate.section === section && gate.kind === 'daybreak-crystal')
+    .map(gate => gate.sector));
+  expect(crystalSectors('SUNBURST').size).toBe(crystalOpenings.length);
+  expect(crystalSectors('BREEZE').size).toBeLessThan(crystalSectors('LIFT').size);
+  const sim = new Simulation(volume);
+  sim.start('normal', 0);
+  for (const gates of [chart, sim.branchGates!.challenge.map(gate => ({ ...gate, sector: gate.open }))]) {
+    expect(gates.some((gate, i) => i && gate.kind === 'daybreak-crystal' && gates[i - 1].kind === gate.kind)).toBe(true);
+    for (let i = 1; i < gates.length; i++) {
+      if (gates[i].kind === 'daybreak-crystal' && gates[i - 1].kind === gates[i].kind) {
+        expect(gates[i].sector).not.toBe(gates[i - 1].sector);
+      }
+    }
+  }
+  expect(sim.branchGates!.score.every(gate => gate.kind !== 'daybreak-crystal')).toBe(true);
 });
 
 test('Crystal keeps the cabin perimeter and the fixed radial cuts around its octagonal hub', () => {
@@ -60,6 +82,9 @@ test('Crystal keeps the cabin perimeter and the fixed radial cuts around its oct
   }
   for (const open of daybreakGates[base].openings.keys()) {
     const pane = daybreakProfile(base, open);
+    const angle = open * Math.PI / 4;
+    expect(pane.target[0]).toBeCloseTo(Math.cos(angle) * 2.08);
+    expect(pane.target[1]).toBeCloseTo(Math.sin(angle) * 2.08);
     expect(pane.rim).toHaveLength(3);
     expect(pane.rim.every(([start, end]) => !isCabinEdge(start, end))).toBe(true);
     expect(canPass(base, open, 0, 0, 0)).toBe(false);
@@ -79,7 +104,7 @@ test('only the intended opening interrupts the glass at the cabin boundary', () 
   }
 });
 
-test('all six openings admit a reachable target with clearance and keep the other regions solid', () => {
+test('all ten openings admit a reachable target with clearance and keep the other regions solid', () => {
   for (const kind of daybreakGateKinds) {
     const definitions = daybreakGates[kind].openings;
     for (const open of definitions.keys()) {
@@ -140,7 +165,7 @@ test.each(difficulties)('%s clears Main through actual steering at cruise and su
     if (motion === 'cruise') expect(sim.encore).toBeUndefined();
     const expected = new Set(chartFor(volume, difficulty).map(gate => `${gate.kind}:${gate.sector}`));
     expect(seen).toEqual(expected);
-    if (difficulty !== 'easy') expect(seen.size).toBe(6);
+    expect(seen.size).toBe(10);
   }
 });
 

@@ -13,11 +13,13 @@ export interface InputFrame {
 export const idleInput: InputFrame = {
   axisX: 0, axisY: 0, target: null, dragX: 0, dragY: 0, boosting: false,
 };
+export const STEERING_SPEED = 6.2;
+export const steeringDamping = (dt: number) => 1 - Math.exp(-dt * 20);
 
 export function steer(input: InputFrame, tx: number, ty: number, dt: number, extraWidth = 0): Point {
   const rangeX = RANGE_X + extraWidth;
   const x = input.target ? input.target[0] * (rangeX / RANGE_X) : tx;
   const y = input.target?.[1] ?? ty;
-  return clampSection(x + input.dragX * rangeX * 2 / 0.62 + input.axisX * 6.2 * (1 + extraWidth / 18) * dt,
-    y - input.dragY * RANGE_Y * 2 / 0.62 + input.axisY * 6.2 * dt, 0.34, extraWidth);
+  return clampSection(x + input.dragX * rangeX * 2 / 0.62 + input.axisX * STEERING_SPEED * (1 + extraWidth / 18) * dt,
+    y - input.dragY * RANGE_Y * 2 / 0.62 + input.axisY * STEERING_SPEED * dt, 0.34, extraWidth);
 }

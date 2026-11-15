@@ -32,6 +32,7 @@ export function EndSequenceStudio() {
   const [beat, setBeat] = useState(416);
   const [angle, setAngle] = useState(0);
   const [quality, setQuality] = useState<QualityTier>('high');
+  const [dynamic, setDynamic] = useState(false);
   const [movement, setMovement] = useState<OutroMovement>('Paused');
   const [flying, setFlying] = useState(false);
   const [roam, setRoam] = useState<{ phase: 'menu' | 'results'; minutes: number }>();
@@ -72,8 +73,11 @@ export function EndSequenceStudio() {
   }, [open]);
 
   useEffect(() => {
-    if (available) viewer.current?.setQuality(quality);
-  }, [available, quality]);
+    if (available) {
+      viewer.current?.setQuality(quality);
+      viewer.current?.setDynamic(daybreak && dynamic);
+    }
+  }, [available, quality, daybreak, dynamic]);
 
   useEffect(() => {
     if (!available || !inspection || flying) return;
@@ -114,15 +118,19 @@ export function EndSequenceStudio() {
     if ('musicBeat' in view && view.musicBeat !== undefined) setBeat(view.musicBeat);
     if (next === 'music-end') setBeat(volume.beats);
   };
-  const changePlan = (nextMode: PlayMode, nextSeed: number, nextRoute: RouteKind, nextDifficulty = difficulty, nextVolume = volume) => {
+  const changePlan = (nextMode: PlayMode, nextSeed: number, nextRoute: RouteKind, nextDifficulty = difficulty,
+    nextVolume = volume, nextPreset = preset) => {
     setFlying(false);
     setRoam(undefined);
     const next = viewer.current?.select(nextMode, nextSeed, nextRoute, nextDifficulty, nextVolume);
     if (next) {
-      const selected = nextVolume !== volume ? 'main-last' : nextMode === 'sightseeing' && preset.startsWith('encore-') ? 'afterglow-entry' : preset;
+      const selected = nextVolume !== volume ? 'main-last' : nextMode === 'sightseeing' && nextPreset.startsWith('encore-')
+        ? 'afterglow-entry' : nextPreset;
       setPreset(selected);
-      setStation(selected ? next.view(selected).station :
+      const view = selected ? next.view(selected) : undefined;
+      setStation(view ? view.station :
         Math.max(next.min, Math.min(next.max, next.plan.mainLastStation + relative * modeScale(nextMode) / modeScale(mode))));
+      if (selected === 'branch' && view && 'musicBeat' in view && typeof view.musicBeat === 'number') setBeat(view.musicBeat);
       setInspection(next);
     }
     if (nextVolume !== volume) setBeat(nextVolume.beats - 16);
@@ -179,6 +187,7 @@ export function EndSequenceStudio() {
         <label>Preview quality <select value={quality} onChange={e => setQuality(e.currentTarget.value as QualityTier)}>
           <option value="high">High</option><option value="low">Low</option>
         </select></label>
+        {daybreak && <label><input type="checkbox" checked={dynamic} onChange={e => setDynamic(e.currentTarget.checked)} /> Dynamic Lights preview</label>}
         <label>Movement <select value={movement} onChange={e => { setFlying(false); setMovement(e.currentTarget.value as OutroMovement); }}>
           {movements.map(value => <option key={value}>{value}</option>)}
         </select></label>
@@ -196,6 +205,12 @@ export function EndSequenceStudio() {
         disabled={!available || (mode === 'sightseeing' && id.startsWith('encore-'))} onClick={() => seek(id)}>
         {daybreak && id === 'build' ? 'LIFT Gates' : daybreak && id === 'drop' ? 'SUNBURST Gates' : daybreak && id === 'finale' ? 'RETURN Gates' : label}</button>)}
     </fieldset>
+    {daybreak && <fieldset className={s.curveControls}>
+      <legend>Junction interiors</legend>
+      {routes.map(value => <button type="button" className={s.scan} key={value} disabled={!available}
+        aria-pressed={preset === 'branch' && route === value && !roam}
+        onClick={() => changePlan(mode, seed, value, difficulty, volume, 'branch')}>{ROUTE_LABELS[value]} Interior</button>)}
+    </fieldset>}
     {daybreak && <fieldset className={s.curveControls}>
       <legend>World Continuity</legend>
       {(['menu', 'results'] as const).flatMap(phase => [5, 15, 30].map(minutes => <button type="button" key={`${phase}-${minutes}`}

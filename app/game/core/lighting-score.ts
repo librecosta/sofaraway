@@ -37,6 +37,10 @@ export const colorScore: readonly ColorCue[] = phrases.map(([beat, hue, transiti
   ({ beat, hue, transitionBeats, saturation }));
 
 export const routeSwatches = { main: '#DCEAFF', challenge: '#F2A7AA', score: '#FFD587' } satisfies Record<RouteKind, string>;
+export const daybreakRouteSwatches = { main: '#80E3F4', challenge: '#F5A7CB', score: '#FFCF77' } satisfies Record<RouteKind, string>;
+export const daybreakRouteTones = {
+  main: { hue: .53, saturation: .62 }, challenge: { hue: .92, saturation: .57 }, score: { hue: .105, saturation: .68 },
+} satisfies Record<RouteKind, LightTone>;
 const routePhrases = {
   main: [[.59, .38], [.65, .24], [.47, .27]],
   challenge: [[.985, .63], [.025, .58], [.953, .60]],

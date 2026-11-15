@@ -155,11 +155,9 @@ test('the unified overview renders lit materials, effects and the existing model
       images.add(await canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL()));
     }
     expect(images.size).toBe(openings.length);
-    if (openings.length === 4) {
-      await select.selectOption('-1');
-      await expect(canvas).toHaveAttribute('data-rendered-opening', '-1');
-      expect(images.has(await canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL()))).toBe(false);
-    }
+    await select.selectOption('-1');
+    await expect(canvas).toHaveAttribute('data-rendered-opening', '-1');
+    expect(images.has(await canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL()))).toBe(false);
   }
 
   const raw = page.locator('canvas[data-preview=surface-channel]');

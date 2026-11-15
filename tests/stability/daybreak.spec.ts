@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { branchLayout, routeSides } from '../../app/game/core/branches';
 import { OutroInspection } from '../../app/game/debug/outro-inspection';
 import { volumeById } from '../../app/game/core/volumes';
 import type {} from '../harness/stability';
@@ -22,13 +23,21 @@ test('DAYBREAK frame and streaming measurements @daybreak-perf', async ({ browse
       console.log('DAYBREAK PERF', JSON.stringify({ build: port === 8095 ? 'candidate' : 'baseline', ...sample }));
       expect(sample.metrics.glError).toBe(0);
       expect(sample.metrics.snapshot.phase).toBe('playing');
-      if (port !== 8095) continue;
-      const inspection = new OutroInspection('standard', 0, 'main', undefined, 'normal', volumeById('daybreak'));
-      for (const [name, beat] of [['branch-entry', 232], ['encore-first', 200], ['afterglow-peak', 277]] as const) {
-        const { station } = inspection.view(name);
-        const result = await page.evaluate(([station, beat]) => window.stability.fixedGlass(beat, 'low', true, 'standard',
-          'center', 60, false, { station, inspection: true, fly: true, volumeId: 'daybreak' }), [station, beat]);
-        console.log('DAYBREAK PERF', JSON.stringify({ build: 'candidate', name, ...result }));
+      const build = port === 8095 ? 'candidate' : 'baseline';
+      const layout = branchLayout(0);
+      const volume = volumeById('daybreak');
+      const inspection = new OutroInspection('standard', 0, 'main', undefined, 'normal', volume);
+      const junctionFrames = routeSides.map(side => {
+        const route = layout[side];
+        const station = inspection.sim.junctionPath!.open + 85;
+        return { name: `${route}-interior`, side, beat: 240, station };
+      });
+      const otherFrames = ([['branch-entry', 232], ['encore-first', 200], ['afterglow-peak', 277]] as const).map(([name, beat]) =>
+        ({ name, side: 'center' as const, beat, station: inspection.view(name).station }));
+      for (const { name, side, beat, station } of [...otherFrames, ...junctionFrames]) {
+        const result = await page.evaluate(({ station, beat, side, name }) => window.stability.fixedGlass(beat, 'low', true, 'standard',
+          side, 180, false, { station, inspection: true, fly: name !== 'branch-entry', volumeId: 'daybreak' }), { station, beat, side, name });
+        console.log('DAYBREAK PERF', JSON.stringify({ build, name, ...result }));
         expect(result.glError).toBe(0);
         expect(result.metrics.continuity!.farBytes).toBeLessThan(400_000);
         expect(result.metrics.chunks).toBeLessThanOrEqual(4);
