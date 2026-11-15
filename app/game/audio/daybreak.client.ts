@@ -103,12 +103,12 @@ export class DaybreakSynthesizer {
       const age = after - onsetTime;
       return restore && age < lifespan ? age : Infinity;
     };
-    for (const [position, interval, length] of frame.bass) {
+    for (const [position, interval, length, velocity = 1] of frame.bass) {
       if (position !== at) continue;
       const age = ageAt(onset(bar, at, swing / 2), length * step + .075);
       if (!Number.isFinite(age)) continue;
       bassNote(ctx, this.inputs.bass, chord.bass + interval, atTime(at, swing / 2), length * step,
-        .143 * (interval ? .83 : 1) * frame.bassLevel, age);
+        .143 * (interval ? .83 : 1) * frame.bassLevel * velocity, age);
     }
     for (const [position, length, level] of frame.keys) {
       if (position !== at) continue;

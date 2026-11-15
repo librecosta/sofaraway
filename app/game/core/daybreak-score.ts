@@ -1,5 +1,5 @@
 type Chord = { bass: number; keys: readonly number[] };
-type BassNote = readonly [step: number, interval: number, length: number];
+type BassNote = readonly [step: number, interval: number, length: number, velocity?: number];
 type KeyStroke = readonly [step: number, length: number, velocity: number];
 type Groove = Pick<DaybreakBar, 'kicks' | 'ghost' | 'bass' | 'hats' | 'keys' | 'snares'>;
 type GrooveOverride = Partial<Groove & { fill: readonly number[] }>;
@@ -69,7 +69,6 @@ const grooveFor = (bar: number): Groove => {
 };
 
 const hatsLight = [2, 6, 10, 14];
-const breezeBass: readonly BassNote[] = [[1,0,2.6],[6,12,1.7],[9,0,2.4],[13,7,1.45]];
 const openingKeys: readonly KeyStroke[] = [[0,8.8,.9],[10,4.9,.67]];
 const lightKeys: readonly KeyStroke[] = [[0,5,.89],[8,3,.63],[12,2.6,.61]];
 const liftKeys: readonly KeyStroke[] = [[0,4,.91],[5,2.6,.64],[9,3,.76],[14,1.6,.57]];
@@ -169,6 +168,77 @@ const outro: readonly BarPlan[] = [
 ];
 const plans = [[], glide, lift, breeze, sunburst, returning, outro];
 
+// Each row is one bar over its existing chord bass. Offbeat replies leave room
+// for the backbeat, and pickups drop out where the drums lead a fill.
+const middleBass: Partial<Record<(typeof sections)[number]['name'], readonly (readonly BassNote[])[]>> = {
+  GLIDE: [
+    [[0,0,3,.95],[7,0,2.6,.89],[13,0,1.35,.74]],
+    [[1,0,2.4,.93],[8,0,3.3,.9]],
+    [[0,0,3.2,.95],[7,0,2.35,.88],[13,7,1.2,.7]],
+    [[1,0,2.8,.93],[8,0,2.3,.87]],
+    [[0,0,3.35,.96],[7,0,2.5,.9],[13,0,1.35,.78]],
+    [[1,0,2.3,.91],[8,0,3.15,.91]],
+    [[0,0,3.1,.94],[6,0,2.65,.9],[11,0,1.2,.74]],
+    [[1,0,2.8,.92],[7,0,2.4,.87]],
+  ],
+  LIFT: [
+    [[0,0,2.7,.96],[6,0,2,.87],[11,0,1.55,.77]],
+    [[1,0,2.15,.93],[8,0,2.7,.92],[13,0,1.5,.77]],
+    [[0,0,2.5,.97],[6,0,2.4,.91],[11,0,1.45,.79]],
+    [[1,0,2.25,.92],[7,0,2.75,.88]],
+    [[0,0,2.7,.98],[7,0,1.9,.91],[11,0,1.65,.8]],
+    [[1,0,2.4,.96],[6,0,2.6,.92],[13,0,1.5,.78]],
+    [[0,0,2.4,.98],[6,0,2.3,.91],[13,7,1.45,.74]],
+    [[1,0,2.7,.95],[8,0,2.3,.89]],
+    [[0,0,2.6,.99],[7,0,2.1,.92],[11,0,1.65,.82]],
+    [[1,0,2.4,.95],[8,0,2.15,.93],[13,0,1.5,.8]],
+    [[0,0,2.5,.98],[6,0,2.2,.92],[11,0,1.5,.8]],
+    [[1,0,2.6,.95],[7,0,2.3,.89]],
+  ],
+  BREEZE: [
+    [[1,0,3.4,.88],[8,0,2.2,.77]],
+    [[0,0,3.3,.88],[9,0,2,.78]],
+    [[1,0,3.6,.88]],
+    [[0,0,3.1,.9],[8,0,2.55,.8]],
+    [[1,0,3.35,.89],[8,0,2.3,.8]],
+    [[0,0,3.3,.89]],
+    [[1,0,3.2,.9],[8,0,2.5,.81]],
+    [[0,0,3.1,.92],[7,0,1.85,.82]],
+  ],
+  SUNBURST: [
+    [[0,0,2.75,1],[7,0,2.1,.94],[11,0,1.6,.83]],
+    [[1,0,2.35,.96],[7,0,2.5,.93],[13,0,1.55,.83]],
+    [[0,0,2.6,.99],[6,0,2.15,.93],[13,7,1.35,.74]],
+    [[1,0,2.45,.96],[6,0,1.35,.87],[8,0,1.25,.91]],
+    [[0,0,2.75,1],[7,0,2.15,.94],[13,0,1.45,.83]],
+    [[1,0,2.5,.97],[8,0,2.3,.94],[13,0,1.5,.82]],
+    [[0,0,2.45,.99],[6,0,2.2,.94],[11,0,1.65,.83]],
+    [[1,0,2.4,.96],[6,0,1.35,.87],[8,0,1.55,.91]],
+    [[0,0,2.7,1],[7,0,2.15,.95],[11,0,1.6,.84]],
+    [[1,0,2.35,.97],[6,0,2.4,.94],[13,0,1.5,.84]],
+    [[0,0,2.55,1],[6,0,2.25,.94],[13,7,1.4,.75]],
+    [[1,0,2.4,.96],[6,0,1.35,.88],[8,0,1.25,.92]],
+    [[0,0,2.65,1],[7,0,2.15,.95],[13,0,1.4,.84]],
+    [[1,0,2.3,.97],[8,0,2.35,.93],[13,0,1.5,.84]],
+    [[0,0,2.65,1],[6,0,2.35,.95],[11,0,1.6,.83]],
+    [[1,0,2.6,.96],[7,0,2.4,.92]],
+  ],
+  RETURN: [
+    [[0,0,3.45,.96],[9,0,2.85,.88]],
+    [[1,0,3,.92],[8,0,2.75,.86],[13,0,1.3,.74]],
+    [[0,0,3.55,.95],[9,0,2.55,.87]],
+    [[1,0,2.8,.93],[7,0,2.75,.87]],
+    [[0,0,3.45,.95],[9,0,2.6,.88],[13,0,1.35,.74]],
+    [[1,0,3.05,.92],[8,0,3,.87]],
+    [[0,0,3.15,.95],[6,0,2.15,.88],[11,0,1.4,.76]],
+    [[1,0,3.05,.92],[8,0,2.25,.86]],
+    [[0,0,3.55,.95],[9,0,2.65,.88]],
+    [[1,0,2.85,.92],[8,0,2.9,.87],[13,0,1.25,.72]],
+    [[0,0,3.4,.94],[9,0,2.55,.86]],
+    [[1,0,3,.92],[7,0,2.55,.86]],
+  ],
+};
+
 function composeFrame(section: typeof sections[number], index: number, authored: BarPlan): DaybreakBar {
   const bar = section.startBar + index;
   if (bar < 12) {
@@ -189,7 +259,7 @@ function composeFrame(section: typeof sections[number], index: number, authored:
       return { ...frame, kicks: index === 7 ? [0,6,10,15] : index % 2 ? [0,7,13] : [0,10],
         snares: index % 2 ? [4,12] : [12], ghost: index % 2 ? [9] : [],
         hats: index === 7 ? [2,6,8,10,12,14,15] : hatsLight,
-        bass: breezeBass, keys: lightKeys, drumLevel: .89, bassLevel: .94, keysLevel: .92 };
+        keys: lightKeys, drumLevel: .89, bassLevel: .94, keysLevel: .92 };
     case 'SUNBURST':
       return { ...frame, keys: sunKeys, peak: true, keysLevel: .98,
         ghost: frame.ghost.filter(at => !fill.includes(at)),
@@ -208,8 +278,11 @@ function composeFrame(section: typeof sections[number], index: number, authored:
   }
 }
 
-export const score = sections.flatMap((section, i) => Array.from({ length: section.bars }, (_, index) =>
-  composeFrame(section, index, plans[i][section.name === 'GLIDE' ? index - 8 : index])));
+export const score = sections.flatMap((section, i) => Array.from({ length: section.bars }, (_, index) => {
+  const frame = composeFrame(section, index, plans[i][section.name === 'GLIDE' ? index - 8 : index]);
+  const phrase = middleBass[section.name];
+  return phrase ? { ...frame, bass: phrase[index % phrase.length] } : frame;
+}));
 
 // The synthesizer and dynamic lighting sample the same authored hits.
 export function drumsFor(frame: DaybreakBar) {
