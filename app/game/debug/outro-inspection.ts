@@ -125,21 +125,38 @@ export class OutroInspection {
     const previewGates = this.main.filter(gate => visible(gate.routeStation));
     const previewEncore = this.encore.filter(gate => visible(gate.routeStation));
     const boosting = movement === 'Boost';
-    const next = [...previewGates, ...previewEncore].find(gate => gate.routeStation >= distance);
-    const remaining = this.volume.beats - beat;
-    const lookahead = remaining * sim.secondsPerBeat * cruiseTarget(Infinity) * BOOST_MULTIPLIER * scale
-      * difficultySettings(this.volume, sim.difficulty).speedFactor;
+    const cruise = cruiseTarget(Infinity) * scale * difficultySettings(this.volume, sim.difficulty).speedFactor;
+    const speed = cruise * (boosting ? BOOST_MULTIPLIER : 1);
+    const ending = sim.gameplay.ending;
+    let escapeWhite: number | undefined;
+    if (ending && !results) {
+      const elapsed = (musicBeat - (this.volume.beats - ending.beats)) * sim.secondsPerBeat;
+      const duration = ending.beats * sim.secondsPerBeat;
+      if (elapsed <= 0) escapeWhite = 0;
+      else {
+        // A flythrough has a declared speed. Project its final reachable gate on that timeline.
+        const previewSpeed = movement === 'Paused' ? cruise * BOOST_MULTIPLIER : speed;
+        const finishArc = distance + Math.max(0, duration - elapsed) * previewSpeed;
+        let last: RunGate | EncoreGate | undefined;
+        if (ending.protectGates) {
+          for (const gates of [this.main, this.encore]) {
+            for (const gate of gates) {
+              if (gate.routeStation > finishArc) break;
+              last = gate;
+            }
+          }
+        }
+        const releasedAt = last ? Math.max(0, Math.min(elapsed, duration) + (last.routeStation - distance) / previewSpeed) : 0;
+        escapeWhite = daylightFade(elapsed, duration, releasedAt);
+      }
+    }
     const pickupVisible = trackDistance >= sim.pickupPreviewStation && trackDistance < sim.pickupStation;
     return { mode: sim.mode, route: previewingBranch ? null : this.route,
       branch: { layout, side: previewingBranch ? null : side }, branchGates: sim.branchGates,
       junctionPath, phase: results ? 'results' : 'playing', camera: sim.camera, trackDistance, distance, beat, time: beat * sim.secondsPerBeat,
       steeringWidth: 0, routeGuide: guide ? layout : null, routeSide: guide ? previewingBranch ? 'center' : side : null,
       previewGates, previewEncore, outroPlan: plan,
-      speed: cruiseTarget(Infinity) * scale * difficultySettings(this.volume, sim.difficulty).speedFactor
-        * (boosting ? BOOST_MULTIPLIER : 1), boosting, boostLens: Number(boosting),
-      escapeWhite: sim.gameplay.ending && !results
-        ? daylightFade(clamp(1 - remaining / sim.gameplay.ending.beats, 0, 1), next ? next.routeStation - distance : Infinity, lookahead)
-        : undefined,
+      speed, boosting, boostLens: Number(boosting), escapeWhite,
       hitTime: -Infinity, pickup: sim.pickup, pickupVisible, pickupStation: sim.pickupStation, pickupPreviewStation: sim.pickupPreviewStation };
   }
 

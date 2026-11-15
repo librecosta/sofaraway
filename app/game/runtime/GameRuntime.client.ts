@@ -570,9 +570,12 @@ export class Runtime implements GameRuntime {
       const start = sim.phase === 'playing' ? Math.max(0, 1 - sim.time / 0.26) : 0;
       const pickup = Math.max(0, 1 - (sim.time - sim.pickupTime) / 0.24) * 0.13;
       const daylight = !!sim.gameplay.ending;
-      const flash = Math.max(hit * 0.9, end * (daylight ? .99 : .95), start * 0.9);
-      this.view.flash(sim.phase === 'results' && !daylight ? 0 : Math.max(flash, pickup),
-        (daylight ? hit * .9 > end : !!hit) ? '#ff5a5a' : pickup > flash ? '#74ffdc' : '#fff', daylight ? end : undefined);
+      if (daylight && end > 0) this.view.flash(end * .99, '#fff', end);
+      else {
+        const flash = Math.max(hit * 0.9, end * .95, start * 0.9);
+        this.view.flash(sim.phase === 'results' && !daylight ? 0 : Math.max(flash, pickup),
+          hit ? '#ff5a5a' : pickup > flash ? '#74ffdc' : '#fff', daylight ? end : undefined);
+      }
     }
     if (this.recorder && graphics.camera) {
       this.recorder.sample(now / 1000, graphics.camera, sim, sim.camera);

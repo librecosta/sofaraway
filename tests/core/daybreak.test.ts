@@ -184,8 +184,9 @@ function impossibleAim(sim: Simulation, gate: RunGate): readonly [number, number
   return [0, 0];
 }
 
-function fly(difficulty: Difficulty, motion: 'cruise' | 'boost' | 'intermittent', side: RouteSide = 'center', seed = 0,
-  mode: PlayMode = 'standard', pickup?: 'shield' | 'resonance' | 'lumen', neutralizeEncore = false) {
+function fly(difficulty: Difficulty, motion: 'cruise' | 'boost' | 'intermittent' | ((time: number) => boolean),
+  side: RouteSide = 'center', seed = 0, mode: PlayMode = 'standard',
+  pickup?: 'shield' | 'resonance' | 'lumen', neutralizeEncore = false, afterStep?: (sim: Simulation) => void) {
   const sim = new Simulation(volume);
   sim.start(difficulty, seed, pickup, mode);
   let judged = 0, ready = 0, afterglow = NaN;
@@ -210,10 +211,12 @@ function fly(difficulty: Difficulty, motion: 'cruise' | 'boost' | 'intermittent'
       const delta = (target[coordinate] - value) / (STEERING_SPEED * STEP);
       return keyboard ? Math.abs(delta) > .5 ? Math.sign(delta) : 0 : clamp(delta, -1, 1);
     };
-    const boosting = motion === 'boost' || (motion === 'intermittent' && sim.time > (keyboard ? 12 : 94) && frame % 120 < 70);
+    const boosting = typeof motion === 'function' ? motion(sim.time)
+      : motion === 'boost' || (motion === 'intermittent' && sim.time > (keyboard ? 12 : 94) && frame % 120 < 70);
     sim.step(STEP, { ...idleInput, axisX: axis(0, sim.camera.tx), axisY: axis(1, sim.camera.ty), boosting },
       neutralizeEncore && sim.gatesJudged === sim.gatesTotal);
     if (!Number.isFinite(afterglow) && sim.outroPhase === 'afterglow') afterglow = sim.time;
+    afterStep?.(sim);
   }
   return { sim, seen, afterglow };
 }
@@ -243,7 +246,6 @@ test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears ev
     expect(sim.hits, why).toBe(0);
     expect(sim.lives).toBe(1);
     expect(sim.beat).toBe(288);
-    expect(sim.escapeWhite).toBe(1);
     if (motion !== 'intermittent') expect(sim.speed).toBeCloseTo(motion === 'boost' ? 56.695 : 39.1, 8);
     const plan = sim.outroPlan!;
     const path = sim.junctionPath!;
@@ -252,6 +254,7 @@ test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears ev
     }
     expect(sim.trackDistance + GATE_LOAD_AHEAD).toBeLessThan(sim.path.length);
     if (motion === 'boost') {
+      expect(sim.escapeWhite).toBe(1);
       expect(plan.gates.length).toBeGreaterThan(24);
       expect(sim.encore).toMatchObject({ passed: plan.gates.length, clean: plan.gates.length, bonusScore: 300 * plan.gates.length });
       expect(144 - afterglow).toBeGreaterThanOrEqual(10 - STEP);
@@ -268,19 +271,84 @@ test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears ev
   }
 });
 
-test('cruise and sustained Boost fade continuously over the last twelve musical beats', () => {
-  for (const boosting of [false, true]) {
-    const sim = new Simulation(volume, { align: true });
-    sim.start('normal');
-    let previous = 0;
-    while (sim.phase === 'playing') {
-      sim.step(STEP, { ...idleInput, boosting });
-      expect(sim.escapeWhite).toBeGreaterThanOrEqual(previous);
-      expect(sim.escapeWhite - previous).toBeLessThan(.005);
-      if (sim.beat <= 276) expect(sim.escapeWhite).toBe(0);
-      previous = sim.escapeWhite;
+const endingPolicies = [
+  ['cruise', () => false],
+  ['sustained Boost', () => true],
+  ['second-half Boost', (time: number) => time >= 72],
+  ['Boost at the cue', (time: number) => time >= 138],
+  ['repeated Boost switches', (time: number) => time >= 136 && Math.floor((time - 136) * 4) % 2 === 0],
+] as const;
+
+test.each(endingPolicies)('%s carries one continuous white rise through the real gate sequence', (policy, boost) => {
+  for (const [difficulty, side] of [
+    ['easy', 'center'], ['normal', 'center'], ['hard', 'right'], ['impossible', 'left'],
+  ] as const) {
+    let previous = 0, largestRise = 0, lateCrossings = 0;
+    let encountered = 0;
+    const checkRise = (sim: Simulation) => {
+      const white = sim.escapeWhite;
+      if (sim.beat <= 276) expect(white).toBe(0);
+      expect(white + 1e-9).toBeGreaterThanOrEqual(previous);
+      largestRise = Math.max(largestRise, white - previous);
+      const crosses = sim.encore?.encountered ?? 0;
+      if (crosses > encountered && sim.beat > 276) {
+        lateCrossings += crosses - encountered;
+        expect(white).toBeLessThanOrEqual(.12 + 1e-9);
+      }
+      encountered = crosses;
+      previous = white;
+    };
+    const { sim } = fly(difficulty, boost, side, 0, 'standard', undefined, false, checkRise);
+    expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, route: branchLayout(0)[side] });
+    const finalGate = sim.outroPlan!.gates.filter(gate => gate.judged).at(-1);
+    if (policy === 'second-half Boost' || (difficulty === 'impossible' && policy !== 'sustained Boost')) {
+      expect(lateCrossings).toBeGreaterThanOrEqual(3);
+      expect(sim.encore?.missed).toBe(0);
     }
-    expect(previous).toBe(1);
+    if (policy === 'Boost at the cue' || policy === 'repeated Boost switches') expect(lateCrossings).toBeGreaterThan(0);
+    if (policy === 'sustained Boost') expect(sim.escapeWhite).toBeCloseTo(1);
+    if (difficulty === 'impossible' && policy === 'cruise') {
+      expect(finalGate?.crossedAt).toBeGreaterThan(143.9);
+      expect(sim.escapeWhite).toBeLessThan(.13);
+    }
+
+    let peaked = previous >= 1 - 1e-9;
+    for (let i = 0; i < 230; i++) {
+      sim.step(STEP, idleInput);
+      const white = sim.escapeWhite;
+      if (peaked) {
+        expect(white).toBeLessThanOrEqual(previous + 1e-9);
+        expect(previous - white).toBeLessThan(.063);
+        previous = white;
+      } else {
+        checkRise(sim);
+        peaked = white >= 1 - 1e-9;
+      }
+      if (sim.phase === 'results') expect(peaked).toBe(true);
+    }
+    expect(largestRise).toBeLessThan(.019);
+    expect(sim.phase).toBe('results');
+    expect(sim.escapeWhite).toBeLessThan(.001);
+    sim.returnToMenu();
+    expect(sim.escapeWhite).toBe(0);
+    expect(sim.start(difficulty, 0)).toBe(true);
+    expect(sim.escapeWhite).toBe(0);
+  }
+});
+
+test('TERMINATED skips DAYBREAK white and other volumes keep the legacy cue', () => {
+  const sim = new Simulation(volume);
+  sim.start('hard', 0);
+  while (sim.phase === 'playing') sim.step(STEP, idleInput);
+  expect(sim.result?.title).toBe('TERMINATED');
+  expect(sim.escapeWhite).toBe(0);
+  for (const id of ['elsewhere', 'descent', 'orbit'] as const) {
+    const run = new Simulation(volumeById(id), { align: true });
+    run.start('normal', 0);
+    while (run.beat < run.volume.beats - 6) run.step(STEP, idleInput);
+    expect(run.escapeWhite).toBeCloseTo(.5, 2);
+    while (run.phase !== 'results') run.step(STEP, idleInput);
+    expect(run.escapeWhite).toBe(0);
   }
 });
 

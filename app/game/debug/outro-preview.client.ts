@@ -84,7 +84,7 @@ export class OutroPreview {
     Object.assign(this.canvas.dataset, { station: state.trackDistance.toFixed(6), routeArc: state.distance.toFixed(6),
       beat: state.beat.toFixed(3), hue: metrics.scenicLights?.hue, afterglow: metrics.scenicLights?.afterglow ?? stage ?? '',
       mode: state.mode, phase: state.phase, difficulty: inspection.sim.difficulty, route: state.route, seed: inspection.plan.seed,
-      pickup: state.pickupVisible, escapeWhite: white, junctionMeshes: metrics.junctionMeshes,
+      pickup: state.pickupVisible, escapeWhite: white, skyDaylight: metrics.skyDaylight ?? '', junctionMeshes: metrics.junctionMeshes,
       junctionLight: metrics.junctionLightLevel?.toFixed(4) ?? '', routeHologram: JSON.stringify(metrics.routeHologram ?? null),
       previewGates: JSON.stringify(state.previewGates.filter(gate => gate.routeStation > state.distance).slice(0, 3)
         .map(gate => [gate.kind, gate.open, +(gate.routeStation - state.distance).toFixed(2)])),

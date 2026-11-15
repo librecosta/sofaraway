@@ -185,8 +185,11 @@ class VolumeScene {
     let junctionFill = 0;
     if (this.gameplay.ending) {
       const release = sim.outroPlan ? ease((distance - sim.outroPlan.afterglowStart) / 330) : 0;
-      const escaped = sim.phase === 'results' && distance > (sim.outroPlan?.mainLastStation ?? Infinity);
-      daylight = Math.max(release * .36, sim.escapeWhite ?? 0, escaped ? .15 : 0);
+      const white = sim.escapeWhite ?? 0;
+      const settling = sim.phase === 'results' || (sim.phase === 'crash' && white > 0);
+      const escaped = settling && distance > (sim.outroPlan?.mainLastStation ?? Infinity);
+      const resultsLight = escaped ? .15 * ease((sim.time - this.volume.beats * 60 / this.volume.bpm) / .3) : 0;
+      daylight = Math.max(release * .36, white, resultsLight);
       if (this.daylightSky) {
         this.daylightSky.position.copy(this.camera.position);
         this.daylightSky.material.uniforms.daylight.value = daylight;
@@ -300,6 +303,7 @@ class VolumeScene {
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
   get continuity() { return this.gameplay.world?.continuous ? this.tunnel.continuity : undefined; }
+  get skyDaylight() { return this.daylightSky?.material.uniforms.daylight.value; }
   get encoreMeshes() {
     let count = 0;
     for (const [gate, visual] of this.visuals) if ('index' in gate) count += visual.meshes.length;
@@ -595,6 +599,7 @@ export class Graphics {
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       continuity: this.volume?.continuity,
+      skyDaylight: this.volume?.skyDaylight,
       encoreMeshes: this.volume?.encoreMeshes ?? 0,
       routeLighting: this.volume?.routeLighting,
       junctionLightLevel: this.volume?.junctionLightLevel,

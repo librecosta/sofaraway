@@ -92,14 +92,16 @@ export function EndSequenceStudio() {
     let frame = 0;
     const draw = (now: number) => {
       const elapsed = Math.min(10, (now - start) / 1000);
-      const distance = inspection.stationAfter(station, speed * elapsed);
-      viewer.current?.draw(distance, Math.min(volume.beats, beat + elapsed * volume.bpm / 60), movement, angle);
+      const songTimeLeft = Math.max(0, (volume.beats - beat) * 60 / volume.bpm);
+      const distance = inspection.stationAfter(station, speed * (daybreak ? Math.min(elapsed, songTimeLeft) : elapsed));
+      const musicBeat = beat + elapsed * volume.bpm / 60;
+      viewer.current?.draw(distance, daybreak ? musicBeat : Math.min(volume.beats, musicBeat), movement, angle);
       if (elapsed < 10 && distance < inspection.max) frame = requestAnimationFrame(draw);
       else setFlying(false);
     };
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [available, inspection, flying, station, beat, movement, angle, volume]);
+  }, [available, inspection, flying, station, beat, movement, angle, volume, daybreak]);
 
   const resultDifficulty = mode === 'sightseeing' ? 'normal' : difficulty;
   useEffect(() => {

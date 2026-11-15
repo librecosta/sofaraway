@@ -39,7 +39,22 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
 
 export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }
 
-export function daylightFade(phase: number, ahead = Infinity, remainingTravel = 0) {
-  const protection = clamp((remainingTravel + 8 - ahead) / 8, 0, 1) * clamp((60 - ahead) / 38, 0, 1);
-  return phase * phase * (3 - 2 * phase) * (1 - .86 * protection);
+const protectedDaylight = .12;
+const minimumRiseSeconds = 1.25;
+
+function smoothstep(value: number) {
+  const phase = clamp(value, 0, 1);
+  return phase * phase * (3 - 2 * phase);
+}
+
+export function daylightPeak(duration: number, releasedAt: number) {
+  return Math.max(duration, releasedAt + minimumRiseSeconds);
+}
+
+/** All times are seconds relative to the start of the ending cue. */
+export function daylightFade(elapsed: number, duration: number, releasedAt?: number) {
+  const ambient = protectedDaylight * smoothstep(elapsed / duration);
+  if (releasedAt === undefined) return ambient;
+  const rise = daylightPeak(duration, releasedAt) - releasedAt;
+  return ambient + (1 - protectedDaylight) * smoothstep((elapsed - releasedAt) / rise);
 }

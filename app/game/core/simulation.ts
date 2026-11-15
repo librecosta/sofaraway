@@ -8,7 +8,7 @@ import type { Axis } from './collision';
 import { resolveDifficulty } from './difficulty';
 import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
-import { daylightFade, gameplayFor } from './gameplay';
+import { daylightFade, daylightPeak, gameplayFor } from './gameplay';
 import { steer, steeringDamping } from './input';
 import type { InputFrame } from './input';
 import { LUMEN_POINTS, pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
@@ -31,6 +31,7 @@ export const GATE_LOAD_AHEAD = 210;
 const GATE_ALIGN_AHEAD = 145;
 export const GATE_RELEASE_BEHIND = 8;
 const STATION_EPSILON = 1e-8;
+const RESULTS_SETTLE_SECONDS = .7;
 
 export interface RunGate {
   readonly beat: number;
@@ -88,6 +89,8 @@ export class Simulation {
   private judged = 0;
   private invulnUntil = 0;
   private settleAt = 0;
+  private daylightReleasedAt?: number;
+  private escapedAt = 0;
   private recoil = 0;
   private settleSpeed = 0;
   private messageUntil = 0;
@@ -124,19 +127,15 @@ export class Simulation {
     const ending = this.gameplay.ending;
     const duration = ending?.beats ?? 12;
     const elapsed = this.beat - (this.volume.beats - duration);
-    const phase = ending && elapsed < 1e-9 ? 0 : clamp(elapsed / duration, 0, 1);
-    if (!ending) return this.phase === 'playing' || this.phase === 'crash' ? phase : 0;
+    if (!ending) return this.phase === 'playing' || this.phase === 'crash' ? clamp(elapsed / duration, 0, 1) : 0;
     if (this.result?.title === 'TERMINATED' || this.phase === 'menu') return 0;
-    if (this.result?.title === 'ESCAPED') return Math.exp(-Math.max(0, this.time - (this.settleAt - .58)) * 3.8);
-    const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
-    if (ending.protectGates && next && this.phase === 'playing') {
-      const ahead = next.routeStation - this.distance;
-      const target = cruiseTarget(this.referenceProgress) * modeScale(this.mode) * this.speedFactor
-        * (this.boosting ? BOOST_MULTIPLIER : 1);
-      const reach = (this.volume.beats - this.beat) * this.secondsPerBeat * Math.max(this.speed, target);
-      return daylightFade(phase, ahead, reach);
-    }
-    return daylightFade(phase);
+    if (elapsed < 1e-9) return 0;
+    const seconds = duration * this.secondsPerBeat;
+    if (this.result?.title !== 'ESCAPED') return daylightFade(elapsed * this.secondsPerBeat, seconds, this.daylightReleasedAt);
+    const sinceCue = seconds + this.time - this.escapedAt;
+    const releasedAt = this.daylightReleasedAt!;
+    const fade = Math.exp(-Math.max(0, sinceCue - daylightPeak(seconds, releasedAt) - .12) * 3.8);
+    return daylightFade(sinceCue, seconds, releasedAt) * fade;
   }
   get mode() { return this.playMode; }
   get difficulty() { return this.runDifficulty; }
@@ -234,6 +233,7 @@ export class Simulation {
     }
     this.phase = 'playing';
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
+    this.daylightReleasedAt = undefined;
     this.gatesPassed = this.gatesJudged = this.gatesNeutralized = this.hits = this.reveal = this.judged = 0;
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
     this.previewGates = [];
@@ -407,10 +407,26 @@ export class Simulation {
     this.preloadGates();
     while (this.previewGates[0]?.routeStation < this.distance - GATE_RELEASE_BEHIND) this.previewGates.shift();
     while (this.previewEncore[0]?.routeStation < this.distance - GATE_RELEASE_BEHIND) this.previewEncore.shift();
-    if (this.phase === 'playing' && this.beat + 1e-9 >= this.volume.beats) {
-      this.beat = this.volume.beats;
-      this.finish('ESCAPED');
+    if (this.phase === 'playing') {
+      this.releaseDaylight(previousBeat);
+      if (this.beat + 1e-9 >= this.volume.beats) {
+        this.beat = this.volume.beats;
+        this.finish('ESCAPED');
+      }
     }
+  }
+
+  private releaseDaylight(previousBeat: number) {
+    const ending = this.gameplay.ending;
+    if (!ending || this.daylightReleasedAt !== undefined) return;
+    const start = this.volume.beats - ending.beats;
+    if (this.beat - start < 1e-9) return;
+    const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
+    const speedCap = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(this.mode) * this.speedFactor;
+    const remainingTravel = (this.volume.beats - this.beat) * this.secondsPerBeat * speedCap;
+    // Once no gate can be reached even with Boost, the final rise can run to completion.
+    if (ending.protectGates && next && next.routeStation <= this.distance + remainingTravel + STATION_EPSILON) return;
+    this.daylightReleasedAt = previousBeat - start < 1e-9 ? 0 : (this.beat - start) * this.secondsPerBeat;
   }
 
   private chooseRoute(side: RouteSide) {
@@ -525,7 +541,14 @@ export class Simulation {
       unreached: planned - this.gatesJudged, neutralized: this.gatesNeutralized, ...(this.route ? { route: this.route } : {}),
       ...(this.encore ? { encore: this.encore } : {}) });
     this.phase = 'crash';
-    this.settleAt = this.time + 0.7;
+    this.settleAt = this.time + RESULTS_SETTLE_SECONDS;
+    if (title === 'ESCAPED' && this.gameplay.ending) {
+      const duration = this.gameplay.ending.beats * this.secondsPerBeat;
+      this.daylightReleasedAt ??= duration;
+      this.escapedAt = this.time;
+      // A gate at the song cutoff can leave part of the rise for the visual transition.
+      this.settleAt += daylightPeak(duration, this.daylightReleasedAt) - duration;
+    }
     this.recoil = title === 'ESCAPED' ? 0 : 0.55;
     this.boosting = false;
     this.shield = false;

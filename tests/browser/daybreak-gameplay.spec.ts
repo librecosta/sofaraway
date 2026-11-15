@@ -21,8 +21,8 @@ test('DAYBREAK reaches near-white in the live renderer at cruise and under susta
     await capture(138);
     await expect(flash).toHaveCSS('opacity', '0');
     await capture(141);
-    await expect(flash).toHaveCSS('opacity', '0.495');
-    await capture(144);
+    await expect(flash).toHaveCSS('opacity', boost ? '0.495' : '0.0594');
+    await capture(boost ? 144 : 144.5);
     await expect(flash).toHaveCSS('opacity', '0.99');
     await expect(page.locator('#shade')).toHaveCSS('opacity', '0');
     await info.attach(`daybreak-white-boost-${boost}`, { body: await page.screenshot(), contentType: 'image/png' });
