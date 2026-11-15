@@ -11,6 +11,7 @@ test('local records follow the selected volume, difficulty and mode at narrow si
     if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({ version: 1,
       standard: { elsewhere: { hard: { best: 32500, last: { score: 2000, outcome: 'TERMINATED', recovery: true } },
         impossible: { best: 128640, last: { score: 97450, outcome: 'ESCAPED', encoreBonus: 10800 } } },
+      'daybreak-choreography': { impossible: { best: 46800, last: { score: 36000, outcome: 'ESCAPED', encoreBonus: 10200 } } },
       drift: { normal: { best: 21000, last: { score: 1200, outcome: 'TERMINATED' } } } },
       sightseeing: { elsewhere: { last: { score: 930, outcome: 'ESCAPED' } } } }));
   }, key);
@@ -50,11 +51,22 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await expect(difficulty).toHaveText('IMPOSSIBLE');
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page.locator('#vol-name')).toContainText('DAYBREAK');
+  await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(1);
+  await expect(difficulty).toHaveText('IMPOSSIBLE');
+  await expect(page.getByText('1 LIFE', { exact: true })).toBeVisible();
+  await expect(record).toContainText(/BEST SCORE\s*46,800/);
+  await expect(record).toContainText(/LAST RUN\s*46,200/);
+  await page.getByRole('button', { name: 'next volume' }).click();
+  await expect(page.locator('#vol-name')).toContainText('DESCENT');
   await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
   await expect(difficulty).toHaveText('NORMAL');
   await expect(record).toContainText(/BEST SCORE\s*—/);
-  await page.goto('/?vol=daybreak&diff=impossible&t=2&dbg=1&q=low');
-  await expect(page.locator('#errbox')).toContainText('"speed":24');
+  for (const volume of ['daybreak', 'descent', 'orbit']) {
+    await page.goto(`/?vol=${volume}&diff=impossible&t=2&dbg=1&q=low`);
+    const diagnostics = page.locator('#errbox');
+    await expect(diagnostics).toContainText('"speed":');
+    expect(JSON.parse((await diagnostics.textContent())!).speed).toBeCloseTo(volume === 'daybreak' ? 27.6 : 24);
+  }
   expect(await page.evaluate(() => localStorage.getItem('sofaraway.best'))).toBe('999999');
 });
 

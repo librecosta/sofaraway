@@ -102,6 +102,51 @@ test('selecting DAYBREAK replaces the visible menu scene before the player start
   await expect(page.locator('canvas#gl')).toHaveCount(1);
 });
 
+test('DAYBREAK Impossible previews the dense chart and all routes through the extended ending', async ({ page }, info) => {
+  test.setTimeout(90_000);
+  await page.goto('/debug/#outro');
+  const studio = page.locator('#outro');
+  await studio.getByRole('button', { name: 'Open live ending' }).click();
+  await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-station', /\d+/);
+  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  await studio.getByRole('combobox', { name: 'Chart difficulty' }).selectOption('impossible', { timeout: 8000 });
+  await studio.getByLabel('Run seed').fill('0');
+  const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
+  const view = new OutroInspection('standard', 0, 'score', undefined, 'impossible', volumeById('daybreak'));
+  const go = (name: string) => studio.getByRole('button', { name, exact: true }).click();
+  await go('SUNBURST Gates');
+  await expect(canvas).toHaveAttribute('data-beat', '161.532');
+  await info.attach('impossible-sunburst', { body: await canvas.screenshot(), contentType: 'image/png' });
+  for (const [route, label] of [['main', 'MAIN'], ['challenge', 'CHALLENGE'], ['score', 'BONUS']]) {
+    await go(`${label} Interior`);
+    await expect(studio.getByLabel('Route', { exact: true })).toHaveValue(route);
+    await expect(canvas).toHaveAttribute('data-preview-gates', /daybreak-(vertical|horizontal|crystal)/);
+  }
+  await go('Main Last Gate');
+  await expect(canvas).toHaveAttribute('data-station', view.view('main-last').station.toFixed(6));
+  await go('Encore First Gate');
+  await expect(canvas).toHaveAttribute('data-gate-stations', /\[1,"daybreak-vertical"/);
+  await go('Encore Final Gate');
+  await expect(canvas).toHaveAttribute('data-gate-stations', new RegExp(`\\[${view.plan.gates.length},"daybreak-`));
+  await go('Afterglow Entry');
+  await expect(canvas).toHaveAttribute('data-station', view.plan.afterglowStart.toFixed(6));
+  await go('Escape White Peak');
+  await expect(canvas).toHaveAttribute('data-escape-white', '0.99');
+  await info.attach('impossible-escape-white', { body: await canvas.screenshot(), contentType: 'image/png' });
+  await studio.getByLabel('Results preview').selectOption('Perfect Encore');
+  const results = studio.locator('#preview-over');
+  await expect(results.getByText('IMPOSSIBLE', { exact: true })).toBeVisible();
+  await expect(results.locator('#preview-over-gates')).toHaveText('147/147');
+
+  await page.goto('/?vol=daybreak&diff=impossible&boost=1&t=146.5&align=1&god=0&q=low&dbg=1');
+  await expect(page.locator('#over-title')).toHaveText('ESCAPED');
+  const live = JSON.parse((await page.locator('#errbox').textContent())!);
+  expect(live.outroPhase).toBe('afterglow');
+  expect(live.continuity.farThrough).toBe(view.sim.path.length);
+  expect(live.continuity.near.length).toBeLessThanOrEqual(4);
+  await expect(page.locator('#over-gates')).toHaveText('147/147');
+});
+
 test('DAYBREAK junction renders its seeded arrows and lit glass routes in the real scene', async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/debug/#outro');

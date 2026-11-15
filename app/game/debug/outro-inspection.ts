@@ -101,7 +101,7 @@ export class OutroInspection {
     const view = outroView(this.plan, preset);
     if (volume.id !== 'daybreak') return view;
     const end = path.stationAt(this.plan.musicEndStation, side);
-    const speed = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(sim.mode);
+    const speed = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(sim.mode) * difficultySettings(volume, sim.difficulty).speedFactor;
     return { ...view, musicBeat: clamp(volume.beats - (end - view.station) / (speed * sim.secondsPerBeat), 0, volume.beats) };
   }
 
@@ -127,7 +127,8 @@ export class OutroInspection {
     const boosting = movement === 'Boost';
     const next = [...previewGates, ...previewEncore].find(gate => gate.routeStation >= distance);
     const remaining = this.volume.beats - beat;
-    const lookahead = remaining * sim.secondsPerBeat * cruiseTarget(Infinity) * BOOST_MULTIPLIER * scale;
+    const lookahead = remaining * sim.secondsPerBeat * cruiseTarget(Infinity) * BOOST_MULTIPLIER * scale
+      * difficultySettings(this.volume, sim.difficulty).speedFactor;
     const pickupVisible = trackDistance >= sim.pickupPreviewStation && trackDistance < sim.pickupStation;
     return { mode: sim.mode, route: previewingBranch ? null : this.route,
       branch: { layout, side: previewingBranch ? null : side }, branchGates: sim.branchGates,

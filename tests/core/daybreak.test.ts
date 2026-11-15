@@ -1,18 +1,20 @@
 import { expect, test } from 'vitest';
 import { createHash } from 'node:crypto';
 import { difficulties } from '../../app/game/contracts';
-import { chartFor } from '../../app/game/core/chart';
-import { branchLayout, routeSides } from '../../app/game/core/branches';
+import { chartFor, difficultySettings } from '../../app/game/core/chart';
+import { branchLayout, ROUTE_GATE_MULTIPLIERS, routeSides } from '../../app/game/core/branches';
 import type { RouteSide } from '../../app/game/core/branches';
 import type { Difficulty, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, clamp, HUB_R, lanePoint } from '../../app/game/core/collision';
 import { rhythmTimeline } from '../../app/game/core/daybreak-score';
+import { difficultiesFor } from '../../app/game/core/difficulty';
 import { crystalOpenings, daybreakGateKinds, daybreakGates, daybreakProfile, isCabinEdge } from '../../app/game/core/daybreak-gates';
 import type { GateVertex } from '../../app/game/core/daybreak-gates';
-import { idleInput } from '../../app/game/core/input';
+import { idleInput, STEERING_SPEED } from '../../app/game/core/input';
 import { SECTION_OUTLINE } from '../../app/game/core/section';
-import { Simulation } from '../../app/game/core/simulation';
+import { GATE_LOAD_AHEAD, Simulation } from '../../app/game/core/simulation';
+import type { RunGate } from '../../app/game/core/simulation';
 import { sectionAt, volumeById } from '../../app/game/core/volumes';
 import { pathFrame } from '../../app/game/graphics/branch-path';
 
@@ -49,6 +51,43 @@ test('the real kick, snare and fill onsets drive the Main gates and the referenc
     const station = sim.reference.station(beat, 'standard');
     expect(sim.reference.countThrough(station, 'standard', 0)).toBe(chart.filter(gate => gate.beat <= beat).length);
   }
+});
+
+test('Impossible adds scored accents while preserving every Hard gate and its station', () => {
+  expect(difficultiesFor(volume.id)).toEqual([...difficulties, 'impossible']);
+  expect(difficultySettings(volume, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
+  const base = chartFor(volume, 'hard');
+  const chart = chartFor(volume, 'impossible');
+  expect(chart).toEqual(chartFor(volume, 'impossible', 999));
+  expect(chart.filter(gate => !gate.inserted)).toEqual(base);
+  expect(volume.sections.map(({ name }) => chart.filter(gate => gate.section === name).length))
+    .toEqual([0, 33, 28, 7, 50, 29, 0]);
+  expect(new Set(chart.filter(gate => gate.kind === 'daybreak-crystal').map(gate => gate.sector)).size).toBe(8);
+  expect(new Set(chart.map(gate => gate.beat)).size).toBe(147);
+
+  const hard = new Simulation(volume), impossible = new Simulation(volume);
+  hard.start('hard', 0);
+  impossible.start('impossible', 0);
+  expect(impossible.speed).toBeCloseTo(27.6, 10);
+  expect(impossible.lives).toBe(1);
+  expect(impossible.reference).toBe(hard.reference);
+  expect(impossible.pickupStation).toBe(hard.pickupStation);
+  expect(impossible.gatesTotal).toBe(147);
+  const routes = ['main', 'challenge', 'score'] as const;
+  const onsets = new Set(rhythmTimeline().filter(hit => ['kick', 'snare', 'fill'].includes(hit.kind)).map(hit => hit.beat));
+  const check = (anchors: readonly RunGate[], expanded: readonly RunGate[]) => {
+    expect(expanded.filter(gate => !gate.inserted)).toEqual(anchors);
+    for (const gate of expanded.filter(gate => gate.inserted)) {
+      expect(onsets.has(gate.beat)).toBe(true);
+      expect(gate.worldStation).toBe(impossible.reference.station(gate.beat, 'standard'));
+      expect(gate.axis).toBe(0);
+    }
+  };
+  check(hard.mainGates, impossible.mainGates);
+  for (const route of routes) check(hard.branchGates![route], impossible.branchGates![route]);
+  const branches = routes.map(route => impossible.branchGates![route].length);
+  expect(branches).toEqual([17, 18, 26]);
+  expect(branches[1] * ROUTE_GATE_MULTIPLIERS.challenge).toBeGreaterThan(branches[2] * ROUTE_GATE_MULTIPLIERS.score);
 });
 
 test('the authored routes move around the octagon and return through center windows', () => {
@@ -126,11 +165,31 @@ test('all ten openings admit a reachable target with clearance and keep the othe
 });
 
 
+function impossibleAim(sim: Simulation, gate: RunGate): readonly [number, number] {
+  if (gate.kind === 'daybreak-crystal') {
+    const [x, y] = lanePoint(gate.kind, gate.open, gate.axis);
+    return [x * .82, y * .82];
+  }
+  // Use the safe side of the center window to prepare for the visible next Crystal.
+  const next = sim.previewGates.find(other => other.worldStation > gate.worldStation);
+  const exit = next?.kind === 'daybreak-crystal' && next.routeStation - gate.routeStation < 50
+    ? lanePoint(next.kind, next.open, next.axis) : [0, 0];
+  const x = clamp((exit[0] * .78 + sim.camera.tx * .22) * .59, -1.38, 1.38);
+  const y = clamp((exit[1] * .78 + sim.camera.ty * .22) * .59, -1.20, 1.20);
+  for (const scale of [1, .7, .45]) {
+    if ([-.19, .19].every(dx => [-.19, .19].every(dy => canPass(gate.kind, gate.open, gate.axis, x * scale + dx, y * scale + dy)))) {
+      return [x * scale, y * scale];
+    }
+  }
+  return [0, 0];
+}
+
 function fly(difficulty: Difficulty, motion: 'cruise' | 'boost' | 'intermittent', side: RouteSide = 'center', seed = 0,
   mode: PlayMode = 'standard', pickup?: 'shield' | 'resonance' | 'lumen', neutralizeEncore = false) {
   const sim = new Simulation(volume);
   sim.start(difficulty, seed, pickup, mode);
   let judged = 0, ready = 0, afterglow = NaN;
+  const keyboard = difficulty === 'impossible' && mode === 'standard';
   const seen = new Set<string>();
   for (let frame = 0; sim.phase === 'playing' && frame <= 144 / STEP + 2; frame++) {
     const encountered = sim.gatesJudged + (sim.encore?.encountered ?? 0);
@@ -145,9 +204,13 @@ function fly(difficulty: Difficulty, motion: 'cruise' | 'boost' | 'intermittent'
     }
     const gate = next ?? encore;
     const target = choosing ? [side === 'center' ? 0 : side === 'left' ? -3.3 : 3.3, 0] : grabbing ? [0, 0]
-      : gate && sim.time >= ready ? lanePoint(gate.kind, gate.open, gate.axis) : null;
-    const axis = (coordinate: 0 | 1, value: number) => target ? clamp((target[coordinate] - value) / (6.2 * STEP), -1, 1) : 0;
-    const boosting = motion === 'boost' || (motion === 'intermittent' && sim.time > 94 && frame % 120 < 70);
+      : gate && sim.time >= ready ? next && keyboard ? impossibleAim(sim, next) : lanePoint(gate.kind, gate.open, gate.axis) : null;
+    const axis = (coordinate: 0 | 1, value: number) => {
+      if (!target) return 0;
+      const delta = (target[coordinate] - value) / (STEERING_SPEED * STEP);
+      return keyboard ? Math.abs(delta) > .5 ? Math.sign(delta) : 0 : clamp(delta, -1, 1);
+    };
+    const boosting = motion === 'boost' || (motion === 'intermittent' && sim.time > (keyboard ? 12 : 94) && frame % 120 < 70);
     sim.step(STEP, { ...idleInput, axisX: axis(0, sim.camera.tx), axisY: axis(1, sim.camera.ty), boosting },
       neutralizeEncore && sim.gatesJudged === sim.gatesTotal);
     if (!Number.isFinite(afterglow) && sim.outroPhase === 'afterglow') afterglow = sim.time;
@@ -166,6 +229,42 @@ test.each(difficulties)('%s clears Main through actual steering at cruise and su
     const expected = new Set(chartFor(volume, difficulty).map(gate => `${gate.kind}:${gate.sector}`));
     expect(seen).toEqual(expected);
     expect(seen.size).toBe(10);
+  }
+});
+
+test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears every route with 60 Hz keys and 150 ms reaction', motion => {
+  for (const seed of [0, 1, 42, 0xffffffff]) for (const side of routeSides) {
+    const { sim, afterglow } = fly('impossible', motion, side, seed);
+    const route = branchLayout(seed)[side];
+    const total = { main: 147, challenge: 148, score: 156 }[route];
+    const why = `${motion}/${seed}/${side} missed beat ${sim.mainGates.find(gate => gate.hit)?.beat}`;
+    expect(sim.branch?.side, why).toBe(side);
+    expect(sim.result, why).toMatchObject({ title: 'ESCAPED', route, planned: total, passed: total, accuracy: 1, rank: 'S', unreached: 0 });
+    expect(sim.hits, why).toBe(0);
+    expect(sim.lives).toBe(1);
+    expect(sim.beat).toBe(288);
+    expect(sim.escapeWhite).toBe(1);
+    if (motion !== 'intermittent') expect(sim.speed).toBeCloseTo(motion === 'boost' ? 56.695 : 39.1, 8);
+    const plan = sim.outroPlan!;
+    const path = sim.junctionPath!;
+    for (const gate of [...sim.mainGates, ...plan.gates]) {
+      expect(gate.routeStation).toBe(path.arcAt(gate.worldStation, side));
+    }
+    expect(sim.trackDistance + GATE_LOAD_AHEAD).toBeLessThan(sim.path.length);
+    if (motion === 'boost') {
+      expect(plan.gates.length).toBeGreaterThan(24);
+      expect(sim.encore).toMatchObject({ passed: plan.gates.length, clean: plan.gates.length, bonusScore: 300 * plan.gates.length });
+      expect(144 - afterglow).toBeGreaterThanOrEqual(10 - STEP);
+      expect(144 - afterglow).toBeLessThanOrEqual(12);
+      expect(plan.gates.at(-1)!.crossedAt).toBeLessThan(138);
+      if (seed <= 1) console.log('DAYBREAK IMPOSSIBLE', { seed, side, route, gates: total, encore: plan.gates.length,
+        first: plan.gates[0].worldStation, last: plan.gates.at(-1)!.worldStation,
+        firstAt: plan.gates[0].crossedAt, lastAt: plan.gates.at(-1)!.crossedAt,
+        afterglow, final: sim.trackDistance, path: sim.path.length });
+    } else {
+      expect(sim.encore?.passed).toBe(sim.encore?.encountered);
+      expect(sim.encore!.passed).toBeLessThan(plan.gates.length);
+    }
   }
 });
 
@@ -230,6 +329,19 @@ test('the pickup deck, partial Encore, recovery and Sightseeing retain their sep
   expect(scenic.result).toMatchObject({ title: 'ESCAPED', route: 'challenge', rank: 'S', accuracy: 1 });
 });
 
+test('DAYBREAK Impossible awards Lumen and preserves Encore recovery rules', () => {
+  const shield = fly('impossible', 'boost', 'center', 0, 'standard', 'shield').sim;
+  const lumen = fly('impossible', 'boost', 'center', 0, 'standard', 'lumen').sim;
+  expect(shield.pickup).toEqual({ kind: 'shield', status: 'collected' });
+  expect(lumen.pickup).toEqual({ kind: 'lumen', status: 'collected' });
+  expect(lumen.score - shield.score).toBeCloseTo(10000, 8);
+  const recovery = fly('impossible', 'boost', 'center', 0, 'standard', 'resonance', true).sim;
+  expect(recovery.pickup).toEqual({ kind: 'resonance', status: 'collected' });
+  expect(recovery.result).toMatchObject({ planned: 147, passed: 147, rank: 'S', accuracy: 1 });
+  expect(recovery.encore).toMatchObject({ neutralized: recovery.outroPlan!.gates.length, bonusScore: 0 });
+  expect(recovery.lives).toBe(1);
+});
+
 test('five, fifteen and thirty-minute menu and results positions stay inside their paths', () => {
   for (const mode of ['standard', 'sightseeing'] as const) {
     const menu = new Simulation(volume, {}, undefined, mode);
@@ -261,8 +373,10 @@ test('DAYBREAK sightseeing keeps five lives, one-third speed, and its lighter ch
   const standard = new Simulation(volume);
   const sightseeing = new Simulation(volume, {}, undefined, 'sightseeing');
   standard.start('normal');
-  sightseeing.start('normal', undefined, undefined, 'sightseeing');
+  sightseeing.start('impossible', undefined, undefined, 'sightseeing');
   expect(sightseeing.lives).toBe(5);
+  expect(sightseeing.difficulty).toBe('normal');
   expect(sightseeing.speed).toBeCloseTo(standard.speed / 3);
   expect(sightseeing.gatesTotal).toBe(39);
+  expect(sightseeing.outroPlan?.gates).toHaveLength(0);
 });

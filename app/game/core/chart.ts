@@ -85,12 +85,12 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
   return out;
 }
 
-/** DAYBREAK shares its authored rhythm across Standard difficulties. */
 export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed = difficultySettings(volume, difficulty).seed): ChartGate[] {
-  const base = buildChart(volume, seed);
   difficulty = resolveDifficulty(volume.id, difficulty);
+  if (volume.music === 'breakbeat') return daybreakChart(difficulty);
+  const base = buildChart(volume, seed);
   if (difficulty === 'impossible') return impossibleChart(base);
-  if (difficulty !== 'easy' || volume.music === 'breakbeat') return base;
+  if (difficulty !== 'easy') return base;
 
   const out: ChartGate[] = [];
   let last = -99;

@@ -4,10 +4,10 @@ import type { Difficulty, VolumeId } from '../contracts';
 export const IMPOSSIBLE_SPEED_FACTOR = 1.15;
 export const IMPOSSIBLE_SCORE_MULTIPLIER = 3.4;
 export const IMPOSSIBLE_LIVES = 1;
-const elsewhereDifficulties = [...difficulties, 'impossible'] as const;
+const impossibleDifficulties = [...difficulties, 'impossible'] as const;
 
 export function difficultiesFor(volume: VolumeId): readonly Difficulty[] {
-  return volume === 'elsewhere' ? elsewhereDifficulties : difficulties;
+  return volume === 'elsewhere' || volume === 'daybreak' ? impossibleDifficulties : difficulties;
 }
 
 export function supportsDifficulty(volume: VolumeId, value: unknown): value is Difficulty {

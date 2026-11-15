@@ -46,7 +46,7 @@ test('Impossible preserves every Hard gate and reaches the authored density with
   expect(again.pickup).toEqual(hard.pickup);
   expect(LUMEN_POINTS.impossible).toBe(10000);
   expect(difficultySettings(elsewhere, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
-  for (const volume of VOLUMES.slice(1)) {
+  for (const volume of VOLUMES.slice(2)) {
     const sim = new Simulation(volume);
     sim.start('impossible');
     expect(difficultiesFor(volume.id)).toEqual(difficulties);

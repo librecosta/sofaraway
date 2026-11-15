@@ -1,5 +1,6 @@
 import type { ChartGate } from './chart';
 import type { RouteKind } from './branches';
+import type { Difficulty } from '../contracts';
 import { STEP } from './clock';
 import { canPass, clamp, lanePoint } from './collision';
 import { crystalOpenings } from './daybreak-gates';
@@ -112,11 +113,42 @@ function choreograph(onsets: readonly Onset[], origin: number, sweep: number) {
 
 const main = mainPhrases.flatMap(({ onsets, origin, sweep }) => choreograph(onsets, origin, sweep));
 
-export function daybreakChart() { return main.map(gate => ({ ...gate })); }
-
 const challenge = choreograph(phrase('RETURN', 232.1, 255.99, 16, 'challenge'), 1, 1);
 const bonus = phrase('RETURN', 232.2, 255.8, 26, 'score').map(centerGate);
 
-export function daybreakRouteCharts(replaced: readonly ChartGate[]): Record<RouteKind, ChartGate[]> {
-  return { main: [...replaced], challenge: [...challenge], score: [...bonus] };
+type Accent = readonly [bar: number, step: number, voice: 'kick' | 'snare' | 'fill', opening: number | 'V' | 'H'];
+
+function addAccents(base: readonly ChartGate[], accents: readonly Accent[]) {
+  const additions = accents.map(([bar, step, voice, opening]): ChartGate => {
+    const hit = hits.find(hit => hit.bar === bar && hit.at === step && hit.kind === voice);
+    if (!hit) throw new Error(`Missing DAYBREAK ${voice} at bar ${bar + 1}, step ${step + 1}`);
+    return { beat: hit.beat, section: hit.section, kind: opening === 'V' ? vertical : opening === 'H' ? horizontal : crystal,
+      sector: typeof opening === 'number' ? opening : 0, inserted: true };
+  });
+  return [...base, ...additions].sort((a, b) => a.beat - b.beat);
+}
+
+// Each accent lands on the real swung onset within a tested gap between Hard gates.
+// Use the center windows to give players room to line up the following Crystal.
+const impossibleMain = addAccents(main, [
+  // GLIDE
+  [6, 4, 'snare', 0], [9, 7, 'kick', 'V'], [12, 10, 'kick', 2], [15, 14, 'kick', 0], [18, 12, 'snare', 1],
+  // LIFT
+  [21, 4, 'snare', 'H'], [23, 9, 'kick', 3], [25, 4, 'snare', 'H'], [27, 9, 'kick', 'V'],
+  [29, 4, 'snare', 'H'], [30, 12, 'snare', 2],
+  // SUNBURST
+  [40, 6, 'kick', 1], [41, 4, 'snare', 'V'], [42, 0, 'kick', 'V'], [44, 0, 'kick', 4], [45, 3, 'kick', 'V'],
+  [47, 9, 'kick', 'V'], [49, 3, 'kick', 'V'], [51, 0, 'kick', 'V'], [51, 13, 'fill', 'V'],
+  [53, 0, 'kick', 'H'], [53, 7, 'kick', 'V'], [54, 0, 'kick', 'V'],
+  // RETURN, inside Main and after the rejoin
+  [59, 15, 'fill', 0], [61, 4, 'snare', 'V'], [66, 0, 'kick', 'V'], [67, 9, 'kick', 'V'],
+]);
+const impossibleChallenge = addAccents(challenge, [[61, 3, 'kick', 'H'], [63, 9, 'kick', 'V']]);
+
+export function daybreakChart(difficulty: Difficulty = 'normal') {
+  return (difficulty === 'impossible' ? impossibleMain : main).map(gate => ({ ...gate }));
+}
+
+export function daybreakRouteCharts(replaced: readonly ChartGate[], difficulty: Difficulty = 'normal'): Record<RouteKind, ChartGate[]> {
+  return { main: [...replaced], challenge: [...(difficulty === 'impossible' ? impossibleChallenge : challenge)], score: [...bonus] };
 }

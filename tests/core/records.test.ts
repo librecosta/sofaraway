@@ -45,6 +45,8 @@ test('DAYBREAK choreography records remain independent of all legacy charts afte
   expect(recordFor(records, 'daybreak', 'normal', 'sightseeing').last).toBeNull();
   const daybreak = { ...last, score: 400 };
   expect(recordRun(records, 'daybreak', 'normal', 'standard', daybreak)).toBe(true);
+  const impossible = { ...last, score: 800, encoreBonus: 300 };
+  expect(recordRun(records, 'daybreak', 'impossible', 'standard', impossible)).toBe(true);
   recordRun(records, 'daybreak', 'normal', 'sightseeing', daybreak);
   const reloaded = parseRecords(JSON.stringify(records));
   expect(reloaded.standard.drift).toEqual(legacy.standard.drift);
@@ -56,6 +58,7 @@ test('DAYBREAK choreography records remain independent of all legacy charts afte
   expect(reloaded.standard['daybreak-gameplay']).toEqual(gameplay);
   expect(reloaded.sightseeing['daybreak-skyglass']).toEqual(legacy.sightseeing['daybreak-skyglass']);
   expect(recordFor(reloaded, 'daybreak', 'normal', 'standard')).toEqual({ best: 400, last: daybreak });
+  expect(recordFor(reloaded, 'daybreak', 'impossible', 'standard')).toEqual({ best: 1100, last: impossible });
   expect(recordFor(reloaded, 'daybreak', 'normal', 'sightseeing').last).toEqual(daybreak);
 });
 

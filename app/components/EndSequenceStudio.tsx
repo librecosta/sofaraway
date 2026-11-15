@@ -167,7 +167,7 @@ export function EndSequenceStudio() {
         <label>Chart difficulty <select disabled={mode === 'sightseeing'} value={mode === 'sightseeing' ? 'normal' : difficulty}
           onChange={e => changePlan(mode, seed, route, e.currentTarget.value as Difficulty)}>
           {daybreak && <option value="easy">Easy</option>}<option value="normal">Normal</option>
-          {daybreak ? <option value="hard">Hard</option> : <option value="impossible">Impossible</option>}
+          {daybreak && <option value="hard">Hard</option>}<option value="impossible">Impossible</option>
         </select></label>
         <label>Run seed <input disabled={!available} className={s.seed} type="number" min="0" max="4294967294" step="1" value={seed}
           onChange={e => {

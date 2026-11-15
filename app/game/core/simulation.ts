@@ -131,7 +131,8 @@ export class Simulation {
     const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
     if (ending.protectGates && next && this.phase === 'playing') {
       const ahead = next.routeStation - this.distance;
-      const target = cruiseTarget(this.referenceProgress) * modeScale(this.mode) * (this.boosting ? BOOST_MULTIPLIER : 1);
+      const target = cruiseTarget(this.referenceProgress) * modeScale(this.mode) * this.speedFactor
+        * (this.boosting ? BOOST_MULTIPLIER : 1);
       const reach = (this.volume.beats - this.beat) * this.secondsPerBeat * Math.max(this.speed, target);
       return daylightFade(phase, ahead, reach);
     }

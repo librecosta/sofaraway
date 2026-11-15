@@ -30,15 +30,24 @@ test('DAYBREAK frame and streaming measurements @daybreak-perf', async ({ browse
       const junctionFrames = routeSides.map(side => {
         const route = layout[side];
         const station = inspection.sim.junctionPath!.open + 85;
-        return { name: `${route}-interior`, side, beat: 240, station };
+        return { name: `${route}-interior`, side, beat: 240, station, difficulty: 'normal' as const };
       });
       const otherFrames = ([['branch-entry', 232], ['encore-first', 200], ['afterglow-peak', 277]] as const).map(([name, beat]) =>
-        ({ name, side: 'center' as const, beat, station: inspection.view(name).station }));
-      for (const { name, side, beat, station } of [...otherFrames, ...junctionFrames]) {
-        const result = await page.evaluate(({ station, beat, side, name }) => window.stability.fixedGlass(beat, 'low', true, 'standard',
-          side, 180, false, { station, inspection: true, fly: name !== 'branch-entry', volumeId: 'daybreak' }), { station, beat, side, name });
+        ({ name, side: 'center' as const, beat, station: inspection.view(name).station, difficulty: 'normal' as const }));
+      const sunburst = inspection.sim.reference.station(194, 'standard');
+      const normal = { name: 'normal-sunburst', station: sunburst, beat: 194, side: 'center', difficulty: 'normal' } as const;
+      const white = new OutroInspection('standard', 0, 'main', undefined, 'impossible', volume).view('white-start');
+      const added = port === 8095 ? [
+        { ...normal, name: 'impossible-sunburst', difficulty: 'impossible' },
+        { ...normal, name: 'impossible-ending', station: white.station, beat: 276, difficulty: 'impossible' },
+      ] as const : [];
+      for (const { name, station, beat, side, difficulty } of [...otherFrames, ...junctionFrames, normal, ...added]) {
+        const result = await page.evaluate(({ station, beat, side, name, difficulty }) => window.stability.fixedGlass(beat, 'low', true, 'standard',
+          side, 180, false, { station, inspection: true, fly: name !== 'branch-entry', difficulty, volumeId: 'daybreak' }),
+        { station, beat, side, name, difficulty });
         console.log('DAYBREAK PERF', JSON.stringify({ build, name, ...result }));
         expect(result.glError).toBe(0);
+        expect(result.metrics.continuity!.farThrough).toBe(result.pathLength);
         expect(result.metrics.continuity!.farBytes).toBeLessThan(400_000);
         expect(result.metrics.chunks).toBeLessThanOrEqual(4);
       }

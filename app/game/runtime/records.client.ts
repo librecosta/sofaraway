@@ -1,4 +1,5 @@
 import type { Difficulty, LastRun, LocalRecord, PlayMode, VolumeId } from '../contracts';
+import { difficulties } from '../contracts';
 import { difficultiesFor } from '../core/difficulty';
 import { VOLUMES } from '../core/volumes';
 
@@ -41,7 +42,7 @@ export function parseRecords(raw: string | null): RecordsV1 {
   const ids = [...VOLUMES.map(({ id }) => ({ id, volume: id })), ...daybreakRecordIds.map(id => ({ id, volume: 'daybreak' as const }))];
   for (const { id, volume } of ids) {
     const entries = object(standard[id]);
-    for (const difficulty of difficultiesFor(volume)) {
+    for (const difficulty of id === recordId(volume) ? difficultiesFor(volume) : difficulties) {
       const entry = object(entries[difficulty]);
       let best = score(entry.best) ? entry.best : null;
       const last = lastRun(entry.last);
