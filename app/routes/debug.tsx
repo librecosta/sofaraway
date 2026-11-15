@@ -13,7 +13,7 @@ import { chartFor } from '../game/core/chart';
 import { daybreakGates, isDaybreakGate } from '../game/core/daybreak-gates';
 import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
-import { cabinViews, catalog, environmentCards, gateDescription, pickupCards } from '../game/debug/catalog';
+import { cabinViews, catalog, gateDescription, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
 import { curveExamples, scenicExamples } from '../game/debug/scenic-catalog';
 import type { ScenicPreview } from '../game/debug/scenic-preview.client';
@@ -495,13 +495,12 @@ export default function DebugOverview() {
 
         <section id="environment" className={s.section}>
           <h2>Environment</h2>
+          <p><a href="#outro">Inspect DAYBREAK's sky and cloud sea</a> in the live End Sequence Studio.</p>
           <div className={s.swatches}>
-            {environmentCards.map(({ id, name, detail }) => (
-              <figure key={id} className={s.card}>
-                <Preview id={id} label={name} width={320} height={320} />
-                <figcaption className={s.caption}><strong>{name}</strong><p>{detail}</p></figcaption>
-              </figure>
-            ))}
+            <figure className={s.card}>
+              <Preview id="stars" label="Starfield" width={320} height={320} />
+              <figcaption className={s.caption}><strong>Starfield</strong><p>Equirectangular sky · Orbit</p></figcaption>
+            </figure>
           </div>
         </section>
 

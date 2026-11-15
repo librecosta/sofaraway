@@ -55,11 +55,9 @@ export function renderRawSurfaces(root: HTMLElement, materials: MaterialLibrary)
 }
 
 export function renderEnvironment(root: HTMLElement) {
-  for (const [volumeId, id] of [['daybreak', 'sky'], ['orbit', 'stars']] as const) {
-    const sky = makeSky(volumeById(volumeId));
-    if (!sky) continue;
-    try { paint(root, id, sky.image); } finally { sky.dispose(); }
-  }
+  const sky = makeSky(volumeById('orbit'));
+  if (!sky) return;
+  try { paint(root, 'stars', sky.image); } finally { sky.dispose(); }
 }
 
 export function renderWorlds(root: HTMLElement) {

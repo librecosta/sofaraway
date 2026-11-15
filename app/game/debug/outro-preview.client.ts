@@ -3,8 +3,8 @@ import type { RouteKind } from '../core/branches';
 import { dynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { VolumeDefinition } from '../core/volumes';
 import { Graphics } from '../graphics/scene.client';
-import { OutroInspection, outroVolume } from './outro-inspection';
-import type { OutroMovement } from './outro-inspection';
+import { exteriorViews, OutroInspection, outroVolume } from './outro-inspection';
+import type { ExteriorView, OutroMovement } from './outro-inspection';
 import type { SceneState } from '../graphics/scene.client';
 
 const flags: Diagnostics = { fixedTime: null, autoplay: false, god: false, align: false, boost: false,
@@ -18,6 +18,7 @@ export class OutroPreview {
   private quality: QualityTier = 'high';
   private lost = false;
   private dynamic = false;
+  private exteriorView: ExteriorView = 'Forward';
   private inspection?: OutroInspection;
   private view?: [number, number, OutroMovement, number, boolean?];
   private roaming?: ['menu' | 'results', number, number];
@@ -58,6 +59,12 @@ export class OutroPreview {
     this.redraw();
   }
 
+  setExteriorView(value: ExteriorView) {
+    if (this.exteriorView === value) return;
+    this.exteriorView = value;
+    this.redraw();
+  }
+
   draw(station: number, beat: number, movement: OutroMovement, angle: number, results = false) {
     this.roaming = undefined;
     this.view = [station, beat, movement, angle, results];
@@ -75,7 +82,9 @@ export class OutroPreview {
     const inspection = this.inspection!;
     const dynamics = this.dynamic && this.volume.id === 'daybreak'
       ? dynamicLightEnvelope(this.volume, state.time, 1, matchMedia('(prefers-reduced-motion: reduce)').matches) : undefined;
-    this.graphics.draw(state, true, true, { beat: state.beat, yaw: angle * Math.PI / 180, dynamics });
+    const [yaw, pitch, cameraLift] = exteriorViews[this.volume.id === 'daybreak' ? this.exteriorView : 'Forward'];
+    this.graphics.draw(state, true, true, { beat: state.beat, yaw: (angle + yaw) * Math.PI / 180,
+      pitch: pitch * Math.PI / 180, cameraLift, dynamics });
     const metrics = this.graphics.metrics();
     const station = state.trackDistance;
     const stage = inspection.plan.afterglow.find(slice => station >= slice.start && station <= slice.end)?.stage;
@@ -85,6 +94,7 @@ export class OutroPreview {
       beat: state.beat.toFixed(3), hue: metrics.scenicLights?.hue, afterglow: metrics.scenicLights?.afterglow ?? stage ?? '',
       mode: state.mode, phase: state.phase, difficulty: inspection.sim.difficulty, route: state.route, seed: inspection.plan.seed,
       pickup: state.pickupVisible, escapeWhite: white, skyDaylight: metrics.skyDaylight ?? '', junctionMeshes: metrics.junctionMeshes,
+      exterior: JSON.stringify(metrics.exterior ?? null), cameraY: this.graphics.camera?.position.y,
       junctionLight: metrics.junctionLightLevel?.toFixed(4) ?? '', routeHologram: JSON.stringify(metrics.routeHologram ?? null),
       previewGates: JSON.stringify(state.previewGates.filter(gate => gate.routeStation > state.distance).slice(0, 3)
         .map(gate => [gate.kind, gate.open, +(gate.routeStation - state.distance).toFixed(2)])),

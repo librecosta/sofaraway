@@ -13,6 +13,7 @@ export interface LightingPreview {
   readonly pattern?: LightPattern;
   readonly yaw?: number;
   readonly pitch?: number;
+  readonly cameraLift?: number;
   readonly station?: number;
   readonly dynamics?: Readonly<import('../core/rhythmic-lights').DynamicLightEnvelope>;
 }

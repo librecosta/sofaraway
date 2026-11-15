@@ -12,7 +12,8 @@ import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
-import { makeDaylightSky, makeEnvMap, makeSky } from './environment.client';
+import { DaybreakExterior } from './daybreak-exterior.client';
+import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
 import { MaterialLibrary } from './materials/library.client';
@@ -53,7 +54,7 @@ class VolumeScene {
   private readonly visuals = new Map<SceneGate, GateVisual>();
   private outro?: OutroPlan;
   private sky?: THREE.CanvasTexture | null;
-  private daylightSky?: ReturnType<typeof makeDaylightSky>;
+  readonly exterior?: DaybreakExterior;
   private readonly cameraFrame = frame();
   private readonly gateFrame = frame();
   private readonly pickupFrame = frame();
@@ -83,11 +84,11 @@ class VolumeScene {
       const atlas = makeLightingAtlas(volume, mode);
       this.tunnel = new Tunnel(textures, this.path, volume.topology, atlas, this.gameplay.world?.continuous);
       this.scene.add(this.tunnel.group);
-      this.sky = makeSky(volume);
-      if (this.gameplay.ending && this.sky) {
-        this.daylightSky = makeDaylightSky(this.sky);
-        this.scene.add(this.daylightSky);
-      } else this.scene.background = this.sky;
+      if (volume.id === 'daybreak') {
+        this.exterior = new DaybreakExterior(path);
+        this.scene.add(this.exterior.mesh);
+        this.fog.density = .00245;
+      } else this.scene.background = this.sky = makeSky(volume);
       this.scene.environment = environment;
       if (volume.id === 'elsewhere') {
         // Keep the existing PMREM and temper its contribution under the new local rig.
@@ -174,6 +175,7 @@ class VolumeScene {
     const width = sim.steeringWidth;
     const [cx, cy] = playerViewOffset(x, y, width);
     this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
+    if (lighting?.cameraLift) this.camera.position.y += lighting.cameraLift;
     this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
     this.camera.quaternion.setFromRotationMatrix(this.basis);
     this.camera.rotateZ(roll);
@@ -183,20 +185,17 @@ class VolumeScene {
     this.phase = sim.phase;
     let daylight = 0;
     let junctionFill = 0;
-    if (this.gameplay.ending) {
+    if (this.exterior) {
       const release = sim.outroPlan ? ease((distance - sim.outroPlan.afterglowStart) / 330) : 0;
       const white = sim.escapeWhite ?? 0;
       const settling = sim.phase === 'results' || (sim.phase === 'crash' && white > 0);
       const escaped = settling && distance > (sim.outroPlan?.mainLastStation ?? Infinity);
       const resultsLight = escaped ? .15 * ease((sim.time - this.volume.beats * 60 / this.volume.bpm) / .3) : 0;
       daylight = Math.max(release * .36, white, resultsLight);
-      if (this.daylightSky) {
-        this.daylightSky.position.copy(this.camera.position);
-        this.daylightSky.material.uniforms.daylight.value = daylight;
-      }
+      const brightness = this.exterior.update(sim.beat, sim.time, sim.phase === 'menu', daylight);
       if (junction) junctionFill = ease((distance - junction.path.start) / 24) * ease((junction.path.end - distance) / 24);
-      this.tunnel.setDaylight(daylight, junctionFill);
-      if (sim.phase === 'results' || sim.phase === 'crash') this.fog.color.setHSL(this.hue, .75, .030).lerp(this.daylightFog, daylight * .55);
+      this.tunnel.setDaylight(brightness, this.exterior.air, daylight, junctionFill);
+      this.fog.color.copy(this.exterior.air).multiplyScalar(.55).lerp(this.daylightFog, daylight * .48);
     }
 
     const mainPreviews = junction && sim.routeGuide && sim.branch && !sim.branch.side && sim.branchGates
@@ -235,10 +234,7 @@ class VolumeScene {
       this.tunnel.setHue((this.hue + 1) % 1);
       this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
       if (junction && junctionFill > 0) this.tunnel.tintJunctionLights(junctionFill, sim.route ? junction.tones[sim.route] : undefined);
-      this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
-      if (this.gameplay.ending) {
-        this.fog.color.lerp(this.daylightFog, daylight * .55);
-      }
+      if (!this.exterior) this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
     }
 
     let focus = 46;
@@ -303,7 +299,7 @@ class VolumeScene {
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
   get continuity() { return this.gameplay.world?.continuous ? this.tunnel.continuity : undefined; }
-  get skyDaylight() { return this.daylightSky?.material.uniforms.daylight.value; }
+  get skyDaylight() { return this.exterior?.daylight; }
   get encoreMeshes() {
     let count = 0;
     for (const [gate, visual] of this.visuals) if ('index' in gate) count += visual.meshes.length;
@@ -343,8 +339,7 @@ class VolumeScene {
     this.tunnel?.dispose();
     this.scenic?.dispose();
     this.surfaceLibrary?.dispose();
-    this.daylightSky?.geometry.dispose();
-    this.daylightSky?.material.dispose();
+    this.exterior?.dispose();
     this.sky?.dispose();
     this.scene.clear();
   }
@@ -416,6 +411,7 @@ export class Graphics {
       const materials = definition.id === 'elsewhere' ? new MaterialLibrary() : this.textures ??= buildTextures();
       return new VolumeScene(definition, materials, this.environment?.texture ?? null, path, mode);
     });
+    this.updateExteriorDetail();
     this.sizeCamera();
   }
 
@@ -434,6 +430,7 @@ export class Graphics {
     this.quality = tier;
     this.mobile = mobile;
     this.dropped = false;
+    this.updateExteriorDetail();
     this.clearPost(null);
     this.resize(this.width, this.height, this.deviceDpr);
     this.buildPost(selectProfile(tier, mobile, this.capabilities));
@@ -529,7 +526,12 @@ export class Graphics {
   reduceResolution() {
     if (this.effectiveDpr <= 1) return;
     this.dropped = true;
+    this.updateExteriorDetail();
     this.resize(this.width, this.height, this.deviceDpr);
+  }
+
+  private updateExteriorDetail() {
+    this.volume?.exterior?.setDetail(this.quality === 'low' || this.dropped ? 0 : this.quality === 'high' ? 1 : .55);
   }
 
   releaseSurface() {
@@ -600,6 +602,7 @@ export class Graphics {
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       continuity: this.volume?.continuity,
       skyDaylight: this.volume?.skyDaylight,
+      exterior: this.volume?.exterior?.info,
       encoreMeshes: this.volume?.encoreMeshes ?? 0,
       routeLighting: this.volume?.routeLighting,
       junctionLightLevel: this.volume?.junctionLightLevel,

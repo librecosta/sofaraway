@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { Difficulty, GameSnapshot, PlayMode, QualityTier } from '../game/contracts';
 import { ROUTE_LABELS } from '../game/core/branches';
 import type { RouteKind } from '../game/core/branches';
+import { sections as daybreakSections } from '../game/core/daybreak-score';
 import { modeScale } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
-import { movements, outroPresets, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
-import type { OutroInspection, OutroMovement, OutroPreset } from '../game/debug/outro-inspection';
+import { exteriorViews, movements, outroPresets, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
+import type { ExteriorView, OutroInspection, OutroMovement, OutroPreset } from '../game/debug/outro-inspection';
 import type { OutroPreview } from '../game/debug/outro-preview.client';
 import s from '../styles/debug.module.css';
 import { ResultsScreen } from './ResultsScreen';
@@ -31,6 +32,7 @@ export function EndSequenceStudio() {
   const [station, setStation] = useState(0);
   const [beat, setBeat] = useState(416);
   const [angle, setAngle] = useState(0);
+  const [exteriorView, setExteriorView] = useState<ExteriorView>('Forward');
   const [quality, setQuality] = useState<QualityTier>('high');
   const [dynamic, setDynamic] = useState(false);
   const [movement, setMovement] = useState<OutroMovement>('Paused');
@@ -76,8 +78,9 @@ export function EndSequenceStudio() {
     if (available) {
       viewer.current?.setQuality(quality);
       viewer.current?.setDynamic(daybreak && dynamic);
+      viewer.current?.setExteriorView(exteriorView);
     }
-  }, [available, quality, daybreak, dynamic]);
+  }, [available, quality, daybreak, dynamic, exteriorView]);
 
   useEffect(() => {
     if (!available || !inspection || flying) return;
@@ -187,7 +190,7 @@ export function EndSequenceStudio() {
         <label>Ending view angle <input type="range" min="-36" max="36" value={angle}
           onChange={e => setAngle(e.currentTarget.valueAsNumber)} /><output>{angle}°</output></label>
         <label>Preview quality <select value={quality} onChange={e => setQuality(e.currentTarget.value as QualityTier)}>
-          <option value="high">High</option><option value="low">Low</option>
+          <option value="high">High</option>{daybreak && <option value="auto">Auto</option>}<option value="low">Low</option>
         </select></label>
         {daybreak && <label><input type="checkbox" checked={dynamic} onChange={e => setDynamic(e.currentTarget.checked)} /> Dynamic Lights preview</label>}
         <label>Movement <select value={movement} onChange={e => { setFlying(false); setMovement(e.currentTarget.value as OutroMovement); }}>
@@ -201,6 +204,23 @@ export function EndSequenceStudio() {
         }}>Close live ending</button>}
       </div>
     </div>
+    {daybreak && <fieldset className={s.curveControls}>
+      <legend>DAYBREAK Exterior</legend>
+      <label>Exterior view <select aria-label="Exterior view" value={exteriorView} onChange={e => setExteriorView(e.currentTarget.value as ExteriorView)}>
+        {Object.keys(exteriorViews).map(view => <option key={view}>{view}</option>)}
+      </select></label>
+      {daybreakSections.map(({ name, startBeat, endBeat }) => {
+        const middle = (startBeat + endBeat) / 2;
+        return <button type="button" className={s.scan} key={name} disabled={!available} aria-pressed={!roam && !preset && beat === middle}
+          onClick={() => {
+            setRoam(undefined);
+            setFlying(false);
+            setPreset('');
+            setBeat(middle);
+            setStation(inspection!.sim.reference.station(middle, mode));
+          }}>{name} Atmosphere</button>;
+      })}
+    </fieldset>}
     <fieldset className={s.curveControls}>
       <legend>Course and ending positions</legend>
       {outroPresets.slice(0, daybreak ? undefined : 12).map(([id, label]) => <button type="button" className={s.scan} key={id} aria-pressed={!roam && preset === id}

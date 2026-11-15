@@ -105,7 +105,8 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('link', { name: 'Debug overview' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(29);
+  await expect(previews).toHaveCount(28);
+  await expect(page.getByRole('link', { name: "Inspect DAYBREAK's sky and cloud sea" })).toHaveAttribute('href', '#outro');
   await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
   for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Environment', 'Soundtrack']) {
     await expect(page.getByRole('heading', { name })).toBeVisible();
@@ -125,7 +126,7 @@ test('the unified overview renders lit materials, effects and the existing model
     'iris', 'square', 'diamond', ...daybreakGateKinds, 'lattice', 'aperture',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
     'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
-    'sky', 'stars',
+    'stars',
   ].map(id => ({ id, painted: true })));
   const shield = page.getByRole('img', { name: 'Prism Shield 3D model' });
   const first = await shield.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
@@ -197,7 +198,7 @@ test('materials and the soundtrack controls are available without WebGL2', async
   await expect(page.locator('#materials canvas[data-mode=raw]')).toHaveCount(6);
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(0);
   await expect(page.getByText(/Lit previews unavailable/)).toBeVisible();
-  await expect(page.locator('#environment canvas[data-ready=true]')).toHaveCount(2);
+  await expect(page.locator('#environment canvas[data-preview=stars][data-ready=true]')).toBeVisible();
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
   await expect(page.locator('canvas[data-preview=surface-channel]')).toHaveAttribute('data-channel', 'normal');
   await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();

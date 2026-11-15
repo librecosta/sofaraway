@@ -43,8 +43,3 @@ export const pickupCards = [
   { kind: 'resonance', name: 'Resonance', color: '#ff84e1', effect: '+25% score on the next 8 gates you pass.' },
   { kind: 'lumen', name: 'Lumen', color: '#ffe680', effect: '+2,500 / 5,000 / 7,500 / 10,000 points by difficulty.' },
 ] as const;
-
-export const environmentCards = [
-  { id: 'sky', name: 'Canal sky', detail: 'Sky gradient · DAYBREAK' },
-  { id: 'stars', name: 'Starfield', detail: 'Equirectangular sky · Orbit' },
-] as const;

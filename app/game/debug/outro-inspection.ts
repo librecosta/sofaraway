@@ -27,6 +27,14 @@ export const outroPresets = [
 export type OutroPreset = typeof outroPresets[number][0];
 export const movements = ['Paused', 'Cruise', 'Boost'] as const;
 export type OutroMovement = typeof movements[number];
+export const exteriorViews = {
+  Forward: [0, 0, 0],
+  'Look Up': [0, 25, 0],
+  'Cabin Side': [48, 6, 1.25],
+  Horizon: [-15, 0, 1.6],
+  'Cloud Sea': [-24, -21, 19],
+} as const;
+export type ExteriorView = keyof typeof exteriorViews;
 const chapters = { build: 'BUILD', drop: 'DROP', finale: 'FINALE' } as const;
 
 export function outroView(plan: OutroPlan, preset: OutroPreset) {
@@ -66,7 +74,7 @@ export class OutroInspection {
     this.main = [...this.sim.mainGates.map(gate => ({ ...gate, routeStation: routeStation(gate.worldStation) })),
       ...this.sim.branchGates![route]].sort((a, b) => a.worldStation - b.worldStation);
     this.encore = this.plan.gates.map(gate => ({ ...gate, routeStation: routeStation(gate.worldStation) }));
-    this.min = this.sim.reference.station(volume.id === 'daybreak' ? 16 : 158, mode);
+    this.min = this.sim.reference.station(volume.id === 'daybreak' ? 0 : 158, mode);
     this.max = Math.min(this.plan.afterglowEnd, this.sim.path.length - 430);
   }
 

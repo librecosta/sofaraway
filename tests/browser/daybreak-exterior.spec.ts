@@ -1,0 +1,101 @@
+import { expect, test } from '@playwright/test';
+import type { Locator } from '@playwright/test';
+import { sections } from '../../app/game/core/daybreak-score';
+
+interface ExteriorMetrics { seaLevel: number; sun: number[]; atmosphere: number[]; detail: number }
+
+async function imageSamples(canvas: Locator, image: Buffer, points: [number, number][]) {
+  return canvas.evaluate(async (_, { png, points }) => {
+    const picture = await createImageBitmap(new Blob([Uint8Array.from(atob(png), byte => byte.charCodeAt(0))], { type: 'image/png' }));
+    const sample = new OffscreenCanvas(picture.width, picture.height).getContext('2d')!;
+    sample.drawImage(picture, 0, 0);
+    picture.close();
+    return points.map(([x, y]) => {
+      const pixels = sample.getImageData(Math.floor(x * sample.canvas.width), Math.floor(y * sample.canvas.height), 11, 11).data;
+      const rgb = [0, 0, 0];
+      for (let i = 0; i < pixels.length; i += 4) for (let c = 0; c < 3; c++) rgb[c] += pixels[i + c];
+      return rgb.map(value => value / 121);
+    });
+  }, { png: image.toString('base64'), points });
+}
+
+test('DAYBREAK exterior chapter timing follows the soundtrack with cruise, Boost and Sightseeing', async ({ page }) => {
+  const diagnostics = page.locator('#errbox');
+  const looks = [];
+  for (const profile of ['mode=standard&q=low', 'mode=standard&boost=1&q=auto', 'mode=sightseeing&q=high']) {
+    await page.goto(`/?vol=daybreak&t=96&align=1&god=0&dbg=1&${profile}`);
+    await expect(diagnostics).toContainText('"renderedVolume":"daybreak"');
+    const metrics = await diagnostics.evaluate(el => JSON.parse(el.textContent!) as { exterior: ExteriorMetrics; distance: number });
+    looks.push(metrics);
+  }
+  expect(new Set(looks.map(look => look.distance)).size).toBe(3);
+  expect(looks.map(look => look.exterior.detail)).toEqual([0, .55, 1]);
+  for (const look of looks) {
+    expect(look.exterior.atmosphere).toEqual(looks[0].exterior.atmosphere);
+    expect(look.exterior.sun).toEqual(looks[0].exterior.sun);
+    expect(Math.hypot(...look.exterior.sun)).toBeCloseTo(1);
+    expect(look.exterior.sun[1]).toBeCloseTo(.1483, 4);
+    expect(look.exterior.seaLevel).toBe(-22);
+  }
+  for (const id of ['elsewhere', 'descent', 'orbit']) {
+    await page.goto(`/?vol=${id}&t=4&q=low&align=1&dbg=1`);
+    await expect(diagnostics).toContainText(`"renderedVolume":"${id}"`);
+    await expect(diagnostics).not.toContainText('"exterior":');
+  }
+});
+
+test('End Sequence Studio renders the production sky, cloud sea and recovered context', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto('/debug/#outro');
+  const studio = page.locator('#outro');
+  const button = (name: string) => studio.getByRole('button', { name, exact: true });
+  await button('Open live ending').click();
+  await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-exterior', 'null');
+  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
+  const view = studio.getByLabel('Exterior view', { exact: true });
+  for (const { name, startBeat, endBeat } of sections) {
+    await button(`${name} Atmosphere`).click();
+    await expect(canvas).toHaveAttribute('data-beat', ((startBeat + endBeat) / 2).toFixed(3));
+  }
+  await button('BREEZE Atmosphere').click();
+  await view.selectOption({ label: 'Look Up' });
+  const up = await canvas.screenshot();
+  const [blue] = await imageSamples(canvas, up, [[.32, .2]]);
+  expect(blue[2] - blue[0]).toBeGreaterThan(30);
+  await view.selectOption({ label: 'Cloud Sea' });
+  await expect(canvas).toHaveAttribute('data-camera-y', '19');
+  const sea = await canvas.screenshot();
+  const points: [number, number][] = [[.1, .46], [.21, .47], [.22, .69], [.67, .52], [.78, .62], [.88, .70], [.72, .85]];
+  const clouds = await imageSamples(canvas, sea, points);
+  const cloudLevel = clouds.map(([r, g, b]) => .2126 * r + .7152 * g + .0722 * b);
+  expect(Math.max(...cloudLevel) - Math.min(...cloudLevel)).toBeGreaterThan(8);
+  expect(cloudLevel.every(value => value > 45 && value < 244)).toBe(true);
+  await info.attach('BREEZE · Sky', { body: up, contentType: 'image/png' });
+  await info.attach('BREEZE · Cloud sea', { body: sea, contentType: 'image/png' });
+  const original = await canvas.elementHandle();
+  const gl = await canvas.evaluateHandle((el: HTMLCanvasElement) => el.getContext('webgl2')!);
+  expect(await gl.evaluate(context => context.getError())).toBe(0);
+  const loss = await gl.evaluateHandle(context => context.getExtension('WEBGL_lose_context')!);
+  await loss.evaluate(extension => extension.loseContext());
+  const interrupted = studio.getByText('WebGL interrupted. Waiting to restore the ending.');
+  await expect(interrupted).toBeVisible();
+  await loss.evaluate(extension => extension.restoreContext());
+  await expect(interrupted).toHaveCount(0);
+  const restored = await imageSamples(canvas, await canvas.screenshot(), points);
+  expect(Math.max(...restored.flatMap((rgb, i) => rgb.map((value, c) => Math.abs(value - clouds[i][c]))))).toBeLessThan(3);
+  for (const volume of ['elsewhere', 'daybreak', 'elsewhere', 'daybreak']) {
+    await studio.getByLabel('World', { exact: true }).selectOption(volume);
+    await expect(studio.getByRole('img')).toHaveAttribute('data-exterior', volume === 'elsewhere' ? 'null' : /"seaLevel":-22/);
+  }
+  expect(await canvas.evaluate((el, initial) => el === initial, original)).toBe(true);
+  await button('Close live ending').click();
+  await expect(canvas).toHaveCount(0);
+  await expect.poll(() => gl.evaluate(context => context.isContextLost())).toBe(true);
+  await gl.dispose();
+  await loss.dispose();
+  await original!.dispose();
+  expect(errors).toEqual([]);
+});

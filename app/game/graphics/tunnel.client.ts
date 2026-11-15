@@ -56,7 +56,7 @@ function canopyMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false,
     userData: { skipFocusDepth: true },
-    uniforms: { daylight: { value: 0 } },
+    uniforms: { daylight: { value: 0 }, skyTint: { value: new THREE.Color() } },
     vertexShader: /* glsl */`
       varying vec3 vNormal;
       varying vec3 vEye;
@@ -71,6 +71,7 @@ function canopyMaterial() {
     `,
     fragmentShader: /* glsl */`
       uniform float daylight;
+      uniform vec3 skyTint;
       varying vec3 vNormal;
       varying vec3 vEye;
       varying vec2 vPanel;
@@ -84,7 +85,7 @@ function canopyMaterial() {
         float hoop = (1.0 - smoothstep(0.0, hoopWidth, stationPhase)) * min(1.0, 0.008 / hoopWidth);
         vec3 glass = mix(vec3(0.14, 0.22, 0.30), vec3(0.24, 0.36, 0.45), grazing);
         float trim = max(gasket, hoop);
-        vec3 baseline = mix(glass, vec3(0.18, 0.36, 0.48), trim);
+        vec3 baseline = mix(glass, mix(vec3(0.18, 0.36, 0.48), skyTint, .44), trim);
         gl_FragColor = vec4(mix(baseline, vec3(0.92, 0.79, 0.62), daylight * (0.28 + 0.45 * grazing)),
           0.015 + 0.09 * grazing + 0.60 * trim);
       }
@@ -528,12 +529,15 @@ export class Tunnel {
   get junctionShell() { return this.shellMat; }
   get junctionCanopy() { return this.canopyMat; }
 
-  setDaylight(amount: number, junctionFill = 0) {
+  setDaylight(brightness: number, sky: THREE.Color, amount: number, junctionFill: number) {
     if (!this.canopyMat) return;
     this.canopyMat.uniforms.daylight.value = amount;
-    this.ambient.intensity = (this.surfaces ? .66 : .45) + amount * .28 + junctionFill * .25;
-    this.hemi.intensity = .55 + amount * .34 + junctionFill * .30;
-    this.hemi.groundColor.setHex(0x08090b).lerp(junctionGround, junctionFill);
+    this.canopyMat.uniforms.skyTint.value.copy(sky);
+    this.ambient.color.setRGB(.24, .31, .38);
+    this.ambient.intensity = .64 * brightness + amount * .28 + junctionFill * .25;
+    this.hemi.color.copy(sky);
+    this.hemi.intensity = .80 * brightness + amount * .34 + junctionFill * .30;
+    this.hemi.groundColor.setRGB(.12, .17, .22).lerp(junctionGround, junctionFill);
   }
 
   get continuity() {
@@ -676,8 +680,10 @@ export class Tunnel {
     this.stripMat.color.copy(c);
     this.rimMat.color.copy(c).multiplyScalar(0.55);
     for (const l of this.lights) l.color.copy(c);
-    this.ambient.color.setHSL(h, this.surfaces ? 0.53 : 0.9, this.surfaces ? 0.27 : 0.22);
-    this.hemi.color.setHSL(h, 0.75, 0.40);
+    if (!this.canopyMat) {
+      this.ambient.color.setHSL(h, this.surfaces ? 0.53 : 0.9, this.surfaces ? 0.27 : 0.22);
+      this.hemi.color.setHSL(h, 0.75, 0.40);
+    }
 
     if (!this.surfaces) {
       this.shellMat.color.setHSL(h, 0.42, 0.32);
