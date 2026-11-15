@@ -1,4 +1,5 @@
 import { DaybreakSynthesizer } from '../../app/game/audio/daybreak.client';
+import { bassNote, warmSubBass } from '../../app/game/audio/daybreak-voices.client';
 import { volumeById } from '../../app/game/core/volumes';
 import { defaultMix, inspectorScore, stemIds } from '../../app/game/debug/audio/track-adapter';
 import { inspectorSource } from '../../app/game/debug/audio/source.client';
@@ -74,3 +75,60 @@ declare global {
 }
 
 window.inspectAudioRouting = inspectAudioRouting;
+
+export async function inspectBassFoundation() {
+  const rate = 44_100;
+
+  async function harmonics(voice: typeof bassNote) {
+    const ctx = new OfflineAudioContext(1, rate, rate);
+    voice(ctx, ctx.destination, 45, 0, .7, .143);
+    const samples = (await ctx.startRendering()).getChannelData(0);
+    // The sustain window holds an integer number of A2 cycles at 110 Hz.
+    return Array.from({ length: 8 }, (_, i) => {
+      let real = 0, imaginary = 0;
+      const frequency = (i + 1) * 110;
+      for (let n = .3 * rate; n < .5 * rate; n++) {
+        const phase = 2 * Math.PI * n * frequency / rate;
+        real += samples[n] * Math.cos(phase);
+        imaginary += samples[n] * Math.sin(phase);
+      }
+      return 2 * Math.hypot(real, imaginary) / (.2 * rate);
+    });
+  }
+
+  async function duck(bar: number) {
+    const ctx = new OfflineAudioContext(1, .11 * rate, rate);
+    const envelope = ctx.createGain();
+    const level = ctx.createConstantSource();
+    level.connect(envelope).connect(ctx.destination);
+    level.start();
+    const silent = ctx.createGain();
+    const synth = new DaybreakSynthesizer(ctx, silent, () => ({
+      inputs: { kick: silent, snare: silent, hats: silent, bass: silent, keys: silent, atmos: silent },
+      duck: envelope.gain,
+    }));
+    synth.playStep(bar * 16, 0);
+    const output = (await ctx.startRendering()).getChannelData(0);
+    return { min: Math.min(...output), recovered: output.at(-1) };
+  }
+
+  async function seek(restore: boolean) {
+    const ctx = new OfflineAudioContext(2, .16 * rate, rate);
+    const synth = inspectorSource(ctx, inspectorScore(volumeById('daybreak')), ctx.destination, defaultMix(), null, 'bass');
+    // Seek a few milliseconds beyond the original voice's 75 ms release.
+    const position = 8.655;
+    synth.playStep(64, 8 - position + .04, position, restore);
+    const samples = (await ctx.startRendering()).getChannelData(0);
+    return Math.max(...samples.map(Math.abs));
+  }
+
+  return { legacy: await harmonics(bassNote), warm: await harmonics(warmSubBass),
+    open: await duck(1), middle: await duck(4), outro: await duck(68),
+    restored: await seek(true), notRestored: await seek(false) };
+}
+
+declare global {
+  interface Window { inspectBassFoundation: typeof inspectBassFoundation }
+}
+
+window.inspectBassFoundation = inspectBassFoundation;

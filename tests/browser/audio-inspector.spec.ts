@@ -18,6 +18,23 @@ test('DAYBREAK stems null against the production mix and isolate sound, reverb a
   expect(result.kick.rms).toBeGreaterThan(.02);
 });
 
+test('DAYBREAK fills the low end with reduced upper harmonics and gentle Kick ducking', async ({ page }, info) => {
+  await page.goto('http://127.0.0.1:8090/?audio-inspector');
+  await page.waitForFunction(() => typeof window.inspectBassFoundation === 'function');
+  const result = await page.evaluate(() => window.inspectBassFoundation());
+  await info.attach('Bass harmonic and ducking measurements', { body: JSON.stringify(result, null, 2), contentType: 'application/json' });
+  const upper = (voice: number[]) => Math.hypot(...voice.slice(2)) / voice[0];
+  expect(upper(result.warm)).toBeLessThan(upper(result.legacy) / 3);
+  expect(result.warm[0]).toBeGreaterThan(.75 * result.legacy[0]);
+  expect(result.warm[1] / result.warm[0]).toBeGreaterThan(.08);
+  expect(result.open.min).toBeCloseTo(.51, 2);
+  expect(result.middle.min).toBeCloseTo(.8, 2);
+  expect(result.outro.min).toBeCloseTo(.51, 2);
+  expect(result.middle.recovered).toBeCloseTo(1, 3);
+  expect(result.restored).toBeGreaterThan(.0001);
+  expect(result.notRestored).toBe(0);
+});
+
 test('real waveforms, cueing and playback share one synchronized timeline and one live context', async ({ page }, info) => {
   await page.addInitScript(() => {
     const stats = { created: 0, closed: 0, peak: 0, offlineActive: 0, offlinePeak: 0, offlineFrames: 0, offlineMs: 0 };

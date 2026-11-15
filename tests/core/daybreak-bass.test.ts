@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from 'vitest';
 import { bpm, duration, onset, rhythmTimeline, score, sections, step, swing } from '../../app/game/core/daybreak-score';
+import { warmSubRelease } from '../../app/game/audio/daybreak-voices.client';
 
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
-test('only the five middle Bass parts differ from the D1-M2 score', () => {
-  // Event digests from 871e91c, including every preserved note, onset and level.
+test('the new foundation preserves the edge Bass and every non-Bass event', () => {
+  // Event digests shared by 871e91c and the D1-M3-F1 baseline 4c56a7f.
   expect(digest(score.filter(bar => bar.section === 'OPEN').map(bar => bar.bass)))
     .toBe('993acd1e1c38d49d474258381123559927bc59b2c96de1ea4495d501926a75c8');
   expect(digest(score.filter(bar => bar.section === 'OUTRO').map(bar => bar.bass)))
@@ -16,43 +17,28 @@ test('only the five middle Bass parts differ from the D1-M2 score', () => {
   expect([bpm, duration, sections.at(-1)?.endBeat, swing]).toEqual([120, 144, 288, .085]);
 });
 
-test('the middle Bass keeps its register, leaves the backbeat clear and varies with section energy', () => {
+test('the foundation supports the chord bass and the main Kick accents with room between notes', () => {
   const middle = sections.slice(1, -1);
   const densities = [];
-  let fifths = 0;
   for (const section of middle) {
     const bars = score.slice(section.startBar, section.endBar);
     densities.push(bars.flatMap(bar => bar.bass).length / bars.length);
-    let kickAnchors = 0, offbeatNotes = 0;
-    for (const { bar, bass, chord, kicks, snares, fill } of bars) {
-      expect(bass.length).toBeGreaterThanOrEqual(section.name === 'BREEZE' ? 1 : 2);
-      expect(bass.length).toBeLessThanOrEqual(3);
-      expect(bass[0][1]).toBe(0);
+    for (const { bar, bass, kicks, snares, fill } of bars) {
+      expect(bass.length).toBeGreaterThan(0);
+      expect(bass.length).toBeLessThanOrEqual(section.name === 'SUNBURST' ? 3 : 2);
+      expect(kicks).toContain(bass[0][0]);
       for (const [i, [position, interval, length, velocity]] of bass.entries()) {
-        expect([0, 7]).toContain(interval);
-        expect(chord.bass + interval).toBeLessThanOrEqual(45);
-        if (interval) {
-          fifths++;
-          expect(chord.keys.some(note => note % 12 === (chord.bass + interval) % 12)).toBe(true);
-          expect(i).toBe(bass.length - 1);
-        }
+        expect(interval).toBe(0);
         expect(velocity).toBeGreaterThan(0);
         expect(velocity).toBeLessThanOrEqual(1);
         expect([...snares, ...fill]).not.toContain(position);
-        if (kicks.includes(position)) kickAnchors++;
-        else offbeatNotes++;
-        const releaseEnd = onset(bar, position, swing / 2) + length * step + .075;
+        const releaseEnd = onset(bar, position, swing / 2) + length * step + warmSubRelease;
         const next = bass[i + 1];
         expect(releaseEnd).toBeLessThanOrEqual(next ? onset(bar, next[0], swing / 2) : onset(bar + 1));
       }
     }
-    expect(kickAnchors).toBeGreaterThan(0);
-    expect(offbeatNotes).toBeGreaterThan(kickAnchors);
   }
-  expect(fifths).toBeLessThanOrEqual(6);
   const [glide, lift, breeze, sunburst, returning] = densities;
-  expect(breeze).toBeLessThan(returning);
-  expect(glide).toBeLessThan(lift);
-  expect(lift).toBeLessThan(sunburst);
-  expect(returning).toBeLessThan(sunburst);
+  expect(breeze).toBeLessThan(Math.min(glide, lift, returning));
+  expect(sunburst).toBeGreaterThan(Math.max(glide, lift, returning));
 });

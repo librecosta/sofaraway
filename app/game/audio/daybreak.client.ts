@@ -1,6 +1,6 @@
 import { drums, master, onset, score, step, swing } from '../core/daybreak-score';
 import { bassNote, brightPluck, envelope, filter, gain, hat, kick, noteHz, oscillator, pan,
-  randomSource, rate, roomImpulse, snare } from './daybreak-voices.client';
+  randomSource, rate, roomImpulse, snare, warmSubBass, warmSubRelease } from './daybreak-voices.client';
 
 const noiseDraws = { kick: 1, snare: 3, ghost: 2, fill: 3, hat: 2 };
 const buffersByRate = new Map<number, ReturnType<typeof prepare>>();
@@ -72,6 +72,7 @@ export class DaybreakSynthesizer {
     const anchor = time - index * step;
     const atTime = (position: number, shuffle: number) => anchor + onset(bar, position, shuffle);
     const { chord } = frame;
+    const warmBass = frame.section !== 'OPEN' && frame.section !== 'OUTRO';
     for (const event of this.buffers.hits[bar]) {
       if (event.at !== at || event.time <= after) continue;
       let draw = 0;
@@ -82,7 +83,7 @@ export class DaybreakSynthesizer {
         case 'kick':
           kick(ctx, this.inputs.kick, this.buffers.noise, start, strength, random);
           this.duck.setValueAtTime(1, start);
-          this.duck.linearRampToValueAtTime(.51, start + .007);
+          this.duck.linearRampToValueAtTime(warmBass ? .8 : .51, start + .007);
           this.duck.linearRampToValueAtTime(1, start + .085);
           break;
         case 'snare':
@@ -103,11 +104,13 @@ export class DaybreakSynthesizer {
       const age = after - onsetTime;
       return restore && age < lifespan ? age : Infinity;
     };
+    const playBass = warmBass ? warmSubBass : bassNote;
+    const bassRelease = warmBass ? warmSubRelease : .075;
     for (const [position, interval, length, velocity = 1] of frame.bass) {
       if (position !== at) continue;
-      const age = ageAt(onset(bar, at, swing / 2), length * step + .075);
+      const age = ageAt(onset(bar, at, swing / 2), length * step + bassRelease);
       if (!Number.isFinite(age)) continue;
-      bassNote(ctx, this.inputs.bass, chord.bass + interval, atTime(at, swing / 2), length * step,
+      playBass(ctx, this.inputs.bass, chord.bass + interval, atTime(at, swing / 2), length * step,
         .143 * (interval ? .83 : 1) * frame.bassLevel * velocity, age);
     }
     for (const [position, length, level] of frame.keys) {

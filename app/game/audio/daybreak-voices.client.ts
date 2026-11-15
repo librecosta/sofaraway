@@ -86,6 +86,19 @@ export function bassNote(ctx: BaseAudioContext, bus: AudioNode, note: number, ti
   oscillator(ctx, gain(ctx, cutoff, .18), 'sine', hz, time + age, end);
 }
 
+export const warmSubRelease = .15;
+
+export function warmSubBass(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, age = 0) {
+  const { out, end } = envelope(ctx, bus, time, length, level, .048, .193, .64, warmSubRelease, age);
+  const cutoff = filter(ctx, out, 'lowpass', 240, .66);
+  filterSweep(cutoff.frequency, time, age, 240, 185, .25);
+  const hz = noteHz(note), start = time + age;
+  oscillator(ctx, gain(ctx, cutoff, .87), 'sine', hz, start, end);
+  oscillator(ctx, gain(ctx, cutoff, .15), 'triangle', hz, start, end);
+  // A quiet second harmonic carries the note on smaller speakers.
+  oscillator(ctx, gain(ctx, cutoff, .19), 'sine', hz * 2, start, end);
+}
+
 function noiseAt(ctx: BaseAudioContext, noise: AudioBuffer, bus: AudioNode, time: number, duration: number, random: () => number) {
   const source = ctx.createBufferSource();
   source.buffer = noise;

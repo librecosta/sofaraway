@@ -18,6 +18,12 @@ VOL. II is DAYBREAK. The game keeps the `drift` ID and accepts both `?vol=drift`
 
 The run ends after 144 seconds of song time. The WAV export includes a two-second tail. Against the local approved WAV at 44.1 kHz, the production render had a residual RMS of −98.76 dBFS. The exported mix measured −16.6 LUFS integrated, −3.34 dBFS sample peak and −17.90 dBFS RMS.
 
+### D1-M3-F1 Bass foundation
+
+From GLIDE through RETURN, the Bass follows the authored chord bass and the main Kick accents in compact four-bar phrases. The center-panned mono voice uses a sine fundamental, a quiet triangle and a small second harmonic, with a 240–185 Hz low-pass and a 48 ms attack. Kick ducking reaches 80% gain in these sections and 51% in OPEN and OUTRO, where the score and voice follow the original arrangement. The Audio Inspector uses the same voice and seek envelope as the production synth.
+
+In four GLIDE and SUNBURST excerpts, Bass solo retained the 50–125 Hz band within −0.3 to +1.2 dB of D1-M3 while cutting 250–1,000 Hz by about 26–34 dB. The 144-second production mix measured −17.50 LUFS integrated and −3.71 dBFS sample peak, with zero clipped samples. The OPEN and OUTRO Bass residual against D1-M3 was at least 128 dB below signal RMS.
+
 ## Gates and lighting
 
 The chart can shift a nominal gate by up to half a beat toward an authored kick. A 2.5-beat minimum gap takes precedence over kick alignment. `ReferenceTrack` resolves gate beats to fixed stations and the existing swept crossing judges them. At cruise the first and last Standard crossings are at about 8 and 134 seconds. Sightseeing keeps 21 authored gates with five lives and one-third speed.
