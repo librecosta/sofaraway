@@ -30,7 +30,13 @@ for (const sample of samples) {
   power += sample ** 2;
 }
 assert.ok(peak > 0 && peak < 32767, 'production mix must contain sound without clipping');
-assert.ok(samples.subarray((duration - 2) * rate * 2).every(sample => Math.abs(sample) <= 1),
-  'the last bar must be quiet after the preceding drum tail');
+// The GLASSHOUSE outro carries the pad and the last mallet note through the
+// final bar, so the old "silent last bar" assumption no longer applies. The
+// export gain still has to close the two-second tail.
+let outroPeak = 0;
+for (const sample of samples.subarray((duration - 2) * rate * 2)) outroPeak = Math.max(outroPeak, Math.abs(sample));
+assert.ok(outroPeak > 500, 'the outro must carry the glasshouse pad and lead');
+assert.equal(samples.at(-1), 0, 'the export tail must close at the final sample');
 const db = value => 20 * Math.log10(value / 32768);
-console.log(JSON.stringify({ duration: duration + tail, peakDbfs: db(peak), rmsDbfs: db(Math.sqrt(power / samples.length)) }));
+console.log(JSON.stringify({ duration: duration + tail, peakDbfs: db(peak), rmsDbfs: db(Math.sqrt(power / samples.length)),
+  outroPeakDbfs: db(outroPeak) }));

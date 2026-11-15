@@ -64,11 +64,17 @@ export async function inspectDrumCues() {
   const synth = new DaybreakSynthesizer(ctx, ctx.destination);
   for (let i = 140 / score.step; i < 144 / score.step; i++) synth.playStep(i, i * score.step - 140);
   const outro = await ctx.startRendering();
+  // The full mix now carries the GLASSHOUSE outro, so check the Kick stem
+  // alone for the removed isolated kick in the final bar.
+  const kickCtx = new OfflineAudioContext(2, audioSeconds * rate, rate);
+  const kickSource = inspectorSource(kickCtx, score, kickCtx.destination, defaultMix(), null, 'kick');
+  for (let i = 140 / score.step; i < 144 / score.step; i++) kickSource.playStep(i, i * score.step - 140);
+  const kickOutro = await kickCtx.startRendering();
   return {
     upcomingSnare: await cue(80.51),
     pastSnare: await cue(80.54),
     precedingKick: compare(outro, undefined, 1, .78, .9),
-    finalBar: compare(outro, undefined, 1, 2),
+    finalBar: compare(kickOutro, undefined, 1, 2),
   };
 }
 

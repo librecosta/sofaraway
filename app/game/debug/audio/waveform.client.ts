@@ -72,7 +72,7 @@ async function renderBlock(score: InspectorScore, peaks: Waveforms, first: numbe
   merger.connect(context.destination);
   const source = inspectorSource(context, score, context.createGain(), defaultMix(), null, null, (id, signal) => {
     const channel = score.tracks.indexOf(id) * 2;
-    // Force stereo before the splitter so mono bass is copied to both outputs.
+    // Force stereo before the splitter so mono signals are copied to both outputs.
     const stereo = context.createGain();
     stereo.channelCountMode = 'explicit';
     stereo.channelCount = 2;

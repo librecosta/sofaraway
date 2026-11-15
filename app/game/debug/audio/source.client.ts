@@ -1,4 +1,4 @@
-import { DaybreakSynthesizer, daybreakRoom, daybreakRoomSend } from '../../audio/daybreak.client';
+import { DaybreakSynthesizer, daybreakRoom, daybreakStemSends } from '../../audio/daybreak.client';
 import { gain, randomSource } from '../../audio/daybreak-voices.client';
 import { createBuffers, createMaster, Synthesizer } from '../../audio/synthesizer.client';
 import { daybreakStems } from '../../core/daybreak-score';
@@ -37,19 +37,15 @@ export function inspectorSource(ctx: BaseAudioContext, score: InspectorScore, ou
     };
   }
 
-  const inputs = {
-    kick: ctx.createGain(), snare: ctx.createGain(), hats: ctx.createGain(),
-  };
-  const controls = {
-    kick: ctx.createGain(), snare: ctx.createGain(), hats: ctx.createGain(),
-  };
+  const inputs = Object.fromEntries(daybreakStems.map(id => [id, ctx.createGain()])) as Record<DaybreakStem, GainNode>;
+  const controls = Object.fromEntries(daybreakStems.map(id => [id, ctx.createGain()])) as Record<DaybreakStem, GainNode>;
   const synth = new DaybreakSynthesizer(ctx, master, (mix, impulse) => {
     for (const id of daybreakStems) {
       const listen = controls[id];
       const input = inputs[id];
       listen.connect(mix);
       input.connect(listen);
-      input.connect(gain(ctx, daybreakRoom(ctx, listen, impulse), daybreakRoomSend));
+      input.connect(gain(ctx, daybreakRoom(ctx, listen, impulse), daybreakStemSends[id]));
     }
     return inputs;
   });

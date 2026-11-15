@@ -1,5 +1,6 @@
 export const rate = 44100;
 const floor = 0.00005;
+export const noteHz = (note: number) => 440 * 2 ** ((note - 69) / 12);
 
 export function randomSource(seed: number) {
   return () => {
@@ -31,10 +32,11 @@ export function filter(ctx: BaseAudioContext, destination: AudioNode, type: Biqu
   return node;
 }
 
-function oscillator(ctx: BaseAudioContext, destination: AudioNode, type: OscillatorType, hz: number, time: number, end: number) {
+function oscillator(ctx: BaseAudioContext, destination: AudioNode, type: OscillatorType, hz: number, time: number, end: number, detune = 0) {
   const node = ctx.createOscillator();
   node.type = type;
   node.frequency.value = hz;
+  node.detune.value = detune;
   node.connect(destination);
   node.start(time);
   node.stop(end);
@@ -94,6 +96,82 @@ export function hat(ctx: BaseAudioContext, bus: AudioNode, noise: AudioBuffer, t
   const air = filter(ctx, filter(ctx, pan(ctx, bus, position), 'lowpass', 10500), 'highpass', 5300);
   const hit = envelope(ctx, air, time, open ? .087 : .033, level, .003, .026, .19, open ? .045 : .02);
   noiseAt(ctx, noise, hit.out, time, hit.end - time, random);
+}
+
+/* ------------------------------------------------------------------ *
+ *  GLASSHOUSE layers
+ * ------------------------------------------------------------------ */
+
+export function pad(ctx: BaseAudioContext, bus: AudioNode, notes: readonly number[], time: number, length: number,
+  level: number, cutoff: number, attack: number, highpass: number) {
+  const { out, end } = envelope(ctx, bus, time, length, level, attack, .42, .72, .3);
+  const hp = filter(ctx, out, 'highpass', highpass, .7);
+  const lp = filter(ctx, hp, 'lowpass', cutoff, .8);
+  for (const [i, note] of notes.entries()) {
+    const position = notes.length > 1 ? (i / (notes.length - 1) - .5) * .95 : 0;
+    const hz = noteHz(note);
+    const left = pan(ctx, lp, Math.max(-1, position - .09));
+    const right = pan(ctx, lp, Math.min(1, position + .09));
+    oscillator(ctx, gain(ctx, left, .30), 'triangle', hz, time, end, -6);
+    oscillator(ctx, gain(ctx, right, .17), 'sawtooth', hz, time, end, 6);
+    oscillator(ctx, gain(ctx, pan(ctx, lp, position), .11), 'sine', hz * 2, time, end);
+  }
+}
+
+export function glass(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, position: number) {
+  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .004, .10, .38, .08);
+  const lp = filter(ctx, out, 'lowpass', 3200, .86);
+  lp.frequency.setValueAtTime(3600, time);
+  lp.frequency.exponentialRampToValueAtTime(1500, time + .1);
+  const hz = noteHz(note);
+  oscillator(ctx, gain(ctx, lp, .74), 'triangle', hz, time, end, -3);
+  oscillator(ctx, gain(ctx, lp, .26), 'sawtooth', hz, time, end, 4);
+  oscillator(ctx, gain(ctx, lp, .10), 'sine', hz * 2, time, end);
+}
+
+export function mallet(ctx: BaseAudioContext, bus: AudioNode, note: number, time: number, length: number, level: number, position: number) {
+  const { out, end } = envelope(ctx, pan(ctx, bus, position), time, length, level, .010, .16, .5, .09);
+  const hz = noteHz(note);
+  const carrier = oscillator(ctx, out, 'sine', hz, time, end);
+  const index = ctx.createGain();
+  index.gain.value = 0;
+  index.connect(carrier.frequency);
+  index.gain.setValueAtTime(hz * .62, time);
+  index.gain.exponentialRampToValueAtTime(hz * .11, time + .075);
+  oscillator(ctx, index, 'sine', hz * 2.003, time, end);
+  oscillator(ctx, gain(ctx, out, .22), 'triangle', hz, time, end, 2);
+}
+
+export function riser(ctx: BaseAudioContext, bus: AudioNode, noise: AudioBuffer, time: number, length: number, level: number, offset: number) {
+  const source = ctx.createBufferSource();
+  source.buffer = noise;
+  source.loop = true;
+  const band = filter(ctx, pan(ctx, bus, .22), 'bandpass', 320, 1.1);
+  band.frequency.setValueAtTime(320, time);
+  band.frequency.exponentialRampToValueAtTime(6800, time + length);
+  const hit = envelope(ctx, band, time, length * .92, level, .18, length * .55, .55, .18);
+  source.connect(hit.out);
+  source.start(time, offset);
+  source.stop(hit.end);
+}
+
+export function shimmer(ctx: BaseAudioContext, bus: AudioNode, noise: AudioBuffer, time: number, length: number, level: number, offset: number) {
+  const source = ctx.createBufferSource();
+  source.buffer = noise;
+  source.loop = true;
+  const air = filter(ctx, filter(ctx, pan(ctx, bus, -.18), 'highpass', 4500), 'lowpass', 8000);
+  const hit = envelope(ctx, air, time, length, level, .4, length * .4, .5, .5);
+  source.connect(hit.out);
+  source.start(time, offset);
+  source.stop(hit.end);
+}
+
+export function impact(ctx: BaseAudioContext, bus: AudioNode, time: number, level: number) {
+  const { out, end } = envelope(ctx, bus, time, .55, level, .004, .35, .22, .45);
+  const thump = oscillator(ctx, out, 'sine', 82, time, end);
+  thump.frequency.setValueAtTime(82, time);
+  thump.frequency.exponentialRampToValueAtTime(31, time + .5);
+  oscillator(ctx, gain(ctx, out, .25), 'triangle', 55, time, end);
 }
 
 export function roomImpulse(ctx: BaseAudioContext, random: () => number) {

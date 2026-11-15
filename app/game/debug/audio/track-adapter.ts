@@ -6,13 +6,21 @@ export type TrackId = 'master' | DaybreakStem;
 export type TrackMix = { level: number; muted: boolean };
 export type Mix = Record<TrackId, TrackMix>;
 export const trackInfo = {
-  master: { label: 'Master', color: '#b9d2dc' }, kick: { label: 'Kick', color: '#71c8e8' },
-  snare: { label: 'Snare', color: '#719fd8' }, hats: { label: 'Hats', color: '#80b7df' },
+  master: { label: 'Master', color: '#b9d2dc' },
+  kick: { label: 'Kick', color: '#71c8e8' },
+  snare: { label: 'Snare', color: '#719fd8' },
+  hats: { label: 'Hats', color: '#80b7df' },
+  keys: { label: 'Keys', color: '#a8cfe6' },
+  lead: { label: 'Lead', color: '#f0c987' },
+  atmos: { label: 'Atmos', color: '#b6c3d6' },
 } as const;
 
 export function defaultMix(): Mix {
   const track = () => ({ level: 1, muted: false });
-  return { master: track(), kick: track(), snare: track(), hats: track() };
+  return {
+    master: track(), kick: track(), snare: track(), hats: track(),
+    keys: track(), lead: track(), atmos: track(),
+  };
 }
 
 export function inspectorScore(volume: VolumeDefinition) {

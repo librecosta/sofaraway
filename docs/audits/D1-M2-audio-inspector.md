@@ -1,5 +1,8 @@
 # D1-M2 Audio Inspector
 
+> The current GLASSHOUSE mix shows Kick, Snare, Hats, Keys, Lead and Atmos alongside Master.
+> The measurements below describe the original D1-M2 mix.
+
 Open `/debug/audio/`. DAYBREAK shows the Master mix and six stems from the production synthesizer and score. Snare also contains clap, ghost snare and the paired snare/hat fill. Other volumes use their existing Master chains. The Soundtrack entry in Debug and the legacy WAV URL lead to the Inspector.
 
 ## Monitoring

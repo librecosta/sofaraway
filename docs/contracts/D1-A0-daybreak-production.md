@@ -14,23 +14,25 @@ VOL. II is DAYBREAK. The game keeps the `drift` ID and accepts both `?vol=drift`
 
 ## Score and playback
 
-[The score](../../app/game/core/daybreak-score.ts) carries the percussion from the original 120 BPM Groove-No-Chime backing. [The live synthesizer](../../app/game/audio/daybreak.client.ts) and [offline renderer](../../app/game/audio/daybreak-export.client.ts) schedule the same events and voice code. The live output bus applies the player’s volume setting after the mix. The active audio clock drives the DAYBREAK run, with a monotonic fallback for silent play. Resume preserves the run position and skips individual onsets already rendered, including onsets that fall after a sixteenth-note grid tick.
+[The score](../../app/game/core/daybreak-score.ts) carries the locked 120 BPM percussion and the GLASSHOUSE completion. [The live synthesizer](../../app/game/audio/daybreak.client.ts) and [offline renderer](../../app/game/audio/daybreak-export.client.ts) schedule the same events and voice code. The live output bus applies the player’s volume setting after the mix. The active audio clock drives the DAYBREAK run, with a monotonic fallback for silent play. Resume preserves the run position and skips individual onsets already rendered, including onsets that fall after a sixteenth-note grid tick.
 
-The run ends after 144 seconds of song time. The WAV export includes a two-second tail. At the original integration milestone, the render had a residual RMS of −98.76 dBFS against the Groove-No-Chime reference at 44.1 kHz. That mix measured −16.6 LUFS integrated, −3.34 dBFS sample peak and −17.90 dBFS RMS.
+The run ends after 144 seconds of song time. The WAV export includes a two-second tail.
 
-### D1-M3-F1 Bass foundation
+### GLASSHOUSE completion
 
-From GLIDE through RETURN, the Bass follows the authored chord bass and the main Kick accents in compact four-bar phrases. The center-panned mono voice uses a sine fundamental, a quiet triangle and a small second harmonic, with a 240–185 Hz low-pass and a 48 ms attack. Kick ducking reaches 80% gain in these sections and 51% in OPEN and OUTRO, where the score and voice follow the original arrangement. The Audio Inspector uses the same voice and seek envelope as the production synth.
+The completion is a 120 BPM breakbeat in D major. Keys, Lead and Atmos accompany the established Kick, Snare and Hats.
 
-In four GLIDE and SUNBURST excerpts, Bass solo retained the 50–125 Hz band within −0.3 to +1.2 dB of D1-M3 while cutting 250–1,000 Hz by about 26–34 dB. The 144-second production mix measured −17.50 LUFS integrated and −3.71 dBFS sample peak, with zero clipped samples. The OPEN and OUTRO Bass residual against D1-M3 was at least 128 dB below signal RMS.
+- **Keys** — a two-octave pad plus syncopated glass chord plucks and an 8th/16th glass arpeggio. The low pad and its octave-up layer share a 0.95-width stereo image; the arp sits in the 400 Hz–4 kHz band so it does not fight the hats. The pad filter opens across the song (1.4 kHz in OPEN, 2.4 kHz in GLIDE, 4.4 kHz in LIFT, 8 kHz in SUNBURST, 4 kHz in RETURN).
+- **Lead** — sparse long-note Sunlit Mallet phrases from OPEN through OUTRO. The phrases leave the drum fills and BREEZE’s first four bars open.
+- **Atmos** — a filtered high shimmer in OPEN, BREEZE and OUTRO, one-bar noise risers into LIFT, BREEZE, SUNBURST and RETURN, and a soft impact at SUNBURST.
 
-### Keys-led mix
+The production graph uses six stems. Keys, Lead and Atmos use room sends of .32, .19 and .50, respectively. The drums use .055. The Audio Inspector uses the same voices and sends as the production synth. The master stage is 1.90.
 
-The previous mix set Keys to 150% and Bass to 20% of their former bus levels, with one warm bass note per bar in OPEN and OUTRO.
+Before the Bass was removed, the 144-second GLASSHOUSE render at 44.1 kHz measured −18.07 dBFS RMS and −1.70 dBFS sample peak, with zero clipped samples.
 
-### Current percussion mix
+The outro carries the pad and the final mallet note through the last bar. `verify.mjs` checks that the last bar has content and that the export tail closes at zero, replacing the old percussion-only silent-last-bar assertion.
 
-DAYBREAK now uses Kick, Snare and Hats. The score omits the isolated Kick at 142.016 seconds. The first hit remains at 2.016 seconds and the last hit falls at 140.766 seconds. The game, WAV export, Audio Inspector and Dynamic Lights share the authored drum events on the original 144-second timeline.
+The final mix removes the auditioned Bass stem and its Kick ducking. Score regression checks compare every remaining event with the auditioned arrangement.
 
 ## Gates and lighting
 

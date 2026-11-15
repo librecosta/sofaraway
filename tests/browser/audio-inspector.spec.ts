@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const waveformsReadyTimeout = 90_000;
 
-test('DAYBREAK drum stems null against the production mix and isolate sound and reverb', async ({ page }, info) => {
+test('DAYBREAK stems null against the production mix and isolate sound and reverb', async ({ page }, info) => {
   await page.goto('http://127.0.0.1:8090/?audio-inspector');
   await page.waitForFunction(() => typeof window.inspectAudioRouting === 'function');
   const result = await page.evaluate(() => window.inspectAudioRouting());
@@ -95,7 +95,8 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   const canvas = page.getByRole('img', { name: /waveform/ });
   const gain = page.getByRole('slider', { name: 'Kick gain' });
   await expect(gain).toHaveValue('1');
-  await expect(page.getByRole('slider', { name: / cue$/ })).toHaveCount(4);
+  await expect(page.getByRole('slider', { name: / cue$/ })).toHaveCount(7);
+  await expect(page.getByRole('slider', { name: 'Bass cue' })).toHaveCount(0);
   await page.getByRole('button', { name: 'SUNBURST' }).click();
   await expect(time).toHaveText('01:20.00');
   await expect(page.getByRole('button', { name: 'SUNBURST' })).toHaveAttribute('aria-current', 'true');
@@ -141,7 +142,7 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   await expect(page.getByRole('button', { name: 'Mute Kick' })).toHaveAttribute('aria-pressed', 'false');
   await expect(time).toHaveText(mixTime!);
 
-  await expect(canvas).toHaveCount(4, { timeout: 40_000 });
+  await expect(canvas).toHaveCount(7, { timeout: 40_000 });
   await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: waveformsReadyTimeout });
   const measured = await canvas.evaluateAll(items => items.map(item => {
     const wave = item as HTMLCanvasElement;
@@ -184,7 +185,7 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   await playAll.click();
   const stats = await readStats();
   expect(stats).toMatchObject({ created: 1, closed: 0, offlinePeak: 1, offlineActive: 0 });
-  expect(stats.offlineFrames).toBeLessThanOrEqual(8 * 22050 * 13);
+  expect(stats.offlineFrames).toBeLessThanOrEqual(14 * 22050 * 13);
   await page.getByRole('link', { name: 'SoFarAway' }).click();
   await expect(page).toHaveURL(/\/debug\/$/);
   await expect.poll(async () => (await readStats()).closed).toBe(1);
@@ -206,7 +207,7 @@ test('responsive layouts, high-DPI canvas, direct refresh and master-only volume
       return Math.abs(wave.width - wave.clientWidth * devicePixelRatio);
     })).toBeLessThanOrEqual(3);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
-    const track = (await page.getByRole('button', { name: 'Play Hats' }).boundingBox())!;
+    const track = (await page.getByRole('button', { name: 'Play Atmos' }).boundingBox())!;
     expect(track.y + track.height).toBeLessThan(height + 1);
     const wave = (await canvas.boundingBox())!;
     expect(wave.x).toBeGreaterThan(track.x + track.width);
