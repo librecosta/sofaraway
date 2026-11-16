@@ -24,3 +24,6 @@ playwright-report/
 
 # Local DAYBREAK soundtrack renders
 /scratch/daybreak-m1/exports/
+
+# Local DESCENT soundtrack prototypes
+/scratch/descent-m0/exports/
