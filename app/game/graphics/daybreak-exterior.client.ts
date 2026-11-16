@@ -1,43 +1,14 @@
 import * as THREE from 'three';
 import type { Path } from './path';
 import { CLOUD_CLEARANCE, CLOUD_RELIEF, daybreakAtmosphere, DAYBREAK_MENU_BEAT } from './daybreak-atmosphere';
-import { mulberry } from './textures.client';
+import { CLOUD_FIELD_PERIOD, CLOUD_FIELD_SIZE, makeDaybreakCloudField } from './daybreak-cloud-field';
 
-const fieldSize = 256;
 let cloudPixels: Uint8Array | undefined;
 
 function cloudField() {
-  if (!cloudPixels) {
-    const random = mulberry(0x271060);
-    const octaves = [17, 43, 89, 137].map(cells => ({ cells, grid: Float32Array.from({ length: cells * cells }, random) }));
-    const smooth = (t: number) => t * t * (3 - 2 * t);
-    const band = (x: number, y: number, index: number) => {
-      const { cells, grid } = octaves[index];
-      const u = x * cells / fieldSize, v = y * cells / fieldSize;
-      const i = Math.floor(u), j = Math.floor(v);
-      const a = grid[j * cells + i], b = grid[j * cells + (i + 1) % cells];
-      const row = (j + 1) % cells * cells;
-      return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, smooth(u - i)),
-        THREE.MathUtils.lerp(grid[row + i], grid[row + (i + 1) % cells], smooth(u - i)), smooth(v - j));
-    };
-    const at = (x: number, y: number) => ((y + fieldSize) % fieldSize) * fieldSize + (x + fieldSize) % fieldSize;
-    const height = new Float32Array(fieldSize * fieldSize);
-    for (let y = 0; y < fieldSize; y++) for (let x = 0; x < fieldSize; x++) {
-      const level = .55 * band(x, y, 0) + .30 * band(x, y, 1) + .15 * band(x, y, 2);
-      height[at(x, y)] = THREE.MathUtils.smoothstep(level, .20, .81);
-    }
-    cloudPixels = new Uint8Array(height.length * 4);
-    const byte = (level: number) => Math.round(255 * THREE.MathUtils.clamp(level, 0, 1));
-    for (let y = 0; y < fieldSize; y++) for (let x = 0; x < fieldSize; x++) {
-      const i = at(x, y), p = i * 4;
-      cloudPixels[p] = byte(height[i]);
-      cloudPixels[p + 1] = byte(.5 + .94 * (height[at(x - 1, y)] - height[at(x + 1, y)]));
-      cloudPixels[p + 2] = byte(.5 + .94 * (height[at(x, y - 1)] - height[at(x, y + 1)]));
-      cloudPixels[p + 3] = byte(band(x, y, 3));
-    }
-  }
-  const texture = new THREE.DataTexture(cloudPixels, fieldSize, fieldSize);
-  texture.name = 'daybreak-cloud-height-and-slope';
+  cloudPixels ??= makeDaybreakCloudField();
+  const texture = new THREE.DataTexture(cloudPixels, CLOUD_FIELD_SIZE, CLOUD_FIELD_SIZE);
+  texture.name = 'daybreak-cloud-surface-and-cirrus';
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
@@ -50,6 +21,7 @@ export class DaybreakExterior {
   readonly sun: THREE.Vector3;
   readonly seaLevel: number;
   readonly air = new THREE.Color();
+  readonly sunlight = new THREE.Color();
   private readonly field = cloudField();
   private readonly palette = new Float32Array(5);
   readonly mesh: THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial>;
@@ -66,7 +38,7 @@ export class DaybreakExterior {
       userData: { skipFocusDepth: true },
       uniforms: {
         cloudField: { value: this.field }, sun: { value: this.sun }, seaLevel: { value: this.seaLevel },
-        drift: { value: new THREE.Vector2() }, colorScore: { value: new THREE.Vector4() },
+        colorScore: { value: new THREE.Vector4() },
         coverage: { value: 0 }, daylight: { value: 0 }, detail: { value: 0 },
       },
       vertexShader: /* glsl */`
@@ -80,7 +52,6 @@ export class DaybreakExterior {
       fragmentShader: /* glsl */`
         uniform sampler2D cloudField;
         uniform vec3 sun;
-        uniform vec2 drift;
         uniform vec4 colorScore;
         uniform float seaLevel, coverage, daylight, detail;
         varying vec3 heading;
@@ -105,40 +76,54 @@ export class DaybreakExterior {
           float glow = .45 * smoothstep(.941, 1.0, towardsSun) + .55 * smoothstep(.990, 1.0, towardsSun);
           sky += vec3(.36, .24, .11) * glow * warm;
 
-          const float period = 12288.0;
-          vec2 world = cameraPosition.xz + drift;
-          vec3 shade = vec3(.35, .48, .61);
-          vec3 crest = mix(vec3(.84, .89, .93), vec3(.96, .88, .75), warm * .75);
-          float mist = 1.0 - smoothstep(.002, .078, abs(ray.y));
-          if (mist > 0.0) {
-            // Low-angle sightlines also pick up light scattered off the distant cloud banks.
-            vec2 distant = (world + ray.xz * mix(1350.0, 630.0, mist)) / period;
-            float bank = textureLod(cloudField, distant, 1.0).r;
-            float density = smoothstep(.32, .76, bank) * mist * mist;
-            sky = mix(sky, mix(shade, crest, smoothstep(.38, .84, bank)), density * .29);
+          float cirrusWindow = smoothstep(.10, .24, height) * (1.0 - smoothstep(.67, .98, height));
+          if (cirrusWindow > 0.0) {
+            // Project a world direction onto the high sky, with no longitude seam or translation.
+            vec2 axis = vec2(.82, .57236);
+            vec2 wind = vec2(dot(ray.xz, axis), dot(ray.xz, vec2(-axis.y, axis.x)));
+            vec2 cirrusUV = vec2(.34, .46) + wind * .52 / (height + .33);
+            float filament = textureLod(cloudField, cirrusUV, mix(.90, .15, detail)).a;
+            vec3 ice = mix(vec3(.67, .82, .91), vec3(.94, .91, .80), warm * towardsSun);
+            sky = mix(sky, ice, filament * cirrusWindow * (.34 + .08 * detail) * (1.0 - .75 * glow));
           }
 
-          if (ray.y < -.003) {
+          const float period = ${CLOUD_FIELD_PERIOD.toFixed(1)};
+          const float texel = period / ${CLOUD_FIELD_SIZE.toFixed(1)};
+          float pitchFootprint = fwidth(ray.y);
+          float directionFootprint = length(fwidth(ray.xz));
+          if (ray.y < 0.0) {
+            const float relief = ${CLOUD_RELIEF.toFixed(1)};
             float descent = -ray.y;
-            float altitude = max(cameraPosition.y - seaLevel, 1.0);
-            float reach = altitude / descent;
-            // Sample a world-space cloud surface only where contrast survives the air column.
-            float nearCloud = 1.0 - smoothstep(210.0, mix(3100.0, 2000.0, veil), reach);
-            if (nearCloud > 0.0) {
-              float lod = log2(max(1.0, reach * .002));
+            float altitude = max(cameraPosition.y - seaLevel, relief * .5 + 1.0);
+            float reach = altitude / max(descent, .0001);
+            float visibility = 1.0 - smoothstep(140.0, mix(2300.0, 1800.0, veil), reach);
+            if (visibility > 0.0) {
+              vec2 world = cameraPosition.xz;
+              // At grazing angles the footprint grows chiefly along the projected ray.
+              float footprint = reach * (directionFootprint + pitchFootprint / descent);
+              float lod = log2(max(1.0, (footprint * 1.8 + reach * .15) / texel));
               vec2 projected = (world + ray.xz * reach) / period;
-              vec4 cloud = textureLod(cloudField, projected, lod);
-              if (detail > 0.0) {
-                float surface = (cloud.r - .5) * ${CLOUD_RELIEF.toFixed(1)};
-                projected = (world + ray.xz * (altitude - surface) / descent) / period;
-                cloud = textureLod(cloudField, projected, lod);
+              float surface = (textureLod(cloudField, projected, lod).r - .5) * relief;
+              float correction = 1.0 - smoothstep(110.0, 540.0, reach);
+              reach -= surface * correction / descent;
+              projected = (world + ray.xz * reach) / period;
+              vec3 cloud = textureLod(cloudField, projected, lod).rgb;
+              float crown = smoothstep(.18, .82, cloud.r + (coverage - .64) * .23);
+              vec2 slope = cloud.gb - .5;
+              if (reach < 330.0) {
+                vec3 swells = textureLod(cloudField, projected * 4.13 + vec2(.37, -.26), lod + mix(.95, .18, detail)).rgb;
+                float nearDetail = 1.0 - smoothstep(75.0, 330.0, reach);
+                slope += (swells.gb - .5) * (.52 * nearDetail);
+                crown += (swells.r - .5) * (.46 * nearDetail * (.25 + .75 * crown));
               }
-              vec4 smaller = textureLod(cloudField, projected * 5.17 + vec2(.31, .57), lod);
-              float relief = dot(mix(cloud.gb, smaller.gb, .39) - .5, sun.xz);
-              float cloudTop = mix(cloud.r, smaller.r, .37) + (coverage - .64) * .56;
-              float top = smoothstep(.25, .74, cloudTop);
-              float lit = clamp(.08 + top * .82 + relief * .72 + (smaller.a - .5) * .15 * detail, 0.0, 1.0);
-              sky = mix(sky, mix(shade, crest, lit), nearCloud);
+              float exposure = clamp(dot(slope, sun.xz) * 2.5, -.45, .45);
+              float lit = clamp(.07 + .78 * crown + exposure * (.72 + .26 * warm), 0.0, 1.0);
+              vec3 shadow = vec3(.45, .56, .70);
+              vec3 crest = mix(vec3(.84, .90, .97), vec3(.98, .91, .81), warm * (.58 + exposure * .42));
+              vec3 sea = mix(shadow, crest, lit);
+              // Glancing rays lose their contrast to the same warm air as the sky.
+              float grazing = smoothstep(.012, .085, descent);
+              sky = mix(sky, sea, visibility * mix(.51, 1.0, grazing));
             }
           }
           vec3 exterior = sky * colorScore.x;
@@ -154,14 +139,14 @@ export class DaybreakExterior {
 
   setDetail(detail: number) { this.mesh.material.uniforms.detail.value = detail; }
 
-  update(beat: number, time: number, menu: boolean, daylight: number) {
+  update(beat: number, menu: boolean, daylight: number) {
     const [brightness, blue, warmth, haze, coverage] = daybreakAtmosphere(menu ? DAYBREAK_MENU_BEAT : beat, this.palette);
     const { uniforms } = this.mesh.material;
     uniforms.colorScore.value.set(brightness, blue, warmth, haze);
     uniforms.coverage.value = coverage;
     uniforms.daylight.value = daylight;
-    uniforms.drift.value.set(time * .43, time * -.18);
     this.air.setRGB(.56 + .12 * warmth, .69, .75 - .11 * warmth);
+    this.sunlight.setRGB(.91 + .07 * warmth, .87 - .03 * warmth, .80 - .14 * warmth);
     return brightness;
   }
 

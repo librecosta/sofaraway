@@ -56,15 +56,19 @@ function canopyMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide, forceSinglePass: true, depthWrite: false,
     userData: { skipFocusDepth: true },
-    uniforms: { daylight: { value: 0 }, skyTint: { value: new THREE.Color() } },
+    uniforms: { daylight: { value: 0 }, skyTint: { value: new THREE.Color() }, sunTint: { value: new THREE.Color() },
+      sunDirection: { value: new THREE.Vector3(0, 1, 0) } },
     vertexShader: /* glsl */`
+      uniform vec3 sunDirection;
       varying vec3 vNormal;
       varying vec3 vEye;
+      varying vec3 vSun;
       varying vec2 vPanel;
       void main() {
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         vNormal = normalMatrix * normal;
         vEye = -mv.xyz;
+        vSun = mat3(viewMatrix) * sunDirection;
         vPanel = uv;
         gl_Position = projectionMatrix * mv;
       }
@@ -72,11 +76,15 @@ function canopyMaterial() {
     fragmentShader: /* glsl */`
       uniform float daylight;
       uniform vec3 skyTint;
+      uniform vec3 sunTint;
       varying vec3 vNormal;
       varying vec3 vEye;
+      varying vec3 vSun;
       varying vec2 vPanel;
       void main() {
-        float grazing = pow(1.0 - abs(dot(normalize(vNormal), normalize(vEye))), 3.0);
+        vec3 normal = normalize(vNormal);
+        vec3 eye = normalize(vEye);
+        float grazing = pow(1.0 - abs(dot(normal, eye)), 3.0);
         float edge = min(vPanel.x, 1.0 - vPanel.x);
         float inset = max(0.018, fwidth(vPanel.x));
         float gasket = (1.0 - smoothstep(0.0, inset, edge)) * min(1.0, 0.018 / inset);
@@ -86,6 +94,10 @@ function canopyMaterial() {
         vec3 glass = mix(vec3(0.14, 0.22, 0.30), vec3(0.24, 0.36, 0.45), grazing);
         float trim = max(gasket, hoop);
         vec3 baseline = mix(glass, mix(vec3(0.18, 0.36, 0.48), skyTint, .44), trim);
+        float incidence = abs(dot(normal, vSun));
+        float reflection = smoothstep(.70, .995, dot(reflect(-eye, normal), vSun));
+        float sheen = .23 * trim * incidence + reflection * (.28 * grazing + .08 * trim);
+        baseline = mix(baseline, sunTint, sheen);
         gl_FragColor = vec4(mix(baseline, vec3(0.92, 0.79, 0.62), daylight * (0.28 + 0.45 * grazing)),
           0.015 + 0.09 * grazing + 0.60 * trim);
       }
@@ -529,13 +541,20 @@ export class Tunnel {
   get junctionShell() { return this.shellMat; }
   get junctionCanopy() { return this.canopyMat; }
 
-  setDaylight(brightness: number, sky: THREE.Color, amount: number, junctionFill: number) {
+  setSunDirection(sun: THREE.Vector3) {
+    if (!this.canopyMat) return;
+    this.canopyMat.uniforms.sunDirection.value.copy(sun);
+    this.hemi.position.set(.78 * sun.x, 1, .78 * sun.z);
+  }
+
+  setDaylight(brightness: number, sky: THREE.Color, sun: THREE.Color, amount: number, junctionFill: number) {
     if (!this.canopyMat) return;
     this.canopyMat.uniforms.daylight.value = amount;
     this.canopyMat.uniforms.skyTint.value.copy(sky);
+    this.canopyMat.uniforms.sunTint.value.copy(sun);
     this.ambient.color.setRGB(.24, .31, .38);
     this.ambient.intensity = .64 * brightness + amount * .28 + junctionFill * .25;
-    this.hemi.color.copy(sky);
+    this.hemi.color.copy(sky).lerp(sun, .23);
     this.hemi.intensity = .80 * brightness + amount * .34 + junctionFill * .30;
     this.hemi.groundColor.setRGB(.12, .17, .22).lerp(junctionGround, junctionFill);
   }

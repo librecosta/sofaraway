@@ -4,9 +4,56 @@ import { volumeById } from '../../app/game/core/volumes';
 import { Simulation } from '../../app/game/core/simulation';
 import { BranchVisual } from '../../app/game/graphics/branch.client';
 import { routeSides } from '../../app/game/core/branches';
+import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.client';
 import { buildRunPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
+
+export function inspectCanopySunlight() {
+  const volume = volumeById('daybreak');
+  const path = buildRunPath(volume);
+  const textures = buildTextures();
+  const tunnel = new Tunnel(textures, path, volume.topology);
+  const exterior = new DaybreakExterior(path);
+  const renderer = new THREE.WebGLRenderer();
+  const target = new THREE.WebGLRenderTarget(17, 17);
+  const camera = new THREE.PerspectiveCamera(40, 1, .1, 25);
+  const scene = new THREE.Scene();
+  const geometry = new THREE.PlaneGeometry(8, 8);
+  const normal = new THREE.Vector3(.64, .75, .12).normalize();
+  const pane = new THREE.Mesh(geometry, tunnel.junctionCanopy);
+  pane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+  scene.add(pane);
+  // Sample the same gasket point with the same world ray before and after rolling the camera.
+  for (let i = 0; i < geometry.attributes.uv.count; i++) geometry.attributes.uv.setXY(i, 0, .25);
+  camera.position.copy(exterior.sun).reflect(normal).multiplyScalar(-8);
+  camera.lookAt(0, 0, 0);
+  tunnel.setSunDirection(exterior.sun);
+  tunnel.setDaylight(1, new THREE.Color(.56, .69, .75), new THREE.Color(.95, .83, .70), 0, 0);
+  renderer.setRenderTarget(target);
+  const pixel = () => {
+    renderer.render(scene, camera);
+    const rgb = new Uint8Array(4);
+    renderer.readRenderTargetPixels(target, 8, 8, 1, 1, rgb);
+    return Array.from(rgb.slice(0, 3));
+  };
+  try {
+    const facing = pixel();
+    camera.rotateZ(Math.PI / 2);
+    const rolled = pixel();
+    tunnel.setSunDirection(exterior.sun.clone().negate());
+    return { facing, rolled, away: pixel() };
+  } finally {
+    renderer.setRenderTarget(null);
+    target.dispose();
+    geometry.dispose();
+    tunnel.dispose();
+    exterior.dispose();
+    for (const texture of Object.values(textures)) texture.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
+}
 
 export function inspectDaybreakCabin() {
   const volume = volumeById('daybreak');

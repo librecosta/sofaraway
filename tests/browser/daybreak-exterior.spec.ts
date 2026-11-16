@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Locator } from '@playwright/test';
 import { sections } from '../../app/game/core/daybreak-score';
+import type {} from '../harness/main';
 
 interface ExteriorMetrics { seaLevel: number; sun: number[]; atmosphere: number[]; detail: number }
 
@@ -44,6 +45,13 @@ test('DAYBREAK exterior chapter timing follows the soundtrack with cruise, Boost
   }
 });
 
+test('the production canopy reflects world sunlight consistently under camera roll', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const { facing, rolled, away } = await page.evaluate(() => window.b0Harness.inspectCanopySunlight());
+  expect(facing[0] - away[0]).toBeGreaterThan(15);
+  expect(Math.max(...facing.map((value, channel) => Math.abs(value - rolled[channel])))).toBeLessThanOrEqual(2);
+});
+
 test('End Sequence Studio renders the production sky, cloud sea and recovered context', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -73,6 +81,18 @@ test('End Sequence Studio renders the production sky, cloud sea and recovered co
   const cloudLevel = clouds.map(([r, g, b]) => .2126 * r + .7152 * g + .0722 * b);
   expect(Math.max(...cloudLevel) - Math.min(...cloudLevel)).toBeGreaterThan(8);
   expect(cloudLevel.every(value => value > 45 && value < 244)).toBe(true);
+  const darkest = cloudLevel.indexOf(Math.min(...cloudLevel));
+  const brightest = cloudLevel.indexOf(Math.max(...cloudLevel));
+  const quality = studio.getByLabel('Preview quality');
+  // Reduced detail keeps the same sunward bank and adjacent valley.
+  for (const [tier, detail] of [['low', 0], ['auto', .55]] as const) {
+    await quality.selectOption(tier);
+    await expect(canvas).toHaveAttribute('data-exterior', new RegExp(`"detail":${detail}}`));
+    const [valley, bank] = await imageSamples(canvas, await canvas.screenshot(), [points[darkest], points[brightest]]);
+    expect(bank[1] - valley[1]).toBeGreaterThan(4);
+  }
+  await quality.selectOption('high');
+  await expect(canvas).toHaveAttribute('data-exterior', /"detail":1}/);
   await info.attach('BREEZE · Sky', { body: up, contentType: 'image/png' });
   await info.attach('BREEZE · Cloud sea', { body: sea, contentType: 'image/png' });
   const original = await canvas.elementHandle();

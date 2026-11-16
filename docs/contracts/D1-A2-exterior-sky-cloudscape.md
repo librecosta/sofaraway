@@ -4,9 +4,11 @@ DAYBREAK is a closed observation cabin above a continuous sea of clouds. Clear b
 
 ## Sky, cloud surface and cabin light
 
-[`DaybreakExterior`](../../app/game/graphics/daybreak-exterior.client.ts) draws the sky and an analytic cloud sheet in one opaque background draw, behind solid cabin geometry and before transparent canopy and gate passes. The sky cube uses camera rotation to recover world rays. Its position has no effect on the sky direction or horizon. The cloud sheet intersects the same rays in absolute XZ coordinates and begins 22 world units below the lowest authored centerline. Surface relief is bounded to ±8 units. The field uses one deterministic, mipmapped 256×256 RGBA texture with height and slope, sampled at two world scales. Cloud shading uses the slope directed toward the sun. Distance and low-angle scattering blend the surface into the sky. A slow drift follows the existing run time.
+[`DaybreakExterior`](../../app/game/graphics/daybreak-exterior.client.ts) draws the sky and an analytic cloud sheet in one opaque background draw, behind solid cabin geometry and before transparent canopy and gate passes. The sky cube uses camera rotation to recover world rays. Sparse cirrus follows world direction, using elongated, warped strands in the alpha channel of the cloud texture.
 
-The sun direction comes from the final path tangent, turned 0.27 rad toward the right and raised about 8.5°. The daylit hemisphere and ambient fill use the same palette as the exterior. The shared architectural canopy takes its subtle edge tint from the sky. The far cabin uses daylight haze at the existing camera far plane. Holographic gate optics and route lights keep their original materials.
+The sea lies 22 world units below the lowest authored centerline and has up to ±8 units of relief. Warped primary banks and correlated secondary rises form a deterministic, mipmapped 256×256 RGBA field that repeats every 12,288 world units in XZ. A bounded height correction projects world rays onto the surface. A second spatial scale adds nearby billows. At grazing angles the sampler uses the projected pixel footprint to select a mip level and the deck blends into the same air as the horizon.
+
+The sun direction comes from the final path tangent, turned 0.27 rad toward the right and raised about 8.5°. Cloud slopes facing it catch warm light. The cabin's existing hemisphere tilts toward the sun's bearing over a cooler ambient fill. The architectural canopy transforms the world sun direction into view space before calculating trim and grazing reflections. Its opacity remains low through the pane centers. The far cabin uses daylight haze at the existing camera far plane. Holographic gate optics and route lights keep their original materials.
 
 | Chapter | Beats | Light and sky |
 | --- | --- | --- |
@@ -24,6 +26,4 @@ The atmosphere samples the seven chapter midpoints from the production score and
 
 Open [End Sequence Studio](../../app/components/EndSequenceStudio.tsx) at `/debug/#outro`, select DAYBREAK and open the live view. The exterior controls show all seven chapter looks and the forward, upward, side, horizon and cloud-sea views. Cloud Sea lifts the inspection camera above the roof. The normal course camera stays inside the closed cabin. Existing presets show junctions, Escape White, Menu and Results.
 
-Low retains the shared sky and surface silhouettes. Auto and High enable one relief re-projection and progressively stronger detail. The cloud lookup belongs to the volume's GPU lifetime. Its immutable CPU backing is shared across switches and restorations. The atmosphere uses the current scene, fog and PostFX, adding no render target or fullscreen post pass.
-
-A2-B follows visual acceptance of this foundation and will refine cloud top layering, sparse cirrus, atmospheric texture and the sun's directional response on canopy and metal.
+Low, Auto and High share the macro cloud field, height correction and main cirrus strands. Profile differences come from the finer cloud and cirrus sampling and their contrast. The cloud lookup belongs to the volume's GPU lifetime. Its immutable CPU backing is shared across switches and restorations. The atmosphere uses the current scene, fog and PostFX, adding no render target or fullscreen post pass.

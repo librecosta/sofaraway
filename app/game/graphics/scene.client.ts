@@ -87,6 +87,7 @@ class VolumeScene {
       if (volume.id === 'daybreak') {
         this.exterior = new DaybreakExterior(path);
         this.scene.add(this.exterior.mesh);
+        this.tunnel.setSunDirection(this.exterior.sun);
         this.fog.density = .00245;
       } else this.scene.background = this.sky = makeSky(volume);
       this.scene.environment = environment;
@@ -192,9 +193,9 @@ class VolumeScene {
       const escaped = settling && distance > (sim.outroPlan?.mainLastStation ?? Infinity);
       const resultsLight = escaped ? .15 * ease((sim.time - this.volume.beats * 60 / this.volume.bpm) / .3) : 0;
       daylight = Math.max(release * .36, white, resultsLight);
-      const brightness = this.exterior.update(sim.beat, sim.time, sim.phase === 'menu', daylight);
+      const brightness = this.exterior.update(sim.beat, sim.phase === 'menu', daylight);
       if (junction) junctionFill = ease((distance - junction.path.start) / 24) * ease((junction.path.end - distance) / 24);
-      this.tunnel.setDaylight(brightness, this.exterior.air, daylight, junctionFill);
+      this.tunnel.setDaylight(brightness, this.exterior.air, this.exterior.sunlight, daylight, junctionFill);
       this.fog.color.copy(this.exterior.air).multiplyScalar(.55).lerp(this.daylightFog, daylight * .48);
     }
 
