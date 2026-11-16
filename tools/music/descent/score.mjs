@@ -21,7 +21,7 @@ export const sections = [
 ];
 
 // Bass, three-note signal, and tightly spaced chord. MIDI pitches.
-const harmony = {
+export const harmony = {
   F: [30, [66, 73, 68], [54, 57, 61, 68]],
   D: [38, [62, 69, 64], [54, 57, 62, 64]],
   E: [28, [64, 71, 66], [55, 59, 64, 66]],

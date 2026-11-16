@@ -1,14 +1,15 @@
 import { wav } from '../daybreak/voices.mjs';
 import { filter } from '../../../app/game/audio/daybreak-voices.client.ts';
 import { bars, duration, makeScore, seed, step, tail } from './score.mjs';
+import { fullBars, fullDuration, fullTail, makeFullScore } from './control-full-score.mjs';
 import { descentVoices } from './voices.mjs';
 
 const rate = 44_100;
 const barSeconds = step * 16;
-const length = Math.round((duration + tail) * rate);
 const fadeFrames = Math.round(.025 * rate);
 
-function renderBlock(version, events, firstBar, lastBar) {
+function renderBlock(version, events, firstBar, lastBar, arrangement) {
+  const { bars, duration, tail, length } = arrangement;
   const start = firstBar * barSeconds;
   const offset = Math.round(start * rate) / rate;
   const last = lastBar === bars;
@@ -39,15 +40,20 @@ function renderBlock(version, events, firstBar, lastBar) {
 }
 
 export async function render(version) {
-  const events = makeScore(version);
+  const full = version === 'full';
+  const arrangement = full
+    ? { bars: fullBars, duration: fullDuration, tail: fullTail }
+    : { bars, duration, tail };
+  const length = Math.round((arrangement.duration + arrangement.tail) * rate);
+  const events = full ? makeFullScore() : makeScore(version);
   const buffer = new AudioBuffer({ length, sampleRate: rate, numberOfChannels: 2 });
-  for (let bar = 0; bar < bars; bar += 8) {
+  for (let bar = 0; bar < arrangement.bars; bar += 8) {
     const first = Math.max(0, bar - 1);
-    const last = Math.min(bars, bar + 8);
+    const last = Math.min(arrangement.bars, bar + 8);
     const from = Math.round(bar * barSeconds * rate);
-    const until = last === bars ? length : Math.round(last * barSeconds * rate);
+    const until = last === arrangement.bars ? length : Math.round(last * barSeconds * rate);
     const preroll = from - Math.round(first * barSeconds * rate);
-    const block = await renderBlock(version, events, first, last);
+    const block = await renderBlock(full ? 'A' : version, events, first, last, { ...arrangement, length });
     for (let channel = 0; channel < 2; channel++) {
       const samples = block.getChannelData(channel);
       const output = buffer.getChannelData(channel);

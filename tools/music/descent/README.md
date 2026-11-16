@@ -1,4 +1,29 @@
-# DESCENT · D2-M0 listening prototypes
+# DESCENT · Listening prototypes
+
+## CONTROL full arrangement
+
+D2-M0-A1 uses 136 BPM, 4/4 and 96 bars. The score runs 169.412 seconds with a 1.6-second release. It starts with the original CONTROL events and shares the original A voices, seed, taps and mix. The full score uses 322 of its 413 kicks on the quarter-note grid. All 22 four-bar drum phrases after ORDER have distinct event patterns.
+
+| Section | Bars, zero-based | Start | Arrangement |
+| --- | --- | --- | --- |
+| ORDER | 0–8 | 0:00.00 | Original short signal, spaced kick and gradual bass entrance. |
+| LOCK | 8–24 | 0:14.12 | CONTROL's piston-like bass and backbeat. An answering bass pattern and two clipped cadences develop the groove. |
+| FLIGHT | 24–44 | 0:42.35 | Pickup doubles, running low notes and staggered stabs increase forward motion. |
+| PRESSURE | 44–64 | 1:17.65 | F♯ minor rubs against G major. Shortened backbeats and uneven fills tighten the phrase. |
+| HOLD | 64–72 | 1:52.94 | Inverted signal, dark taps and isolated pulses. Bass returns once in the count into LOCKDOWN. |
+| LOCKDOWN | 72–88 | 2:07.06 | Quarter kicks return with extra doubles. Compressed signals, alternating syncopated stabs and drum answers shape the climax. |
+| BREACH | 88–96 | 2:35.29 | Drums pare back as the signal turns downward over a final F♯ minor add-nine chord. |
+
+```sh
+node --test tools/music/descent/score.test.mjs tools/music/descent/control-full-score.test.mjs
+node tools/music/descent/export.mjs --full --verify
+```
+
+`--full` writes only `DESCENT-M0-A1-CONTROL-FULL.wav` in the existing ignored output directory. The 44.1 kHz, 16-bit stereo PCM measures 171.012 s, −18.51 LUFS integrated and −2.16 dBTP estimated by 4× oversampling. HOLD measures −30.12 dBFS RMS, followed by −17.75 dBFS in LOCKDOWN. The longest quiet rest in the body is about one second inside HOLD. The maximum sample-to-sample step at the 11 block joins is 0.00037 full scale. Each join falls below the local 99th-percentile step. The first 14.088 seconds differ from the original A by about 0.25 PCM codes RMS. The full repeat-render residual is about −99 dBFS RMS.
+
+The original A and B masters retain their baseline hashes. In-memory playback renders of those scores match the baseline renderer within Chromium's repeat variation. Six score checks, typecheck, 221 game unit tests and 102 browser tests passed.
+
+## Original D2-M0 prototypes
 
 Both scores are in 4/4 at 136 BPM. The 48-bar body runs 84.706 seconds, followed by a short release. The shared harmonic route grows out of an F♯ minor pedal, opens through D, E and A, borrows G major for the pressure section, and resolves through C♯7. The three-note signal returns at different rhythmic positions and inverts its order at the pullback before the last surge.
 

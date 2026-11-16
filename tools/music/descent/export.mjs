@@ -6,12 +6,19 @@ import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
 import { transformWithOxc } from 'vite';
 import { duration, tail, versions } from './score.mjs';
+import { fullDuration, fullName, fullTail } from './control-full-score.mjs';
 
-const { values: { verify } } = parseArgs({ options: { verify: { type: 'boolean' } } });
+const { values: { verify, full } } = parseArgs({ options: {
+  verify: { type: 'boolean' },
+  full: { type: 'boolean' },
+} });
+const exports = full ? { full: fullName } : versions;
+const seconds = full ? fullDuration + fullTail : duration + tail;
 const root = new URL('../../../', import.meta.url);
 const output = new URL('scratch/descent-m0/exports/', root);
 const paths = [
-  'tools/music/descent/render.mjs', 'tools/music/descent/score.mjs', 'tools/music/descent/voices.mjs',
+  'tools/music/descent/render.mjs', 'tools/music/descent/score.mjs', 'tools/music/descent/control-full-score.mjs',
+  'tools/music/descent/voices.mjs',
   'tools/music/daybreak/voices.mjs', 'app/game/audio/daybreak-voices.client.ts',
 ];
 const sources = new Map(await Promise.all(paths.map(async path => {
@@ -35,10 +42,10 @@ try {
     }
   });
   await page.goto(origin);
-  for (const [version, basename] of Object.entries(versions)) {
+  for (const [version, basename] of Object.entries(exports)) {
     const filename = basename + '.wav';
     const [download, metrics] = await Promise.all([
-      page.waitForEvent('download', { timeout: 180_000 }),
+      page.waitForEvent('download', { timeout: full ? 300_000 : 180_000 }),
       page.evaluate(async ({ version, filename, verify }) => {
         const { render } = await import('/tools/music/descent/render.mjs');
         const { blob, ...metrics } = await render(version);
@@ -71,12 +78,12 @@ try {
     assert.equal(bytes.readUInt16LE(22), 2);
     assert.equal(bytes.readUInt32LE(24), 44_100);
     assert.equal(bytes.readUInt16LE(34), 16);
-    assert.equal(bytes.length, 44 + 4 * Math.round((duration + tail) * 44_100));
+    assert.equal(bytes.length, 44 + 4 * Math.round(seconds * 44_100));
     assert.equal(bytes.readInt32LE(bytes.length - 4), 0);
     assert.ok(metrics.peak > .2 && metrics.peak < .98 && metrics.rms > .025);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     // Allow sub-audible numerical differences in the browser's summing and dynamics.
-    if (verify) assert.ok(metrics.repeat.max <= 24 && metrics.repeat.rms < 1,
+    if (verify) assert.ok(metrics.repeat.max <= (full ? 32 : 24) && metrics.repeat.rms < 1,
       version + ' PCM repeat error in 16-bit codes: ' + JSON.stringify(metrics.repeat));
     console.log(JSON.stringify({ file, ...metrics, sha256 }));
   }
