@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { Diagnostics } from '../../app/game/contracts';
 import { SECTION } from '../../app/game/core/collision';
 import { volumeById } from '../../app/game/core/volumes';
 import { Simulation } from '../../app/game/core/simulation';
@@ -7,6 +8,7 @@ import { routeSides } from '../../app/game/core/branches';
 import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.client';
 import type { CirrusLayer } from '../../app/game/graphics/daybreak-cirrus';
 import { buildRunPath } from '../../app/game/graphics/path';
+import { Graphics } from '../../app/game/graphics/scene.client';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
 
@@ -21,10 +23,10 @@ export function inspectCirrusDirection() {
   exterior.update(48, false, 0);
   renderer.setRenderTarget(target);
   const fixedRay = new THREE.Vector3(0, .47, -Math.sqrt(1 - .47 ** 2));
-  const sample = (layer: CirrusLayer, eye = new THREE.Vector3(), roll = 0, fov = 76, yaw = 0) => {
+  const sample = (layer: CirrusLayer, eye = new THREE.Vector3(), roll = 0, fov = 76, yaw = 0, ray = fixedRay) => {
     exterior.setCirrusLayer(layer);
     camera.position.copy(eye);
-    const spot = fixedRay.clone().multiplyScalar(10).add(eye);
+    const spot = ray.clone().multiplyScalar(10).add(eye);
     camera.lookAt(spot);
     camera.rotateY(yaw);
     camera.rotateZ(roll);
@@ -49,7 +51,13 @@ export function inspectCirrusDirection() {
       exterior.setDetail(detail);
       return sample('Main Only');
     });
-    samples = { main, secondary, composite, rolled, boosted, tiers, error: renderer.getContext().getError() };
+    const sunward = exterior.sun.clone();
+    const leeward = new THREE.Vector3(-sunward.x, sunward.y, -sunward.z);
+    const horizon = (ray: THREE.Vector3) => sample('Composite', undefined, 0, 76, 0, ray);
+    const dawn = [horizon(sunward), horizon(leeward)];
+    exterior.update(192, false, 0);
+    const sunburst = [horizon(sunward), horizon(leeward)];
+    samples = { main, secondary, composite, rolled, boosted, tiers, dawn, sunburst, error: renderer.getContext().getError() };
   } finally {
     const liveTextures = renderer.info.memory.textures;
     exterior.dispose();
@@ -60,6 +68,32 @@ export function inspectCirrusDirection() {
     renderer.forceContextLoss();
   }
   return { ...samples, released };
+}
+
+export function inspectDaybreakReflections(flags: Diagnostics) {
+  const graphics = new Graphics(document.createElement('canvas'), 'low', false, flags);
+  const daybreak = volumeById('daybreak');
+  const current = () => (Reflect.get(graphics, 'daylightEnvironment') as { target: THREE.WebGLRenderTarget } | undefined)?.target;
+  let released = 0;
+  let measurement;
+  const countRelease = () => released++;
+  try {
+    graphics.load(daybreak);
+    const first = current();
+    if (!first) return { supported: false as const };
+    first.addEventListener('dispose', countRelease);
+    graphics.load(daybreak);
+    const reused = current() === first;
+    graphics.load(volumeById('descent'));
+    const switched = !current() && released === 1;
+    graphics.load(daybreak);
+    const second = current()!;
+    second.addEventListener('dispose', countRelease);
+    measurement = { supported: true as const, reused, switched, recreated: second !== first, error: graphics.gl.getError() };
+  } finally {
+    graphics.dispose();
+  }
+  return { ...measurement, released };
 }
 
 export function inspectCanopySunlight() {

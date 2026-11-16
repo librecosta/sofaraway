@@ -80,10 +80,11 @@ export class DaybreakExterior {
           float towardsSun = max(dot(ray, sun), 0.0);
           float warm = colorScore.z;
           float veil = colorScore.w;
-          vec3 horizon = mix(vec3(.56, .69, .75), vec3(.75, .69, .58), warm * .64);
-          horizon += vec3(.25, .16, .055) * (0.27 * towardsSun * towardsSun + .64 * smoothstep(.81, 1.0, towardsSun)) * warm;
-          vec3 mid = mix(vec3(.24, .41, .67), vec3(.17, .46, .77), colorScore.y);
-          vec3 zenith = mix(vec3(.09, .23, .49), vec3(.085, .27, .58), colorScore.y);
+          // Radiance in the scene's linear working space. The existing post curve handles the display shoulder.
+          float dawn = warm * smoothstep(.26, .97, towardsSun);
+          vec3 horizon = mix(vec3(.53, .77, .95), vec3(1.0, .81, .58), dawn);
+          vec3 mid = mix(vec3(.22, .49, .84), vec3(.16, .59, 1.0), colorScore.y);
+          vec3 zenith = mix(vec3(.084, .27, .62), vec3(.064, .33, .78), colorScore.y);
           vec3 blue = mix(mid, zenith, smoothstep(.28, .99, height));
           float air = exp2(-height * mix(14.0, 8.0, veil));
           vec3 sky = mix(blue, horizon, air);
@@ -91,8 +92,9 @@ export class DaybreakExterior {
           vec2 layers = 1.0 - 2.0 * smoothstep(vec2(0.0), vec2(1.0), abs(2.0 * airBands - 1.0));
           float scattering = layers.x * layers.y;
           sky += vec3(.024, .029, .033) * scattering * (1.0 - air) * (.6 + detail * .4);
-          float glow = .45 * smoothstep(.941, 1.0, towardsSun) + .55 * smoothstep(.990, 1.0, towardsSun);
-          sky += vec3(.36, .24, .11) * glow * warm;
+          float glow = .55 * smoothstep(.88, .998, towardsSun) + .45 * smoothstep(.982, 1.0, towardsSun);
+          // The outer scatter follows the horizon and the inner lobe follows the sun elevation.
+          sky = mix(sky, vec3(1.12, .92, .66), dawn * air * .23 + glow * warm * .62);
 
           if (height > .10 && height < .965) {
             float azimuth = .5 + atan(ray.x, -ray.z + 1e-7) / 6.28318530718;
@@ -102,7 +104,7 @@ export class DaybreakExterior {
             float density = 1.0 - (1.0 - strands.x) * (1.0 - strands.y);
             if (cirrusLayer > 0.0) density = cirrusLayer < 1.5 ? cirrus.r : cirrus.g;
             float opacity = (1.0 - exp2(-.74 * density)) * (1.0 - .62 * glow);
-            vec3 ice = mix(vec3(.81, .90, .98), vec3(.97, .94, .88), warm * towardsSun);
+            vec3 ice = mix(vec3(.86, .96, 1.13), vec3(1.09, 1.0, .87), dawn * .78);
             sky = mix(sky, ice, opacity);
           }
 
@@ -137,8 +139,9 @@ export class DaybreakExterior {
               }
               float exposure = clamp(dot(slope, sun.xz) * 2.5, -.45, .45);
               float lit = clamp(.07 + .78 * crown + exposure * (.72 + .26 * warm), 0.0, 1.0);
-              vec3 shadow = vec3(.45, .56, .70);
-              vec3 crest = mix(vec3(.84, .90, .97), vec3(.98, .91, .81), warm * (.58 + exposure * .42));
+              vec3 shadow = vec3(.48, .60, .84);
+              float warmSlope = warm * smoothstep(-.15, .35, exposure + .12 * towardsSun);
+              vec3 crest = mix(vec3(.94, 1.04, 1.18), vec3(1.16, 1.03, .83), warmSlope);
               vec3 sea = mix(shadow, crest, lit);
               // Glancing rays lose their contrast to the same warm air as the sky.
               float grazing = smoothstep(.012, .085, descent);
@@ -165,8 +168,8 @@ export class DaybreakExterior {
     uniforms.colorScore.value.set(brightness, blue, warmth, haze);
     uniforms.coverage.value = coverage;
     uniforms.daylight.value = daylight;
-    this.air.setRGB(.56 + .12 * warmth, .69, .75 - .11 * warmth);
-    this.sunlight.setRGB(.91 + .07 * warmth, .87 - .03 * warmth, .80 - .14 * warmth);
+    this.air.setRGB(.55 + .08 * warmth, .75 + .04 * brightness, .94 - .07 * warmth);
+    this.sunlight.setRGB(.96 + .16 * warmth, .90 - .05 * warmth, .84 - .18 * warmth);
     return brightness;
   }
 

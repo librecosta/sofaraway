@@ -23,7 +23,7 @@ async function imageSamples(canvas: Locator, image: Buffer, points: [number, num
 test('DAYBREAK exterior chapter timing follows the soundtrack with cruise, Boost and Sightseeing', async ({ page }) => {
   const diagnostics = page.locator('#errbox');
   const looks = [];
-  for (const profile of ['mode=standard&q=low', 'mode=standard&boost=1&q=auto', 'mode=sightseeing&q=high']) {
+  for (const profile of ['mode=standard&q=low', 'mode=standard&boost=1&q=auto&lights=true', 'mode=sightseeing&q=high']) {
     await page.goto(`/?vol=daybreak&t=96&align=1&god=0&dbg=1&${profile}`);
     await expect(diagnostics).toContainText('"renderedVolume":"daybreak"');
     const metrics = await diagnostics.evaluate(el => JSON.parse(el.textContent!) as { exterior: ExteriorMetrics; distance: number });
@@ -54,7 +54,7 @@ test('the production canopy reflects world sunlight consistently under camera ro
 
 test('cirrus remains on the same world ray through travel, roll, turning and Boost FOV', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
-  const { main, secondary, composite, rolled, boosted, tiers, released, error } =
+  const { main, secondary, composite, rolled, boosted, tiers, dawn, sunburst, released, error } =
     await page.evaluate(() => window.b0Harness.inspectCirrusDirection());
   const difference = (a: number[], b: number[]) => Math.max(...a.map((channel, i) => Math.abs(channel - b[i])));
   expect(difference(main, secondary)).toBeGreaterThan(10);
@@ -63,6 +63,17 @@ test('cirrus remains on the same world ray through travel, roll, turning and Boo
   for (const sample of tiers) expect(difference(main, sample)).toBeLessThanOrEqual(4);
   expect(released).toBe(2);
   expect(error).toBe(0);
+  for (const [facing, away] of [dawn, sunburst]) {
+    expect(facing[0] - away[0]).toBeGreaterThan(70);
+    expect(away[2] - away[0]).toBeGreaterThan(75);
+  }
+  expect(sunburst[0][0] - sunburst[0][2]).toBeGreaterThan(dawn[0][0] - dawn[0][2]);
+});
+
+test('DAYBREAK reuses its cabin reflections and releases them on switch and teardown', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const resources = await page.evaluate(() => window.b0Harness.inspectDaybreakReflections());
+  expect(resources).toEqual({ supported: true, reused: true, switched: true, recreated: true, released: 2, error: 0 });
 });
 
 test('End Sequence Studio renders the production sky, cloud sea and recovered context', async ({ page }, info) => {
@@ -106,6 +117,8 @@ test('End Sequence Studio renders the production sky, cloud sea and recovered co
   expect(cloudLevel.every(value => value > 45 && value < 244)).toBe(true);
   const darkest = cloudLevel.indexOf(Math.min(...cloudLevel));
   const brightest = cloudLevel.indexOf(Math.max(...cloudLevel));
+  expect(clouds[darkest][2] - clouds[darkest][0]).toBeGreaterThan(8);
+  expect(clouds[brightest][2] - clouds[brightest][0]).toBeLessThan(clouds[darkest][2] - clouds[darkest][0]);
   const quality = studio.getByLabel('Preview quality');
   // Reduced detail keeps the same sunward bank and adjacent valley.
   for (const [tier, detail] of [['low', 0], ['auto', .55]] as const) {

@@ -14,7 +14,7 @@ import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
 import { DaybreakExterior } from './daybreak-exterior.client';
 import type { CirrusLayer } from './daybreak-cirrus';
-import { makeEnvMap, makeSky } from './environment.client';
+import { makeDaybreakEnvMap, makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
 import { MaterialLibrary } from './materials/library.client';
@@ -72,7 +72,7 @@ class VolumeScene {
   private readonly gameplay;
 
   constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary,
-    environment: THREE.Texture | null, readonly path: Path, mode: PlayMode) {
+    environmentFor: (sun?: THREE.Vector3) => THREE.Texture | null, readonly path: Path, mode: PlayMode) {
     this.hue = volume.hue[0];
     this.gameplay = gameplayFor(volume.id);
     if (this.gameplay.world?.continuous) {
@@ -91,7 +91,8 @@ class VolumeScene {
         this.tunnel.setSunDirection(this.exterior.sun);
         this.fog.density = .00245;
       } else this.scene.background = this.sky = makeSky(volume);
-      this.scene.environment = environment;
+      this.scene.environment = environmentFor(this.exterior?.sun);
+      if (this.exterior) this.scene.environmentIntensity = .90;
       if (volume.id === 'elsewhere') {
         // Keep the existing PMREM and temper its contribution under the new local rig.
         this.scene.environmentIntensity = 1.56;
@@ -197,7 +198,7 @@ class VolumeScene {
       const brightness = this.exterior.update(sim.beat, sim.phase === 'menu', daylight);
       if (junction) junctionFill = ease((distance - junction.path.start) / 24) * ease((junction.path.end - distance) / 24);
       this.tunnel.setDaylight(brightness, this.exterior.air, this.exterior.sunlight, daylight, junctionFill);
-      this.fog.color.copy(this.exterior.air).multiplyScalar(.55).lerp(this.daylightFog, daylight * .48);
+      this.fog.color.copy(this.exterior.air).multiplyScalar(.82).lerp(this.daylightFog, daylight * .48);
     }
 
     const mainPreviews = junction && sim.routeGuide && sim.branch && !sim.branch.side && sim.branchGates
@@ -356,6 +357,7 @@ export class Graphics {
   private mode: PlayMode = 'standard';
   private textures?: ReturnType<typeof buildTextures>;
   private environment?: THREE.WebGLRenderTarget;
+  private daylightEnvironment?: { target: THREE.WebGLRenderTarget; sun: THREE.Vector3 };
   private post?: PostFX;
   private postFailure: string | null = null;
   private quality: QualityTier;
@@ -406,15 +408,33 @@ export class Graphics {
   load(definition: VolumeDefinition, existingPath?: Path, mode: PlayMode = 'standard') {
     this.volume?.dispose();
     this.volume = undefined;
+    if (definition.id !== 'daybreak') this.releaseDaylightEnvironment();
     const path = this.corridor = existingPath ?? buildRunPath(definition, mode);
     this.mode = mode;
     this.volume = this.withCoreShaders(() => {
-      if (this.capabilities.halfFloat) this.environment ??= makeEnvMap(this.renderer);
       const materials = definition.id === 'elsewhere' ? new MaterialLibrary() : this.textures ??= buildTextures();
-      return new VolumeScene(definition, materials, this.environment?.texture ?? null, path, mode);
+      return new VolumeScene(definition, materials, sun => this.environmentFor(sun), path, mode);
     });
     this.updateExteriorDetail();
     this.sizeCamera();
+  }
+
+  private environmentFor(sun?: THREE.Vector3) {
+    if (!this.capabilities.halfFloat) return null;
+    if (!sun) {
+      this.environment ??= makeEnvMap(this.renderer);
+      return this.environment.texture;
+    }
+    if (!this.daylightEnvironment?.sun.equals(sun)) {
+      this.releaseDaylightEnvironment();
+      this.daylightEnvironment = { target: makeDaybreakEnvMap(this.renderer, sun), sun: sun.clone() };
+    }
+    return this.daylightEnvironment.target.texture;
+  }
+
+  private releaseDaylightEnvironment() {
+    this.daylightEnvironment?.target.dispose();
+    this.daylightEnvironment = undefined;
   }
 
   prepare() {
@@ -543,6 +563,7 @@ export class Graphics {
     this.volume = undefined;
     this.environment?.dispose();
     this.environment = undefined;
+    this.releaseDaylightEnvironment();
     if (this.textures) for (const texture of Object.values(this.textures)) texture.dispose();
     this.textures = undefined;
     this.post?.dispose();

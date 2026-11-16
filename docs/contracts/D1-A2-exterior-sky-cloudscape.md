@@ -28,6 +28,12 @@ The [cirrus field](../../app/game/graphics/daybreak-cirrus.ts) uses one curved r
 
 The 512×256 RGBA8 direction texture stores smooth main and secondary densities in R and G and their textured counterparts in B and A. Azimuth wraps across the texture meridian. The height-squared bake gives the lower sky more rows and fades the field before the horizon and zenith. A bounded optical blend adds cool-white cirrus with a small sunward tint. The cloud sea retains its own RGB height and slope field in world XZ.
 
+## Chromatic daylight
+
+The sky palette supplies scene-linear radiance to the existing post curve. The middle sky uses clear cyan-blue, the zenith deepens toward blue, and low-angle air takes on a pale gold tint as the world ray approaches the sun. GLIDE establishes the clear daylight palette early. BREEZE has the weakest haze and SUNBURST the strongest warm scatter. Cirrus shares that directional tint. Cloud crests take their warmth from the world-space slope and the direction of the sun, while valleys retain a cool blue cast.
+
+The DAYBREAK fog uses the chapter air color at the existing density. The cabin keeps its dark metal and transparent glazing. Stronger sky fill, cool cloud bounce and a small directional canopy highlight make the surfaces readable under daylight. On renderers with half-float targets, a 128×64 procedural equirectangular field is prefiltered once for the current sun direction and reused across consecutive DAYBREAK loads. Its PMREM target is released on volume switch or graphics teardown. The three other volumes continue to use their existing reflection map.
+
 ## Preview and cost
 
 Open [End Sequence Studio](../../app/components/EndSequenceStudio.tsx) at `/debug/#outro`, select DAYBREAK and open the live view. The exterior controls show all seven chapter looks and the forward, upward, side, horizon and cloud-sea views. Cloud Sea lifts the inspection camera above the roof. The normal course camera stays inside the closed cabin. Existing presets show junctions, Escape White, Menu and Results.

@@ -31,6 +31,7 @@ const harness = {
   inspectDaybreakCabin: async () => (await import('./daybreak-cabin')).inspectDaybreakCabin(),
   inspectCanopySunlight: async () => (await import('./daybreak-cabin')).inspectCanopySunlight(),
   inspectCirrusDirection: async () => (await import('./daybreak-cabin')).inspectCirrusDirection(),
+  inspectDaybreakReflections: async () => (await import('./daybreak-cabin')).inspectDaybreakReflections(flags),
   inspectDaybreakContinuity: async () => (await import('./daybreak-cabin')).inspectDaybreakContinuity(),
   inspectMaterials: async () => (await import('./materials')).inspectMaterials(),
   inspectCameraAndGates: async () => (await import('./camera-gates')).inspectCameraAndGates(),

@@ -96,7 +96,7 @@ function canopyMaterial() {
         vec3 baseline = mix(glass, mix(vec3(0.18, 0.36, 0.48), skyTint, .44), trim);
         float incidence = abs(dot(normal, vSun));
         float reflection = smoothstep(.70, .995, dot(reflect(-eye, normal), vSun));
-        float sheen = .23 * trim * incidence + reflection * (.28 * grazing + .08 * trim);
+        float sheen = .28 * trim * incidence + reflection * (.28 * grazing + .12 * trim);
         baseline = mix(baseline, sunTint, sheen);
         gl_FragColor = vec4(mix(baseline, vec3(0.92, 0.79, 0.62), daylight * (0.28 + 0.45 * grazing)),
           0.015 + 0.09 * grazing + 0.60 * trim);
@@ -552,11 +552,11 @@ export class Tunnel {
     this.canopyMat.uniforms.daylight.value = amount;
     this.canopyMat.uniforms.skyTint.value.copy(sky);
     this.canopyMat.uniforms.sunTint.value.copy(sun);
-    this.ambient.color.setRGB(.24, .31, .38);
-    this.ambient.intensity = .64 * brightness + amount * .28 + junctionFill * .25;
-    this.hemi.color.copy(sky).lerp(sun, .23);
-    this.hemi.intensity = .80 * brightness + amount * .34 + junctionFill * .30;
-    this.hemi.groundColor.setRGB(.12, .17, .22).lerp(junctionGround, junctionFill);
+    this.ambient.color.setRGB(.34, .40, .48);
+    this.ambient.intensity = .76 * brightness + amount * .28 + junctionFill * .25;
+    this.hemi.color.copy(sky).lerp(sun, .36);
+    this.hemi.intensity = 1.02 * brightness + amount * .34 + junctionFill * .30;
+    this.hemi.groundColor.setRGB(.23, .29, .38).lerp(junctionGround, junctionFill * .65);
   }
 
   get continuity() {

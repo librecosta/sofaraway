@@ -5,13 +5,13 @@ type Palette = readonly [brightness: number, blue: number, warmth: number, haze:
 
 // The seven looks share the music timeline rather than the traversal clock.
 const palette = {
-  OPEN:     [.91, .14, .43, .82, .67],
-  GLIDE:    [1.00, .65, .48, .61, .64],
-  LIFT:     [1.05, .74, .66, .56, .69],
-  BREEZE:   [1.02, .97, .53, .35, .59],
-  SUNBURST: [1.12, .85, .88, .50, .72],
-  RETURN:   [1.06, .82, .61, .44, .64],
-  OUTRO:    [1.10, .70, .81, .59, .66],
+  OPEN:     [.99, .43, .48, .67, .67],
+  GLIDE:    [1.06, .79, .66, .51, .64],
+  LIFT:     [1.09, .83, .77, .48, .69],
+  BREEZE:   [1.07, .97, .62, .32, .59],
+  SUNBURST: [1.15, .88, .96, .44, .72],
+  RETURN:   [1.08, .79, .70, .42, .64],
+  OUTRO:    [1.12, .73, .83, .55, .66],
 } satisfies Record<typeof sections[number]['name'], Palette>;
 
 const keyframes = sections.map(({ name, startBeat, endBeat }) => ({
