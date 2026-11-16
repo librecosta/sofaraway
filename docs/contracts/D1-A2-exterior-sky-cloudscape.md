@@ -4,7 +4,7 @@ DAYBREAK is a closed observation cabin above a continuous sea of clouds. Clear b
 
 ## Sky, cloud surface and cabin light
 
-[`DaybreakExterior`](../../app/game/graphics/daybreak-exterior.client.ts) draws the sky and an analytic cloud sheet in one opaque background draw, behind solid cabin geometry and before transparent canopy and gate passes. The sky cube uses camera rotation to recover world rays. Sparse cirrus follows world direction, using elongated, warped strands in the alpha channel of the cloud texture.
+[`DaybreakExterior`](../../app/game/graphics/daybreak-exterior.client.ts) draws the sky and an analytic cloud sheet in one opaque background draw, behind solid cabin geometry and before transparent canopy and gate passes. The sky cube uses camera rotation to recover world rays.
 
 The sea lies 22 world units below the lowest authored centerline and has up to ±8 units of relief. Warped primary banks and correlated secondary rises form a deterministic, mipmapped 256×256 RGBA field that repeats every 12,288 world units in XZ. A bounded height correction projects world rays onto the surface. A second spatial scale adds nearby billows. At grazing angles the sampler uses the projected pixel footprint to select a mip level and the deck blends into the same air as the horizon.
 
@@ -22,8 +22,14 @@ The sun direction comes from the final path tangent, turned 0.27 rad toward the 
 
 The atmosphere samples the seven chapter midpoints from the production score and blends adjacent looks with the existing quintic ease. Menu samples the stable GLIDE look. Results holds the finished or failed score beat. The shared Escape White scalar and existing Afterglow lift supply a bounded warm blend on top of the atmosphere. The overlay retains exclusive control of the near-white screen peak and Results retreat.
 
+## Structured cirrus
+
+The [cirrus field](../../app/game/graphics/daybreak-cirrus.ts) uses one curved ribbon in a tilted, world-fixed spherical frame. Two offshoots share the ribbon's spine and vary their separation and strength along it. Their outer edges feather and fade. Fiber noise follows each local centerline and modulates density within the authored envelopes.
+
+The 512×256 RGBA8 direction texture stores smooth main and secondary densities in R and G and their textured counterparts in B and A. Azimuth wraps across the texture meridian. The height-squared bake gives the lower sky more rows and fades the field before the horizon and zenith. A bounded optical blend adds cool-white cirrus with a small sunward tint. The cloud sea retains its own RGB height and slope field in world XZ.
+
 ## Preview and cost
 
 Open [End Sequence Studio](../../app/components/EndSequenceStudio.tsx) at `/debug/#outro`, select DAYBREAK and open the live view. The exterior controls show all seven chapter looks and the forward, upward, side, horizon and cloud-sea views. Cloud Sea lifts the inspection camera above the roof. The normal course camera stays inside the closed cabin. Existing presets show junctions, Escape White, Menu and Results.
 
-Low, Auto and High share the macro cloud field, height correction and main cirrus strands. Profile differences come from the finer cloud and cirrus sampling and their contrast. The cloud lookup belongs to the volume's GPU lifetime. Its immutable CPU backing is shared across switches and restorations. The atmosphere uses the current scene, fog and PostFX, adding no render target or fullscreen post pass.
+**Cirrus layers** shows Composite, Main Only or Secondary Only. The two isolated views show untextured density. Low, Auto and High share the geometry and composition and vary cirrus mip precision. Both texture lookups belong to the volume's GPU lifetime. Immutable CPU backing is shared across switches and restorations. The atmosphere uses the current scene, fog and PostFX, adding no render target or fullscreen post pass.

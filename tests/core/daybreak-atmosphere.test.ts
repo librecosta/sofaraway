@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { createHash } from 'node:crypto';
 import { sections } from '../../app/game/core/daybreak-score';
 import { gameplayFor } from '../../app/game/core/gameplay';
 import { SECTION } from '../../app/game/core/section';
@@ -32,11 +33,13 @@ test('cloud crests clear the DAYBREAK cabin and elevated branches on both paths'
   }
 });
 
-test('cloud banks and sparse cirrus are deterministic and their slopes wrap at the texture seam', () => {
+test('cloud banks retain the accepted RGB field and their slopes wrap at the texture seam', () => {
   const size = CLOUD_FIELD_SIZE;
   const field = makeDaybreakCloudField();
   expect(field).toEqual(makeDaybreakCloudField());
   expect(field).not.toEqual(makeDaybreakCloudField(12));
+  expect(createHash('sha256').update(field.filter((_, index) => index % 4 < 3)).digest('hex'))
+    .toBe('7a6cb8756a90e4cc53821af37d7736e1ff3b54cd8ef45dbb72c386b9ed384c70');
   const channel = (x: number, z: number, c: number) =>
     field[(((z + size) % size) * size + (x + size) % size) * 4 + c];
   const validateSlope = (normal: number, from: number, to: number) => {
@@ -49,12 +52,11 @@ test('cloud banks and sparse cirrus are deterministic and their slopes wrap at t
       validateSlope(channel(i, seam, 2), channel(i, seam - 1, 0), channel(i, seam + 1, 0));
     }
   }
-  let valley = 0, bank = 0, cirrus = 0, seamDelta = 0, adjacentDelta = 0;
+  let valley = 0, bank = 0, seamDelta = 0, adjacentDelta = 0;
   for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
     const height = channel(x, z, 0);
     if (height < 35) valley++;
     if (height > 190) bank++;
-    if (channel(x, z, 3) > 24) cirrus++;
     const delta = Math.abs(height - channel(x - 1, z, 0)) + Math.abs(height - channel(x, z - 1, 0));
     adjacentDelta += delta;
     if (x === 0) seamDelta += Math.abs(height - channel(x - 1, z, 0));
@@ -62,7 +64,5 @@ test('cloud banks and sparse cirrus are deterministic and their slopes wrap at t
   }
   expect(valley).toBeGreaterThan(size * size * .16);
   expect(bank).toBeGreaterThan(size * size * .12);
-  expect(cirrus / (size * size)).toBeGreaterThan(.025);
-  expect(cirrus / (size * size)).toBeLessThan(.25);
   expect(seamDelta / size).toBeLessThan(1.2 * adjacentDelta / (size * size));
 });

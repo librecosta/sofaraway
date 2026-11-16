@@ -2,6 +2,7 @@ import type { Diagnostics, Difficulty, PlayMode, QualityTier } from '../contract
 import type { RouteKind } from '../core/branches';
 import { dynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { VolumeDefinition } from '../core/volumes';
+import type { CirrusLayer } from '../graphics/daybreak-cirrus';
 import { Graphics } from '../graphics/scene.client';
 import { exteriorViews, OutroInspection, outroVolume } from './outro-inspection';
 import type { ExteriorView, OutroMovement } from './outro-inspection';
@@ -19,6 +20,7 @@ export class OutroPreview {
   private lost = false;
   private dynamic = false;
   private exteriorView: ExteriorView = 'Forward';
+  private cirrusLayer: CirrusLayer = 'Composite';
   private inspection?: OutroInspection;
   private view?: [number, number, OutroMovement, number, boolean?];
   private roaming?: ['menu' | 'results', number, number];
@@ -65,6 +67,12 @@ export class OutroPreview {
     this.redraw();
   }
 
+  setCirrusLayer(value: CirrusLayer) {
+    if (this.cirrusLayer === value) return;
+    this.cirrusLayer = value;
+    this.redraw();
+  }
+
   draw(station: number, beat: number, movement: OutroMovement, angle: number, results = false) {
     this.roaming = undefined;
     this.view = [station, beat, movement, angle, results];
@@ -83,6 +91,7 @@ export class OutroPreview {
     const dynamics = this.dynamic && this.volume.id === 'daybreak'
       ? dynamicLightEnvelope(this.volume, state.time, 1, matchMedia('(prefers-reduced-motion: reduce)').matches) : undefined;
     const [yaw, pitch, cameraLift] = exteriorViews[this.volume.id === 'daybreak' ? this.exteriorView : 'Forward'];
+    this.graphics.setCirrusLayer(this.cirrusLayer);
     this.graphics.draw(state, true, true, { beat: state.beat, yaw: (angle + yaw) * Math.PI / 180,
       pitch: pitch * Math.PI / 180, cameraLift, dynamics });
     const metrics = this.graphics.metrics();

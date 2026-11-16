@@ -8,6 +8,8 @@ import { volumeById } from '../game/core/volumes';
 import { exteriorViews, movements, outroPresets, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
 import type { ExteriorView, OutroInspection, OutroMovement, OutroPreset } from '../game/debug/outro-inspection';
 import type { OutroPreview } from '../game/debug/outro-preview.client';
+import { cirrusLayers } from '../game/graphics/daybreak-cirrus';
+import type { CirrusLayer } from '../game/graphics/daybreak-cirrus';
 import s from '../styles/debug.module.css';
 import { ResultsScreen } from './ResultsScreen';
 
@@ -33,6 +35,7 @@ export function EndSequenceStudio() {
   const [beat, setBeat] = useState(416);
   const [angle, setAngle] = useState(0);
   const [exteriorView, setExteriorView] = useState<ExteriorView>('Forward');
+  const [cirrusLayer, setCirrusLayer] = useState<CirrusLayer>('Composite');
   const [quality, setQuality] = useState<QualityTier>('high');
   const [dynamic, setDynamic] = useState(false);
   const [movement, setMovement] = useState<OutroMovement>('Paused');
@@ -79,8 +82,9 @@ export function EndSequenceStudio() {
       viewer.current?.setQuality(quality);
       viewer.current?.setDynamic(daybreak && dynamic);
       viewer.current?.setExteriorView(exteriorView);
+      viewer.current?.setCirrusLayer(cirrusLayer);
     }
-  }, [available, quality, daybreak, dynamic, exteriorView]);
+  }, [available, quality, daybreak, dynamic, exteriorView, cirrusLayer]);
 
   useEffect(() => {
     if (!available || !inspection || flying) return;
@@ -208,6 +212,9 @@ export function EndSequenceStudio() {
       <legend>DAYBREAK Exterior</legend>
       <label>Exterior view <select aria-label="Exterior view" value={exteriorView} onChange={e => setExteriorView(e.currentTarget.value as ExteriorView)}>
         {Object.keys(exteriorViews).map(view => <option key={view}>{view}</option>)}
+      </select></label>
+      <label>Cirrus layers <select value={cirrusLayer} onChange={e => setCirrusLayer(e.currentTarget.value as CirrusLayer)}>
+        {cirrusLayers.map(layer => <option key={layer}>{layer}</option>)}
       </select></label>
       {daybreakSections.map(({ name, startBeat, endBeat }) => {
         const middle = (startBeat + endBeat) / 2;

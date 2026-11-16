@@ -23,9 +23,8 @@ export function makeDaybreakCloudField(seed = 0x271060) {
   };
   const warpX = octave(8, 7), warpZ = octave(7, 8);
   const primary = octave(57, 61), secondary = octave(93, 101);
-  const cirrusBands = octave(4, 47), cirrusBreaks = octave(8, 13), cirrusFibres = octave(14, 79);
   const height = new Float32Array(size * size);
-  const pixels = new Uint8Array(size * size * 4);
+  const pixels = new Uint8Array(size * size * 4).fill(255);
   const byte = (level: number) => Math.round(255 * MathUtils.clamp(level, 0, 1));
   const at = (x: number, z: number) => wrap(z, size) * size + wrap(x, size);
   for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
@@ -37,12 +36,6 @@ export function makeDaybreakCloudField(seed = 0x271060) {
     const swell = secondary(wx, wz) * bank;
     const index = z * size + x;
     height[index] = .76 * bank + .24 * swell;
-
-    const bend = v + .065 * (warpZ(u + .28, v) - .5);
-    const strand = MathUtils.smoothstep(cirrusBands(u, bend), .61, .93);
-    const broken = MathUtils.smoothstep(cirrusBreaks(u, v), .36, .73);
-    const fibre = cirrusFibres(u, bend);
-    pixels[index * 4 + 3] = byte(strand * broken * (.34 + .66 * fibre));
   }
   for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
     const index = z * size + x;

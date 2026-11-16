@@ -52,6 +52,19 @@ test('the production canopy reflects world sunlight consistently under camera ro
   expect(Math.max(...facing.map((value, channel) => Math.abs(value - rolled[channel])))).toBeLessThanOrEqual(2);
 });
 
+test('cirrus remains on the same world ray through travel, roll, turning and Boost FOV', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const { main, secondary, composite, rolled, boosted, tiers, released, error } =
+    await page.evaluate(() => window.b0Harness.inspectCirrusDirection());
+  const difference = (a: number[], b: number[]) => Math.max(...a.map((channel, i) => Math.abs(channel - b[i])));
+  expect(difference(main, secondary)).toBeGreaterThan(10);
+  expect(difference(composite, rolled)).toBeLessThanOrEqual(1);
+  expect(difference(composite, boosted)).toBeLessThanOrEqual(3);
+  for (const sample of tiers) expect(difference(main, sample)).toBeLessThanOrEqual(4);
+  expect(released).toBe(2);
+  expect(error).toBe(0);
+});
+
 test('End Sequence Studio renders the production sky, cloud sea and recovered context', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -73,6 +86,16 @@ test('End Sequence Studio renders the production sky, cloud sea and recovered co
   const up = await canvas.screenshot();
   const [blue] = await imageSamples(canvas, up, [[.32, .2]]);
   expect(blue[2] - blue[0]).toBeGreaterThan(30);
+  const layer = studio.getByLabel('Cirrus layers');
+  let previous = up;
+  for (const label of ['Main Only', 'Secondary Only', 'Composite']) {
+    await layer.selectOption({ label });
+    const isolated = await canvas.screenshot();
+    expect(isolated.equals(previous)).toBe(false);
+    await info.attach(`BREEZE · ${label}`, { body: isolated, contentType: 'image/png' });
+    previous = isolated;
+  }
+  expect(previous.equals(up)).toBe(true);
   await view.selectOption({ label: 'Cloud Sea' });
   await expect(canvas).toHaveAttribute('data-camera-y', '19');
   const sea = await canvas.screenshot();
@@ -106,6 +129,11 @@ test('End Sequence Studio renders the production sky, cloud sea and recovered co
   await expect(interrupted).toHaveCount(0);
   const restored = await imageSamples(canvas, await canvas.screenshot(), points);
   expect(Math.max(...restored.flatMap((rgb, i) => rgb.map((value, c) => Math.abs(value - clouds[i][c]))))).toBeLessThan(3);
+  await view.selectOption({ label: 'Look Up' });
+  const skyPoints: [number, number][] = [[.28, .48], [.47, .45], [.66, .42], [.84, .38]];
+  const sky = await imageSamples(canvas, up, skyPoints);
+  const restoredSky = await imageSamples(canvas, await canvas.screenshot(), skyPoints);
+  expect(Math.max(...restoredSky.flatMap((rgb, i) => rgb.map((value, c) => Math.abs(value - sky[i][c]))))).toBeLessThan(3);
   for (const volume of ['elsewhere', 'daybreak', 'elsewhere', 'daybreak']) {
     await studio.getByLabel('World', { exact: true }).selectOption(volume);
     await expect(studio.getByRole('img')).toHaveAttribute('data-exterior', volume === 'elsewhere' ? 'null' : /"seaLevel":-22/);

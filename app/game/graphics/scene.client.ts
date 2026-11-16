@@ -13,6 +13,7 @@ import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
 import { DaybreakExterior } from './daybreak-exterior.client';
+import type { CirrusLayer } from './daybreak-cirrus';
 import { makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
@@ -534,6 +535,8 @@ export class Graphics {
   private updateExteriorDetail() {
     this.volume?.exterior?.setDetail(this.quality === 'low' || this.dropped ? 0 : this.quality === 'high' ? 1 : .55);
   }
+
+  setCirrusLayer(layer: CirrusLayer) { this.volume?.exterior?.setCirrusLayer(layer); }
 
   releaseSurface() {
     this.volume?.dispose();

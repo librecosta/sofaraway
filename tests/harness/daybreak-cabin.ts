@@ -5,9 +5,62 @@ import { Simulation } from '../../app/game/core/simulation';
 import { BranchVisual } from '../../app/game/graphics/branch.client';
 import { routeSides } from '../../app/game/core/branches';
 import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.client';
+import type { CirrusLayer } from '../../app/game/graphics/daybreak-cirrus';
 import { buildRunPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
+
+export function inspectCirrusDirection() {
+  const exterior = new DaybreakExterior(buildRunPath(volumeById('daybreak')));
+  const renderer = new THREE.WebGLRenderer();
+  const size = 129;
+  const target = new THREE.WebGLRenderTarget(size, size);
+  const camera = new THREE.PerspectiveCamera(76, 1, .1, 25);
+  const scene = new THREE.Scene();
+  scene.add(exterior.mesh);
+  exterior.update(48, false, 0);
+  renderer.setRenderTarget(target);
+  const fixedRay = new THREE.Vector3(0, .47, -Math.sqrt(1 - .47 ** 2));
+  const sample = (layer: CirrusLayer, eye = new THREE.Vector3(), roll = 0, fov = 76, yaw = 0) => {
+    exterior.setCirrusLayer(layer);
+    camera.position.copy(eye);
+    const spot = fixedRay.clone().multiplyScalar(10).add(eye);
+    camera.lookAt(spot);
+    camera.rotateY(yaw);
+    camera.rotateZ(roll);
+    camera.fov = fov;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
+    const { x, y } = spot.project(camera);
+    const rgba = new Uint8Array(4);
+    renderer.readRenderTargetPixels(target, Math.floor((x + 1) * size / 2), Math.floor((y + 1) * size / 2), 1, 1, rgba);
+    return Array.from(rgba.slice(0, 3));
+  };
+  let released = 0;
+  let samples;
+  try {
+    exterior.setDetail(1);
+    const main = sample('Main Only');
+    const secondary = sample('Secondary Only');
+    const composite = sample('Composite');
+    const rolled = sample('Composite', new THREE.Vector3(820, 4, -2100), Math.PI / 2);
+    const boosted = sample('Composite', new THREE.Vector3(30, 9, -180), 0, 85, .14);
+    const tiers = [0, .55].map(detail => {
+      exterior.setDetail(detail);
+      return sample('Main Only');
+    });
+    samples = { main, secondary, composite, rolled, boosted, tiers, error: renderer.getContext().getError() };
+  } finally {
+    const liveTextures = renderer.info.memory.textures;
+    exterior.dispose();
+    released = liveTextures - renderer.info.memory.textures;
+    renderer.setRenderTarget(null);
+    target.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
+  return { ...samples, released };
+}
 
 export function inspectCanopySunlight() {
   const volume = volumeById('daybreak');

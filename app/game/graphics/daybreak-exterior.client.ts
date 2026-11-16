@@ -2,14 +2,29 @@ import * as THREE from 'three';
 import type { Path } from './path';
 import { CLOUD_CLEARANCE, CLOUD_RELIEF, daybreakAtmosphere, DAYBREAK_MENU_BEAT } from './daybreak-atmosphere';
 import { CLOUD_FIELD_PERIOD, CLOUD_FIELD_SIZE, makeDaybreakCloudField } from './daybreak-cloud-field';
+import { CIRRUS_HEIGHT, CIRRUS_WIDTH, cirrusLayers, makeDaybreakCirrusField } from './daybreak-cirrus';
+import type { CirrusLayer } from './daybreak-cirrus';
 
 let cloudPixels: Uint8Array | undefined;
+let cirrusPixels: Uint8Array | undefined;
 
 function cloudField() {
   cloudPixels ??= makeDaybreakCloudField();
   const texture = new THREE.DataTexture(cloudPixels, CLOUD_FIELD_SIZE, CLOUD_FIELD_SIZE);
-  texture.name = 'daybreak-cloud-surface-and-cirrus';
+  texture.name = 'daybreak-cloud-surface';
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function cirrusField() {
+  cirrusPixels ??= makeDaybreakCirrusField();
+  const texture = new THREE.DataTexture(cirrusPixels, CIRRUS_WIDTH, CIRRUS_HEIGHT);
+  texture.name = 'daybreak-cirrus-direction';
+  texture.wrapS = THREE.RepeatWrapping;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.generateMipmaps = true;
@@ -23,6 +38,7 @@ export class DaybreakExterior {
   readonly air = new THREE.Color();
   readonly sunlight = new THREE.Color();
   private readonly field = cloudField();
+  private readonly cirrus = cirrusField();
   private readonly palette = new Float32Array(5);
   readonly mesh: THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial>;
 
@@ -37,7 +53,8 @@ export class DaybreakExterior {
       side: THREE.BackSide, depthTest: true, depthWrite: false, toneMapped: false,
       userData: { skipFocusDepth: true },
       uniforms: {
-        cloudField: { value: this.field }, sun: { value: this.sun }, seaLevel: { value: this.seaLevel },
+        cloudField: { value: this.field }, cirrusField: { value: this.cirrus }, cirrusLayer: { value: 0 },
+        sun: { value: this.sun }, seaLevel: { value: this.seaLevel },
         colorScore: { value: new THREE.Vector4() },
         coverage: { value: 0 }, daylight: { value: 0 }, detail: { value: 0 },
       },
@@ -51,9 +68,10 @@ export class DaybreakExterior {
       `,
       fragmentShader: /* glsl */`
         uniform sampler2D cloudField;
+        uniform sampler2D cirrusField;
         uniform vec3 sun;
         uniform vec4 colorScore;
-        uniform float seaLevel, coverage, daylight, detail;
+        uniform float seaLevel, coverage, daylight, detail, cirrusLayer;
         varying vec3 heading;
 
         void main() {
@@ -76,15 +94,16 @@ export class DaybreakExterior {
           float glow = .45 * smoothstep(.941, 1.0, towardsSun) + .55 * smoothstep(.990, 1.0, towardsSun);
           sky += vec3(.36, .24, .11) * glow * warm;
 
-          float cirrusWindow = smoothstep(.10, .24, height) * (1.0 - smoothstep(.67, .98, height));
-          if (cirrusWindow > 0.0) {
-            // Project a world direction onto the high sky, with no longitude seam or translation.
-            vec2 axis = vec2(.82, .57236);
-            vec2 wind = vec2(dot(ray.xz, axis), dot(ray.xz, vec2(-axis.y, axis.x)));
-            vec2 cirrusUV = vec2(.34, .46) + wind * .52 / (height + .33);
-            float filament = textureLod(cloudField, cirrusUV, mix(.90, .15, detail)).a;
-            vec3 ice = mix(vec3(.67, .82, .91), vec3(.94, .91, .80), warm * towardsSun);
-            sky = mix(sky, ice, filament * cirrusWindow * (.34 + .08 * detail) * (1.0 - .75 * glow));
+          if (height > .10 && height < .965) {
+            float azimuth = .5 + atan(ray.x, -ray.z + 1e-7) / 6.28318530718;
+            float row = sqrt(height) * ${CIRRUS_HEIGHT - 1}.0 + .5;
+            vec4 cirrus = textureLod(cirrusField, vec2(azimuth, row / ${CIRRUS_HEIGHT}.0), mix(1.15, .08, detail));
+            vec2 strands = mix(cirrus.rg * .69, cirrus.ba, .82);
+            float density = 1.0 - (1.0 - strands.x) * (1.0 - strands.y);
+            if (cirrusLayer > 0.0) density = cirrusLayer < 1.5 ? cirrus.r : cirrus.g;
+            float opacity = (1.0 - exp2(-.74 * density)) * (1.0 - .62 * glow);
+            vec3 ice = mix(vec3(.81, .90, .98), vec3(.97, .94, .88), warm * towardsSun);
+            sky = mix(sky, ice, opacity);
           }
 
           const float period = ${CLOUD_FIELD_PERIOD.toFixed(1)};
@@ -138,6 +157,7 @@ export class DaybreakExterior {
   }
 
   setDetail(detail: number) { this.mesh.material.uniforms.detail.value = detail; }
+  setCirrusLayer(layer: CirrusLayer) { this.mesh.material.uniforms.cirrusLayer.value = cirrusLayers.indexOf(layer); }
 
   update(beat: number, menu: boolean, daylight: number) {
     const [brightness, blue, warmth, haze, coverage] = daybreakAtmosphere(menu ? DAYBREAK_MENU_BEAT : beat, this.palette);
@@ -159,6 +179,7 @@ export class DaybreakExterior {
 
   dispose() {
     this.field.dispose();
+    this.cirrus.dispose();
     this.mesh.geometry.dispose();
     this.mesh.material.dispose();
   }
