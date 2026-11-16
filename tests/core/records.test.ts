@@ -62,6 +62,31 @@ test('DAYBREAK choreography records remain independent of all legacy charts afte
   expect(recordFor(reloaded, 'daybreak', 'normal', 'sightseeing').last).toEqual(daybreak);
 });
 
+test('the DESCENT choreography records preserve all earlier charts', () => {
+  const old = { score: 119039, outcome: 'ESCAPED' } as const;
+  const control = { ...old, score: 79234 };
+  const laser = { ...old, score: 76834 };
+  const legacy = { standard: { descent: { normal: { best: old.score, last: old } },
+    'descent-control': { normal: { best: control.score, last: control } },
+    'descent-laser-security': { normal: { best: laser.score, last: laser } } },
+    sightseeing: { descent: { last: old }, 'descent-control': { last: control }, 'descent-laser-security': { last: laser } } };
+  const records = parseRecords(JSON.stringify({ version: 1, ...legacy }));
+  expect(recordFor(records, 'descent', 'normal', 'standard')).toEqual({ best: null, last: null });
+  expect(recordFor(records, 'descent', 'normal', 'sightseeing').last).toBeNull();
+  const current = { score: 131315, outcome: 'ESCAPED' } as const;
+  expect(recordRun(records, 'descent', 'normal', 'standard', current)).toBe(true);
+  recordRun(records, 'descent', 'normal', 'sightseeing', current);
+  const reloaded = parseRecords(JSON.stringify(records));
+  expect(reloaded.standard.descent).toEqual(legacy.standard.descent);
+  expect(reloaded.sightseeing.descent).toEqual(legacy.sightseeing.descent);
+  expect(reloaded.standard['descent-control']).toEqual(legacy.standard['descent-control']);
+  expect(reloaded.sightseeing['descent-control']).toEqual(legacy.sightseeing['descent-control']);
+  expect(reloaded.standard['descent-laser-security']).toEqual(legacy.standard['descent-laser-security']);
+  expect(reloaded.sightseeing['descent-laser-security']).toEqual(legacy.sightseeing['descent-laser-security']);
+  expect(recordFor(reloaded, 'descent', 'normal', 'standard')).toEqual({ best: current.score, last: current });
+  expect(recordFor(reloaded, 'descent', 'normal', 'sightseeing').last).toEqual(current);
+});
+
 test('records reject invalid or unknown storage values and tolerate a missing browser', () => {
   for (const raw of [null, '{bad', 'null', '[]', '{"version":2}', '{"version":"1"}']) expect(parseRecords(raw)).toEqual(emptyRecords());
   const raw = '{"version":1,"standard":{"elsewhere":{"hard":{"best":1e999,"last":{"score":-1,"outcome":"ESCAPED"}},' +

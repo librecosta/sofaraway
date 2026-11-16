@@ -2,14 +2,17 @@ import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { Diagnostics, GameOptions, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
+import { facilityZones } from '../../app/game/core/descent-facility';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import type { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { MaterialLibrary } from '../../app/game/graphics/materials/library.client';
+import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
 import { buildRunPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
 import type { Graphics } from '../../app/game/graphics/scene.client';
+import type { BufferGeometry, Material, Mesh, Scene } from 'three';
 import { sectionSignals, shaderMismatches, stoppedRunSignal } from './signals';
 
 const flags: Diagnostics = {
@@ -41,6 +44,26 @@ const harness = {
     return { sharedPath: sim.path === graphics.path && (!sim.junctionPath || sim.junctionPath.base === graphics.path),
       trackDistance: sim.trackDistance, branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
   },
+  meshResources() {
+    const graphics: Graphics = Reflect.get(runtime!, 'graphics');
+    const { scene }: { scene: Scene } = Reflect.get(graphics, 'volume');
+    const geometries = new Set<BufferGeometry>();
+    const materials = new Set<Material>();
+    scene.traverse(node => {
+      const mesh = node as Mesh;
+      if (!mesh.isMesh) return;
+      geometries.add(mesh.geometry);
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) materials.add(material);
+    });
+    let geometryBytes = 0;
+    for (const geometry of geometries) {
+      geometryBytes += geometry.index?.array.byteLength ?? 0;
+      for (const attribute of Object.values(geometry.attributes)) {
+        geometryBytes += ('data' in attribute ? attribute.data.array : attribute.array).byteLength;
+      }
+    }
+    return { materials: materials.size, geometryBytes };
+  },
   advance(beat: number) {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const clock: FixedStepClock = Reflect.get(runtime!, 'clock');
@@ -59,9 +82,10 @@ const harness = {
   },
   streamResources(id: GameOptions['volumeId']) {
     const volume = volumeById(id);
-    const textures = id === 'elsewhere' ? new MaterialLibrary() : buildTextures();
     const path = buildRunPath(volume);
-    const tunnel = new Tunnel(textures, path, volume.topology);
+    const facility = volume.topology === 'facility' ? new DescentFacility(path, facilityZones(volume, 'standard')) : undefined;
+    const textures = id === 'elsewhere' ? new MaterialLibrary() : facility ? undefined : buildTextures();
+    const tunnel = new Tunnel(textures, path, volume.topology, [], false, facility);
     tunnel.update(4200);
     const first = [...tunnel.chunks];
     let disposed = 0;
@@ -81,7 +105,7 @@ const harness = {
     const currentDisposals = disposed;
     tunnel.dispose();
     if (textures instanceof MaterialLibrary) textures.dispose();
-    else for (const texture of Object.values(textures)) texture.dispose();
+    else if (textures) for (const texture of Object.values(textures)) texture.dispose();
     return { counts, expectedDisposals, oldChunksRemoved, currentDisposals, remaining: tunnel.chunks.length };
   },
   async mount(options: Partial<GameOptions> = {}) {

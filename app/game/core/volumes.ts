@@ -2,15 +2,17 @@ import type { BaseDifficulty, VolumeId } from '../contracts';
 import { bpm as daybreakBpm, sections as daybreakScoreSections } from './daybreak-score';
 import { daybreakGateKinds } from './daybreak-gates';
 import type { DaybreakGateKind } from './daybreak-gates';
+import { controlTrack } from './descent-score';
+import type { DescentGateKind } from './descent-gates';
 
-export type GateKind = 'iris' | 'square' | 'diamond' | 'lattice' | 'aperture' | DaybreakGateKind;
-export type Topology = 'conduit' | 'canal' | 'shaft' | 'orbit';
-export type Music = 'techno' | 'breakbeat' | 'industrial' | 'synthwave';
+export type GateKind = 'iris' | 'square' | 'diamond' | 'aperture' | DaybreakGateKind | DescentGateKind;
+export type Topology = 'conduit' | 'canal' | 'facility' | 'orbit';
+export type Music = 'techno' | 'breakbeat' | 'control' | 'synthwave';
 export interface Section {
   name: string;
   beats: number;
-  gap: number;
-  pattern: string;
+  gap?: number;
+  pattern?: string;
   energy: number;
   gateSequence?: readonly GateKind[];
 }
@@ -25,6 +27,7 @@ export interface VolumeDefinition {
   topology: Topology;
   obstacle: Exclude<GateKind, 'square' | 'diamond'>;
   music: Music;
+  soundtrack?: { readonly title: string; readonly tail: number };
   hue: readonly number[];
   lives: Readonly<Record<BaseDifficulty, number>>;
 }
@@ -68,14 +71,11 @@ const daybreakPacing = {
 const SECTIONS_II: readonly Section[] = daybreakScoreSections.map(({ name, startBeat, endBeat }) =>
   ({ name, beats: endBeat - startBeat, pattern: 'step', ...daybreakPacing[name] }));
 
-const SECTIONS_III = [
-  { name: 'MOUTH',  beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.15 },
-  { name: 'FALL',   beats: 96, gap: 3.0,  pattern: 'step',     energy: 0.55 },
-  { name: 'PRESS',  beats: 96, gap: 2.0,  pattern: 'leap',     energy: 0.85 },
-  { name: 'HOLD',   beats: 32, gap: 4.0,  pattern: 'sweep',    energy: 0.35 },
-  { name: 'SHEAR',  beats: 96, gap: 2.0,  pattern: 'leap',     energy: 1.00 },
-  { name: 'BOTTOM', beats: 64, gap: 3.0,  pattern: 'opposite', energy: 0.90 },
-];
+const descentEnergy = {
+  ORDER: .15, LOCK: .55, FLIGHT: .65, PRESSURE: .85, HOLD: .35, LOCKDOWN: 1, BREACH: .75,
+} as const;
+const SECTIONS_III: readonly Section[] = controlTrack.sections.map(({ name, startBeat, endBeat }) =>
+  ({ name, beats: endBeat - startBeat, energy: descentEnergy[name] }));
 
 const SECTIONS_IV = [
   { name: 'LAUNCH', beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.15 },
@@ -122,13 +122,14 @@ export const VOLUMES: readonly VolumeDefinition[] = [
     id: 'descent',
     name: 'DESCENT',
     subtitle: 'VOL. III',
-    bpm: 110,
+    bpm: controlTrack.bpm,
     sections: SECTIONS_III,
-    beats: total(SECTIONS_III),
+    beats: controlTrack.beats,
     seed: 44129,
-    topology: 'shaft',          // vertical drop, ring section
-    obstacle: 'lattice',        // 3x3 plates, one missing
-    music: 'industrial',
+    topology: 'facility',
+    obstacle: 'laser-matrix',
+    music: controlTrack.id,
+    soundtrack: controlTrack,
     hue: [0.03, 0.98, 0.09],
     lives: { easy: 3, normal: 2, hard: 1 },
   },
@@ -150,6 +151,10 @@ export const VOLUMES: readonly VolumeDefinition[] = [
 
 export function volumeById(id: string | null): VolumeDefinition {
   return VOLUMES.find((v) => v.id === (id === 'drift' ? 'daybreak' : id)) || VOLUMES[0];
+}
+
+export function hasAuthoredAudio(volume: VolumeDefinition) {
+  return volume.music === 'breakbeat' || volume.music === 'control';
 }
 
 export function sectionAt(volume: VolumeDefinition, beat: number) {

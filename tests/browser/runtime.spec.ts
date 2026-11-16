@@ -114,6 +114,13 @@ test('context recovery and cached navigation preserve progress and a single fram
   expect(await counts()).toEqual(closed);
 });
 
+test('DESCENT reaches its CONTROL ending in the shared runtime with the laser chart', async ({ page }) => {
+  await page.goto('/?vol=descent&diff=hard&t=170.22&q=low&align=1&god=0&boost=0');
+  await expect(page.locator('#over-title')).toHaveText('ESCAPED');
+  await expect(page.locator('#over-gates')).toHaveText('174/174');
+  await expect(page.locator('#over-acc')).toHaveText('100%');
+});
+
 test('forward and backward streaming evicts chunk-owned resources', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   for (const id of ['elsewhere', 'daybreak', 'descent', 'orbit'] as const) {

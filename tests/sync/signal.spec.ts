@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { VOLUMES } from '../../app/game/core/volumes';
+import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { openSync, report } from './support';
 
 // Voice calls include the absolute step, instrument, and arguments from the C0-B score.
 const scoreDigests = [
   'd6c5c906813db9ed1c3ec07297baab4ecf63ad21cb1cf636300e03c157855f51',
   null,
-  '83c0231a6616cb1261f2a0aecdd8041f85db30d7c813443f98e5f1fc70b743db',
+  null,
   '9f94f49a78430b679a2d6a5ac0a573661104bb13cad60a53750287a7a55cc77b',
 ];
 
@@ -18,6 +18,13 @@ for (const [index, volume] of VOLUMES.entries()) {
     if (volume.music === 'breakbeat') {
       expect(data.sectionVoices.map(section => section.counts._kick).every(count => count > 0)).toBe(true);
       expect(data.sectionVoices[4].counts._snare).toBeGreaterThan(data.sectionVoices[3].counts._snare);
+    } else if (volume.music === 'control') {
+      const hold = data.sectionVoices.find(section => section.section === 'HOLD')!;
+      const lockdown = data.sectionVoices.find(section => section.section === 'LOCKDOWN')!;
+      expect(hold.counts._signal).toBe(9);
+      expect(hold.counts._kick).toBeLessThan(8);
+      expect(lockdown.counts._kick).toBeGreaterThan(hold.counts._kick);
+      expect(data.levels.at(-1)?.tail?.rms).toBeGreaterThan(.001);
     } else expect(data.digest).toBe(scoreDigests[index]);
     expect(data.levels.map(level => level.section)).toEqual([...volume.sections.map(section => section.name), 'tail']);
     for (const level of data.levels) {
@@ -32,7 +39,7 @@ for (const [index, volume] of VOLUMES.entries()) {
     let beat = 0;
     const transitions = [];
     for (const [i, section] of volume.sections.entries()) {
-      if (volume.music !== 'breakbeat' && i > 0 && section.energy > volume.sections[i - 1].energy + 0.05) {
+      if (!hasAuthoredAudio(volume) && i > 0 && section.energy > volume.sections[i - 1].energy + 0.05) {
         transitions.push({ beat: beat - 4, voice: '_riser' }, { beat, voice: '_impact' });
       }
       beat += section.beats;

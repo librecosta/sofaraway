@@ -3,6 +3,8 @@ import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/s
 import { canPass, lanePoint, opening } from '../../app/game/core/collision';
 import type { Axis, Point } from '../../app/game/core/collision';
 import { daybreakGateKinds, daybreakGates, daybreakProfile } from '../../app/game/core/daybreak-gates';
+import { descentGateKinds, laserOpening } from '../../app/game/core/descent-gates';
+import { laserExamples } from '../../app/game/debug/catalog';
 import { SECTION, SECTION_OUTLINE } from '../../app/game/core/section';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateKind } from '../../app/game/core/volumes';
@@ -28,7 +30,7 @@ export function shaderMismatches(id: VolumeId) {
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
       renderer.readRenderTargetPixels(target, 1, 1, 1, 1, pixel);
-      // No MSAA or post-processing in this target. Any colour is a glass fragment.
+      // No MSAA or post-processing in this target. Any colour is a gate fragment.
       const visible = pixel[0] + pixel[1] + pixel[2] > 0;
       if (visible === canPass(kind, open, axis, x, y)) mismatches.push({ kind, axis, open, x, y });
     }
@@ -51,6 +53,18 @@ export function shaderMismatches(id: VolumeId) {
         }
       }
       check(kind, open, 0, points);
+    }
+  } else if (id === 'descent') {
+    for (const kind of descentGateKinds) for (const { open, axis } of laserExamples[kind]) {
+      const { target: [x, y], extent, normal: [nx, ny] } = laserOpening(kind, open, axis);
+      const points: Point[] = [[x, y], [0, 0]];
+      for (let a = -3.2; a < 3.4; a += .43) for (let b = -2.45; b < 2.58; b += .38) points.push([a, b]);
+      for (const sign of [-1, 1]) for (const delta of [-.022, -.004, .004, .022]) {
+        const edge = sign * (extent[0] + delta);
+        points.push([x + nx * edge, y + ny * edge]);
+        if (extent[1] !== null) points.push([x, y + sign * (extent[1] + delta)]);
+      }
+      check(kind, open, axis, points);
     }
   } else for (const axis of [0, 1] as const) {
     for (let sector = 0; sector < 9; sector++) {

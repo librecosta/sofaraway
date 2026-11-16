@@ -6,11 +6,12 @@ import { VOLUMES } from '../../app/game/core/volumes';
 vi.mock('../../app/game/audio/synthesizer.client', () => ({
   createMaster: vi.fn(),
   createBuffers: vi.fn(),
-  Synthesizer: class { playStep = playStep; dispose = disposeRun; },
+  Synthesizer: class { playStep = playStep; dispose = disposeRun; finishAt = finishAt; },
 }));
 
 const playStep = vi.fn<(step: number, at: number, after?: number) => void>();
 const disposeRun = vi.fn();
+const finishAt = vi.fn();
 class Context {
   static active: Context;
   static initialTime = 0;
@@ -160,6 +161,28 @@ test('DAYBREAK keeps notes queued across a 180 ms browser callback delay', async
   expect(transport.diagnostics.missedSteps).toBe(0);
 });
 
+test('CONTROL retires the scheduler at the song boundary and releases the mix on finish or restart', async () => {
+  const volume = VOLUMES[2];
+  const duration = volume.beats * 60 / volume.bpm;
+  await transport.start(volume, duration - .05);
+  expect(finishAt.mock.calls[0][0]).toBeCloseTo(.11);
+  Context.active.currentTime = .11;
+  transport.finish();
+  expect(disposeRun).not.toHaveBeenCalled();
+  advance(1, 1000);
+  expect(disposeRun).not.toHaveBeenCalled();
+  advance(.61, 610);
+  expect(disposeRun).toHaveBeenCalledOnce();
+
+  await transport.start(volume, duration);
+  Context.active.currentTime += .06;
+  transport.finish();
+  await transport.start(VOLUMES[0], 0);
+  expect(disposeRun).toHaveBeenCalledTimes(2);
+  // Only the new run's scheduler remains.
+  expect(vi.getTimerCount()).toBe(1);
+});
+
 test('canceled activation cannot leave a scheduler or replace the next run', async () => {
   class SuspendedContext extends Context {
     override state: AudioContextState = 'suspended';
@@ -176,7 +199,7 @@ test('canceled activation cannot leave a scheduler or replace the next run', asy
   resolve();
   await Promise.resolve();
   expect(vi.getTimerCount()).toBe(1);
-  expect(scheduled()).toEqual([[0, 0.06]]);
+  expect(scheduled()).toEqual([[0, 0.06], [1, .06 + 15 / VOLUMES[2].bpm]]);
   transport.dispose();
   expect(context.close).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);

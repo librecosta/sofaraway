@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlayMode } from '../contracts';
-import { composeDaybreak, composeElsewhere, corridorLength, curveOffset, curveSlope } from '../core/corridor-composition';
+import { composeDaybreak, composeDescent, composeElsewhere, corridorLength, curveOffset, curveSlope } from '../core/corridor-composition';
 import type { CorridorSegment } from '../core/corridor-composition';
 import type { Topology, VolumeDefinition } from '../core/volumes';
 
@@ -34,7 +34,7 @@ export class Path {
   private sampleFrom = 0;
   private runPath?: { frames: number; segments: number };
 
-  constructor(private readonly straightLen: number, private readonly radius: number, topology: Topology,
+  constructor(private readonly straightLen: number, private readonly radius: number, _topology: Topology,
     private readonly straightExtension = false) {
     this.frames = [];
     this.length = 0;
@@ -46,11 +46,6 @@ export class Path {
     this.u = new THREE.Vector3(0, 1, 0);
 
     this._push();
-    if (topology === 'shaft') {
-      this.straight(60);
-      this.bend('down', radius);
-      this.directions = ['down', 'left', 'down', 'right'];
-    }
   }
 
   extend(through: number) {
@@ -158,9 +153,13 @@ export class Path {
     } else if (seg.type === 'bend') {
       const radius = (s1 - s0) / seg.angle;
       const angle = ds / radius;
+      const pitch = seg.axis === 'pitch';
+      const lateral = pitch ? origin.u : origin.r;
+      const sign = pitch ? -1 : 1;
       out.p.addScaledVector(origin.f, radius * Math.sin(angle))
-        .addScaledVector(origin.r, radius * (1 - Math.cos(angle)));
-      out.f.multiplyScalar(Math.cos(angle)).addScaledVector(origin.r, Math.sin(angle));
+        .addScaledVector(lateral, sign * radius * (1 - Math.cos(angle)));
+      out.f.multiplyScalar(Math.cos(angle)).addScaledVector(lateral, sign * Math.sin(angle));
+      if (pitch) out.u.multiplyScalar(Math.cos(angle)).addScaledVector(origin.f, Math.sin(angle));
     } else {
       const arc = seg.arc;
       let lo = 0, hi = arc.length - 1;
@@ -286,5 +285,6 @@ export function buildPath(totalLength: number, straightLen = 150, radius = 46, t
 export function buildRunPath(volume: VolumeDefinition, mode: PlayMode = 'standard') {
   if (volume.id === 'elsewhere') return new Path(150, 46, volume.topology).author(composeElsewhere(volume, mode));
   if (volume.id === 'daybreak') return new Path(150, 46, volume.topology, true).author(composeDaybreak(volume, mode));
+  if (volume.id === 'descent') return new Path(150, 46, volume.topology, true).author(composeDescent(volume, mode));
   return buildPath(corridorLength(volume), 150, 46, volume.topology);
 }

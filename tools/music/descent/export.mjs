@@ -6,20 +6,22 @@ import { parseArgs } from 'node:util';
 import { chromium } from 'playwright';
 import { transformWithOxc } from 'vite';
 import { duration, tail, versions } from './score.mjs';
-import { fullDuration, fullName, fullTail } from './control-full-score.mjs';
+import { controlTrack } from '../../../app/game/core/descent-score.ts';
 
-const { values: { verify, full } } = parseArgs({ options: {
+const { values: { verify, full, prototypes } } = parseArgs({ options: {
   verify: { type: 'boolean' },
   full: { type: 'boolean' },
+  prototypes: { type: 'boolean' },
 } });
-const exports = full ? { full: fullName } : versions;
-const seconds = full ? fullDuration + fullTail : duration + tail;
+if (full && prototypes) throw new Error('Choose --full or --prototypes.');
+const exports = prototypes ? versions : { [controlTrack.id]: 'DESCENT-CONTROL' };
+const seconds = prototypes ? duration + tail : controlTrack.duration + controlTrack.tail;
 const root = new URL('../../../', import.meta.url);
 const output = new URL('scratch/descent-m0/exports/', root);
 const paths = [
-  'tools/music/descent/render.mjs', 'tools/music/descent/score.mjs', 'tools/music/descent/control-full-score.mjs',
-  'tools/music/descent/voices.mjs',
-  'tools/music/daybreak/voices.mjs', 'app/game/audio/daybreak-voices.client.ts',
+  'tools/music/descent/render.mjs', 'tools/music/descent/score.mjs', 'app/game/core/descent-score.ts',
+  'app/game/audio/descent.client.ts', 'app/game/audio/descent-voices.client.ts',
+  'app/game/audio/descent-export.client.ts', 'app/game/audio/daybreak-voices.client.ts',
 ];
 const sources = new Map(await Promise.all(paths.map(async path => {
   const source = await readFile(new URL(path, root), 'utf8');
@@ -37,7 +39,7 @@ try {
     if (pathname === '/') {
       await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Offline rendering</title>' });
     } else {
-      const body = sources.get(pathname);
+      const body = sources.get(pathname) ?? sources.get(pathname + '.ts');
       await route.fulfill(body === undefined ? { status: 404 } : { contentType: 'text/javascript', body });
     }
   });
@@ -45,7 +47,7 @@ try {
   for (const [version, basename] of Object.entries(exports)) {
     const filename = basename + '.wav';
     const [download, metrics] = await Promise.all([
-      page.waitForEvent('download', { timeout: full ? 300_000 : 180_000 }),
+      page.waitForEvent('download', { timeout: prototypes ? 180_000 : 300_000 }),
       page.evaluate(async ({ version, filename, verify }) => {
         const { render } = await import('/tools/music/descent/render.mjs');
         const { blob, ...metrics } = await render(version);
@@ -83,7 +85,7 @@ try {
     assert.ok(metrics.peak > .2 && metrics.peak < .98 && metrics.rms > .025);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     // Allow sub-audible numerical differences in the browser's summing and dynamics.
-    if (verify) assert.ok(metrics.repeat.max <= (full ? 32 : 24) && metrics.repeat.rms < 1,
+    if (verify) assert.ok(metrics.repeat.max <= (prototypes ? 24 : 32) && metrics.repeat.rms < 1,
       version + ' PCM repeat error in 16-bit codes: ' + JSON.stringify(metrics.repeat));
     console.log(JSON.stringify({ file, ...metrics, sha256 }));
   }

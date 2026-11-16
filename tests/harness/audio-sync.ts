@@ -3,11 +3,12 @@ import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/s
 import type { VolumeId } from '../../app/game/contracts';
 import { FixedStepClock } from '../../app/game/core/clock';
 import { rhythmTimeline } from '../../app/game/core/daybreak-score';
+import { controlEvents } from '../../app/game/core/descent-score';
 import { drumOnsets, drumScore, musicStepSeconds } from '../../app/game/core/rhythmic-lights';
 import type { DynamicLightEnvelope } from '../../app/game/core/rhythmic-lights';
 import type { RunTimeline } from '../../app/game/core/clock';
 import type { RunGate, Simulation } from '../../app/game/core/simulation';
-import { sectionAt, volumeById } from '../../app/game/core/volumes';
+import { hasAuthoredAudio, sectionAt, volumeById } from '../../app/game/core/volumes';
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 import type { RuntimeView } from '../../app/game/runtime/GameRuntime.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
@@ -33,7 +34,8 @@ function outputTiming(context: AudioContext | undefined, scheduled?: number) {
     scheduledPerformanceTime: scheduled === undefined ? null : performanceTime + (scheduled - contextTime) * 1000 };
 }
 
-const voices = ['_kick', '_snare', '_hat', '_bass', '_pluck', '_pad', '_riser', '_impact', '_duck'] as const;
+const legacyVoices = ['_kick', '_snare', '_hat', '_bass', '_pluck', '_pad', '_riser', '_impact', '_duck'] as const;
+const voices = [...legacyVoices, '_signal', '_chord', '_metal', '_sweep'] as const;
 
 async function score(id: VolumeId) {
   const volume = volumeById(id);
@@ -49,14 +51,16 @@ async function score(id: VolumeId) {
   regions.push({ section: 'tail', boundary: volume.beats, from: volume.beats - 12, to: volume.beats });
   const levels = [];
   const daybreak = volume.music === 'breakbeat';
-  const buffers = daybreak ? undefined : createBuffers(new OfflineAudioContext(2, 128, rate));
+  const authored = hasAuthoredAudio(volume);
+  const buffers = authored ? undefined : createBuffers(new OfflineAudioContext(2, 128, rate));
   for (const region of regions) {
     const boundary = lead + (region.boundary - region.from) * stepSeconds * 4;
     const end = lead + (region.to - region.from) * stepSeconds * 4;
     const context = new OfflineAudioContext(2, Math.ceil((end + 2.0) * rate), rate);
-    const output = daybreak ? context.createGain() : createMaster(context, 0.8);
-    if (daybreak) output.connect(context.destination);
+    const output = authored ? context.createGain() : createMaster(context, 0.8);
+    if (authored) output.connect(context.destination);
     const synth = new Synthesizer(context, volume, output, buffers);
+    if (region.section === 'tail') synth.finishAt(end);
     for (let step = region.from * 4; step < region.to * 4; step++) {
       synth.playStep(step, lead + (step - region.from * 4) * stepSeconds);
     }
@@ -75,10 +79,15 @@ async function score(id: VolumeId) {
       const voice = hit.kind === 'kick' ? '_kick' : hit.kind === 'hat' ? '_hat' : '_snare';
       events.push({ step: hit.bar * 16 + hit.at, voice, args: [hit.time, hit.strength, hit.kind] });
     }
+  } else if (volume.music === 'control') {
+    for (const event of controlEvents) {
+      events.push({ step: Math.floor(event.at / stepSeconds + 1e-9),
+        voice: event.voice === 'ghost' ? '_snare' : `_${event.voice}`, args: [event] });
+    }
   } else {
     const synth = new Synthesizer(context, volume, createMaster(context, 0.8), buffers);
     let step = 0;
-    for (const voice of voices) Reflect.set(synth.eventSource, voice, (...args: unknown[]) => events.push({ step, voice, args }));
+    for (const voice of legacyVoices) Reflect.set(synth.eventSource, voice, (...args: unknown[]) => events.push({ step, voice, args }));
     for (; step < volume.beats * 4; step++) synth.playStep(step, step * stepSeconds);
   }
   const bytes = new TextEncoder().encode(JSON.stringify(events));
@@ -114,7 +123,7 @@ function frameState(runtime: Runtime) {
     pausedAt: Reflect.get(runtime, 'pausedAt') as number,
     anchor: Reflect.get(audio, 'anchor') as number, offset: Reflect.get(audio, 'offset') as number,
     scheduler: Reflect.get(audio, 'timer') !== undefined, runBus: !!Reflect.get(audio, 'synth'),
-    contextState: ctx?.state ?? null, gain: (Reflect.get(audio, sim.volume.music === 'breakbeat' ? 'daybreakOutput' : 'master') as GainNode | undefined)?.gain.value ?? null };
+    contextState: ctx?.state ?? null, gain: (Reflect.get(audio, hasAuthoredAudio(sim.volume) ? 'authoredOutput' : 'master') as GainNode | undefined)?.gain.value ?? null };
 }
 
 export function installSyncHarness(getRuntime: () => Runtime | undefined) {
@@ -203,13 +212,13 @@ export function installSyncHarness(getRuntime: () => Runtime | undefined) {
       const sim = Reflect.get(runtime, 'simulation') as Simulation;
       const grid = musicStepSeconds(sim.volume.bpm);
       const score = drumScore(sim.volume);
-      const daybreakKicks = sim.volume.music === 'breakbeat' ? new Map(drumOnsets(sim.volume)
-        .filter(event => event.kind === 'kick').map(event => [Math.floor(event.time / grid), event.time])) : undefined;
+      const authoredKicks = hasAuthoredAudio(sim.volume) ? new Map(drumOnsets(sim.volume)
+        .filter(event => event.kind === 'kick').map(event => [Math.floor(event.time / grid + 1e-9), event.time])) : undefined;
       const frames = beatFrames.slice();
       const run = steps.at(-1)?.run;
       return steps.filter(({ step, run: scheduledRun }) => scheduledRun === run && step > 0 && score[step].kick && step % 4 === 0)
         .flatMap(event => {
-          const offset = daybreakKicks ? (daybreakKicks.get(event.step) ?? event.step * grid) - event.step * grid : 0;
+          const offset = authoredKicks ? (authoredKicks.get(event.step) ?? event.step * grid) - event.step * grid : 0;
           const planned = event.step * grid + offset;
           const scheduled = event.at + offset;
           if ((frames.at(-1)?.time ?? 0) < planned + .05) return [];

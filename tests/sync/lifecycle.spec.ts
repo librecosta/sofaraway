@@ -25,6 +25,38 @@ for (const volume of ['descent', 'daybreak'] as const) test(`${volume} dynamic s
   report('dynamic-lights', { volume, measured });
 });
 
+test('CONTROL pauses, resumes, restores its context and starts a fresh run', async ({ page }, info) => {
+  test.skip(info.project.name !== 'chromium', 'Uses the Chromium audio device state.');
+  const errors = await openSync(page);
+  await mount(page, 'descent');
+  await page.locator('#start').click();
+  await phase(page, 'playing');
+  await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(.35);
+  await page.evaluate(() => window.b0Harness.pause());
+  await phase(page, 'paused');
+  const paused = await state(page);
+  expect(paused).toMatchObject({ scheduler: false, runBus: false });
+  await page.locator('#resume').click();
+  await phase(page, 'playing');
+  await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(paused.elapsed);
+  expect((await state(page)).offset).toBeCloseTo(paused.pausedAt, 8);
+
+  await page.evaluate(() => window.syncHarness.setLevel(.35, true));
+  await expect.poll(async () => (await state(page)).gain).toBeLessThan(.02);
+  await page.evaluate(() => window.syncHarness.setLevel(.35, false));
+  await expect.poll(async () => (await state(page)).gain).toBeGreaterThan(.32);
+  const before = await state(page);
+  await page.evaluate(() => window.syncHarness.suspend());
+  await expect.poll(async () => (await state(page)).audio.resumes).toBeGreaterThan(before.audio.resumes);
+  expect(await state(page)).toMatchObject({ phase: 'playing', contextState: 'running', scheduler: true });
+  const priorRun = (await trace(page)).steps.at(-1)!.run;
+  await page.evaluate(() => window.b0Harness.returnToMenu());
+  await page.locator('#start').click();
+  await phase(page, 'playing');
+  expect((await trace(page)).steps.find(item => item.run > priorRun)?.step).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('real activation, pause, visibility, suspend and silent recovery', async ({ page, browser }, info) => {
   const errors = await openSync(page);
   await mount(page, 'orbit');

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { canPass, playerViewOffset } from '../core/collision';
+import { facilityZones } from '../core/descent-facility';
 import { gameplayFor } from '../core/gameplay';
 import { modeScale } from '../core/reference-track';
 import { makeAfterglowAtlas, makeLightingAtlas } from '../core/lighting-atlas';
@@ -13,6 +14,7 @@ import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
 import { DaybreakExterior } from './daybreak-exterior.client';
+import { DescentFacility } from './descent-facility.client';
 import type { CirrusLayer } from './daybreak-cirrus';
 import { makeDaybreakEnvMap, makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
@@ -56,6 +58,9 @@ class VolumeScene {
   private outro?: OutroPlan;
   private sky?: THREE.CanvasTexture | null;
   readonly exterior?: DaybreakExterior;
+  private readonly facility?: DescentFacility;
+  private readonly facilityBackground?: THREE.Color;
+  private readonly gateTint = new THREE.Color();
   private readonly cameraFrame = frame();
   private readonly gateFrame = frame();
   private readonly pickupFrame = frame();
@@ -71,7 +76,7 @@ class VolumeScene {
   private readonly surfaceLibrary?: MaterialLibrary;
   private readonly gameplay;
 
-  constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary,
+  constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary | undefined,
     environmentFor: (sun?: THREE.Vector3) => THREE.Texture | null, readonly path: Path, mode: PlayMode) {
     this.hue = volume.hue[0];
     this.gameplay = gameplayFor(volume.id);
@@ -83,14 +88,19 @@ class VolumeScene {
     this.scene.fog = this.fog;
     try {
       const atlas = makeLightingAtlas(volume, mode);
-      this.tunnel = new Tunnel(textures, this.path, volume.topology, atlas, this.gameplay.world?.continuous);
+      if (volume.topology === 'facility') {
+        this.facility = new DescentFacility(path, facilityZones(volume, mode));
+        this.facilityBackground = new THREE.Color(0x111720);
+        this.fog.density = .0055;
+      }
+      this.tunnel = new Tunnel(textures, this.path, volume.topology, atlas, this.gameplay.world?.continuous, this.facility);
       this.scene.add(this.tunnel.group);
       if (volume.id === 'daybreak') {
         this.exterior = new DaybreakExterior(path);
         this.scene.add(this.exterior.mesh);
         this.tunnel.setSunDirection(this.exterior.sun);
         this.fog.density = .00245;
-      } else this.scene.background = this.sky = makeSky(volume);
+      } else this.scene.background = this.facilityBackground ?? (this.sky = makeSky(volume));
       this.scene.environment = environmentFor(this.exterior?.sun);
       if (this.exterior) this.scene.environmentIntensity = .90;
       if (volume.id === 'elsewhere') {
@@ -155,6 +165,9 @@ class VolumeScene {
       this.scenic.setAfterglow(atlas);
     }
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
+    if (this.facility && this.facilityBackground) {
+      this.facility.light(distance, dynamics.fixtureGain, this.fog.color, this.facilityBackground);
+    }
     const junction = this.junction;
     if (this.scenic) {
       const state = this.scenic.update(distance, lightBeat, lighting?.pattern, sim.phase !== 'menu', dynamics.fixtureGain);
@@ -220,7 +233,7 @@ class VolumeScene {
     }
     if (sim.phase === 'menu') {
       this.setFov(BASE_FOV);
-      if (!this.scenic) this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : (1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, dynamics);
+      if (!this.scenic && !this.facility) this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : (1 - ((sim.beat * 0.5) % 1)) ** 3 * 0.15, dynamics);
       return { focus: null, locked: false };
     }
     if (sim.phase === 'results' || (sim.phase === 'crash' && previousPhase === 'crash')) {
@@ -228,7 +241,7 @@ class VolumeScene {
     }
 
     const pulse = (1 - lightBeat % 1) ** 4;
-    if (!this.scenic && (sim.phase === 'playing' || sim.phase === 'crash')) {
+    if (!this.scenic && !this.facility && (sim.phase === 'playing' || sim.phase === 'crash')) {
       const phase = lightBeat / 32;
       const index = Math.floor(phase);
       const hue = this.volume.hue;
@@ -262,7 +275,9 @@ class VolumeScene {
       }
       const ahead = gate.routeStation - sim.distance;
       const tone = route && junction ? junction.tones[route] : undefined;
-      if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale, 'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation)) continue;
+      const laser = this.facility?.laserTint(gate.worldStation, this.gateTint);
+      if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale,
+        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, laser)) continue;
       if (!route || route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
@@ -412,7 +427,8 @@ export class Graphics {
     const path = this.corridor = existingPath ?? buildRunPath(definition, mode);
     this.mode = mode;
     this.volume = this.withCoreShaders(() => {
-      const materials = definition.id === 'elsewhere' ? new MaterialLibrary() : this.textures ??= buildTextures();
+      const materials = definition.id === 'elsewhere' ? new MaterialLibrary()
+        : definition.topology === 'facility' ? undefined : this.textures ??= buildTextures();
       return new VolumeScene(definition, materials, sun => this.environmentFor(sun), path, mode);
     });
     this.updateExteriorDetail();

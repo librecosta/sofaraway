@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { BeatInspection } from '../components/BeatInspection';
+import { DescentFacilityPreview } from '../components/DescentFacilityPreview';
 import { EndSequenceStudio } from '../components/EndSequenceStudio';
 import { UIStateStudio } from '../components/UIStateStudio';
 import type { VolumeId } from '../game/contracts';
@@ -11,9 +12,11 @@ import type { LightPattern } from '../game/core/lighting-score';
 import { PICKUP_BEAT } from '../game/core/pickups';
 import { chartFor } from '../game/core/chart';
 import { daybreakGates, isDaybreakGate } from '../game/core/daybreak-gates';
+import { isDescentGate } from '../game/core/descent-gates';
+import type { GateKind } from '../game/core/volumes';
 import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
-import { cabinViews, catalog, gateDescription, pickupCards } from '../game/debug/catalog';
+import { cabinViews, catalog, gateDescription, laserExamples, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
 import { curveExamples, scenicExamples } from '../game/debug/scenic-catalog';
 import type { ScenicPreview } from '../game/debug/scenic-preview.client';
@@ -42,6 +45,7 @@ function Soundtrack() {
     <h2>Soundtrack</h2>
     <p>Inspect the soundtrack, audition individual DAYBREAK instruments or export the official mix as WAV.</p>
     <Link to={'/debug/audio/' + (query ? '?' + query : '')}>Open Audio Inspector</Link>
+    <p><Link to="/debug/audio/?vol=descent">DESCENT — CONTROL</Link></p>
   </section>;
 }
 
@@ -252,7 +256,7 @@ export default function DebugOverview() {
   const models = useRef<ModelPreviews>(null);
   const [angle, setAngle] = useState(initialAngle);
   const [gateAngle, setGateAngle] = useState(0);
-  const [gateOpenings, setGateOpenings] = useState<Partial<Record<keyof typeof daybreakGates, number>>>({});
+  const [gateOpenings, setGateOpenings] = useState<Partial<Record<GateKind, number>>>({});
   useEffect(() => { models.current?.drawGates(gateAngle, true); }, [gateAngle, gateOpenings]);
   const [modelStatus, setModelStatus] = useState('Loading the 3D previews…');
   const [worldStatus, setWorldStatus] = useState('Rendering the four worlds…');
@@ -323,7 +327,7 @@ export default function DebugOverview() {
       <header className={s.header}>
         <a href="/" className={s.brand}>SoFaraway</a>
         <nav aria-label="Debug sections">
-          <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#daybreak-cabin">Skyglass</a><a href="#gates">Gates</a>
+          <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#daybreak-cabin">Skyglass</a><a href="#descent">DESCENT</a><a href="#gates">Gates</a>
           <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#lighting">Lighting</a><a href="#s-curve">S-Curve</a>
           <a href="#outro">Ending</a><a href="#ui-states">UI States</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
@@ -390,9 +394,11 @@ export default function DebugOverview() {
           </div>
         </section>
 
+        <DescentFacilityPreview />
+
         <section id="gates" className={s.section}>
           <h2>Gate library</h2>
-          <p>Inspect the glass and its opening. DAYBREAK includes the complete Crystal layout and all six openings.</p>
+          <p>Inspect the gate geometry and its openings.</p>
           <div className={s.gateLibrary}>
             {catalog.map(({ volume, gates }) => (
               <div key={volume.id} id={`gates-${volume.id}`} className={gates.length > 1 ? s.gateGroupWide : s.gateGroup}>
@@ -406,21 +412,23 @@ export default function DebugOverview() {
                 <div className={gates.length > 1 ? s.trio : s.gateSingle}>
                   {gates.map(kind => {
                     const { label, note } = gateDescription(kind);
-                    const openings = isDaybreakGate(kind) ? daybreakGates[kind].openings : undefined;
-                    const open = isDaybreakGate(kind) ? gateOpenings[kind] ?? (kind === 'daybreak-crystal' ? -1 : 0) : undefined;
+                    const glass = isDaybreakGate(kind);
+                    const openings = glass ? daybreakGates[kind].openings
+                      : isDescentGate(kind) ? laserExamples[kind].map(example => example.label) : undefined;
+                    const open = openings ? gateOpenings[kind] ?? (kind === 'daybreak-crystal' ? -1 : 0) : undefined;
                     return (
                       <figure key={kind} className={s.card}>
                         <Preview id={kind} label={`${label} gate`} open={open} />
                         <figcaption className={s.caption}>
                           <strong className={s.gateName}>{label}</strong><p>{note}</p>
-                          {isDaybreakGate(kind) && daybreakGates[kind].openings.length > 1 && <label className={s.surfaceSelect}>{label} opening <select
+                          {openings && openings.length > 1 && <label className={s.surfaceSelect}>{label} opening <select
                             aria-label={`${label} opening`} value={open}
                             disabled={!modelReady} onChange={event => {
                               const value = Number(event.currentTarget.value);
                               setGateOpenings(previous => ({ ...previous, [kind]: value }));
                             }}>
-                            <option value={-1}>Complete layout</option>
-                            {openings?.map((name, index) => <option key={name} value={index}>{index + 1} · {name}</option>)}
+                            {glass && <option value={-1}>Complete layout</option>}
+                            {openings.map((name, index) => <option key={name} value={index}>{index + 1} · {name}</option>)}
                           </select></label>}
                         </figcaption>
                       </figure>

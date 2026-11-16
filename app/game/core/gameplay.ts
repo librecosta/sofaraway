@@ -13,7 +13,7 @@ interface GameplaySpec {
   pickup?: PickupSpec;
   encore?: 'legacy' | EncoreSpec;
   ending?: { beats: number; protectGates: boolean };
-  world?: { continuous: boolean; settleResults: boolean };
+  world?: { continuous: boolean; settleResults: boolean; modePath?: boolean };
 }
 
 const window = daybreakJunctionWindow;
@@ -35,6 +35,7 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
     ending: { beats: 12, protectGates: true },
     world: { continuous: true, settleResults: true },
   },
+  descent: { world: { continuous: false, settleResults: true, modePath: true } },
 };
 
 export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }

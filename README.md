@@ -22,7 +22,7 @@ different arrangement — but the same engine underneath.
 |---|---|---|---|---|---|
 | **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 141 / 145 / 157 (Main / Challenge / Bonus) |
 | **II · DAYBREAK** | enclosed skyglass cabin | **Crystal / Crystal 45° / Vertical / Horizontal** — radial slices and geometric windows | breakbeat · 120 | 2:24 | 97 |
-| **III · DESCENT** | vertical shaft | **lattice** — one of eight plates missing, centre always solid | industrial · 110 | 3:38 | 158 |
+| **III · DESCENT** | industrial security facility and vertical well | **Matrix 3×3**, **Slice Gate**, **Diagonal Weave** | CONTROL · 136 | 2:49 | 174 |
 | **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:12 | 91 |
 
 The soundtrack sets the palette, the light pulses and the spacing of gates.

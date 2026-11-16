@@ -23,15 +23,15 @@ export function inspectorSource(ctx: BaseAudioContext, score: InspectorScore, ou
   };
 
   if (score.volume.music !== 'breakbeat') {
-    // The legacy production chain owns its destination. Put its final output
-    // through the inspector's transport gain and master control.
-    const synth = new Synthesizer(ctx, score.volume, createMaster(ctx, .8, master),
-      createBuffers(ctx, randomSource(score.volume.seed)));
+    const authored = score.volume.music === 'control';
+    const synth = authored ? new Synthesizer(ctx, score.volume, master)
+      : new Synthesizer(ctx, score.volume, createMaster(ctx, .8, master), createBuffers(ctx, randomSource(score.volume.seed)));
     applyMaster(settings, audition);
     return {
       playStep: (step: number, at: number, after = -Infinity) => {
-        if (step * score.step > after) synth.playStep(step, at);
+        if (authored || step * score.step > after) synth.playStep(step, at, after);
       },
+      finishAt: (end: number) => synth.finishAt(end),
       update: (mix: Mix, _solo: DaybreakStem | null, track: TrackId | null, at?: number) => applyMaster(mix, track, at),
       dispose: () => { synth.dispose(); master.disconnect(); },
     };

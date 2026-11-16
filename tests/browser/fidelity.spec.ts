@@ -5,10 +5,10 @@ import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 
-const expectedCounts = [[140, 141, 141], [120, 120, 120], [158, 158, 158], [91, 91, 91]];
-// ELSEWHERE defaults to Main. DESCENT and ORBIT retain their A0 scores.
+const expectedCounts = [[140, 141, 141], [120, 120, 120], [174, 174, 174], [91, 91, 91]];
+// ELSEWHERE defaults to Main. DESCENT totals follow the laser chart.
 const expectedScores = [[66201, 105326, 156826], [56470, 89395, 133295],
-  [75314, 119039, 177339], [41444, 65069, 96569]];
+  [82790, 131315, 196015], [41444, 65069, 96569]];
 
 for (const [index, volume] of VOLUMES.entries()) {
   test(`${volume.id} completes all difficulties with collision enabled`, async ({ page }) => {

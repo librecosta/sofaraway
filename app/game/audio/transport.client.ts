@@ -1,10 +1,11 @@
+import { hasAuthoredAudio } from '../core/volumes';
 import type { VolumeDefinition } from '../core/volumes';
 import { musicStepSeconds } from '../core/rhythmic-lights';
 import { createBuffers, createMaster, Synthesizer } from './synthesizer.client';
 
 const LEAD = 0.06;
 const LOOKAHEAD = 0.12;
-const DAYBREAK_LOOKAHEAD = 0.22;
+const AUTHORED_LOOKAHEAD = 0.22;
 const GRID_EPSILON = 1e-9;
 const ACTIVATION_TIMEOUT = 2000;
 type Interruption = 'audio';
@@ -16,10 +17,12 @@ function emptyDiagnostics() {
 export class AudioTransport {
   private context?: AudioContext;
   private master?: GainNode;
-  private daybreakOutput?: GainNode;
+  private authoredOutput?: GainNode;
   private buffers?: ReturnType<typeof createBuffers>;
   private synth?: Synthesizer;
   private timer?: ReturnType<typeof setInterval>;
+  private tailTimer?: ReturnType<typeof setTimeout>;
+  private tailUntil = 0;
   private anchor = 0;
   runOrigin = 0;
   readonly diagnostics = emptyDiagnostics();
@@ -28,8 +31,8 @@ export class AudioTransport {
   private nextStepAt = Infinity;
   private lastScheduledStep = -1;
   private playedThrough = -1;
-  private daybreakThrough = -Infinity;
-  private daybreak = false;
+  private authoredThrough = -Infinity;
+  private authored = false;
   private cancelActivation?: () => void;
   private generation = 0;
   private disposed = false;
@@ -113,15 +116,15 @@ export class AudioTransport {
     if (generation !== this.generation || ctx.state !== 'running') return false;
 
     const level = this.muted ? 0 : this.volume;
-    this.daybreak = volume.music === 'breakbeat';
+    this.authored = hasAuthoredAudio(volume);
     let output: GainNode;
-    if (this.daybreak) {
-      if (!this.daybreakOutput) {
-        this.daybreakOutput = ctx.createGain();
-        this.daybreakOutput.gain.value = level;
-        this.daybreakOutput.connect(ctx.destination);
+    if (this.authored) {
+      if (!this.authoredOutput) {
+        this.authoredOutput = ctx.createGain();
+        this.authoredOutput.gain.value = level;
+        this.authoredOutput.connect(ctx.destination);
       }
-      output = this.daybreakOutput;
+      output = this.authoredOutput;
     } else {
       output = this.master ??= createMaster(ctx, level);
       this.buffers ??= createBuffers(ctx);
@@ -135,9 +138,14 @@ export class AudioTransport {
     const stepTime = musicStepSeconds(volume.bpm);
     this.stepSeconds = stepTime;
     const endStep = volume.beats * 4;
-    const lookahead = this.daybreak ? DAYBREAK_LOOKAHEAD : LOOKAHEAD;
-    let cutoff = resume && this.daybreak ? Math.max(offset - GRID_EPSILON, this.daybreakThrough) : offset - GRID_EPSILON;
-    let step = this.daybreak ? Math.max(0, Math.floor(cutoff / stepTime))
+    if (volume.soundtrack?.tail) {
+      const end = this.anchor + endStep * stepTime;
+      synth.finishAt(end);
+      this.tailUntil = end + volume.soundtrack.tail;
+    }
+    const lookahead = this.authored ? AUTHORED_LOOKAHEAD : LOOKAHEAD;
+    let cutoff = resume && this.authored ? Math.max(offset - GRID_EPSILON, this.authoredThrough) : offset - GRID_EPSILON;
+    let step = this.authored ? Math.max(0, Math.floor(cutoff / stepTime))
       : Math.max(0, Math.ceil(cutoff / stepTime), this.playedThrough + 1);
     this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
     const schedule = () => {
@@ -146,21 +154,21 @@ export class AudioTransport {
       let late = false;
       while (this.nextStepAt < horizon) {
         const now = ctx.currentTime;
-        // DAYBREAK may still have swung or staggered notes after the grid tick.
-        if (this.nextStepAt + (this.daybreak ? stepTime : 0) < now) {
-          const future = Math.min(endStep, Math.max(step + 1, this.daybreak
+        // Authored events may fall after the step that schedules them.
+        if (this.nextStepAt + (this.authored ? stepTime : 0) < now) {
+          const future = Math.min(endStep, Math.max(step + 1, this.authored
             ? Math.floor((now - this.anchor) / stepTime) : Math.ceil((now - this.anchor) / stepTime)));
           if (!late) this.diagnostics.lateCallbacks++;
           late = true;
           this.diagnostics.missedSteps += future - step;
           this.diagnostics.maxDelaySeconds = Math.max(this.diagnostics.maxDelaySeconds, now - this.nextStepAt);
           this.playedThrough = Math.max(this.playedThrough, future - 1);
-          if (this.daybreak) cutoff = Math.max(cutoff, now - this.anchor);
+          if (this.authored) cutoff = Math.max(cutoff, now - this.anchor);
           step = future;
           this.nextStepAt = step < endStep ? this.anchor + step * stepTime : Infinity;
           continue;
         }
-        if (this.daybreak) synth.playStep(step, this.nextStepAt, Math.max(cutoff, now - this.anchor));
+        if (this.authored) synth.playStep(step, this.nextStepAt, Math.max(cutoff, now - this.anchor));
         else synth.playStep(step, this.nextStepAt);
         this.lastScheduledStep = step;
         step++;
@@ -183,20 +191,31 @@ export class AudioTransport {
 
   resetDiagnostics() { Object.assign(this.diagnostics, emptyDiagnostics()); }
 
+  finish() {
+    const remaining = this.tailUntil - (this.context?.currentTime ?? 0);
+    if (remaining <= 0) { this.stop(); return; }
+    clearInterval(this.timer);
+    this.timer = undefined;
+    this.tailTimer = setTimeout(() => this.stop(), remaining * 1000);
+  }
+
   stop(keepPosition = false) {
     if (keepPosition && this.synth && this.context) {
       // Keep the last rendered step separate from the simulation's last committed tick.
       const rendered = Math.floor((this.context.currentTime - this.anchor + GRID_EPSILON) / this.stepSeconds);
       this.playedThrough = Math.max(this.playedThrough, Math.min(this.lastScheduledStep, rendered));
-      if (this.daybreak) this.daybreakThrough = Math.max(this.daybreakThrough, this.context.currentTime - this.anchor);
+      if (this.authored) this.authoredThrough = Math.max(this.authoredThrough, this.context.currentTime - this.anchor);
     } else if (!keepPosition) {
       this.playedThrough = -1;
-      this.daybreakThrough = -Infinity;
+      this.authoredThrough = -Infinity;
     }
     this.generation++;
     this.cancelActivation?.();
     if (this.timer !== undefined) clearInterval(this.timer);
     this.timer = undefined;
+    clearTimeout(this.tailTimer);
+    this.tailTimer = undefined;
+    this.tailUntil = 0;
     this.synth?.dispose();
     this.synth = undefined;
     this.nextStepAt = Infinity;
@@ -208,7 +227,7 @@ export class AudioTransport {
     this.muted = muted;
     if (this.context) {
       const now = this.context.currentTime;
-      for (const output of [this.master, this.daybreakOutput]) {
+      for (const output of [this.master, this.authoredOutput]) {
         output?.gain.cancelScheduledValues(now);
         output?.gain.setTargetAtTime(muted ? 0 : volume, now, 0.05);
       }
@@ -223,13 +242,13 @@ export class AudioTransport {
       this.context.onstatechange = null;
       void this.context.close().catch(() => {});
     }
-    this.context = this.master = this.daybreakOutput = this.buffers = undefined;
+    this.context = this.master = this.authoredOutput = this.buffers = undefined;
   }
 
   private audioContext() {
     if (this.context?.state === 'closed') {
       this.context.onstatechange = null;
-      this.context = this.master = this.daybreakOutput = this.buffers = undefined;
+      this.context = this.master = this.authoredOutput = this.buffers = undefined;
       this.lastHover = -Infinity;
     }
     return this.context ??= this.createContext();

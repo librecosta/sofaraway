@@ -2,6 +2,42 @@ import { expect, test } from '@playwright/test';
 
 const waveformsReadyTimeout = 90_000;
 
+test('CONTROL shares the production master, preserves the release and skips elapsed attacks', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/?audio-inspector');
+  await page.waitForFunction(() => typeof window.inspectControlRouting === 'function');
+  const result = await page.evaluate(() => window.inspectControlRouting());
+  expect(result.mix.rms).toBeLessThan(.00003);
+  expect(result.tail.rms).toBeGreaterThan(.01);
+  expect(result.tailEnd.rms).toBeLessThan(.00005);
+  expect(result.upcoming.rms).toBeGreaterThan(.01);
+  expect(result.elapsed.peak).toBe(0);
+});
+
+test('DESCENT routes to CONTROL with authored sections, a rendered waveform and working seek and resume', async ({ page }) => {
+  test.setTimeout(waveformsReadyTimeout + 30_000);
+  await page.goto('/debug/?vol=descent#audio');
+  await page.getByRole('link', { name: 'DESCENT — CONTROL' }).click();
+  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=descent$/);
+  await expect(page.getByText('136 BPM', { exact: true })).toBeVisible();
+  await expect(page.getByText('384 beats', { exact: true })).toBeVisible();
+  const sections = page.getByRole('navigation', { name: 'Music sections' });
+  expect(await sections.getByRole('button').allTextContents()).toEqual(
+    ['ORDER', 'LOCK', 'FLIGHT', 'PRESSURE', 'HOLD', 'LOCKDOWN', 'BREACH']);
+  await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: waveformsReadyTimeout });
+  const position = page.getByLabel('Playback position');
+  await sections.getByRole('button', { name: 'HOLD' }).click();
+  await expect(position).toHaveText('01:52.94');
+  await page.getByRole('button', { name: 'Play all' }).click();
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
+  await expect(position).not.toHaveText('01:52.94');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await sections.getByRole('button', { name: 'LOCKDOWN' }).click();
+  await expect(position).toHaveText('02:07.05');
+  await page.getByRole('button', { name: 'Play Master' }).click();
+  await expect(page.getByText('Playing · Master')).toBeVisible();
+  await expect(position).not.toHaveText('02:07.05');
+});
+
 test('DAYBREAK stems null against the production mix and isolate sound and reverb', async ({ page }, info) => {
   await page.goto('http://127.0.0.1:8090/?audio-inspector');
   await page.waitForFunction(() => typeof window.inspectAudioRouting === 'function');

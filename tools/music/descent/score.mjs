@@ -1,9 +1,9 @@
-export const bpm = 136;
-export const step = 15 / bpm;
+import { harmony, makeControlOpening, step } from '../../../app/game/core/descent-score.ts';
+export { bpm, seed, step } from '../../../app/game/core/descent-score.ts';
+
 export const bars = 48;
 export const duration = bars * 16 * step;
 export const tail = 1.4;
-export const seed = 0xd35ce17;
 
 export const versions = {
   A: 'DESCENT-M0-A-CONTROL',
@@ -20,15 +20,6 @@ export const sections = [
   { name: 'BREAKTHROUGH', start: 40, chords: 'F A D E D G C F' },
 ];
 
-// Bass, three-note signal, and tightly spaced chord. MIDI pitches.
-export const harmony = {
-  F: [30, [66, 73, 68], [54, 57, 61, 68]],
-  D: [38, [62, 69, 64], [54, 57, 62, 64]],
-  E: [28, [64, 71, 66], [55, 59, 64, 66]],
-  A: [33, [64, 69, 71], [52, 57, 61, 71]],
-  G: [31, [67, 74, 69], [55, 59, 62, 69]],
-  C: [37, [65, 68, 71], [53, 56, 59, 61]],
-};
 const phrases = sections.flatMap(({ name, chords, start }) =>
   chords.split(' ').map((key, index) => ({ name, key, index, bar: start + index })));
 
@@ -36,10 +27,6 @@ const phrases = sections.flatMap(({ name, chords, start }) =>
 // the phrase turnover. Drums only ornament openings left by the motif.
 const rhythm = {
   A: {
-    ORDER: [
-      [[0, 8], [], [6, 14]], [[0, 8, 13], [12], [2, 6, 10, 14]],
-      [[0, 4, 8], [4, 12], [2, 6, 10, 14]], [[0, 6, 8, 12], [4, 12], [2, 6, 10, 15]],
-    ],
     LOCK: [
       [[0, 4, 8, 11, 12], [4, 12], [2, 6, 10, 14]],
       [[0, 3, 6, 8, 12], [4, 12], [2, 6, 10, 14, 15]],
@@ -100,7 +87,6 @@ const rhythm = {
 // Offset, length in sixteenths, and articulation, all in the chord's low register.
 const bassLines = {
   A: {
-    ORDER: [[1, 2.1, .72], [9, 2.0, .57]],
     LOCK: [[1, 1.7, .83], [3, 1.0, .51], [6, 1.4, .67], [9, 2.0, .77], [14, 1.4, .58]],
     FLIGHT: [[1, 2.5, .88], [6, 1.2, .55], [9, 1.5, .77], [13, 1.8, .74]],
     PRESSURE: [[1, 1.5, .93], [3, .9, .50], [5, 1.6, .76], [9, 1.8, .82], [13, 1.8, .72]],
@@ -123,8 +109,9 @@ const transitions = new Set([7, 15, 27, 35, 39, 46]);
 export function makeScore(version) {
   if (!Object.hasOwn(versions, version)) throw new RangeError('Choose A or B.');
   const breach = version === 'B';
-  const events = [];
+  const events = breach ? [] : makeControlOpening();
   for (const { name, key, index, bar } of phrases) {
+    if (!breach && name === 'ORDER') continue;
     const [root, motif, chord] = harmony[key];
     const phraseEnd = index % 4 === 3;
     const cut = cutoffs[bar] ?? 16;

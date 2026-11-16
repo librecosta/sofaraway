@@ -1,5 +1,7 @@
 import { chartFor } from '../core/chart';
 import { daybreakGateKinds, daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
+import { descentDirections, isDescentGate } from '../core/descent-gates';
+import type { DescentGateKind } from '../core/descent-gates';
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
 
@@ -19,11 +21,32 @@ const gateNotes = {
   iris: 'One open wedge around a solid hub.',
   square: 'Fixed square opening at the centre.',
   diamond: 'Fixed diamond opening at the centre.',
-  lattice: 'One missing outer plate. The centre stays solid.',
   aperture: 'A round opening offset from the centre.',
 };
 
+const laserDescriptions = {
+  'laser-matrix': { label: 'Matrix 3×3', note: 'Interlaced laser cells with one of eight outer cells open.' },
+  'laser-slice': { label: 'Slice Gate', note: 'Parallel laser banks leave a full-width or full-height passage.' },
+  'laser-weave': { label: 'Diagonal Weave', note: 'Mirrored laser banks frame a diagonal passage.' },
+};
+
+type LaserExample = { label: string; open: number; axis: 0 | 1 };
+export const laserExamples: Record<DescentGateKind, readonly LaserExample[]> = {
+  'laser-matrix': descentDirections.map((direction, open) => ({ label: direction, open, axis: 0 })),
+  'laser-slice': [
+    { label: 'Vertical · left', open: 4, axis: 0 }, { label: 'Vertical · centre', open: 2, axis: 0 },
+    { label: 'Vertical · right', open: 0, axis: 0 }, { label: 'Horizontal · top', open: 2, axis: 1 },
+    { label: 'Horizontal · middle', open: 0, axis: 1 }, { label: 'Horizontal · bottom', open: 6, axis: 1 },
+  ],
+  'laser-weave': [
+    { label: 'Rising · centre', open: 1, axis: 0 }, { label: 'Rising · upper', open: 4, axis: 0 },
+    { label: 'Rising · lower', open: 0, axis: 0 }, { label: 'Falling · centre', open: 3, axis: 1 },
+    { label: 'Falling · upper', open: 0, axis: 1 }, { label: 'Falling · lower', open: 4, axis: 1 },
+  ],
+};
+
 export function gateDescription(kind: GateKind) {
+  if (isDescentGate(kind)) return laserDescriptions[kind];
   if (isDaybreakGate(kind)) {
     const { label } = daybreakGates[kind];
     return { label, note: kind === 'daybreak-crystal' ? 'One of eight radial slices opens around a solid octagonal hub.'

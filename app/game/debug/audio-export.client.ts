@@ -1,6 +1,7 @@
 import { createBuffers, createMaster, Synthesizer } from '../audio/synthesizer.client';
 import type { VolumeDefinition } from '../core/volumes';
 import { renderDaybreak } from '../audio/daybreak-export.client';
+import { encodeDescentWav, renderDescent } from '../audio/descent-export.client';
 
 function encodeWav(buffer: AudioBuffer) {
   const { numberOfChannels: channels, length, sampleRate } = buffer;
@@ -46,6 +47,7 @@ export async function exportSoundtrack(volume: VolumeDefinition, seconds?: numbe
     const buffer = await renderDaybreak(duration, signal);
     return { blob: encodeWav(buffer), duration: buffer.duration };
   }
+  if (volume.music === 'control') return encodeDescentWav(await renderDescent(undefined, duration, signal));
   const tail = duration < songDuration ? 2 : 4;
   const context = new OfflineAudioContext(2, Math.ceil(sampleRate * (duration + tail)), sampleRate);
   const synth = new Synthesizer(context, volume, createMaster(context, 0.8), createBuffers(context));

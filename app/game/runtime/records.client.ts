@@ -5,8 +5,12 @@ import { VOLUMES } from '../core/volumes';
 
 export const RECORDS_KEY = 'sofaraway.records.v1';
 const daybreakRecordIds = ['drift', 'daybreak-skyglass', 'daybreak-crystal', 'daybreak-gameplay', 'daybreak-choreography'] as const;
-type RecordId = VolumeId | typeof daybreakRecordIds[number];
-const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-choreography' : volume;
+const controlRecordId = 'descent-control';
+const laserRecordId = 'descent-laser-security';
+const choreographyRecordId = 'descent-laser-choreography';
+type RecordId = VolumeId | typeof daybreakRecordIds[number] | typeof controlRecordId | typeof laserRecordId | typeof choreographyRecordId;
+const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-choreography'
+  : volume === 'descent' ? choreographyRecordId : volume;
 
 interface RecordsV1 {
   version: 1;
@@ -39,7 +43,13 @@ export function parseRecords(raw: string | null): RecordsV1 {
   try { source = object(JSON.parse(raw ?? 'null')); } catch { return records; }
   if (source.version !== 1) return records;
   const standard = object(source.standard), sightseeing = object(source.sightseeing);
-  const ids = [...VOLUMES.map(({ id }) => ({ id, volume: id })), ...daybreakRecordIds.map(id => ({ id, volume: 'daybreak' as const }))];
+  const ids: { id: RecordId; volume: VolumeId }[] = [
+    ...VOLUMES.map(({ id }) => ({ id, volume: id })),
+    ...daybreakRecordIds.map(id => ({ id, volume: 'daybreak' as const })),
+    { id: controlRecordId, volume: 'descent' },
+    { id: laserRecordId, volume: 'descent' },
+    { id: choreographyRecordId, volume: 'descent' },
+  ];
   for (const { id, volume } of ids) {
     const entries = object(standard[id]);
     for (const difficulty of id === recordId(volume) ? difficultiesFor(volume) : difficulties) {

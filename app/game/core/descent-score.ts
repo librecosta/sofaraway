@@ -1,9 +1,73 @@
-import { harmony, makeScore, step } from './score.mjs';
+export const bpm = 136;
+export const step = 15 / bpm;
+export const seed = 0xd35ce17;
 
-export const fullBars = 96;
-export const fullDuration = fullBars * 16 * step;
-export const fullTail = 1.6;
-export const fullName = 'DESCENT-M0-A1-CONTROL-FULL';
+export type DescentEvent = { at: number; velocity: number } & (
+  | { voice: 'kick' | 'snare' | 'ghost' }
+  | { voice: 'hat'; pan: number; open: boolean }
+  | { voice: 'bass'; note: number; length: number }
+  | { voice: 'signal'; note: number; length: number; pan: number }
+  | { voice: 'chord'; notes: readonly number[]; length: number }
+  | { voice: 'metal'; note: number; pan: number }
+  | { voice: 'sweep'; length: number; falling: boolean }
+);
+
+// Bass, three-note signal, and tightly spaced chord. MIDI pitches.
+export const harmony = {
+  F: [30, [66, 73, 68], [54, 57, 61, 68]],
+  D: [38, [62, 69, 64], [54, 57, 62, 64]],
+  E: [28, [64, 71, 66], [55, 59, 64, 66]],
+  A: [33, [64, 69, 71], [52, 57, 61, 71]],
+  G: [31, [67, 74, 69], [55, 59, 62, 69]],
+  C: [37, [65, 68, 71], [53, 56, 59, 61]],
+} as const;
+
+// The full arrangement quotes the first eight bars of prototype CONTROL.
+export function makeControlOpening(): DescentEvent[] {
+  const cells = [
+    [[0, 8], [], [6, 14]], [[0, 8, 13], [12], [2, 6, 10, 14]],
+    [[0, 4, 8], [4, 12], [2, 6, 10, 14]], [[0, 6, 8, 12], [4, 12], [2, 6, 10, 15]],
+  ];
+  const events: DescentEvent[] = [];
+  for (const [bar, key] of (['F', 'F', 'F', 'G', 'F', 'F', 'D', 'C'] as const).entries()) {
+    const [root, motif, chord] = harmony[key];
+    const cut = bar === 7 ? 12 : 16;
+    const [kicks, snares, hats] = cells[bar % 4];
+    const put = (voice: DescentEvent['voice'], hit: number, velocity: number, extra = {}) =>
+      events.push({ voice, at: (bar * 16 + hit) * step, velocity, ...extra } as DescentEvent);
+    for (const hit of kicks) if (hit < cut) put('kick', hit, hit === 0 ? 1 : hit % 4 === 0 ? .83 : .73);
+    for (const hit of snares) if (hit < cut) put('snare', hit, hit >= 12 ? .87 : .97);
+    if (bar === 3 || bar === 7) {
+      for (const hit of [3, 11, 14]) if (hit < cut && !snares.includes(hit) && !kicks.includes(hit)) {
+        put('ghost', hit, hit === 14 ? .41 : .27);
+      }
+    }
+    for (const hit of hats) if (hit < cut) {
+      put('hat', hit, hit % 4 === 2 ? .76 : .40, { pan: hit < 8 ? -.24 : .32, open: hit === 14 && bar % 2 === 0 });
+    }
+    if (bar > 1) {
+      put('bass', 1, .72, { note: root, length: Math.min(2.1, cut - 1) * step });
+      put('bass', 9, .57, { note: root, length: Math.min(2.0, cut - 9) * step });
+    }
+    if (bar === 0 || (bar >= 4 && bar % 2 === 0)) {
+      put('chord', bar === 0 ? 0 : 2, .70, { notes: chord, length: .22 });
+    }
+    if (bar % 2 === 0) {
+      const motifForm = bar % 4 === 2 ? [[5, 1], [10, 2], [13, 0]] : [[2, 0], [6, 1], [9, 2]];
+      for (const [j, [hit, degree]] of motifForm.entries()) {
+        put('signal', hit, [.81, .58, .64][j], { note: motif[degree], length: j === 2 ? .21 : .12, pan: [-.18, .28, -.08][j] });
+      }
+    } else if (bar === 5) {
+      put('signal', 11, .48, { note: motif[0], length: .13, pan: .24 });
+    }
+    if (bar > 3 && bar % 2 === 1 && !snares.includes(11)) put('metal', 11, .58, { pan: .36, note: motif[1] - 12 });
+    if (bar === 7) put('sweep', 11, .63, { length: 5 * step, falling: false });
+  }
+  return events.sort((a, b) => a.at - b.at);
+}
+
+const fullBars = 96;
+const beatsPerBar = 4;
 
 // Four bars per row. Each column gives the harmony, groove, signal
 // and chord punctuation. Dots leave the corresponding voice silent.
@@ -43,10 +107,22 @@ const sections = [
     ['F A D E', 'release carry release drift', 'a.r.', 'x..x'],
     ['D G C F', 'carry drift close void', '.l..', 'x.z.'],
   ] },
-];
-export const fullSections = sections.map(({ name, start }, i) => ({
-  name, start, end: sections[i + 1]?.start ?? fullBars,
-}));
+] as const;
+export const controlTrack = Object.freeze({
+  id: 'control',
+  title: 'DESCENT — CONTROL',
+  bpm,
+  beatsPerBar,
+  bars: fullBars,
+  beats: fullBars * beatsPerBar,
+  duration: fullBars * 16 * step,
+  tail: 1.6,
+  sections: Object.freeze(sections.map(({ name, start }, i) => Object.freeze({
+    name,
+    startBeat: start * beatsPerBar,
+    endBeat: (sections[i + 1]?.start ?? fullBars) * beatsPerBar,
+  }))),
+});
 
 const quarters = [0, 4, 8, 12];
 const backbeat = [4, 12];
@@ -77,7 +153,7 @@ const grooves = {
   carry:   [[0, 4, 8, 14], backbeat, [2, 6, 10], [], 'out'],
   drift:   [[0, 8, 12], [4, 12], [2, 10], [], 'out'],
   close:   [[0, 8], [4], [6], [], 'trace'],
-};
+} as const;
 
 // Offset, duration in steps, and velocity. All bass movement sits in the low register.
 const bass = {
@@ -125,15 +201,14 @@ const metal = new Map([
 const transitions = new Map([[23, 12], [43, 12], [55, 12], [63, 11], [71, 10], [79, 13], [87, 12], [94, 10]]);
 
 export function makeFullScore() {
-  const opening = sections[1].start;
-  const events = makeScore('A').filter(({ at }) => at < opening * 16 * step);
+  const events = makeControlOpening();
   for (const { name, start, phrases } of sections) {
     for (const [phrase, [keys, cells, forms, accents]] of phrases.entries()) {
       for (const [i, key] of keys.split(' ').entries()) {
         const bar = start + phrase * 4 + i;
-        const [root, motif, chord] = harmony[key];
-        const put = (voice, offset, velocity, extra) =>
-          events.push({ voice, at: (bar * 16 + offset) * step, velocity, ...extra });
+        const [root, motif, chord] = harmony[key as keyof typeof harmony];
+        const put = (voice: DescentEvent['voice'], offset: number, velocity: number, extra = {}) =>
+          events.push({ voice, at: (bar * 16 + offset) * step, velocity, ...extra } as DescentEvent);
         if (bar === fullBars - 1) {
           put('kick', 0, .73);
           put('bass', 1, .73, { note: root, length: .64 });
@@ -143,7 +218,7 @@ export function makeFullScore() {
           put('chord', 10, .74, { notes: chord, length: .94 });
           continue;
         }
-        const [kicks, snares, hats, ghosts, line] = grooves[cells.split(' ')[i]];
+        const [kicks, snares, hats, ghosts, line] = grooves[cells.split(' ')[i] as keyof typeof grooves];
         for (const hit of kicks) {
           const level = name === 'HOLD' ? .39 : hit === 0 ? 1 : hit % 4 === 0 ? .86 : .72;
           put('kick', hit, level);
@@ -153,16 +228,16 @@ export function makeFullScore() {
           pan: hit < 8 ? -.25 : .28, open: hit === 14 && (i === 0 || name === 'LOCKDOWN'),
         });
         for (const hit of new Set([...ghosts, ...(fills.get(bar) ?? [])])) {
-          if (!snares.includes(hit) && !kicks.includes(hit)) put('ghost', hit, hit >= 13 ? .44 : .32);
+          if (!(snares as readonly number[]).includes(hit) && !(kicks as readonly number[]).includes(hit)) put('ghost', hit, hit >= 13 ? .44 : .32);
         }
         for (const [offset, length, velocity] of bass[line]) {
           put('bass', offset, velocity, { note: root, length: length * step });
         }
-        for (const [j, [offset, degree, velocity]] of signals[forms[i]].entries()) {
+        for (const [j, [offset, degree, velocity]] of signals[forms[i] as keyof typeof signals].entries()) {
           const length = name === 'HOLD' ? .26 : j === 2 ? .21 : .12;
           put('signal', offset, velocity, { note: motif[degree], length, pan: [-.20, .23, -.06][j] });
         }
-        for (const [offset, length, velocity] of stabs[accents[i]]) put('chord', offset, velocity, { notes: chord, length });
+        for (const [offset, length, velocity] of stabs[accents[i] as keyof typeof stabs]) put('chord', offset, velocity, { notes: chord, length });
         for (const hit of metal.get(bar) ?? []) put('metal', hit, .61, {
           note: motif[hit > 8 ? 1 : 0] - 12, pan: hit > 8 ? .32 : -.36,
         });
@@ -175,3 +250,16 @@ export function makeFullScore() {
   }
   return events.sort((a, b) => a.at - b.at);
 }
+
+export const controlEvents: readonly DescentEvent[] = makeFullScore();
+
+export function stepsForDescent(events: readonly DescentEvent[], bars: number) {
+  const steps = Array.from({ length: bars * 16 }, () => [] as number[]);
+  events.forEach(({ at }, index) => steps[Math.floor(at / step + 1e-9)].push(index));
+  return steps;
+}
+
+export const controlSteps = stepsForDescent(controlEvents, controlTrack.bars);
+
+export const controlSignalWindow = ['FLIGHT', 'BREACH'].map(name =>
+  controlTrack.sections.find(section => section.name === name)!.startBeat * 4 * step);

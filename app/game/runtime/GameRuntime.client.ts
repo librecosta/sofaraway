@@ -8,7 +8,7 @@ import { PickupDeck } from '../core/pickups';
 import { approachDynamicLights, dynamicLightEnvelope, steadyLights } from '../core/rhythmic-lights';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
-import { volumeById } from '../core/volumes';
+import { hasAuthoredAudio, volumeById } from '../core/volumes';
 import { AudioTransport } from '../audio/transport.client';
 import { Graphics, UnsupportedGraphics } from '../graphics/scene.client';
 import { Recorder } from '../debug/recorder.client';
@@ -123,7 +123,7 @@ export class Runtime implements GameRuntime {
     const { volumeId, mode } = this.snapshot;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
-    if (sim.volume.id !== volumeId || (sim.gameplay.branch && sim.mode !== mode)) {
+    if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode)) {
       // Unlock within the initiating gesture and let the menu paint STARTING before building.
       if (!silent) this.primeAudio();
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -425,7 +425,7 @@ export class Runtime implements GameRuntime {
   }
 
   private runTime(now: number) {
-    if (this.simulation?.volume.music === 'breakbeat' && !this.silent) {
+    if (this.simulation && hasAuthoredAudio(this.simulation.volume) && !this.silent) {
       const position = this.audio.time;
       if (typeof position === 'number') {
         // Keep the silent fallback aligned if the device stops advancing its audio clock.
@@ -479,7 +479,8 @@ export class Runtime implements GameRuntime {
           if (sim.phase === 'crash') {
             this.generation++;
             this.audioPending = false;
-            this.audio.stop();
+            if (sim.result?.title === 'ESCAPED') this.audio.finish();
+            else this.audio.stop();
             this.input?.clear();
             this.publishRun({ phase: 'crash' });
           }
@@ -556,7 +557,7 @@ export class Runtime implements GameRuntime {
       const followsAudio = this.lightAmount > 0 && !this.silent && !this.lightMotion?.matches;
       const phase = this.timeline.at(seconds);
       renderTime = followsAudio ? this.audio.outputTimeAt(seconds) ??
-        (sim.volume.music === 'breakbeat' ? phase : seconds - this.audio.runOrigin) : phase;
+        (hasAuthoredAudio(sim.volume) ? phase : seconds - this.audio.runOrigin) : phase;
       if (this.pausedAt > 0 && renderTime < this.pausedAt) renderTime = this.lightTime;
     }
     const locked = !paused && graphics.draw(sim, fixed, updateScene, this.lighting(sim, renderTime));

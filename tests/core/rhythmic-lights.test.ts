@@ -2,26 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { approachDynamicLights, drumOnsets, drumPulse, drumScore, drumStrengths, dynamicLightEnvelope,
   musicStepSeconds } from '../../app/game/core/rhythmic-lights';
 import { rhythmTimeline } from '../../app/game/core/daybreak-score';
+import { controlEvents } from '../../app/game/core/descent-score';
 import { RunTimeline } from '../../app/game/core/clock';
-import { sectionAt, VOLUMES } from '../../app/game/core/volumes';
+import { hasAuthoredAudio, sectionAt, VOLUMES } from '../../app/game/core/volumes';
 
 describe('dynamic structural lighting', () => {
   it('preserves the authored kick, snare and roll events on every score step', () => {
     for (const volume of VOLUMES) {
-      if (volume.music === 'breakbeat') continue;
+      if (hasAuthoredAudio(volume)) continue;
       for (let step = 0; step < volume.beats * 4; step++) {
         const energy = sectionAt(volume, step / 4)?.energy ?? .15;
         const s = step % 16;
         const ending = step / 4 > volume.beats - 8;
-        const halfTime = volume.music === 'industrial';
         expect(drumStrengths(volume, step, energy)).toEqual({
-          kick: !ending && (halfTime ? s === 0 || s === 10 : s % 4 === 0 && energy > .20) ? .55 + energy * .45 : 0,
-          snare: !ending && energy > .42 && (halfTime ? s === 8 : s === 4 || s === 12) ? .5 + energy * .5 : 0,
+          kick: !ending && s % 4 === 0 && energy > .20 ? .55 + energy * .45 : 0,
+          snare: !ending && energy > .42 && (s === 4 || s === 12) ? .5 + energy * .5 : 0,
           fill: Math.floor(step / 16) % 4 === 3 && s >= 12 && energy > .6 ? .35 + (s - 12) * .14 : 0,
         });
         expect(drumScore(volume)[step]).toEqual(drumStrengths(volume, step, energy));
       }
     }
+  });
+
+  it('derives DESCENT kicks, snares and ghost accents from the frozen CONTROL events', () => {
+    const volume = VOLUMES[2];
+    const authored = controlEvents.flatMap(({ voice, at }) => voice === 'kick' || voice === 'snare' || voice === 'ghost'
+      ? [{ time: at, kind: voice === 'ghost' ? 'fill' : voice }] : []);
+    expect(drumOnsets(volume).map(({ time, kind }) => ({ time, kind }))).toEqual(authored);
+    const offbeatKick = authored.find(hit => hit.kind === 'kick' && hit.time > 3.12 && hit.time < 3.24)!;
+    expect(drumPulse(volume, offbeatKick.time)).toBeGreaterThan(drumPulse(volume, offbeatKick.time + .03));
   });
 
   it('samples DAYBREAK’s authored swing and drum offsets with the shared bounded envelope', () => {
@@ -80,10 +89,6 @@ describe('dynamic structural lighting', () => {
     for (const beat of [16, 96, 160, 192, 288, 320, 384, 448]) {
       expect(Math.abs(gain(beat - 1e-6) - gain(beat + 1e-6))).toBeLessThan(.0001);
     }
-    const industrial = VOLUMES[2];
-    const snare = 456 * musicStepSeconds(industrial.bpm);
-    expect(drumScore(industrial)[456].snare).toBeGreaterThan(0);
-    expect(drumPulse(industrial, snare)).toBeGreaterThan(drumPulse(industrial, snare + .05));
   });
 
   it('samples onsets within one display interval and resumes at the same timeline phase', () => {

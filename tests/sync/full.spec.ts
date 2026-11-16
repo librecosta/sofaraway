@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { STEP } from '../../app/game/core/clock';
 import { onsetLead } from '../../app/game/core/daybreak-score';
-import { VOLUMES } from '../../app/game/core/volumes';
+import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [105326, 89395, 119039, 65069];
-const gateCounts = [141, 120, 158, 91];
+const normalScores = [105326, 89395, 131315, 65069];
+const gateCounts = [141, 120, 174, 91];
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];
@@ -78,6 +78,7 @@ for (const [index, volume] of VOLUMES.entries()) {
     const transition = await state(page);
     expect(transition.phase, JSON.stringify(transition)).not.toBe('paused');
     await phase(page, 'results');
+    if (volume.soundtrack?.tail) await expect.poll(async () => (await state(page)).runBus).toBe(false);
     const result = await state(page);
     const data = await trace(page);
     const first = data.steps[0];
@@ -93,7 +94,7 @@ for (const [index, volume] of VOLUMES.entries()) {
     // Every DAYBREAK onset follows the grid tick by at least onsetLead.
     const earliestOnset = volume.music === 'breakbeat' ? onsetLead : 0;
     expect(Math.min(...leads) + earliestOnset).toBeGreaterThanOrEqual(-1e-9);
-    const lookahead = volume.music === 'breakbeat' ? .22 : .12;
+    const lookahead = hasAuthoredAudio(volume) ? .22 : .12;
     expect(Math.max(...leads)).toBeLessThanOrEqual(lookahead + 1e-9);
     expect(data.firstBeforeAnchor).toMatchObject({ beat: 0, elapsed: 0, simTime: 0 });
     expect(data.firstTick?.elapsed).toBeGreaterThanOrEqual(STEP);
@@ -103,15 +104,15 @@ for (const [index, volume] of VOLUMES.entries()) {
     let boundary = 0;
     for (const [index, section] of volume.sections.entries()) {
       expect(data.sections[index].beat - boundary).toBeGreaterThanOrEqual(-1e-8);
-      // DAYBREAK samples a device clock in audio quanta. A render can first
+      // Authored music samples the device clock in audio quanta. A render can first
       // observe the new section after the clock has committed several ticks.
-      const observation = volume.music === 'breakbeat' ? .15 : STEP;
+      const observation = hasAuthoredAudio(volume) ? .15 : STEP;
       expect(data.sections[index].beat - boundary).toBeLessThanOrEqual(observation * volume.bpm / 60 + 1e-8);
       boundary += section.beats;
     }
     expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeGreaterThanOrEqual(-1e-8);
     expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeLessThanOrEqual(STEP + 1e-8);
-    expect(data.end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: false });
+    expect(data.end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: !!volume.soundtrack?.tail });
     expect(result).toMatchObject({ beat: volume.beats, passed: gateCounts[index], judged: gateCounts[index],
       total: gateCounts[index], score: normalScores[index], lives: volume.lives.normal, scheduler: false, runBus: false });
     expect(await page.evaluate(() => window.b0Harness.snapshot().result)).toMatchObject({

@@ -74,3 +74,58 @@ test('@perf comparable frame, resource and restart samples', async ({ browser })
     }
   }
 });
+
+test('@perf DESCENT laser flight keeps bounded resources across quality tiers', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  for (const quality of ['low', 'auto', 'high'] as const) {
+    const before = await page.evaluate(async quality => {
+      const test = window.b0Harness;
+      await test.mount({ volumeId: 'descent', quality, diagnostics: {
+        fixedTime: null, autoplay: false, god: false, align: true, boost: false,
+        mobileQuality: false, post: true, record: false, debug: true,
+      } });
+      await test.start(true);
+      const before = test.advanceAndPause(211).metrics;
+      await test.resume(true);
+      return before;
+    }, quality);
+    await page.keyboard.down('Shift');
+    const sample = await page.evaluate(async () => {
+      const test = window.b0Harness;
+      const frames: number[] = [];
+      await new Promise<void>(resolve => {
+        let first = 0, last = 0;
+        const frame = (now: number) => {
+          first ||= now;
+          if (last && now - first > 450) frames.push(now - last);
+          last = now;
+          if (now - first < 2450) requestAnimationFrame(frame);
+          else resolve();
+        };
+        requestAnimationFrame(frame);
+      });
+      frames.sort((a, b) => a - b);
+      const { metrics } = test.branchState();
+      const resources = test.meshResources();
+      const gl = document.querySelector('canvas')!.getContext('webgl2')!;
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      const renderer = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : null;
+      const glError = gl.getError();
+      const { boosting } = test.snapshot();
+      test.dispose();
+      return { metrics, resources, renderer, glError, boosting, frames: frames.length,
+        p95: frames[Math.floor((frames.length - 1) * .95)],
+        fps: 1000 * frames.length / frames.reduce((sum, dt) => sum + dt, 0) };
+    });
+    await page.keyboard.up('Shift');
+    const { metrics: { calls, triangles, geometries, textures, programs, chunks, canvas }, resources } = sample;
+    console.log('DESCENT LASER PERF', { quality, canvas, calls, triangles, geometries, textures, programs, chunks,
+      ...resources, p95: sample.p95, fps: sample.fps, frames: sample.frames, renderer: sample.renderer });
+    expect(sample.glError).toBe(0);
+    expect(sample.boosting).toBe(true);
+    expect(sample.frames).toBeGreaterThan(0);
+    expect(geometries).toBeLessThanOrEqual(before.geometries + 4);
+    expect(chunks).toBeLessThanOrEqual(5);
+    await expect(page.locator('canvas')).toHaveCount(0);
+  }
+});

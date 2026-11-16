@@ -10,6 +10,7 @@ import type { Topology } from '../core/volumes';
 import type { BranchPath } from './branch-path';
 import { START_DISTANCE } from '../core/reference-track';
 import { CABIN_HOOP, CABIN_WAIST, cabinEnvelope, cabinLower, cabinUpper } from './cabin-geometry';
+import type { DescentFacility } from './descent-facility.client';
 import type { Path, PathFrame } from './path';
 import type { buildTextures } from './textures.client';
 import { MaterialLibrary } from './materials/library.client';
@@ -138,8 +139,9 @@ export class Tunnel {
   private readonly initialLength: number;
   private farThrough = Math.floor(START_DISTANCE / CHUNK) * CHUNK - CHUNK;
 
-  constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary, private readonly path: Path,
-    private readonly topology: Topology, private readonly atlas: readonly LightingZone[] = [], private readonly continuous = false) {
+  constructor(tex: ReturnType<typeof buildTextures> | MaterialLibrary | undefined, private readonly path: Path,
+    private readonly topology: Topology, private readonly atlas: readonly LightingZone[] = [], private readonly continuous = false,
+    private readonly facility?: DescentFacility) {
     this.group = new THREE.Group();
     this.chunks = [];
     this.wire = null;
@@ -147,9 +149,11 @@ export class Tunnel {
 
     this.surfaces = tex instanceof MaterialLibrary ? tex : undefined;
     if (topology === 'canal') this.canopyMat = canopyMaterial();
-    this._buildMaterials(tex);
     this._buildLights();
-    this._buildWire();
+    if (tex) {
+      this._buildMaterials(tex);
+      this._buildWire();
+    }
   }
 
   /* ---------------- shared materials ---------------- */
@@ -193,15 +197,17 @@ export class Tunnel {
 
   /* ---------------- light rig that rides with the camera ---------------- */
   _buildLights() {
-    this.hemi = new THREE.HemisphereLight(0x88bbdd, this.surfaces ? 0x25323b : 0x08090b, 0.55);
+    this.hemi = new THREE.HemisphereLight(0x88bbdd, this.facility ? 0x43515d : this.surfaces ? 0x25323b : 0x08090b,
+      this.facility ? 1.30 : 0.55);
     this.group.add(this.hemi);
-    this.ambient = new THREE.AmbientLight(0x223344, this.surfaces ? 0.66 : 0.45);
+    this.ambient = new THREE.AmbientLight(this.facility ? 0xa7c5df : 0x223344, this.facility ? .58 : this.surfaces ? 0.66 : 0.45);
     this.group.add(this.ambient);
 
     this.lights = [];
-    const stations = this.surfaces ? [7, 20, 44] : [14, 52, 104, 170];
+    const stations = this.facility ? [12, 40] : this.surfaces ? [7, 20, 44] : [14, 52, 104, 170];
     for (const [i, d] of stations.entries()) {
-      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? SCENIC_POINT_INTENSITIES[i] : 30, 100, 2);
+      const l = new THREE.PointLight(this.facility ? 0xd4edff : 0x44ffcc,
+        this.facility ? 14 : this.surfaces ? SCENIC_POINT_INTENSITIES[i] : 30, 100, 2);
       l.userData.d = d;
       this.group.add(l);
       this.lights.push(l);
@@ -221,6 +227,11 @@ export class Tunnel {
 
   /* ---------------- one chunk ---------------- */
   _buildChunk(s0: number, s1: number): Chunk {
+    if (this.facility) {
+      const meshes = this.facility.build(s0, s1);
+      this.group.add(...meshes);
+      return { s0, s1, meshes };
+    }
     const PR = profile(this.topology);
     const P = PR.pts;
     const n = P.length;
@@ -630,6 +641,7 @@ export class Tunnel {
     for (const chunk of this.distant.values()) this._disposeChunk(chunk);
     this.distant.clear();
     this.group.clear();
+    this.facility?.dispose();
     this.wire?.geometry.dispose();
     for (const material of [this.rimMat, this.stripMat, this.wireMat, this.canopyMat, ...(!this.surfaces ? [this.shellMat, this.ribMat] : [])]) {
       material?.dispose();
@@ -652,7 +664,7 @@ export class Tunnel {
 
     let lo = Infinity, hi = -Infinity;
     for (const c of this.chunks) { lo = Math.min(lo, c.s0); hi = Math.max(hi, c.s1); }
-    if (!this.chunks.length) { lo = hi = this.surfaces || this.continuous ? Math.floor(s / CHUNK) * CHUNK : s; }
+    if (!this.chunks.length) { lo = hi = this.surfaces || this.continuous || this.facility ? Math.floor(s / CHUNK) * CHUNK : s; }
 
     // build forward
     let guard = 0;

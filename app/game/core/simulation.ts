@@ -114,7 +114,7 @@ export class Simulation {
   ) {
     this.playMode = mode;
     this.gameplay = gameplayFor(volume.id);
-    if (path) this.paths.set(this.gameplay.branch ? mode : 'standard', path);
+    if (path) this.paths.set(this.modeSpecificPath ? mode : 'standard', path);
     this.secondsPerBeat = 60 / volume.bpm;
     this.reference = referenceFor(volume);
   }
@@ -139,8 +139,9 @@ export class Simulation {
   }
   get mode() { return this.playMode; }
   get difficulty() { return this.runDifficulty; }
+  get modeSpecificPath() { return !!(this.gameplay.branch || this.gameplay.world?.modePath); }
   get path() {
-    const mode = this.gameplay.branch ? this.mode : 'standard';
+    const mode = this.modeSpecificPath ? this.mode : 'standard';
     let path = this.paths.get(mode);
     if (!path) {
       path = buildRunPath(this.volume, mode);
@@ -181,6 +182,7 @@ export class Simulation {
     };
     const authored = chartFor(this.volume, difficulty, rules.seed);
     const gates = authored.map(gate => {
+      if (gate.axis !== undefined) return makeGate(gate, gate.axis);
       let axis: Axis = 0;
       if (this.volume.id !== 'daybreak' && !gate.inserted && gate.kind !== 'square' && gate.kind !== 'diamond') {
         rng = (rng * 1103515245 + 12345) & 0x7fffffff;

@@ -35,7 +35,9 @@ export class InspectorTransport {
   }
 
   private onState = () => {
-    if (this.ctx?.state !== 'running' && this.state === 'Playing') this.pause();
+    if (this.ctx?.state === 'running') return;
+    if (this.state === 'Playing') this.pause();
+    if (this.state === 'Ended') this.detach();
   };
 
   private releaseRetiring() {
@@ -110,11 +112,14 @@ export class InspectorTransport {
       const startAt = ctx.currentTime + .035;
       const anchor = startAt - this.offset;
       const end = anchor + this.score.duration;
+      const tail = this.score.volume.soundtrack?.tail ?? 0;
+      const releaseEnd = end + tail;
+      if (tail && 'finishAt' in source) source.finishAt?.(end);
       const ramp = Math.min(fade, (end - startAt) / 2);
       bus.gain.setValueAtTime(0, startAt);
       bus.gain.linearRampToValueAtTime(1, startAt + ramp);
-      bus.gain.setValueAtTime(1, end - ramp);
-      bus.gain.linearRampToValueAtTime(0, end);
+      bus.gain.setValueAtTime(1, releaseEnd - ramp);
+      bus.gain.linearRampToValueAtTime(0, releaseEnd);
       this.nowPlaying = { anchor, bus, source };
       bus.connect(ctx.destination);
       let after = this.offset - 1e-8;
@@ -124,10 +129,12 @@ export class InspectorTransport {
         if (revision !== this.revision || ctx.state !== 'running') return;
         const now = ctx.currentTime;
         if (now >= end) {
-          this.offset = this.score.duration;
-          this.detach();
-          this.audition = null;
-          this.report('Ended');
+          if (now >= releaseEnd) this.detach();
+          if (this.state !== 'Ended') {
+            this.offset = this.score.duration;
+            this.audition = null;
+            this.report('Ended');
+          }
           return;
         }
         if (anchor + (next + 1) * this.score.step < now) {

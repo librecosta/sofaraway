@@ -12,6 +12,9 @@ test('local records follow the selected volume, difficulty and mode at narrow si
       standard: { elsewhere: { hard: { best: 32500, last: { score: 2000, outcome: 'TERMINATED', recovery: true } },
         impossible: { best: 128640, last: { score: 97450, outcome: 'ESCAPED', encoreBonus: 10800 } } },
       'daybreak-choreography': { impossible: { best: 46800, last: { score: 36000, outcome: 'ESCAPED', encoreBonus: 10200 } } },
+      'descent-control': { normal: { best: 79234, last: { score: 79234, outcome: 'ESCAPED' } } },
+      'descent-laser-security': { normal: { best: 76834, last: { score: 76834, outcome: 'ESCAPED' } } },
+      descent: { normal: { best: 119039, last: { score: 119039, outcome: 'ESCAPED' } } },
       drift: { normal: { best: 21000, last: { score: 1200, outcome: 'TERMINATED' } } } },
       sightseeing: { elsewhere: { last: { score: 930, outcome: 'ESCAPED' } } } }));
   }, key);
@@ -61,6 +64,7 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
   await expect(difficulty).toHaveText('NORMAL');
   await expect(record).toContainText(/BEST SCORE\s*—/);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard['descent-laser-security'].normal.best, key)).toBe(76834);
   for (const volume of ['daybreak', 'descent', 'orbit']) {
     await page.goto(`/?vol=${volume}&diff=impossible&t=2&dbg=1&q=low`);
     const diagnostics = page.locator('#errbox');

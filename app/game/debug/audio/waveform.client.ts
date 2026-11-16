@@ -3,7 +3,6 @@ import { defaultMix } from './track-adapter';
 import type { InspectorScore, TrackId } from './track-adapter';
 
 export const peaksPerSecond = 128;
-const sampleRate = 22_050;
 const blockSeconds = 10;
 const prerollSeconds = 3;
 
@@ -66,6 +65,8 @@ export function renderWaveforms(score: InspectorScore, signal: AbortSignal, prog
 }
 
 async function renderBlock(score: InspectorScore, peaks: Waveforms, first: number, end: number) {
+  const control = score.volume.music === 'control';
+  const sampleRate = control ? 44_100 : 22_050;
   const start = Math.max(0, first - prerollSeconds);
   const context = new OfflineAudioContext(2 * score.tracks.length, Math.ceil((end - start) * sampleRate), sampleRate);
   const merger = context.createChannelMerger(2 * score.tracks.length);
@@ -81,9 +82,12 @@ async function renderBlock(score: InspectorScore, peaks: Waveforms, first: numbe
     splitter.connect(merger, 0, channel);
     splitter.connect(merger, 1, channel + 1);
   });
-  const firstStep = Math.ceil(start / score.step - 1e-8);
+  const firstStep = control ? Math.floor(start / score.step) : Math.ceil(start / score.step - 1e-8);
   const endStep = Math.min(score.volume.beats * 4, Math.ceil(end / score.step - 1e-8));
-  for (let i = firstStep; i < endStep; i++) source.playStep(i, Math.max(0, i * score.step - start));
+  for (let i = firstStep; i < endStep; i++) {
+    const at = i * score.step - start;
+    source.playStep(i, control ? at : Math.max(0, at), control ? start - 1e-8 : undefined);
+  }
   const block = await context.startRendering();
   source.dispose();
   for (const [index, id] of score.tracks.entries()) {

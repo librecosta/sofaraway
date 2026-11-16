@@ -9,7 +9,9 @@
  * ------------------------------------------------------------------ */
 
 import type { Difficulty } from '../contracts';
+import type { Axis } from './collision';
 import { daybreakChart } from './daybreak-chart';
+import { descentChart } from './descent-chart';
 import { IMPOSSIBLE_LIVES, IMPOSSIBLE_SCORE_MULTIPLIER, IMPOSSIBLE_SPEED_FACTOR, resolveDifficulty } from './difficulty';
 import { impossibleChart } from './impossible-chart';
 import type { GateKind, VolumeDefinition } from './volumes';
@@ -19,6 +21,7 @@ export interface ChartGate {
   sector: number;
   section: string;
   kind: GateKind;
+  axis?: Axis;
   inserted?: true;
 }
 
@@ -65,14 +68,15 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
   let prev = 2;          // start up
 
   if (volume.music === 'breakbeat') return daybreakChart();
+  if (volume.music === 'control') return descentChart();
 
   for (const sec of volume.sections) {
     const end = beat + sec.beats;
     let b = beat;
     let i = 0;
-    if (sec.gap >= 900) { beat = end; continue; }   // gate-free section
+    if (sec.gap === undefined || sec.gap >= 900) { beat = end; continue; }
     while (b < end - 0.75) {
-      const sector = nextSector(sec.pattern, prev, i, rng);
+      const sector = nextSector(sec.pattern ?? 'sweep', prev, i, rng);
       const sequence = sec.gateSequence;
       const kind = sequence?.[i % sequence.length] ?? volume.obstacle;
       out.push({ beat: Math.round(b * 100) / 100, sector, section: sec.name, kind });
@@ -90,7 +94,7 @@ export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed 
   if (volume.music === 'breakbeat') return daybreakChart(difficulty);
   const base = buildChart(volume, seed);
   if (difficulty === 'impossible') return impossibleChart(base);
-  if (difficulty !== 'easy') return base;
+  if (difficulty !== 'easy' || volume.music === 'control') return base;
 
   const out: ChartGate[] = [];
   let last = -99;

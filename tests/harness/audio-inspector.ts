@@ -1,6 +1,8 @@
 import { DaybreakSynthesizer } from '../../app/game/audio/daybreak.client';
+import { Synthesizer } from '../../app/game/audio/synthesizer.client';
 import { daybreakStems } from '../../app/game/core/daybreak-score';
 import type { DaybreakStem } from '../../app/game/core/daybreak-score';
+import { controlEvents } from '../../app/game/core/descent-score';
 import { volumeById } from '../../app/game/core/volumes';
 import { defaultMix, inspectorScore } from '../../app/game/debug/audio/track-adapter';
 import { inspectorSource } from '../../app/game/debug/audio/source.client';
@@ -78,12 +80,48 @@ export async function inspectDrumCues() {
   };
 }
 
+export async function inspectControlRouting() {
+  const score = inspectorScore(volumeById('descent'));
+  const tail = score.volume.soundtrack!.tail;
+  const first = score.volume.beats * 4 - 48;
+  const end = score.duration - first * score.step;
+  async function render(inspector: boolean) {
+    const ctx = new OfflineAudioContext(2, Math.round((end + tail) * rate), rate);
+    const synth = inspector
+      ? inspectorSource(ctx, score, ctx.destination, defaultMix(), null, 'master')
+      : new Synthesizer(ctx, score.volume, ctx.destination);
+    synth.finishAt?.(end);
+    for (let i = first; i < score.volume.beats * 4; i++) synth.playStep(i, (i - first) * score.step);
+    const audio = await ctx.startRendering();
+    synth.dispose();
+    return audio;
+  }
+  const official = await render(false);
+  const inspector = await render(true);
+  const at = controlEvents.find(event => event.voice === 'kick' && event.at > 3.12 && event.at < 3.24)!.at;
+  async function cue(after: number) {
+    const ctx = new OfflineAudioContext(2, .25 * rate, rate);
+    const source = inspectorSource(ctx, score, ctx.destination, defaultMix(), null, 'master');
+    source.playStep(Math.round(at / score.step), .04, after);
+    const audio = await ctx.startRendering();
+    source.dispose();
+    return compare(audio);
+  }
+  return {
+    mix: compare(official, inspector), tail: compare(official, undefined, 1, end, end + .2),
+    tailEnd: compare(official, undefined, 1, official.duration - .1),
+    upcoming: await cue(at - 1e-8), elapsed: await cue(at + .01),
+  };
+}
+
 declare global {
   interface Window {
     inspectAudioRouting: typeof inspectAudioRouting;
     inspectDrumCues: typeof inspectDrumCues;
+    inspectControlRouting: typeof inspectControlRouting;
   }
 }
 
 window.inspectAudioRouting = inspectAudioRouting;
 window.inspectDrumCues = inspectDrumCues;
+window.inspectControlRouting = inspectControlRouting;

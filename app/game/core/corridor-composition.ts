@@ -1,6 +1,7 @@
 import type { PlayMode } from '../contracts';
 import { BRANCH_PREVIEW_BEAT, REJOIN_BEAT } from './branches';
 import { IMPOSSIBLE_SPEED_FACTOR, supportsDifficulty } from './difficulty';
+import { controlTrack } from './descent-score';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale, referenceFor, START_DISTANCE } from './reference-track';
 import type { VolumeDefinition } from './volumes';
 
@@ -66,7 +67,7 @@ export function fitCurve(length: number, amplitude: number) {
 
 export type CorridorSegment =
   | { type: 'straight'; s0: number; s1: number }
-  | { type: 'bend'; s0: number; s1: number; angle: number }
+  | { type: 'bend'; s0: number; s1: number; angle: number; axis?: 'pitch' }
   | { type: 'junction'; s0: number; s1: number }
   | ({ type: 's-curve'; s0: number; s1: number } & ReturnType<typeof fitCurve>);
 
@@ -121,6 +122,30 @@ export function composeDaybreak(volume: VolumeDefinition, mode: PlayMode): Corri
       { type: 's-curve', s0, s1, ...fitCurve(s1 - s0, (s1 - s0) * ratio) });
     from = s1;
   }
+  segments.push({ type: 'straight', s0: from, s1: Math.ceil(corridorLength(volume, mode) / 210) * 210 });
+  return segments;
+}
+
+export function composeDescent(volume: VolumeDefinition, mode: PlayMode): CorridorSegment[] {
+  const reference = referenceFor(volume);
+  const start = (name: typeof controlTrack.sections[number]['name']) =>
+    controlTrack.sections.find(section => section.name === name)!.startBeat;
+  const flight = start('FLIGHT'), well = start('PRESSURE'), core = start('HOLD');
+  const lockdown = start('LOCKDOWN'), breach = start('BREACH');
+  const segments: CorridorSegment[] = [];
+  let from = 0;
+  const bend = (first: number, last: number, degrees: number, axis?: 'pitch') => {
+    const s0 = reference.station(first, mode), s1 = reference.station(last, mode);
+    segments.push({ type: 'straight', s0: from, s1: s0 },
+      { type: 'bend', s0, s1, angle: degrees * Math.PI / 180, axis });
+    from = s1;
+  };
+  bend(flight, flight + 17, 23, 'pitch');
+  bend(well - 8, well + 11, 67, 'pitch');
+  bend(core - 15, core + 13, -90, 'pitch');
+  bend(lockdown - 5, lockdown + 15, -17);
+  bend(lockdown + 34, lockdown + 52, 17);
+  bend(breach + 1, breach + 15, -12, 'pitch');
   segments.push({ type: 'straight', s0: from, s1: Math.ceil(corridorLength(volume, mode) / 210) * 210 });
   return segments;
 }

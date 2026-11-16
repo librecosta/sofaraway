@@ -3,6 +3,8 @@ import type { Diagnostics } from '../contracts';
 import { STEP } from '../core/clock';
 import { opening } from '../core/collision';
 import { isDaybreakGate } from '../core/daybreak-gates';
+import { facilityStages } from '../core/descent-facility';
+import { isDescentGate } from '../core/descent-gates';
 import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
@@ -13,7 +15,7 @@ import { Graphics } from '../graphics/scene.client';
 import type { MaterialLibrary } from '../graphics/materials/library.client';
 import { surfaceIds, surfacePresets } from '../graphics/materials/presets';
 import type { SurfaceChannel, SurfaceMaterialId } from '../graphics/materials/presets';
-import { cabinViews, catalog, pickupCards } from './catalog';
+import { cabinViews, catalog, laserExamples, pickupCards } from './catalog';
 
 const flags: Diagnostics = {
   fixedTime: null, autoplay: false, god: false, align: true, boost: false,
@@ -148,27 +150,35 @@ export class ModelPreviews {
     }
   }
 
-  drawGates(angle = this.gateAngle, daybreakOnly = false) {
+  drawGates(angle = this.gateAngle, adjustableOnly = false) {
     this.gateAngle = angle;
     if (this.lost) return;
     this.frame(7.15);
     const geometries = new GateGeometries();
+    const fills = new THREE.HemisphereLight(0xd5eeff, 0x475c67, 1.45);
     try {
       for (const { volume, gates } of catalog) {
         for (const kind of gates) {
-          if (daybreakOnly && !isDaybreakGate(kind)) continue;
+          const laser = isDescentGate(kind);
+          if (adjustableOnly && !isDaybreakGate(kind) && !laser) continue;
           const specimen = this.root.querySelector<HTMLCanvasElement>(`canvas[data-preview="${kind}"]`);
-          const open = isDaybreakGate(kind) ? Number(specimen?.dataset.open) : opening(kind, 1);
-          const gate = new GateVisual(geometries, kind, open, 0);
+          const selection = Number(specimen?.dataset.open ?? 0);
+          const example = laser ? laserExamples[kind][selection] : undefined;
+          const open = example?.open ?? (isDaybreakGate(kind) ? selection : opening(kind, 1));
+          const gate = new GateVisual(geometries, kind, open, example?.axis ?? 0);
           if (isDaybreakGate(kind)) gate.meshes[0].rotation.y = THREE.MathUtils.degToRad(angle);
           if (gate.meshes[1]) gate.meshes[1].position.z = -THICKNESS;
           this.scene.add(...gate.meshes);
+          if (laser) this.scene.add(fills);
           try {
-            gate.update(0, volume.hue[0], 8, 1, false);
+            const tint = kind === 'laser-matrix' ? facilityStages[1].laser[1]
+              : kind === 'laser-slice' ? facilityStages[2].laser[1] : kind === 'laser-weave' ? facilityStages[3].laser[1] : undefined;
+            gate.update(0, volume.hue[0], 8, 1, false, 1, 1, tint);
             this.renderer.render(this.scene, this.camera);
             paint(this.root, kind, this.renderer.domElement);
-            if (specimen && isDaybreakGate(kind)) specimen.dataset.renderedOpening = String(open);
+            if (specimen && (laser || isDaybreakGate(kind))) specimen.dataset.renderedOpening = String(selection);
           } finally {
+            if (laser) this.scene.remove(fills);
             this.scene.remove(...gate.meshes);
             gate.dispose();
           }

@@ -1,9 +1,18 @@
 import { ease } from './lighting-score';
 import { drums as daybreakDrums } from './daybreak-score';
+import { controlEvents, controlSteps, step as descentStep } from './descent-score';
 import { sectionAt } from './volumes';
 import type { VolumeDefinition } from './volumes';
 
 export const musicStepSeconds = (bpm: number) => 15 / bpm;
+
+const controlDrums = controlSteps.map(indices => indices.flatMap(index => {
+  const { voice, at: time, velocity } = controlEvents[index];
+  if (voice === 'kick' || voice === 'snare' || voice === 'ghost') {
+    return [{ time, kind: voice === 'ghost' ? 'fill' as const : voice, velocity }];
+  }
+  return [];
+}));
 
 export function drumStrengths(volume: VolumeDefinition, step: number, energy: number) {
   if (volume.music === 'breakbeat') {
@@ -12,12 +21,17 @@ export function drumStrengths(volume: VolumeDefinition, step: number, energy: nu
       snare: hits.find(hit => hit.kind === 'snare')?.strength ?? 0,
       fill: hits.find(hit => hit.kind === 'fill')?.strength ?? 0 };
   }
+  if (volume.music === 'control') {
+    const hits = controlDrums[step] ?? [];
+    return { kick: hits.find(hit => hit.kind === 'kick')?.velocity ?? 0,
+      snare: hits.find(hit => hit.kind === 'snare')?.velocity ?? 0,
+      fill: hits.find(hit => hit.kind === 'fill')?.velocity ?? 0 };
+  }
   const s = step % 16;
-  const industrial = volume.music === 'industrial';
   const ending = step / 4 > volume.beats - 8;
-  const kick = !ending && (industrial ? s === 0 || s === 10 : s % 4 === 0 && energy > .2)
+  const kick = !ending && s % 4 === 0 && energy > .2
     ? .55 + energy * .45 : 0;
-  const snare = !ending && energy > .42 && (industrial ? s === 8 : s === 4 || s === 12)
+  const snare = !ending && energy > .42 && (s === 4 || s === 12)
     ? .5 + energy * .5 : 0;
   const fill = Math.floor(step / 16) % 4 === 3 && s >= 12 && energy > .6 ? .35 + (s - 12) * .14 : 0;
   return { kick, snare, fill };
@@ -66,13 +80,33 @@ const daybreakOnsets = daybreakDrums.map(events => events.flatMap(hit => {
   return weight ? [{ time: hit.time, kind: hit.kind as 'kick' | 'snare' | 'fill', weight: Math.min(1, weight) }] : [];
 }));
 
+const controlOnsets = controlDrums.map((hits, step) => hits.map(({ time, kind, velocity }) => ({
+  time, kind,
+  weight: kind === 'kick' ? (step % 4 === 0 ? 1 : .57) * velocity
+    : kind === 'snare' ? .68 * velocity : .38 * velocity,
+})));
+
+function authoredPulse(time: number, interval: number, onsets: readonly (readonly { time: number; weight: number }[])[]) {
+  let pulse = 0;
+  for (let bucket = Math.max(0, Math.floor((time - .5) / interval)); bucket <= Math.floor((time + ATTACK) / interval); bucket++) {
+    for (const { time: hitTime, weight } of onsets[bucket] ?? []) {
+      const age = time - hitTime;
+      if (age < -ATTACK || age > .5) continue;
+      const envelope = age < 0 ? ease(1 + age / ATTACK) : (1 - age / .5) ** 4;
+      pulse = Math.max(pulse, weight * envelope);
+    }
+  }
+  return pulse;
+}
+
 export type DrumOnset = { time: number; kind: 'kick' | 'snare' | 'fill' };
 const onsets = new WeakMap<VolumeDefinition, readonly DrumOnset[]>();
 export function drumOnsets(volume: VolumeDefinition): readonly DrumOnset[] {
   let result = onsets.get(volume);
   if (!result) {
     const stepSeconds = musicStepSeconds(volume.bpm);
-    result = volume.music === 'breakbeat' ? daybreakOnsets.flat().sort((a, b) => a.time - b.time)
+    result = volume.music === 'control' ? controlOnsets.flat() :
+      volume.music === 'breakbeat' ? daybreakOnsets.flat().sort((a, b) => a.time - b.time)
       : drumScore(volume).flatMap((drums, step) =>
         (['kick', 'snare', 'fill'] as const).filter(kind => drums[kind]).map(kind => ({ time: step * stepSeconds, kind })));
     onsets.set(volume, result);
@@ -81,18 +115,8 @@ export function drumOnsets(volume: VolumeDefinition): readonly DrumOnset[] {
 }
 
 export function drumPulse(volume: VolumeDefinition, time: number) {
-  if (volume.music === 'breakbeat') {
-    let pulse = 0;
-    for (let bar = Math.max(0, Math.floor((time - .5) / 2)); bar <= Math.floor((time + ATTACK) / 2); bar++) {
-      for (const { time: hitTime, weight } of daybreakOnsets[bar] ?? []) {
-        const age = time - hitTime;
-        if (age < -ATTACK || age > .5) continue;
-        const envelope = age < 0 ? ease(1 + age / ATTACK) : (1 - age / .5) ** 4;
-        pulse = Math.max(pulse, weight * envelope);
-      }
-    }
-    return pulse;
-  }
+  if (volume.music === 'breakbeat') return authoredPulse(time, 2, daybreakOnsets);
+  if (volume.music === 'control') return authoredPulse(time, descentStep, controlOnsets);
   const stepSeconds = musicStepSeconds(volume.bpm);
   const score = drumScore(volume);
   const first = Math.max(0, Math.ceil((time - .84) / stepSeconds));
@@ -101,7 +125,7 @@ export function drumPulse(volume: VolumeDefinition, time: number) {
   for (let step = first; step <= last; step++) {
     const { kick, snare, fill } = score[step];
     if (!(kick || snare || fill)) continue;
-    // An industrial offbeat kick and sixteenth-note fills can accent the walls lightly.
+    // Sixteenth-note fills accent the walls lightly.
     const weight = kick && step % 4 === 0 ? Math.min(1, .78 + .22 * kick + .06 * snare)
       : Math.max(.26 * kick, .63 * snare, .17 * fill);
     const age = time - step * stepSeconds;

@@ -1,3 +1,4 @@
+import { DescentSynthesizer } from './descent.client';
 import { DaybreakSynthesizer } from './daybreak.client';
 import { sectionAt } from '../core/volumes';
 import { drumStrengths } from '../core/rhythmic-lights';
@@ -10,14 +11,6 @@ const PROG_TECHNO = [
   [55, 59, 62], [55, 59, 62],
 ];
 
-/* industrial sits on a half-time feel: minor, tritone-adjacent, no lift */
-const PROG_INDUSTRIAL = [
-  [40, 43, 46], [41, 44, 47],
-  [40, 43, 46], [34, 38, 41],
-  [40, 43, 46], [41, 44, 47],
-  [40, 43, 46], [36, 39, 43],
-];
-
 /* synthwave opens up: maj7 and add9 shapes, a IV-V-vi-iii lift */
 const PROG_SYNTHWAVE = [
   [53, 57, 60, 64], [55, 59, 62, 66],
@@ -27,14 +20,11 @@ const PROG_SYNTHWAVE = [
 ];
 
 function progression(mood: Music) {
-  return mood === 'industrial' ? PROG_INDUSTRIAL
-    : mood === 'synthwave' ? PROG_SYNTHWAVE : PROG_TECHNO;
+  return mood === 'synthwave' ? PROG_SYNTHWAVE : PROG_TECHNO;
 }
 
 function roots(mood: Music) {
-  return mood === 'industrial'
-    ? [28, 29, 28, 22, 28, 29, 28, 24]
-    : mood === 'synthwave'
+  return mood === 'synthwave'
     ? [41, 43, 45, 36, 41, 43, 45, 40]
     : [45, 45, 41, 41, 48, 48, 43, 43];
 }
@@ -107,17 +97,22 @@ export function createBuffers(ctx: BaseAudioContext, random = Math.random) {
 }
 
 export class Synthesizer {
-  private readonly score: LegacyScore | DaybreakSynthesizer;
+  private readonly score: LegacyScore | DaybreakSynthesizer | DescentSynthesizer;
 
   constructor(private readonly ctx: BaseAudioContext, volume: VolumeDefinition,
     output: AudioNode, buffers?: ReturnType<typeof createBuffers>) {
     this.score = volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, output)
+      : volume.music === 'control' ? new DescentSynthesizer(ctx, output)
       : new LegacyScore(ctx, volume, output, buffers ?? createBuffers(ctx));
   }
 
   get eventSource() { return this.score; }
 
   playStep(step: number, at: number, after?: number) { this.score.playStep(step, at, after); }
+
+  finishAt(end: number) {
+    if (this.score instanceof DescentSynthesizer) this.score.finishAt(end);
+  }
 
   dispose() { this.score.dispose(); }
 }
@@ -183,23 +178,16 @@ class LegacyScore {
     }
 
     // --- drums ---------------------------------------------------
-    const halfTime = this.volume.music === 'industrial';
-
     const drums = drumStrengths(this.volume, step, energy);
     if (drums.kick) {
       this._kick(t, drums.kick);
       this._duck(t);
     }
     if (drums.snare) this._snare(t, drums.snare);
-    if (halfTime) {
-      if (s % 4 === 2 && energy > 0.3) this._hat(t, 0.30 * (0.5 + energy * 0.6), 0.018);
-      if (s % 8 === 6 && energy > 0.6) this._hat(t, 0.18, 0.10);
-    } else {
-      if (s % 2 === 0 && energy > 0.22) {
-        this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
-      }
-      if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.volume.bpm) / 4, 0.14, 0.02);
+    if (s % 2 === 0 && energy > 0.22) {
+      this._hat(t, (s % 4 === 0 ? 0.5 : 0.28) * (0.5 + energy * 0.6), s === 14 ? 0.075 : 0.028);
     }
+    if (s % 4 === 2 && energy > 0.5) this._hat(t + 0.5 * (60 / this.volume.bpm) / 4, 0.14, 0.02);
 
     // --- bass ----------------------------------------------------
     if (energy > 0.28) {
@@ -310,14 +298,13 @@ class LegacyScore {
     const lp = c.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 7;
-    const dirty = this.volume.music === 'industrial';
-    lp.frequency.setValueAtTime(dirty ? 110 : 180, t);
-    lp.frequency.exponentialRampToValueAtTime(dirty ? 900 : 1400, t + 0.02);
+    lp.frequency.setValueAtTime(180, t);
+    lp.frequency.exponentialRampToValueAtTime(1400, t + 0.02);
     lp.frequency.exponentialRampToValueAtTime(220, t + dur);
 
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime((dirty ? 0.55 : 0.42) * vel, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.42 * vel, t + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
     const g2 = c.createGain();

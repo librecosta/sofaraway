@@ -34,7 +34,7 @@ export default function AudioInspectorPage() {
     const signal = lifetime.current?.signal;
     if (!signal || exporting) return;
     setExporting(true);
-    setExportStatus('Rendering ' + volume.name + '…');
+    setExportStatus('Rendering ' + (volume.soundtrack?.title ?? volume.name) + '…');
     try {
       const { exportSoundtrack } = await import('../game/debug/audio-export.client');
       signal.throwIfAborted();
@@ -44,7 +44,7 @@ export default function AudioInspectorPage() {
       const url = downloadUrl.current = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'sofaraway-' + volume.id + '.wav';
+      link.download = volume.music === 'control' ? 'DESCENT-CONTROL.wav' : 'sofaraway-' + volume.id + '.wav';
       link.click();
       setExportStatus(`Done · ${(blob.size / 1048576).toFixed(1)} MB · ${duration.toFixed(1)} s`);
     } catch (error) {
@@ -63,6 +63,7 @@ export default function AudioInspectorPage() {
           <h1>{volume.name}</h1>
         </div>
         <div className={s.metadata}>
+          {volume.soundtrack && <span>{volume.soundtrack.title}</span>}
           <span>{volume.bpm} BPM</span>
           <span>{volume.beats} beats</span>
           <span>{timecode(score.duration)}</span>
