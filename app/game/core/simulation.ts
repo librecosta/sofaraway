@@ -121,6 +121,7 @@ export class Simulation {
 
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
   get mainGates(): readonly RunGate[] { return this.chart; }
+  get gateLoadAhead() { return this.gameplay.gateLoadAhead ?? GATE_LOAD_AHEAD * modeScale(this.mode); }
   get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
   private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && (!this.branch || !!this.branch.side); }
   get escapeWhite() {
@@ -465,7 +466,7 @@ export class Simulation {
 
   private preloadGates() {
     // Give Graphics time to stage gate meshes before they start to fade in.
-    const through = this.distance + GATE_LOAD_AHEAD * modeScale(this.mode);
+    const through = this.distance + this.gateLoadAhead;
     while (this.chart[this.reveal]?.routeStation <= through) {
       this.previewGates.push(this.chart[this.reveal++]);
     }

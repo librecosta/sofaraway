@@ -2,6 +2,36 @@ import { expect, test } from '@playwright/test';
 import { descentGateKinds } from '../../app/game/core/descent-gates';
 import { gateDescription, laserExamples } from '../../app/game/debug/catalog';
 
+test('laser gates are loaded before entering view and drawn across the full sight range', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  for (const kind of descentGateKinds) for (const boost of [false, true]) {
+    const { samples, glError } = await page.evaluate(({ kind, boost }) =>
+      window.b0Harness.inspectGateApproach('descent', kind, boost ? 'low' : 'high', false, boost), { kind, boost });
+    const at = (distance: number) => samples.find(({ ahead }) => ahead === distance)!;
+    expect(at(451)).toMatchObject({ queued: false, created: false });
+    expect(at(445)).toMatchObject({ queued: true, created: true, contrastPixels: 0 });
+    expect(at(405).contrastPixels).toBeGreaterThan(0);
+    expect(at(280).contrastPixels).toBeGreaterThan(5);
+    expect(samples.filter(({ ahead }) => ahead <= 405).every(({ fade }) => fade === 1)).toBe(true);
+    expect(at(9).contrastPixels).toBeGreaterThan(at(160).contrastPixels * 10);
+    expect(glError).toBe(0);
+  }
+});
+
+test('rear laser gates contribute a distinct render through a real PRESSURE sequence', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  for (const boost of [false, true]) {
+    const { samples, glError } = await page.evaluate(boost =>
+      window.b0Harness.inspectGateApproach('descent', 'laser-weave', 'high', false, boost, true), boost);
+    for (const { ahead, inFront, fade, contrastPixels } of samples.filter(({ ahead }) => ahead >= 85)) {
+      expect(inFront, `gate order at distance ${ahead}`).toBeGreaterThanOrEqual(2);
+      expect(fade).toBe(1);
+      expect(contrastPixels).toBeGreaterThan(20);
+    }
+    expect(glError).toBe(0);
+  }
+});
+
 test('the Debug library renders all 20 laser states and seven facility chapters', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

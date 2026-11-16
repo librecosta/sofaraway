@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { laserBandPitch, laserCoreRadius, laserOpening, matrixCell } from '../core/descent-gates';
+import { laserBandPitch, laserBeamRadius, laserOpening, matrixCell, matrixSubdivisions, weaveCrossPitch } from '../core/descent-gates';
 import type { DescentGateKind } from '../core/descent-gates';
 import { SECTION, SECTION_OUTLINE } from '../core/section';
 import { IndustrialGeometry } from './industrial-geometry';
@@ -15,9 +15,9 @@ const LASER_FRAG = /* glsl */`
 varying vec2 vSection;
 uniform vec2 uTarget, uNormal, uExtent;
 uniform vec3 uColor;
-uniform float uTopology, uTime, uFade, uHit;
+uniform bool uMatrix, uWeave;
+uniform float uTime, uFade, uHit;
 const float pitch = ${laserBandPitch};
-const float radius = ${laserCoreRadius};
 
 float gaussian(float distance, float sigma, float footprint) {
   float width = sqrt(sigma * sigma + footprint * footprint);
@@ -25,13 +25,15 @@ float gaussian(float distance, float sigma, float footprint) {
   return exp(-0.5 * d * d) * sigma / width;
 }
 
-float repeatedBeam(float across, float period) {
-  return abs(fract(across / period) - 0.5) * period;
+vec2 nearestLine(vec2 offset, vec2 period) {
+  return abs(fract(offset / period + .5) - .5) * period;
 }
 
-vec3 beamProfile(float distance, float footprint) {
-  return vec3(gaussian(distance, radius * .30, footprint),
-    gaussian(distance, radius * .62, footprint), gaussian(distance, radius * 1.16, footprint));
+vec3 beamProfile(float distance, float radius, float footprint) {
+  float band = clamp((radius + footprint - distance) / (2.0 * min(radius, footprint)), 0.0, 1.0)
+    * min(1.0, radius / footprint);
+  return vec3(gaussian(distance, radius * .42, footprint) * band, band,
+    gaussian(distance, radius * 1.55, footprint));
 }
 
 void main() {
@@ -44,38 +46,41 @@ void main() {
   float across = abs(primary) - uExtent.x;
   float vertical = abs(delta.y) - uExtent.y;
   float transverse = dot(p, vec2(-uNormal.y, uNormal.x));
-  bool matrix = uTopology < 0.5;
-  bool weave = uTopology > 1.5;
-  float boundary = matrix ? max(across, vertical) : across;
-
-  // Keep the light stable once the fine beam spacing is subpixel, without
-  // broadening the opening boundary or moving the optical core.
-  float along = min(pitch * .45, .34 * fwidth(primary));
-  float cross = min(pitch * .45, .34 * fwidth(matrix ? delta.y : transverse));
-  float edgeFootprint = min(pitch * .45, .34 * fwidth(boundary));
+  float boundary = uMatrix ? max(across, vertical) : across;
+  float footprint = clamp(.44 * max(fwidth(p.x), fwidth(p.y)), .0005, .85);
   if (wall < 0.0 || boundary < 0.0) discard;
 
-  vec3 beam = beamProfile(repeatedBeam(across, pitch), along);
-  if (matrix) {
-    vec2 divider = abs(absP - vec2(${matrixCell[0] / 2}, ${matrixCell[1] / 2}));
-    beam = max(beam * .68, beamProfile(repeatedBeam(vertical, pitch), cross) * .68);
-    float seam = gaussian(min(divider.x, divider.y), .073, edgeFootprint);
-    beam = max(beam, vec3(.76, .86, .66) * seam);
-  } else if (weave) {
-    float anchor = gaussian(repeatedBeam(transverse, 2.3), .078, cross);
-    float bank = gaussian(repeatedBeam(across, pitch * 3.0), .096, along);
-    beam = max(beam * (.60 + .28 * bank), vec3(.23, .32, .30) * anchor);
+  float dividers = wall;
+  float inner = abs(fract(across / pitch) - .5) * pitch;
+  float innerRadius = ${laserBeamRadius.bank};
+  if (uMatrix) {
+    const vec2 cell = vec2(${matrixCell[0]}, ${matrixCell[1]});
+    vec2 major = abs(absP - cell * .5);
+    dividers = min(dividers, min(major.x, major.y));
+    vec2 fine = nearestLine(p + vec2(${SECTION.a}, ${SECTION.b}), cell / ${matrixSubdivisions}.0);
+    inner = min(fine.x, fine.y);
+    innerRadius = ${laserBeamRadius.matrix};
   }
 
-  vec3 rim = beamProfile(boundary - radius * .22, edgeFootprint);
-  beam = max(beam, rim * vec3(.85, 1.0, .77));
-  float holder = gaussian(wall, .16, .0) * beam.y;
-  float energy = .965 + .025 * sin(transverse * 1.42 - uTime * 2.7)
-    + .010 * sin(primary * 2.12 + transverse * .37 + uTime * 3.6);
+  // All beams contribute from the first visible frame. Pixel coverage reduces
+  // subpixel energy while the open side of the aperture stays empty.
+  float coarse = smoothstep(.035, .20, footprint);
+  float silhouetteWidth = max(${laserBeamRadius.outline}, footprint * coarse);
+  vec3 contour = beamProfile(dividers, silhouetteWidth, footprint) * mix(1.0, .53, coarse);
+  vec3 aperture = beamProfile(boundary, max(${laserBeamRadius.outline}, 1.5 * footprint * coarse), footprint);
+  vec3 filament = beamProfile(inner, innerRadius, footprint);
+  if (uWeave) {
+    const float crossPitch = ${weaveCrossPitch};
+    float crossLine = abs(fract(transverse / crossPitch) - .5) * crossPitch;
+    filament = max(filament, beamProfile(crossLine, ${laserBeamRadius.weaveCross}, footprint));
+  }
+  float filamentEnergy = mix(1.0, .25, smoothstep(.045, .24, footprint));
+  vec3 beam = max(aperture, max(contour, filament * vec3(.82, .84, .78) * filamentEnergy));
+  float energy = .97 + .02 * sin(p.x * 3.2 + p.y * 2.8 - uTime * 2.6)
+    + .01 * sin(primary * 5.6 - transverse * 4.1 + uTime * 5.2);
   vec3 tint = mix(uColor, vec3(1.0, .20, .14), uHit * .34);
-  vec3 coreColor = mix(tint, vec3(.83, .94, 1.0), .56);
-  vec3 color = tint * (.017 + beam.y * .32 + beam.z * .085 + holder * .115)
-    + coreColor * beam.x * .50;
+  vec3 coreColor = mix(tint, vec3(.87, .95, 1.0), .52);
+  vec3 color = tint * (beam.y * .25 + beam.z * .059) + coreColor * beam.x * .55;
   gl_FragColor = vec4(color * energy, uFade);
 }`;
 
@@ -87,7 +92,8 @@ export function laserMaterial(kind: DescentGateKind, open: number, axis: 0 | 1) 
     uniforms: {
       uTarget: { value: new THREE.Vector2(...target) }, uNormal: { value: new THREE.Vector2(...normal) },
       uExtent: { value: new THREE.Vector2(extent[0], extent[1] ?? 0) },
-      uTopology: { value: kind === 'laser-matrix' ? 0 : kind === 'laser-slice' ? 1 : 2 },
+      uMatrix: { value: kind === 'laser-matrix' },
+      uWeave: { value: kind === 'laser-weave' },
       uColor: { value: new THREE.Color(0x82e8ff) }, uTime: { value: 0 }, uFade: { value: 1 }, uHit: { value: 0 },
     },
   });

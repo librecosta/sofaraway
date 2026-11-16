@@ -3,7 +3,8 @@ import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/s
 import { canPass, lanePoint, opening } from '../../app/game/core/collision';
 import type { Axis, Point } from '../../app/game/core/collision';
 import { daybreakGateKinds, daybreakGates, daybreakProfile } from '../../app/game/core/daybreak-gates';
-import { descentGateKinds, laserOpening } from '../../app/game/core/descent-gates';
+import { descentGateKinds, isDescentGate, laserBandPitch, laserBeamRadius, laserClearance, laserOpening,
+  matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
 import { laserExamples } from '../../app/game/debug/catalog';
 import { SECTION, SECTION_OUTLINE } from '../../app/game/core/section';
 import { volumeById } from '../../app/game/core/volumes';
@@ -24,14 +25,17 @@ export function shaderMismatches(id: VolumeId) {
     const gate = new GateVisual(geometries, kind, open, axis);
     scene.add(gate.meshes[0]);
     for (const [x, y] of points) {
-      const [a, b, diagonal] = id === 'daybreak' ? [SECTION.a, SECTION.b, SECTION.a + SECTION.b - SECTION.ch] : [3.4, 2.6, 4.85];
+      const [a, b, diagonal] = id === 'daybreak' || id === 'descent'
+        ? [SECTION.a, SECTION.b, SECTION.a + SECTION.b - SECTION.ch] : [3.4, 2.6, 4.85];
       if (Math.abs(x) >= a || Math.abs(y) >= b || Math.abs(x) + Math.abs(y) >= diagonal) continue;
+      // A finite pixel footprint blurs the exact analytical edge. Sample both sides outside that footprint.
+      if (isDescentGate(kind) && Math.abs(laserClearance(kind, open, axis, x, y)) < .001) continue;
       camera.position.set(x, y, 3);
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
       renderer.readRenderTargetPixels(target, 1, 1, 1, 1, pixel);
-      // No MSAA or post-processing in this target. Any colour is a gate fragment.
-      const visible = pixel[0] + pixel[1] + pixel[2] > 0;
+      // The linear target excludes post-processing. Laser halo is visible below the body threshold.
+      const visible = id === 'descent' ? Math.max(pixel[0], pixel[1], pixel[2]) >= 29 : pixel[0] + pixel[1] + pixel[2] > 0;
       if (visible === canPass(kind, open, axis, x, y)) mismatches.push({ kind, axis, open, x, y });
     }
     scene.remove(gate.meshes[0]);
@@ -58,11 +62,32 @@ export function shaderMismatches(id: VolumeId) {
     for (const kind of descentGateKinds) for (const { open, axis } of laserExamples[kind]) {
       const { target: [x, y], extent, normal: [nx, ny] } = laserOpening(kind, open, axis);
       const points: Point[] = [[x, y], [0, 0]];
-      for (let a = -3.2; a < 3.4; a += .43) for (let b = -2.45; b < 2.58; b += .38) points.push([a, b]);
+      for (let a = -3.2; a < 3.4; a += .43) for (let b = -2.45; b < 2.58; b += .381) points.push([a, b]);
       for (const sign of [-1, 1]) for (const delta of [-.022, -.004, .004, .022]) {
         const edge = sign * (extent[0] + delta);
         points.push([x + nx * edge, y + ny * edge]);
         if (extent[1] !== null) points.push([x, y + sign * (extent[1] + delta)]);
+      }
+      if (kind === 'laser-matrix') {
+        const [w, h] = matrixCell.map(size => size / matrixSubdivisions);
+        const cells = matrixSubdivisions ** 2;
+        for (let col = 0; col < cells; col++) for (let row = 0; row < cells; row++) {
+          const left = -SECTION.a + col * w, bottom = -SECTION.b + row * h;
+          points.push([left + w / 2, bottom + h / 2]);
+          if (col % matrixSubdivisions !== 0) for (const d of [-.004, .004]) {
+            points.push([left + laserBeamRadius.matrix + d, bottom + h / 2]);
+          }
+        }
+      } else {
+        for (const sign of [-1, 1]) for (const d of [-.004, .004]) {
+          const line = sign * (extent[0] + laserBandPitch / 2 + laserBeamRadius.bank + d);
+          points.push([x + nx * line, y + ny * line]);
+          if (kind === 'laser-weave') {
+            const across = sign * (extent[0] + laserBandPitch);
+            const cross = weaveCrossPitch / 2 + x * ny - y * nx + laserBeamRadius.weaveCross + d;
+            points.push([x + nx * across - ny * cross, y + ny * across + nx * cross]);
+          }
+        }
       }
       check(kind, open, axis, points);
     }

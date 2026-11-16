@@ -9,6 +9,7 @@ import { clamp } from './collision';
 interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number }
 interface EncoreSpec { first: number; minSpacing: number; maxSpacing: number; kinds: readonly GateKind[]; reserve: number }
 interface GameplaySpec {
+  gateLoadAhead?: number;
   branch?: BranchSpec;
   pickup?: PickupSpec;
   encore?: 'legacy' | EncoreSpec;
@@ -35,7 +36,7 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
     ending: { beats: 12, protectGates: true },
     world: { continuous: true, settleResults: true },
   },
-  descent: { world: { continuous: false, settleResults: true, modePath: true } },
+  descent: { gateLoadAhead: 450, world: { continuous: false, settleResults: true, modePath: true } },
 };
 
 export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }

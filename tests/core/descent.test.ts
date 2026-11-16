@@ -5,7 +5,7 @@ import { chartFor } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, clampSection, lanePoint } from '../../app/game/core/collision';
 import { facilityZones } from '../../app/game/core/descent-facility';
-import { descentGateKinds, matrixCell } from '../../app/game/core/descent-gates';
+import { descentGateKinds, laserBandPitch, laserBeamRadius, laserOpening, matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { idleInput } from '../../app/game/core/input';
 import { referenceFor } from '../../app/game/core/reference-track';
@@ -62,28 +62,39 @@ test('CONTROL accents anchor 174 gates with clear chapter and movement roles', (
   }
 });
 
-test('Matrix gives each outer cell exclusively to one opening while the hub remains blocked', () => {
+test('Matrix clears exactly one macro cell and fills other cells with three-by-three beam lattices', () => {
+  const [w, h] = matrixCell;
   for (let open = 0; open < 8; open++) {
-    expect(canPass('laser-matrix', open, 0, 0, 0)).toBe(false);
     for (let position = 0; position < 8; position++) {
-      const target = lanePoint('laser-matrix', position, 0);
-      expect(clampSection(...target, .34)).toEqual(target);
-      expect(canPass('laser-matrix', open, 0, ...target)).toBe(open === position);
+      const [x, y] = lanePoint('laser-matrix', position, 0);
+      expect(clampSection(x, y, .34)).toEqual([x, y]);
+      expect(canPass('laser-matrix', open, 0, x, y)).toBe(true);
+      expect(canPass('laser-matrix', open, 0, x + w / 6, y)).toBe(open === position);
+      expect(canPass('laser-matrix', open, 0, x, y - h / 6)).toBe(open === position);
     }
+    expect(canPass('laser-matrix', open, 0, w / 6, 0)).toBe(false);
+    expect(canPass('laser-matrix', open, 0, 0, h / 6)).toBe(false);
   }
-  expect(canPass('laser-matrix', 0, 0, matrixCell[0] / 2 - .002, 0)).toBe(false);
-  expect(canPass('laser-matrix', 0, 0, matrixCell[0] / 2 + .002, 0)).toBe(true);
+  for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) {
+    expect(canPass('laser-matrix', 0, 0, i * w / matrixSubdivisions, j * h / matrixSubdivisions)).toBe(true);
+  }
+  expect(canPass('laser-matrix', 0, 0, w / 6 + laserBeamRadius.matrix - .002, 0)).toBe(false);
+  expect(canPass('laser-matrix', 0, 0, w / 6 + laserBeamRadius.matrix + .002, 0)).toBe(true);
+  expect(canPass('laser-matrix', 0, 0, w / 2 - .002, 0)).toBe(false);
+  expect(canPass('laser-matrix', 0, 0, w / 2 + .002, 0)).toBe(true);
 });
 
-test('Slice has two independent axes and Weave mirrors the safe slope', () => {
-  expect(canPass('laser-slice', 2, 0, 0, -2.5)).toBe(true);
-  expect(canPass('laser-slice', 2, 0, 2, 1.7)).toBe(false);
-  expect(canPass('laser-slice', 2, 1, 2, 1.7)).toBe(true);
-  expect(canPass('laser-slice', 2, 1, 0, -2.5)).toBe(false);
-  expect(canPass('laser-weave', 1, 0, 2.25, 1.64)).toBe(true);
-  expect(canPass('laser-weave', 1, 0, 2.25, -1.64)).toBe(false);
-  expect(canPass('laser-weave', 3, 1, 2.25, -1.64)).toBe(true);
-  expect(canPass('laser-weave', 3, 1, 2.25, 1.64)).toBe(false);
+test('both Slice axes and Weave slopes judge beam bodies and allow their clear gaps', () => {
+  for (const kind of ['laser-slice', 'laser-weave'] as const) for (const axis of [0, 1] as const) {
+    const { target: [x, y], normal: [nx, ny], extent: [extent] } = laserOpening(kind, 2, axis);
+    const point = (across: number, along = 0) => canPass(kind, 2, axis,
+      x + nx * across - ny * along, y + ny * across + nx * along);
+    expect(point(extent - .004)).toBe(true);
+    expect(point(extent + .004)).toBe(false);
+    expect(point(extent + laserBandPitch / 2)).toBe(false);
+    expect(point(extent + laserBandPitch)).toBe(true);
+    if (kind === 'laser-weave') expect(point(extent + laserBandPitch, weaveCrossPitch / 2)).toBe(false);
+  }
 });
 
 test.each(['standard', 'sightseeing'] as const)('the %s path meets the CONTROL sector stations, including the vertical drop', mode => {

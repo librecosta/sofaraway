@@ -80,7 +80,6 @@ export class GateGeometries {
   private readonly cache = new Map<string, THREE.BufferGeometry>();
   private plane?: THREE.PlaneGeometry;
   private emitters?: THREE.BufferGeometry;
-  private emitterMaterial?: THREE.MeshStandardMaterial;
 
   get(kind: GateKind, open: number) {
     if (!isOpticalGlass(kind)) return this.plane ??= new THREE.PlaneGeometry(WALL.w, WALL.h);
@@ -94,10 +93,9 @@ export class GateGeometries {
   }
 
   emitterFrame() {
-    this.emitters ??= laserEmitters();
-    this.emitterMaterial ??= new THREE.MeshStandardMaterial({ vertexColors: true, metalness: .41, roughness: .48,
-      emissive: 0x415968, emissiveIntensity: .24 });
-    return new THREE.Mesh(this.emitters, this.emitterMaterial);
+    const geometry = this.emitters ??= laserEmitters();
+    return new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: .41,
+      roughness: .48, emissive: 0x415968, emissiveIntensity: .24, transparent: true, depthWrite: false }));
   }
 
   dispose() {
@@ -105,8 +103,6 @@ export class GateGeometries {
     this.plane = undefined;
     this.emitters?.dispose();
     this.emitters = undefined;
-    this.emitterMaterial?.dispose();
-    this.emitterMaterial = undefined;
     for (const geometry of this.cache.values()) geometry.dispose();
     this.cache.clear();
   }
@@ -115,6 +111,7 @@ export class GateGeometries {
 export class GateVisual {
   readonly mat: THREE.ShaderMaterial;
   readonly meshes: THREE.Mesh[] = [];
+  private readonly emitter?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
 
   constructor(geometries: GateGeometries, obstacle: GateKind, open: number, axis: Axis) {
     if (isDescentGate(obstacle)) {
@@ -122,7 +119,9 @@ export class GateVisual {
       const grid = new THREE.Mesh(geometries.get(obstacle, open), this.mat);
       grid.name = obstacle;
       grid.renderOrder = 6;
-      grid.add(geometries.emitterFrame());
+      this.emitter = geometries.emitterFrame();
+      this.emitter.renderOrder = 5;
+      grid.add(this.emitter);
       this.meshes.push(grid);
       return;
     }
@@ -176,11 +175,10 @@ export class GateVisual {
     if (u.uMicroContrast) u.uMicroContrast.value = microContrast;
     if (laserColor === undefined) u.uColor.value.setHSL((hue + 1) % 1, 0.72 * saturation, 0.55);
     else u.uColor.value.set(laserColor);
-    const laser = laserColor !== undefined;
-    const fadeIn = 1 - THREE.MathUtils.smoothstep(distance, (laser ? 18 : 140) * modeScale, (laser ? 85 : 190) * modeScale);
-    const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / 3.0, 0, 1);
-    // Keep succeeding laser fields legible as previews without filling the nearest opening.
-    u.uFade.value = (laser ? fadeIn * fadeIn : fadeIn) * fadeOut;
+    const fadeIn = this.emitter ? 1 : 1 - THREE.MathUtils.smoothstep(distance, 140 * modeScale, 190 * modeScale);
+    const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / (this.emitter ? 2.5 : 3), 0, 1);
+    u.uFade.value = fadeIn * fadeOut;
+    if (this.emitter) this.emitter.material.opacity = u.uFade.value;
     const visible = u.uFade.value > 0;
     for (const mesh of this.meshes) mesh.visible = visible;
     return visible;
@@ -188,5 +186,6 @@ export class GateVisual {
 
   dispose() {
     this.mat.dispose();
+    this.emitter?.material.dispose();
   }
 }

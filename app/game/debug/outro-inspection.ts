@@ -9,7 +9,7 @@ import type { EncoreGate, OutroPlan } from '../core/encore';
 import { daylightFade } from '../core/gameplay';
 import type { SceneState } from '../graphics/scene.client';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale } from '../core/reference-track';
-import { GATE_LOAD_AHEAD, GATE_RELEASE_BEHIND, Simulation } from '../core/simulation';
+import { GATE_RELEASE_BEHIND, Simulation } from '../core/simulation';
 import type { RunGate } from '../core/simulation';
 import { sectionAt, volumeById } from '../core/volumes';
 import type { VolumeDefinition } from '../core/volumes';
@@ -128,7 +128,7 @@ export class OutroInspection {
     const guide = this.volume.id === 'daybreak' && !results && trackDistance >= junctionPath.guideStart && trackDistance < junctionPath.guideEnd;
     const distance = previewingBranch ? trackDistance : junctionPath.arcAt(trackDistance, side);
     const scale = modeScale(sim.mode);
-    const through = distance + GATE_LOAD_AHEAD * scale;
+    const through = distance + sim.gateLoadAhead;
     const visible = (s: number) => s >= distance - GATE_RELEASE_BEHIND && s <= through;
     const previewGates = this.main.filter(gate => visible(gate.routeStation));
     const previewEncore = this.encore.filter(gate => visible(gate.routeStation));

@@ -31,6 +31,8 @@ const harness = {
   inspectJunction: async (mode?: PlayMode) => (await import('./branch')).inspectJunction(mode),
   inspectHologram: async () => (await import('./branch')).inspectHologram(),
   inspectGlassOptics: async () => (await import('./glass-optics')).inspectGlassOptics(),
+  inspectGateApproach: async (...args: Parameters<typeof import('./gate-approach').inspectGateApproach>) =>
+    (await import('./gate-approach')).inspectGateApproach(...args),
   inspectDaybreakCabin: async () => (await import('./daybreak-cabin')).inspectDaybreakCabin(),
   inspectCanopySunlight: async () => (await import('./daybreak-cabin')).inspectCanopySunlight(),
   inspectCirrusDirection: async () => (await import('./daybreak-cabin')).inspectCirrusDirection(),
