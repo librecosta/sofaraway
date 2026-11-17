@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 
+export const enum IndustrialSurface { Cast, Coated, Machined, Polymer }
+
+const half = THREE.DataUtils.toHalfFloat;
+export const industrialSurfacePeriod = 120;
+
 /** Static vertex-colored construction geometry, batched by material. */
 export class IndustrialGeometry {
   private readonly positions: number[] = [];
@@ -8,8 +13,12 @@ export class IndustrialGeometry {
   private readonly normal = new THREE.Vector3();
   private readonly tangent = new THREE.Vector3();
   private readonly normalValues: number[] = [];
+  private readonly surfaceValues: number[] = [];
 
-  quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, color: THREE.Color) {
+  constructor(private readonly workSpill?: (point: THREE.Vector3, normal: THREE.Vector3) => number) {}
+
+  quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, color: THREE.Color,
+    surface = IndustrialSurface.Cast, stations?: readonly [number, number], polishedEdge = false) {
     const index = this.positions.length / 3;
     this.normal.subVectors(b, a).cross(this.tangent.subVectors(c, a)).normalize();
     for (const point of [a, b, c, d]) {
@@ -17,10 +26,24 @@ export class IndustrialGeometry {
       this.normalValues.push(this.normal.x, this.normal.y, this.normal.z);
       this.colors.push(color.r, color.g, color.b);
     }
+    if (this.workSpill) {
+      const start = stations ? stations[0] % industrialSurfacePeriod : 0;
+      const end = start + (stations ? stations[1] - stations[0] : a.distanceTo(d));
+      const u = half(a.distanceTo(b)), v0 = half(start), v1 = half(end);
+      // Fractional finish code marks a machined lip without adding another attribute.
+      const finish = half(surface + (polishedEdge ? .25 : 0));
+      this.surfaceValues.push(
+        0, v0, finish, half(this.workSpill(a, this.normal)),
+        u, v0, finish, half(this.workSpill(b, this.normal)),
+        u, v1, finish, half(this.workSpill(c, this.normal)),
+        0, v1, finish, half(this.workSpill(d, this.normal)),
+      );
+    }
     this.indices.push(index, index + 1, index + 2, index, index + 2, index + 3);
   }
 
-  beam(a: THREE.Vector3, b: THREE.Vector3, forward: THREE.Vector3, halfWidth: number, halfDepth: number, color: THREE.Color) {
+  beam(a: THREE.Vector3, b: THREE.Vector3, forward: THREE.Vector3, halfWidth: number, halfDepth: number, color: THREE.Color,
+    surface = IndustrialSurface.Cast) {
     const side = new THREE.Vector3().subVectors(b, a).cross(forward).normalize().multiplyScalar(halfWidth);
     const depth = forward.clone().multiplyScalar(halfDepth);
     const corners = [a, b].map(point => [
@@ -30,10 +53,10 @@ export class IndustrialGeometry {
     const [first, last] = corners;
     for (let i = 0; i < 4; i++) {
       const next = (i + 1) % 4;
-      this.quad(first[i], last[i], last[next], first[next], color);
+      this.quad(first[i], last[i], last[next], first[next], color, surface);
     }
-    this.quad(first[0], first[1], first[2], first[3], color);
-    this.quad(last[3], last[2], last[1], last[0], color);
+    this.quad(first[0], first[1], first[2], first[3], color, surface);
+    this.quad(last[3], last[2], last[1], last[0], color, surface);
   }
 
   build() {
@@ -41,6 +64,7 @@ export class IndustrialGeometry {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normalValues, 3));
+    if (this.workSpill) geometry.setAttribute('industrialSurface', new THREE.Float16BufferAttribute(this.surfaceValues, 4));
     geometry.setIndex(this.indices);
     return geometry;
   }

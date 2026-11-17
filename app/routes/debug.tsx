@@ -16,7 +16,7 @@ import { isDescentGate } from '../game/core/descent-gates';
 import type { GateKind } from '../game/core/volumes';
 import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
-import { cabinViews, catalog, gateDescription, laserExamples, pickupCards } from '../game/debug/catalog';
+import { cabinViews, catalog, descentExamples, gateDescription, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
 import { curveExamples, scenicExamples } from '../game/debug/scenic-catalog';
 import type { ScenicPreview } from '../game/debug/scenic-preview.client';
@@ -414,7 +414,7 @@ export default function DebugOverview() {
                     const { label, note } = gateDescription(kind);
                     const glass = isDaybreakGate(kind);
                     const openings = glass ? daybreakGates[kind].openings
-                      : isDescentGate(kind) ? laserExamples[kind].map(example => example.label) : undefined;
+                      : isDescentGate(kind) ? descentExamples[kind].map(example => example.label) : undefined;
                     const open = openings ? gateOpenings[kind] ?? (kind === 'daybreak-crystal' ? -1 : 0) : undefined;
                     return (
                       <figure key={kind} className={s.card}>

@@ -2,15 +2,16 @@ import * as THREE from 'three';
 import { HOLE_R, lanePoint, SECTION, WALL } from '../core/collision';
 import type { Axis } from '../core/collision';
 import { daybreakProfile, isDaybreakGate } from '../core/daybreak-gates';
-import { isDescentGate } from '../core/descent-gates';
+import { isDescentGate, laserOpening } from '../core/descent-gates';
 import type { GateKind } from '../core/volumes';
+import { descentGlassVariant } from './descent-glass';
 import { buildGlassGeometry, GLASS_THICKNESS, isOpticalGlass } from './glass-geometry';
 import { GLASS_FRAG, GLASS_RIM_SEGMENTS, GLASS_SEAM_SEGMENTS, GLASS_VERT } from './glass-optics';
-import { laserEmitters, laserMaterial } from './laser-gates.client';
 
 export const THICKNESS = GLASS_THICKNESS;
 
-const styles = { iris: 0, square: 1, diamond: 2, aperture: 3 } as const;
+const styles = { iris: 0, square: 1, diamond: 2, aperture: 3,
+  'laser-matrix': 4, 'laser-slice': 5, 'laser-weave': 6 } as const;
 type Edges = ReturnType<typeof daybreakProfile>['rim'];
 const packEdges = (edges: Edges, count: number) => {
   const values = new Float32Array(count * 4);
@@ -79,30 +80,22 @@ void main(){
 export class GateGeometries {
   private readonly cache = new Map<string, THREE.BufferGeometry>();
   private plane?: THREE.PlaneGeometry;
-  private emitters?: THREE.BufferGeometry;
 
-  get(kind: GateKind, open: number) {
+  get(kind: GateKind, open: number, axis: Axis = 0) {
     if (!isOpticalGlass(kind)) return this.plane ??= new THREE.PlaneGeometry(WALL.w, WALL.h);
-    const key = kind === 'iris' || isDaybreakGate(kind) ? `${kind}:${open}` : kind;
+    const key = isDescentGate(kind) ? `${kind}:${descentGlassVariant(kind, open, axis)}`
+      : kind === 'iris' || isDaybreakGate(kind) ? `${kind}:${open}` : kind;
     let geometry = this.cache.get(key);
     if (!geometry) {
-      geometry = buildGlassGeometry(kind, open);
+      geometry = buildGlassGeometry(kind, open, axis);
       this.cache.set(key, geometry);
     }
     return geometry;
   }
 
-  emitterFrame() {
-    const geometry = this.emitters ??= laserEmitters();
-    return new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, metalness: .41,
-      roughness: .48, emissive: 0x415968, emissiveIntensity: .24, transparent: true, depthWrite: false }));
-  }
-
   dispose() {
     this.plane?.dispose();
     this.plane = undefined;
-    this.emitters?.dispose();
-    this.emitters = undefined;
     for (const geometry of this.cache.values()) geometry.dispose();
     this.cache.clear();
   }
@@ -111,26 +104,18 @@ export class GateGeometries {
 export class GateVisual {
   readonly mat: THREE.ShaderMaterial;
   readonly meshes: THREE.Mesh[] = [];
-  private readonly emitter?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  private readonly fullSightRange: boolean;
 
   constructor(geometries: GateGeometries, obstacle: GateKind, open: number, axis: Axis) {
-    if (isDescentGate(obstacle)) {
-      this.mat = laserMaterial(obstacle, open, axis);
-      const grid = new THREE.Mesh(geometries.get(obstacle, open), this.mat);
-      grid.name = obstacle;
-      grid.renderOrder = 6;
-      this.emitter = geometries.emitterFrame();
-      this.emitter.renderOrder = 5;
-      grid.add(this.emitter);
-      this.meshes.push(grid);
-      return;
-    }
+    const descent = isDescentGate(obstacle) ? laserOpening(obstacle, open, axis) : undefined;
+    this.fullSightRange = !!descent;
     const glass = isOpticalGlass(obstacle);
     const polygon = isDaybreakGate(obstacle) ? daybreakProfile(obstacle, open) : undefined;
-    const geometry = geometries.get(obstacle, open);
+    const geometry = geometries.get(obstacle, open, axis);
     this.mat = new THREE.ShaderMaterial({
       vertexShader: glass ? GLASS_VERT : VERT,
       fragmentShader: glass ? GLASS_FRAG : FRAG,
+      ...(descent ? { defines: { DESCENT_GLASS: 1 } } : {}),
       uniforms: {
         uOpen: { value: open },
         uColor: { value: new THREE.Color(0xffffff) },
@@ -144,7 +129,10 @@ export class GateVisual {
           uOpeningEdgeCount: { value: polygon.rim.length },
           uPaneSeamCount: { value: polygon.seams.length },
         } : {}),
-        ...(glass ? { uMicroContrast: { value: 1 } } : {
+        ...(descent ? {
+          uDescentOpening: { value: new THREE.Vector4(...descent.target, descent.extent[0], descent.extent[1] ?? 0) },
+          uDescentNormal: { value: new THREE.Vector2(...descent.normal) },
+        } : glass ? { uMicroContrast: { value: 1 } } : {
           uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
           uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
           uHolePos: { value: new THREE.Vector2(...lanePoint(obstacle, open, axis)) },
@@ -161,24 +149,24 @@ export class GateVisual {
 
     for (let i = 0; i < (glass ? 1 : 2); i++) {
       const m = new THREE.Mesh(geometry, this.mat);
-      m.frustumCulled = false;
+      m.frustumCulled = this.fullSightRange;
+      if (this.fullSightRange) m.name = obstacle;
       m.renderOrder = 6;
       this.meshes.push(m);
     }
   }
 
   update(time: number, hue: number, distance: number, modeScale: number, hit: boolean, microContrast = 1, saturation = 1,
-    laserColor?: THREE.Color | number) {
+    tint?: THREE.Color | number) {
     const u = this.mat.uniforms;
     u.uTime.value = time;
     u.uHit.value = hit ? 0.8 : 0;
     if (u.uMicroContrast) u.uMicroContrast.value = microContrast;
-    if (laserColor === undefined) u.uColor.value.setHSL((hue + 1) % 1, 0.72 * saturation, 0.55);
-    else u.uColor.value.set(laserColor);
-    const fadeIn = this.emitter ? 1 : 1 - THREE.MathUtils.smoothstep(distance, 140 * modeScale, 190 * modeScale);
-    const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / (this.emitter ? 2.5 : 3), 0, 1);
+    if (tint === undefined) u.uColor.value.setHSL((hue + 1) % 1, 0.72 * saturation, 0.55);
+    else u.uColor.value.set(tint);
+    const fadeIn = this.fullSightRange ? 1 : 1 - THREE.MathUtils.smoothstep(distance, 140 * modeScale, 190 * modeScale);
+    const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / (this.fullSightRange ? 2.5 : 3), 0, 1);
     u.uFade.value = fadeIn * fadeOut;
-    if (this.emitter) this.emitter.material.opacity = u.uFade.value;
     const visible = u.uFade.value > 0;
     for (const mesh of this.meshes) mesh.visible = visible;
     return visible;
@@ -186,6 +174,5 @@ export class GateVisual {
 
   dispose() {
     this.mat.dispose();
-    this.emitter?.material.dispose();
   }
 }

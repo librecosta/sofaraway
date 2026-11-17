@@ -275,9 +275,9 @@ class VolumeScene {
       }
       const ahead = gate.routeStation - sim.distance;
       const tone = route && junction ? junction.tones[route] : undefined;
-      const laser = this.facility?.laserTint(gate.worldStation, this.gateTint);
+      const gateTint = this.facility?.gateTint(gate.worldStation, this.gateTint);
       if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale,
-        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, laser)) continue;
+        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint)) continue;
       if (!route || route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;

@@ -24,14 +24,14 @@ const gateNotes = {
   aperture: 'A round opening offset from the centre.',
 };
 
-const laserDescriptions = {
-  'laser-matrix': { label: 'Matrix 3×3', note: 'Interlaced laser cells with one of eight outer cells open.' },
-  'laser-slice': { label: 'Slice Gate', note: 'Parallel laser banks leave a full-width or full-height passage.' },
-  'laser-weave': { label: 'Diagonal Weave', note: 'Mirrored laser banks frame a diagonal passage.' },
+const descentDescriptions = {
+  'laser-matrix': { label: 'Matrix 3×3', note: 'Beveled glass panels frame one of eight open outer cells.' },
+  'laser-slice': { label: 'Slice Gate', note: 'Glass banks leave a full-width or full-height passage.' },
+  'laser-weave': { label: 'Diagonal Weave', note: 'Mirrored glass wedges frame a diagonal passage.' },
 };
 
-type LaserExample = { label: string; open: number; axis: 0 | 1 };
-export const laserExamples: Record<DescentGateKind, readonly LaserExample[]> = {
+type DescentExample = { label: string; open: number; axis: 0 | 1 };
+export const descentExamples: Record<DescentGateKind, readonly DescentExample[]> = {
   'laser-matrix': descentDirections.map((direction, open) => ({ label: direction, open, axis: 0 })),
   'laser-slice': [
     { label: 'Vertical · left', open: 4, axis: 0 }, { label: 'Vertical · centre', open: 2, axis: 0 },
@@ -46,7 +46,7 @@ export const laserExamples: Record<DescentGateKind, readonly LaserExample[]> = {
 };
 
 export function gateDescription(kind: GateKind) {
-  if (isDescentGate(kind)) return laserDescriptions[kind];
+  if (isDescentGate(kind)) return descentDescriptions[kind];
   if (isDaybreakGate(kind)) {
     const { label } = daybreakGates[kind];
     return { label, note: kind === 'daybreak-crystal' ? 'One of eight radial slices opens around a solid octagonal hub.'

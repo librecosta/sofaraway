@@ -5,7 +5,7 @@ import type { Axis, Point } from '../../app/game/core/collision';
 import { daybreakGateKinds, daybreakGates, daybreakProfile } from '../../app/game/core/daybreak-gates';
 import { descentGateKinds, isDescentGate, laserBandPitch, laserBeamRadius, laserClearance, laserOpening,
   matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
-import { laserExamples } from '../../app/game/debug/catalog';
+import { descentExamples } from '../../app/game/debug/catalog';
 import { SECTION, SECTION_OUTLINE } from '../../app/game/core/section';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateKind } from '../../app/game/core/volumes';
@@ -34,7 +34,7 @@ export function shaderMismatches(id: VolumeId) {
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
       renderer.readRenderTargetPixels(target, 1, 1, 1, 1, pixel);
-      // The linear target excludes post-processing. Laser halo is visible below the body threshold.
+      // The linear target excludes post-processing. Sample the laminate body beyond its antialiased edge.
       const visible = id === 'descent' ? Math.max(pixel[0], pixel[1], pixel[2]) >= 29 : pixel[0] + pixel[1] + pixel[2] > 0;
       if (visible === canPass(kind, open, axis, x, y)) mismatches.push({ kind, axis, open, x, y });
     }
@@ -59,7 +59,7 @@ export function shaderMismatches(id: VolumeId) {
       check(kind, open, 0, points);
     }
   } else if (id === 'descent') {
-    for (const kind of descentGateKinds) for (const { open, axis } of laserExamples[kind]) {
+    for (const kind of descentGateKinds) for (const { open, axis } of descentExamples[kind]) {
       const { target: [x, y], extent, normal: [nx, ny] } = laserOpening(kind, open, axis);
       const points: Point[] = [[x, y], [0, 0]];
       for (let a = -3.2; a < 3.4; a += .43) for (let b = -2.45; b < 2.58; b += .381) points.push([a, b]);

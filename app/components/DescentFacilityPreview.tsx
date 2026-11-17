@@ -63,7 +63,7 @@ export function DescentFacilityPreview() {
         </select></label>
         <label><input type="checkbox" checked={boost} onChange={event => setBoost(event.currentTarget.checked)} /> Boost view</label>
         <a href={`/?vol=descent&t=${(beat * 60 / descent.bpm).toFixed(4)}&align=1&q=${quality}`}>Open the game view</a>
-        <a href="#gates-descent">Inspect the laser gates</a>
+        <a href="#gates-descent">Inspect the holographic glass gates</a>
       </div>
     </div>
   </section>;

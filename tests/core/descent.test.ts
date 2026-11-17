@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { Color, Raycaster } from 'three';
+import { Color, Mesh, MeshBasicMaterial, Raycaster, Vector3, DoubleSide } from 'three';
 import type { BufferGeometry } from 'three';
 import { difficulties } from '../../app/game/contracts';
 import { chartFor } from '../../app/game/core/chart';
@@ -13,12 +13,15 @@ import { referenceFor } from '../../app/game/core/reference-track';
 import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
-import { laserEmitters } from '../../app/game/graphics/laser-gates.client';
+import { IndustrialSurface } from '../../app/game/graphics/industrial-geometry';
+import { DESCENT_GLASS_THICKNESS, descentGlassPanes } from '../../app/game/graphics/descent-glass';
+import { GateGeometries } from '../../app/game/graphics/gates.client';
+import { descentExamples } from '../../app/game/debug/catalog';
 import { buildRunPath, Path } from '../../app/game/graphics/path';
 
 const volume = volumeById('descent');
 
-test('the closed facility bays and emitter frames mirror across both local axes', () => {
+test('the closed facility bays mirror across both local axes', () => {
   const path = new Path(120, 10, 'facility');
   path.straight(120);
   const vertices = (geometry: BufferGeometry, mirrorX = 1, mirrorY = 1) => {
@@ -40,7 +43,32 @@ test('the closed facility bays and emitter frames mirror across both local axes'
     for (const mesh of room.build(0, 52)) mirrored(mesh.geometry, zone.section + ' ' + mesh.name);
     room.dispose();
   }
-  mirrored(laserEmitters(), 'laser emitters');
+});
+
+test('all DESCENT glass variants have a beveled thickness and clear their authored opening', () => {
+  const templates = new GateGeometries();
+  const material = new MeshBasicMaterial({ side: DoubleSide });
+  const direction = new Vector3(0, 0, -1);
+  const ray = new Raycaster();
+  try {
+    for (const kind of descentGateKinds) for (const { open, axis } of descentExamples[kind]) {
+      expect(descentGlassPanes(kind, open, axis)).toHaveLength(kind === 'laser-matrix' ? 8 : 2);
+      const geometry = templates.get(kind, open, axis);
+      const plate = new Mesh(geometry, material);
+      const [x, y] = lanePoint(kind, open, axis);
+      ray.set(new Vector3(x, y, 2), direction);
+      expect(ray.intersectObject(plate)).toHaveLength(0);
+      geometry.computeBoundingBox();
+      expect(geometry.boundingBox!.min.z).toBe(0);
+      expect(geometry.boundingBox!.max.z).toBeCloseTo(DESCENT_GLASS_THICKNESS, 7);
+      expect(Array.from(geometry.getAttribute('position').array).every(Number.isFinite)).toBe(true);
+    }
+    expect(templates.get('laser-slice', 0, 0)).toBe(templates.get('laser-slice', 1, 0));
+    expect(templates.get('laser-slice', 0, 0)).not.toBe(templates.get('laser-slice', 0, 1));
+  } finally {
+    material.dispose();
+    templates.dispose();
+  }
 });
 
 test('outer room dimensions vary while the laser lanes stay clear of architecture', () => {
@@ -66,6 +94,8 @@ test('outer room dimensions vary while the laser lanes stay clear of architectur
     room.light(20, 1, new Color(), new Color());
     expect(work.material.color).toEqual(steady);
     expect(security.material.color.r).toBeGreaterThan(idle.r);
+    room.light(20, 2, new Color(), new Color());
+    expect(security.material.color.r - idle.r).toBeLessThan(.2);
     for (const mesh of [structure, work, security]) mesh.geometry.dispose();
     room.dispose();
   }
@@ -74,6 +104,49 @@ test('outer room dimensions vary while the laser lanes stay clear of architectur
   expect(heights[4]).toBeLessThan(heights[3]);
   expect(widths[5]).toBeLessThan(widths[4] / 3);
   expect(widths[6]).toBeGreaterThan(widths[5] * 2);
+});
+
+test('facility finishes and static fixture spill share the structural batch across chunk boundaries', () => {
+  const path = new Path(240, 10, 'facility');
+  path.straight(240);
+  const zone = facilityZones(volume, 'standard')[0];
+  const facility = new DescentFacility(path, [{ ...zone, start: 0, finish: 240, end: 240 }]);
+  const left = facility.build(0, 210), right = facility.build(210, 240);
+  const data = left[0].geometry.getAttribute('industrialSurface');
+  const finishes = new Set<number>();
+  let unlit = 0, lit = 0;
+  for (let i = 0; i < data.count; i++) {
+    finishes.add(data.getZ(i));
+    const spill = data.getW(i);
+    expect(spill).toBeGreaterThanOrEqual(0);
+    expect(spill).toBeLessThanOrEqual(1);
+    if (spill < .08) unlit++;
+    if (spill > .55) lit++;
+  }
+  expect(finishes).toEqual(new Set([
+    IndustrialSurface.Cast, IndustrialSurface.Coated, IndustrialSurface.Machined, IndustrialSurface.Polymer,
+  ]));
+  expect(unlit).toBeGreaterThan(0);
+  expect(lit).toBeGreaterThan(0);
+  expect(right[0].material).toBe(left[0].material);
+  for (const fixture of left.slice(1)) expect(fixture.geometry.getAttribute('industrialSurface')).toBeUndefined();
+
+  const seam = (geometry: BufferGeometry) => {
+    const { industrialSurface, position } = geometry.attributes;
+    const z = path.sample(210).p.z;
+    const samples = new Set<string>();
+    for (let i = 0; i < position.count; i++) {
+      if (Math.abs(position.getZ(i) - z) > 1e-4 || industrialSurface.getZ(i) !== IndustrialSurface.Cast) continue;
+      samples.add([position.getX(i), position.getY(i), industrialSurface.getW(i)]
+        .map(value => Math.round(value * 1e5)).join(','));
+    }
+    return [...samples].sort();
+  };
+  const shared = seam(left[0].geometry);
+  expect(shared.length).toBeGreaterThan(0);
+  expect(seam(right[0].geometry)).toEqual(shared);
+  for (const mesh of [...left, ...right]) mesh.geometry.dispose();
+  facility.dispose();
 });
 
 test('CONTROL accents anchor 174 gates with clear chapter and movement roles', () => {

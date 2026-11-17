@@ -15,7 +15,7 @@ import { Graphics } from '../graphics/scene.client';
 import type { MaterialLibrary } from '../graphics/materials/library.client';
 import { surfaceIds, surfacePresets } from '../graphics/materials/presets';
 import type { SurfaceChannel, SurfaceMaterialId } from '../graphics/materials/presets';
-import { cabinViews, catalog, laserExamples, pickupCards } from './catalog';
+import { cabinViews, catalog, descentExamples, pickupCards } from './catalog';
 
 const flags: Diagnostics = {
   fixedTime: null, autoplay: false, god: false, align: true, boost: false,
@@ -155,30 +155,28 @@ export class ModelPreviews {
     if (this.lost) return;
     this.frame(7.15);
     const geometries = new GateGeometries();
-    const fills = new THREE.HemisphereLight(0xd5eeff, 0x475c67, 1.45);
     try {
       for (const { volume, gates } of catalog) {
         for (const kind of gates) {
-          const laser = isDescentGate(kind);
-          if (adjustableOnly && !isDaybreakGate(kind) && !laser) continue;
+          const descent = isDescentGate(kind);
+          if (adjustableOnly && !isDaybreakGate(kind) && !descent) continue;
           const specimen = this.root.querySelector<HTMLCanvasElement>(`canvas[data-preview="${kind}"]`);
           const selection = Number(specimen?.dataset.open ?? 0);
-          const example = laser ? laserExamples[kind][selection] : undefined;
+          const example = descent ? descentExamples[kind][selection] : undefined;
           const open = example?.open ?? (isDaybreakGate(kind) ? selection : opening(kind, 1));
           const gate = new GateVisual(geometries, kind, open, example?.axis ?? 0);
           if (isDaybreakGate(kind)) gate.meshes[0].rotation.y = THREE.MathUtils.degToRad(angle);
+          if (descent) gate.meshes[0].rotation.set(.08, -.18, 0);
           if (gate.meshes[1]) gate.meshes[1].position.z = -THICKNESS;
           this.scene.add(...gate.meshes);
-          if (laser) this.scene.add(fills);
           try {
-            const tint = kind === 'laser-matrix' ? facilityStages[1].laser[1]
-              : kind === 'laser-slice' ? facilityStages[2].laser[1] : kind === 'laser-weave' ? facilityStages[3].laser[1] : undefined;
+            const tint = kind === 'laser-matrix' ? facilityStages[1].glass[1]
+              : kind === 'laser-slice' ? facilityStages[2].glass[1] : kind === 'laser-weave' ? facilityStages[3].glass[1] : undefined;
             gate.update(0, volume.hue[0], 8, 1, false, 1, 1, tint);
             this.renderer.render(this.scene, this.camera);
             paint(this.root, kind, this.renderer.domElement);
-            if (specimen && (laser || isDaybreakGate(kind))) specimen.dataset.renderedOpening = String(selection);
+            if (specimen && (descent || isDaybreakGate(kind))) specimen.dataset.renderedOpening = String(selection);
           } finally {
-            if (laser) this.scene.remove(fills);
             this.scene.remove(...gate.meshes);
             gate.dispose();
           }

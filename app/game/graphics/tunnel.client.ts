@@ -197,17 +197,16 @@ export class Tunnel {
 
   /* ---------------- light rig that rides with the camera ---------------- */
   _buildLights() {
-    this.hemi = new THREE.HemisphereLight(0x88bbdd, this.facility ? 0x43515d : this.surfaces ? 0x25323b : 0x08090b,
-      this.facility ? 1.30 : 0.55);
+    this.hemi = new THREE.HemisphereLight(this.facility ? 0xc0d2dc : 0x88bbdd,
+      this.facility ? 0x60656d : this.surfaces ? 0x25323b : 0x08090b, this.facility ? 1.06 : 0.55);
     this.group.add(this.hemi);
-    this.ambient = new THREE.AmbientLight(this.facility ? 0xa7c5df : 0x223344, this.facility ? .58 : this.surfaces ? 0.66 : 0.45);
+    this.ambient = new THREE.AmbientLight(this.facility ? 0xbfc3c9 : 0x223344, this.facility ? .46 : this.surfaces ? 0.66 : 0.45);
     this.group.add(this.ambient);
 
     this.lights = [];
-    const stations = this.facility ? [12, 40] : this.surfaces ? [7, 20, 44] : [14, 52, 104, 170];
+    const stations = this.facility ? [] : this.surfaces ? [7, 20, 44] : [14, 52, 104, 170];
     for (const [i, d] of stations.entries()) {
-      const l = new THREE.PointLight(this.facility ? 0xd4edff : 0x44ffcc,
-        this.facility ? 14 : this.surfaces ? SCENIC_POINT_INTENSITIES[i] : 30, 100, 2);
+      const l = new THREE.PointLight(0x44ffcc, this.surfaces ? SCENIC_POINT_INTENSITIES[i] : 30, 100, 2);
       l.userData.d = d;
       this.group.add(l);
       this.lights.push(l);

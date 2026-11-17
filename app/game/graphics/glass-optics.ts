@@ -1,4 +1,5 @@
 import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
+import { laserBandPitch, laserBeamRadius, matrixCell, matrixSubdivisions, weaveCrossPitch } from '../core/descent-gates';
 
 export const GLASS_RIM_SEGMENTS = 8;
 export const GLASS_SEAM_SEGMENTS = 16;
@@ -38,6 +39,10 @@ uniform vec4 uOpeningEdges[${GLASS_RIM_SEGMENTS}];
 uniform vec4 uPaneSeams[${GLASS_SEAM_SEGMENTS}];
 uniform int uOpeningEdgeCount;
 uniform int uPaneSeamCount;
+#ifdef DESCENT_GLASS
+uniform vec4 uDescentOpening;
+uniform vec2 uDescentNormal;
+#endif
 
 const float A = ${SECTION.a};
 const float B = ${SECTION.b};
@@ -101,10 +106,70 @@ float surfaceVariation(vec2 p) {
   return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
 }
 
+#ifdef DESCENT_GLASS
+// The volume's existing collision has relief slots inside the main panes.
+// Keep those slots clear at resolved scale and filter them as they become subpixel.
+float periodicDistance(float value, float period) {
+  return abs(fract(value / period + 0.5) - 0.5) * period;
+}
+
+vec4 descentGlass(vec2 p, float pixel, float outer) {
+  vec2 delta = p - uDescentOpening.xy;
+  float across = abs(dot(delta, uDescentNormal)) - uDescentOpening.z;
+  bool matrix = uStyle < 4.5;
+  float boundary = matrix ? max(across, abs(delta.y) - uDescentOpening.w) : across;
+  const float outlineWidth = ${laserBeamRadius.outline};
+  float wall = min(min(A - abs(p.x), B - abs(p.y)),
+    (A + B - CHAMFER - abs(p.x) - abs(p.y)) * INV_SQRT2);
+  float divider = 10.0;
+  float relief;
+  float averageInk;
+  if (matrix) {
+    const vec2 cell = vec2(${matrixCell[0]}, ${matrixCell[1]});
+    const vec2 pitch = cell / ${matrixSubdivisions}.0;
+    vec2 major = abs(abs(p) - cell * 0.5);
+    divider = min(major.x, major.y);
+    relief = min(periodicDistance(p.x + A, pitch.x), periodicDistance(p.y + B, pitch.y)) - ${laserBeamRadius.matrix};
+    averageInk = 0.16;
+  } else {
+    relief = periodicDistance(across - ${laserBandPitch / 2}, ${laserBandPitch}) - ${laserBeamRadius.bank};
+    if (uStyle > 5.5) {
+      float along = dot(p, vec2(-uDescentNormal.y, uDescentNormal.x));
+      relief = min(relief, periodicDistance(along - ${weaveCrossPitch / 2}, ${weaveCrossPitch}) - ${laserBeamRadius.weaveCross});
+    }
+    averageInk = 0.28;
+  }
+  if (boundary < -0.00002) discard;
+  float contour = min(wall, matrix ? divider : boundary);
+  float footprint = max(pixel * 0.5, 0.0001);
+  float fine = 1.0 - smoothstep(-footprint, footprint, relief);
+  fine = mix(fine, averageInk, smoothstep(0.085, 0.34, pixel));
+  float coverageMask = max(fine, 1.0 - smoothstep(-footprint, footprint, contour - outlineWidth));
+  vec2 rimGlow = glow(max(boundary, 0.0), 0.023, 0.075, pixel);
+  vec2 shellGlow = glow(outer, 0.015, 0.056, pixel);
+  vec2 join = glow(divider, 0.014, 0.041, pixel) * (1.0 - rimGlow.y);
+  float edge = dot(rimGlow, vec2(0.88, 0.26)) + dot(join, vec2(0.58, 0.16)) + dot(shellGlow, vec2(0.66, 0.18));
+  // The optical film ties the panel together at flight scale. At inspection
+  // scale the clear channels have only the faint film, with no glass body.
+  float laminate = smoothstep(0.0025, 0.027, pixel);
+  float haze = 0.71 + 0.14 * surfaceVariation(p) + 0.15 * clamp(0.5 + p.y / (2.0 * B), 0.0, 1.0);
+  vec3 tint = mix(uColor, vec3(0.95, 0.41, 0.34), uHit * 0.42);
+  vec3 color = tint * (haze + edge + vWall * 0.20) + vec3(0.08) * rimGlow.x;
+  float film = mix(0.023, 0.136, laminate);
+  float body = coverageMask * (mix(0.145, 0.032, laminate) + 0.055 * vWall);
+  float alpha = (film + body + coverageMask * 0.092 * edge) * uFade;
+  return vec4(color, clamp(alpha, 0.0, 1.0));
+}
+#endif
+
 void main() {
   vec2 p = vLocal;
-  vec2 q = abs(p);
   float pixel = max(fwidth(p.x), fwidth(p.y));
+#ifdef DESCENT_GLASS
+  if (vDepth < 0.5) discard;
+  gl_FragColor = descentGlass(p, pixel, hullDistance(p));
+#else
+  vec2 q = abs(p);
   float phase = p.y / 0.055 - uTime * 0.65;
   float footprint = max(fwidth(phase), 0.001);
   float halfPixel = 0.5 * footprint;
@@ -174,5 +239,6 @@ void main() {
   col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
   float alpha = (hub ? 0.18 : 0.14) + micro * 0.043 + energy + vWall * 0.065;
   gl_FragColor = vec4(col, clamp(alpha * uFade, 0.0, 1.0));
+#endif
 }
 `;

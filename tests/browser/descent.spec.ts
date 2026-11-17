@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { descentGateKinds } from '../../app/game/core/descent-gates';
-import { gateDescription, laserExamples } from '../../app/game/debug/catalog';
+import { descentExamples, gateDescription } from '../../app/game/debug/catalog';
 
-test('laser gates are loaded before entering view and drawn across the full sight range', async ({ page }) => {
+test('DESCENT glass is loaded before entering view and drawn across the full sight range', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   for (const kind of descentGateKinds) for (const boost of [false, true]) {
     const { samples, glError } = await page.evaluate(({ kind, boost }) =>
@@ -18,7 +18,7 @@ test('laser gates are loaded before entering view and drawn across the full sigh
   }
 });
 
-test('rear laser gates contribute a distinct render through a real PRESSURE sequence', async ({ page }) => {
+test('rear glass gates contribute a distinct render through a real PRESSURE sequence', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   for (const boost of [false, true]) {
     const { samples, glError } = await page.evaluate(boost =>
@@ -32,7 +32,7 @@ test('rear laser gates contribute a distinct render through a real PRESSURE sequ
   }
 });
 
-test('the Debug library renders all 20 laser states and seven facility chapters', async ({ page }, info) => {
+test('the Debug library renders all 20 DESCENT glass profiles and seven facility chapters', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -43,12 +43,12 @@ test('the Debug library renders all 20 laser states and seven facility chapters'
     const select = page.getByRole('combobox', { name: `${label} opening` });
     const images = new Set<string>();
     await expect(select).toBeEnabled();
-    for (const index of laserExamples[kind].keys()) {
+    for (const index of descentExamples[kind].keys()) {
       await select.selectOption(String(index));
       await expect(canvas).toHaveAttribute('data-rendered-opening', String(index));
       images.add(await canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL()));
     }
-    expect(images.size).toBe(laserExamples[kind].length);
+    expect(images.size).toBe(descentExamples[kind].length);
     await select.selectOption('0');
     await canvas.screenshot({ path: info.outputPath(`${kind}.png`) });
   }
@@ -73,38 +73,40 @@ test('the Debug library renders all 20 laser states and seven facility chapters'
   expect(errors).toEqual([]);
 });
 
-test('live flight through the shaft and stator chamber keeps the view and gates stable', async ({ page }, info) => {
-  await page.goto('http://127.0.0.1:8090/');
-  await page.evaluate(async () => {
-    await window.b0Harness.mount({ volumeId: 'descent', quality: 'high', diagnostics: {
-      fixedTime: null, autoplay: false, god: false, align: true, boost: false,
-      mobileQuality: false, post: true, record: false, debug: true,
-    } });
-    await window.b0Harness.start(true);
-  });
-  const metrics = () => page.evaluate(() => JSON.parse(window.b0Harness.metrics() || '{}') as {
-    phase: string; beat: number; speed: number; hitCount: number; chunks: number; postFailure: string | null;
-  });
-  for (const [label, beat, boost] of [['shaft', 204, true], ['core', 269, false]] as const) {
-    await page.evaluate(async at => {
-      window.b0Harness.advanceAndPause(at);
-      await window.b0Harness.resume(true);
-    }, beat);
-    if (boost) await page.keyboard.down('Shift');
-    await expect.poll(async () => (await metrics()).beat).toBeGreaterThan(beat + 3);
-    const snapshot = await metrics();
-    expect(snapshot).toMatchObject({ phase: 'playing', hitCount: 0, postFailure: null });
-    expect(snapshot.chunks).toBeLessThanOrEqual(5);
-    if (boost) {
-      expect(snapshot.speed).toBeGreaterThan(43);
-      await page.keyboard.up('Shift');
+for (const difficulty of ['normal', 'hard'] as const) {
+  test(`live ${difficulty} flight through the shaft and stator chamber keeps the view and gates stable`, async ({ page }, info) => {
+    await page.goto('http://127.0.0.1:8090/');
+    await page.evaluate(async difficulty => {
+      await window.b0Harness.mount({ volumeId: 'descent', difficulty, quality: 'high', diagnostics: {
+        fixedTime: null, autoplay: false, god: false, align: true, boost: false,
+        mobileQuality: false, post: true, record: false, debug: true,
+      } });
+      await window.b0Harness.start(true);
+    }, difficulty);
+    const metrics = () => page.evaluate(() => JSON.parse(window.b0Harness.metrics() || '{}') as {
+      phase: string; beat: number; speed: number; hitCount: number; chunks: number; postFailure: string | null;
+    });
+    for (const [label, beat, boost] of [['shaft', 204, true], ['core', 269, false]] as const) {
+      await page.evaluate(async at => {
+        window.b0Harness.advanceAndPause(at);
+        await window.b0Harness.resume(true);
+      }, beat);
+      if (boost) await page.keyboard.down('Shift');
+      await expect.poll(async () => (await metrics()).beat).toBeGreaterThan(beat + 3);
+      const snapshot = await metrics();
+      expect(snapshot).toMatchObject({ phase: 'playing', hitCount: 0, postFailure: null });
+      expect(snapshot.chunks).toBeLessThanOrEqual(5);
+      if (boost) {
+        expect(snapshot.speed).toBeGreaterThan(43);
+        await page.keyboard.up('Shift');
+      }
+      await page.locator('canvas').screenshot({ path: info.outputPath(`live-${label}.png`) });
     }
-    await page.locator('canvas').screenshot({ path: info.outputPath(`live-${label}.png`) });
-  }
-  await page.evaluate(() => window.b0Harness.dispose());
-});
+    await page.evaluate(() => window.b0Harness.dispose());
+  });
+}
 
-test('DESCENT restores the laser scene at the same station and releases it on switch', async ({ page }) => {
+test('DESCENT restores the glass scene at the same station and releases it on switch', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   const streamed = await page.evaluate(() => window.b0Harness.streamResources('descent'));
   expect(streamed.oldChunksRemoved).toBe(true);
@@ -135,7 +137,9 @@ test('DESCENT restores the laser scene at the same station and releases it on sw
   expect(restored.sharedPath).toBe(true);
   expect(restored.trackDistance).toBeGreaterThanOrEqual(at.trackDistance);
   expect(restored.trackDistance - at.trackDistance).toBeLessThan(70);
-  expect(Math.abs(restored.metrics.geometries - at.metrics.geometries)).toBeLessThanOrEqual(2);
+  // The recovered context only uploads profiles seen from the recovered station.
+  expect(restored.metrics.geometries).toBeLessThanOrEqual(at.metrics.geometries + 2);
+  expect(restored.metrics.calls).toBeGreaterThan(0);
   await page.evaluate(async () => {
     await window.b0Harness.resume(true);
     window.b0Harness.returnToMenu();
