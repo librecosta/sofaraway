@@ -68,7 +68,7 @@ export class Runtime implements GameRuntime {
   private lightAmount = 0;
   private lightStamp = 0;
   private lightMotion?: MediaQueryList;
-  private readonly lightInput = { beat: 0, rhythmBeat: 0, dynamics: { ...steadyLights } };
+  private readonly lightInput = { beat: 0, rhythmBeat: 0, reducedMotion: false, dynamics: { ...steadyLights } };
   private lightTime = 0;
 
   constructor(private readonly view: RuntimeView) {}
@@ -333,8 +333,9 @@ export class Runtime implements GameRuntime {
     this.lightTime = menu ? volume.sections[0].beats * beatSeconds + sim.time % (8 * beatSeconds)
       : renderTime ?? (this.snapshot.phase === 'paused' ? this.lightTime : sim.time);
     this.lightInput.rhythmBeat = this.lightTime / beatSeconds;
+    this.lightInput.reducedMotion = this.lightMotion?.matches ?? false;
     const dynamics = this.lightInput.dynamics;
-    if (this.lightAmount && !this.lightMotion?.matches) dynamicLightEnvelope(volume, this.lightTime, this.lightAmount, false, dynamics);
+    if (this.lightAmount && !this.lightInput.reducedMotion) dynamicLightEnvelope(volume, this.lightTime, this.lightAmount, false, dynamics);
     else Object.assign(dynamics, steadyLights);
     return this.lightInput;
   }
@@ -555,7 +556,7 @@ export class Runtime implements GameRuntime {
     let renderTime: number | undefined;
     if (!fixed && this.snapshot.phase === 'playing') {
       const seconds = now / 1000;
-      const followsAudio = this.lightAmount > 0 && !this.silent && !this.lightMotion?.matches;
+      const followsAudio = !this.silent && (sim.volume.id === 'descent' || (this.lightAmount > 0 && !this.lightMotion?.matches));
       const phase = this.timeline.at(seconds);
       renderTime = followsAudio ? this.audio.outputTimeAt(seconds) ??
         (hasAuthoredAudio(sim.volume) ? phase : seconds - this.audio.runOrigin) : phase;

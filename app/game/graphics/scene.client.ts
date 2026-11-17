@@ -171,7 +171,8 @@ class VolumeScene {
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.facility && this.facilityBackground) {
       const beat = sim.phase === 'menu' ? 0 : lighting?.rhythmBeat ?? lightBeat;
-      this.fog.density = this.facility.light(distance, beat, dynamics, this.fog.color, this.facilityBackground, lighting?.descentFocus);
+      this.fog.density = this.facility.light(distance, beat, dynamics, this.fog.color, this.facilityBackground,
+        lighting?.descentFocus, lighting?.reducedMotion);
     }
     const junction = this.junction;
     if (this.scenic) {

@@ -212,9 +212,9 @@ test('DESCENT room air blends through authored boundaries independently of the s
 });
 
 test('CONTROL has 24 continuous lighting phrases with independent groups and bounded warning accents', () => {
-  const sample = (beat: number, amount = 1) => {
+  const sample = (beat: number, amount = 1, reducedMotion = false) => {
     const cue = newControlLighting();
-    controlLightingAt(beat, amount, cue);
+    controlLightingAt(beat, amount, cue, reducedMotion);
     return cue;
   };
   expect(controlLightPhrases).toHaveLength(controlTrack.bars / 4);
@@ -229,6 +229,7 @@ test('CONTROL has 24 continuous lighting phrases with independent groups and bou
       expect(after.previous).toBe(before.phrase);
       for (const [group, value] of after.gains.entries()) expect(value).toBeCloseTo(before.gains[group], 3);
       expect(after.rim).toBeCloseTo(before.rim, 3);
+      expect(after.paneGain).toBeCloseTo(before.paneGain, 3);
       expect(after.travel).toBeCloseTo(before.travel, 3);
     }
   }
@@ -254,11 +255,20 @@ test('CONTROL has 24 continuous lighting phrases with independent groups and bou
   expect(sample(377).relay).toBe(0);
   for (const beat of [0, 64, 128, 207, 271, 314, 377]) {
     const off = sample(beat, 0);
-    expect(off).toMatchObject({ travel: 0, relay: 0, rim: 0, amount: 0 });
-    for (const [group, base] of neutralLampGains.entries()) {
-      expect(off.gains[group]).toBeCloseTo(base, 6);
-    }
+    expect(off).toMatchObject({ travel: 0, relay: 0, amount: 0 });
+    expect(off.rim).toBeGreaterThan(.18);
+    expect(off.paneGain).toBeGreaterThan(.95);
+    expect(off.paneGain).toBeLessThan(1.18);
+    expect(off.gains[ControlLamp.Route]).toBeCloseTo(neutralLampGains[ControlLamp.Route]);
   }
+  const rest = sample(312, 0), answer = sample(316, 0);
+  expect(rest.gains[ControlLamp.Roof] - answer.gains[ControlLamp.Roof]).toBeGreaterThan(.25);
+  expect(answer.gains[ControlLamp.Floor] - rest.gains[ControlLamp.Floor]).toBeGreaterThan(.20);
+  const reduced = sample(312, 1, true), reducedLater = sample(316, 1, true);
+  expect(reduced).toMatchObject({ travel: 0, relay: 0, amount: 0, paneGain: 1 });
+  expect(reduced.phrase).toBe(rest.phrase);
+  expect(reducedLater.gains).toEqual(reduced.gains);
+  expect(reducedLater.rim).toBe(reduced.rim);
 });
 
 test('service assemblies and the BREACH roof cap stay attached to their world stations across chunks', () => {

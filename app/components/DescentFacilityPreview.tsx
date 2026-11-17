@@ -133,7 +133,7 @@ export function DescentFacilityPreview() {
     if (!ready || !preview) return;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     const envelope = { ...steadyLights };
-    const draw = (lightBeat: number) => preview.draw({ beat: lightBeat, descentFocus: focus,
+    const draw = (lightBeat: number) => preview.draw({ beat: lightBeat, descentFocus: focus, reducedMotion: motion.matches,
       dynamics: dynamicLightEnvelope(descent, lightBeat * secondsPerBeat, Number(dynamic), motion.matches, envelope) });
     if (fixedLightBeat !== null) {
       const redraw = () => draw(fixedLightBeat);
@@ -210,7 +210,7 @@ export function DescentFacilityPreview() {
         </select></label>
         <label>Lighting focus <select value={focus} onChange={event => setFocus(event.currentTarget.value as ControlLightView)}>
           <option value="all">All groups</option><option value="roof">Ceiling</option><option value="floor">Floor</option>
-          <option value="left">Left side</option><option value="right">Right side</option><option value="glass">Glass rim</option>
+          <option value="left">Left side</option><option value="right">Right side</option><option value="glass">Glass</option>
         </select></label>
         {phrase >= 0 && <>
           <label>Playback length <select value={bars} onChange={event => {

@@ -19,8 +19,11 @@ const scoreUniforms = `
   uniform vec4 controlEvents; // Kick, snare, signal, sweep.
   uniform float controlEnergy;
   uniform int controlFocus;
+  bool followsScore(int group) {
+    return group != ${ControlLamp.Route} && (controlFocus == -1 || controlFocus == group);
+  }
   float scoreWeight(int group) {
-    return (group != ${ControlLamp.Route} && (controlFocus == -1 || controlFocus == group)) ? controlMotion.x : 0.0;
+    return followsScore(group) ? controlMotion.x : 0.0;
   }
   float lane(int group) {
     if (group == ${ControlLamp.Floor} || group == ${ControlLamp.Right} || group == ${ControlLamp.DeepDeck}) return 0.5;
@@ -40,6 +43,7 @@ const scoreUniforms = `
   vec4 lampAt(int group, float station) {
     vec4 cue = controlLamps[group];
     float weight = scoreWeight(group);
+    if (weight <= 0.0) return cue;
     float local = bank(group, station);
     float flash = controlEvents.x * 0.14;
     float dim = 0.37 + 0.74 * local;
@@ -78,9 +82,10 @@ export function facilityLampMaterial(score: FacilityLightingUniforms) {
       #include <color_vertex>
       int group = int(industrialLight.y + 0.5);
       vec4 cue = lampAt(group, industrialLight.x);
-      float weight = scoreWeight(group);
+      bool primaryLens = group == ${ControlLamp.Roof} || group == ${ControlLamp.Floor};
+      float weight = followsScore(group) ? (primaryLens ? 0.95 : 0.72) : 0.0;
       fixtureLens = uv;
-      lensMix = weight * float(group == ${ControlLamp.Roof} || group == ${ControlLamp.Floor});
+      lensMix = primaryLens ? weight : 0.0;
       vColor.rgb = mix(vColor.rgb, cue.rgb * mix(1.0, 1.23, lensMix), weight) * max(cue.w, 0.14);
     `);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
@@ -150,7 +155,8 @@ export function facilityInstallationMaterial(score: FacilityLightingUniforms) {
         float core = 1.0 - smoothstep(0.06, 0.40, x);
         float fog = exp(-0.000027 * depth * depth) * fade;
         float steadyEnd = style == ${FacilityLightShape.Flow}.0 || style == ${FacilityLightShape.Release}.0 ? 1.0 : end;
-        vec4 idle = vec4(steady[int(style)], 0.25 * fog * (0.83 * core + 0.17 * wing) * steadyEnd);
+        vec3 restTone = mix(steady[int(style)], fixtureTone.rgb, 0.46);
+        vec4 idle = vec4(restTone, 0.25 * fog * (0.83 * core + 0.17 * wing) * steadyEnd);
         if (motion <= 0.001) {
           gl_FragColor = idle;
           return;

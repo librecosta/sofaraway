@@ -92,7 +92,8 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   const steady = await canvas.screenshot();
   await offset.fill('2');
   await expect(canvas).toHaveAttribute('data-light-beat', '316.000');
-  expect((await canvas.screenshot()).equals(steady)).toBe(true);
+  await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
+  expect((await canvas.screenshot()).equals(steady)).toBe(false);
 
   const transfer = facility.getByRole('combobox', { name: 'Transfer chamber' });
   await transfer.selectOption({ label: 'Approach' });
@@ -180,16 +181,20 @@ test('the fixed DESCENT camera plays, isolates and restores the production light
   const dynamics = facility.getByRole('checkbox', { name: 'Dynamic lights' });
   await quality.selectOption('low');
   await dynamics.uncheck();
-  await seek.fill('316');
-  await expect(canvas).toHaveAttribute('data-light-beat', '316.000');
+  await seek.fill('311');
+  await expect(canvas).toHaveAttribute('data-light-beat', '311.000');
   await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
   const quiet = await canvas.screenshot();
-  await seek.fill('317');
-  await expect(canvas).toHaveAttribute('data-light-beat', '317.000');
-  expect((await canvas.screenshot()).equals(quiet)).toBe(true);
+  await seek.fill('315');
+  await expect(canvas).toHaveAttribute('data-light-beat', '315.000');
+  expect((await canvas.screenshot()).equals(quiet)).toBe(false);
   await dynamics.check();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
+  const reduced = await canvas.screenshot();
+  await seek.fill('311');
+  await expect(canvas).toHaveAttribute('data-light-beat', '311.000');
+  expect((await canvas.screenshot()).equals(reduced)).toBe(true);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await expect(canvas).toHaveAttribute('data-light-amount', '1.000');
   const recovery = await canvas.evaluateHandle(element => (element as HTMLCanvasElement).getContext('webgl2')!
@@ -204,31 +209,36 @@ test('the fixed DESCENT camera plays, isolates and restores the production light
   expect(errors).toEqual([]);
 });
 
-test('the original DESCENT ceiling and floor lenses render distinct score colors over a phrase', async ({ page }) => {
+test('the original DESCENT lenses and glass face render the score with Dynamic Lights off', async ({ page }, info) => {
   await page.goto('/debug/#descent');
   const facility = page.locator('#descent');
   await facility.getByRole('button', { name: 'Open live facility' }).click();
   const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
   await facility.getByRole('combobox', { name: 'CONTROL chapter' }).selectOption('5');
   await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('low');
-  await facility.getByRole('combobox', { name: 'Lighting phrase' }).selectOption('19');
+  const phrase = facility.getByRole('combobox', { name: 'Lighting phrase' });
+  const focus = facility.getByRole('combobox', { name: 'Lighting focus' });
+  await phrase.selectOption('18');
   const cursor = facility.getByRole('slider', { name: 'Score beat' });
-  const dynamics = facility.getByRole('checkbox', { name: 'Dynamic lights' });
-  const shot = async (beat: number, enabled: boolean) => {
-    await dynamics.setChecked(enabled);
+  await facility.getByRole('checkbox', { name: 'Dynamic lights' }).uncheck();
+  const shot = async (beat: number, label: string) => {
     await cursor.fill(String(beat));
     await expect(canvas).toHaveAttribute('data-light-beat', beat.toFixed(3));
-    await expect(canvas).toHaveAttribute('data-light-amount', enabled ? '1.000' : '0.000');
-    return (await canvas.screenshot()).toString('base64');
+    await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
+    return (await canvas.screenshot({ path: info.outputPath(`${label}.png`) })).toString('base64');
   };
-  const steady = await shot(310, false);
-  const redRelay = await shot(310, true);
+  await focus.selectOption('glass');
+  const lensMask = await shot(310, 'lens-mask');
+  await focus.selectOption('all');
+  const redRelay = await shot(310, 'red-relay');
   const [roof, floor] = JSON.parse((await canvas.getAttribute('data-fixtures'))!) as number[][];
   expect(roof[0]).toBeGreaterThan(roof[1] * 2);
   expect(floor[1]).toBeGreaterThan(roof[1] * 2);
-  const armed = await shot(305, true);
-  const reply = await shot(314, true);
-  const regions = await page.evaluate(async ([base, ...frames]) => {
+  const armed = await shot(305, 'amber-interlocks');
+  const reply = await shot(314, 'red-relay-reply');
+  await phrase.selectOption('3');
+  const blue = await shot(60, 'side-relay');
+  const { lenses, pane } = await page.evaluate(async ([base, ...frames]) => {
     const pixels = async (png: string) => {
       const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
       const readback = new OffscreenCanvas(img.width, img.height).getContext('2d')!;
@@ -238,14 +248,12 @@ test('the original DESCENT ceiling and floor lenses render distinct score colors
       return data;
     };
     const [{ width, height, data: off }, ...on] = await Promise.all([base, ...frames].map(pixels));
-    return [[.12, .31], [.66, .86]].map(([y0, y1]) => {
-      // The unscored diffuser is a neutral bright rectangle. Use that same mask in all three scored frames.
+    const region = (x0: number, x1: number, y0: number, y1: number, accept: (p: number) => boolean) => {
       const mask: number[] = [];
-      for (let j = Math.floor(height * y0); j < Math.floor(height * y1); j++) {
-        for (let i = Math.floor(width * .26); i < Math.floor(width * .74); i++) {
-          const p = (j * width + i) * 4;
-          const [r, g, b] = off.subarray(p, p + 3);
-          if (Math.max(r, g, b) - Math.min(r, g, b) < 65 && r + g + b > 270) mask.push(p);
+      for (let y = Math.floor(height * y0); y < Math.floor(height * y1); y++) {
+        for (let x = Math.floor(width * x0); x < Math.floor(width * x1); x++) {
+          const p = (y * width + x) * 4;
+          if (accept(p)) mask.push(p);
         }
       }
       return { count: mask.length, frames: on.map(({ data }) => {
@@ -260,15 +268,55 @@ test('the original DESCENT ceiling and floor lenses render distinct score colors
         return { warm: (red - blue) / mask.length, green: green / mask.length,
           luma: (.213 * red + .715 * green + .072 * blue) / mask.length, coverage: changed / mask.length };
       }) };
-    });
-  }, [steady, redRelay, armed, reply]);
-  for (const { count, frames } of regions) {
+    };
+    const neutralLens = (p: number) => {
+      const [r, g, b] = off.subarray(p, p + 3);
+      return Math.max(r, g, b) - Math.min(r, g, b) < 65 && r + g + b > 270;
+    };
+    return {
+      // The glass-only view leaves the fixture diffusers at their original color.
+      lenses: [region(.35, .61, .16, .28, neutralLens), region(.35, .61, .70, .81, neutralLens)],
+      // Inside the left wedge, away from the chamfer, aperture, and rails.
+      pane: region(.42, .45, .478, .516, () => true),
+    };
+  }, [lensMask, redRelay, armed, reply, blue]);
+  for (const { count, frames } of lenses) {
     expect(count).toBeGreaterThan(90);
     expect(frames[0].coverage).toBeGreaterThan(.58);
     expect(frames[0].warm).toBeGreaterThan(24);
     expect(Math.max(...frames.map(frame => frame.luma)) - Math.min(...frames.map(frame => frame.luma))).toBeGreaterThan(12);
   }
-  expect(regions[1].frames[0].green).toBeGreaterThan(regions[0].frames[0].green + 13);
+  expect(lenses[1].frames[0].green).toBeGreaterThan(lenses[0].frames[0].green + 13);
+  expect(pane.frames[0].warm).toBeGreaterThan(20);
+  expect(pane.frames[3].warm).toBeLessThan(-12);
+  expect(pane.frames[3].coverage).toBeGreaterThan(.6);
+});
+
+test('a fresh DESCENT game uses the CONTROL lighting score without changing preferences', async ({ page }, info) => {
+  await page.goto('/?vol=descent&dbg=1');
+  const diagnostics = page.locator('#errbox');
+  const metrics = async () => JSON.parse((await diagnostics.textContent()) || '{}') as {
+    phase: string; beat: number; lightTime: number; dynamics: { amount: number };
+    descentLighting: { beat: number; amount: number; fixtures: number[][]; pane: number[]; rim: number };
+  };
+  await page.locator('[data-act=start]').click();
+  await expect.poll(async () => (await metrics()).phase).toBe('playing');
+  const initial = await metrics();
+  await expect.poll(async () => (await metrics()).beat).toBeGreaterThan(5);
+  const later = await metrics();
+  for (const frame of [initial, later]) {
+    expect(frame.dynamics.amount).toBe(0);
+    expect(frame.descentLighting.amount).toBe(0);
+    expect(frame.descentLighting.beat).toBeCloseTo(frame.lightTime * 136 / 60, 7);
+    expect(frame.descentLighting.rim).toBeGreaterThan(0);
+    const [red, , blue] = frame.descentLighting.pane;
+    expect(blue).toBeGreaterThan(red * 2);
+  }
+  expect(initial.descentLighting.fixtures[0]).not.toEqual(later.descentLighting.fixtures[0]);
+  expect(initial.descentLighting.fixtures[1]).not.toEqual(later.descentLighting.fixtures[1]);
+  expect(await page.evaluate(() => localStorage.getItem('sofaraway.dynamicLights'))).toBeNull();
+  await diagnostics.evaluate(element => element.setAttribute('hidden', ''));
+  await page.locator('#gl').screenshot({ path: info.outputPath('default-descent-flight.png') });
 });
 
 const transferFlights = [

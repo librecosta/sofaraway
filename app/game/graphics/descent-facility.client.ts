@@ -24,6 +24,7 @@ const endTint = new THREE.Color();
 const fixtureBase = new THREE.Vector3(.77, .88, 1);
 const palettes = controlLightPhrases.map(phrase => ({
   groups: phrase.colors.map(swatch => new THREE.Color(swatch)), rim: new THREE.Color(phrase.rim),
+  pane: new THREE.Color(phrase.pane),
 }));
 const focusGroup: Record<ControlLightView, number> = {
   all: -1, glass: -2, roof: ControlLamp.Roof, floor: ControlLamp.Floor, left: ControlLamp.Left, right: ControlLamp.Right,
@@ -52,6 +53,7 @@ export class DescentFacility {
   };
   private readonly tint = new THREE.Color();
   private readonly accent = new THREE.Color();
+  private readonly gateFace = new THREE.Color();
   readonly gateRim = new THREE.Vector4(1, 1, 1, 0);
   private readonly shell = facilityStructureMaterial(this.fill, this.railBounce, this.score);
   private readonly fixtures = facilityLampMaterial(this.score);
@@ -69,11 +71,13 @@ export class DescentFacility {
 
   gateTint(station: number, out: THREE.Color) {
     const { glass: [first, last], start, finish } = this.zoneAt(station);
-    return out.setHex(first).lerp(endTint.setHex(last), THREE.MathUtils.smoothstep(station, start, finish));
+    out.setHex(first).lerp(endTint.setHex(last), THREE.MathUtils.smoothstep(station, start, finish));
+    if (this.score.focus.value < 0) out.lerp(this.gateFace, .86);
+    return out;
   }
 
   light(station: number, beat: number, dynamics: Readonly<DynamicLightEnvelope>, fog: THREE.Color, background: THREE.Color,
-    view: ControlLightView = 'all') {
+    view: ControlLightView = 'all', reducedMotion = false) {
     const well = roomWeight(station, this.well, 43);
     const core = roomWeight(station, this.core, 43);
     const exit = this.zones[this.zones.length - 1];
@@ -85,7 +89,7 @@ export class DescentFacility {
       .094 - .019 * well + .018 * core + .108 * outside,
       .112 - .013 * well + .024 * core + .121 * outside);
     const { cue, score, tint, accent } = this;
-    controlLightingAt(beat, dynamics.amount, cue);
+    controlLightingAt(beat, dynamics.amount, cue, reducedMotion);
     const from = palettes[cue.previous], to = palettes[cue.phrase], blend = cue.blend;
     const focus = score.focus.value = focusGroup[view];
     this.installation.visible = view !== 'glass';
@@ -104,18 +108,19 @@ export class DescentFacility {
       const gain = active ? cue.gains[i] : neutralLampGains[i];
       score.groups[i].set(tint.r, tint.g, tint.b, gain);
       const spill = score.spill[i].copy(fixtureBase);
-      const weight = active && i !== ControlLamp.Route ? cue.amount * (.12 + cue.energy * .57) : 0;
+      const weight = active && i !== ControlLamp.Route ? .18 + cue.energy * .48 : 0;
       if (weight) {
         tint.lerp(accent, .20).multiplyScalar(.92 + .53 * gain);
         spill.set(tint.r, tint.g, tint.b).lerp(fixtureBase, 1 - weight);
       }
     }
     tint.copy(from.rim).lerp(to.rim, blend);
+    this.gateFace.copy(from.pane).lerp(to.pane, blend).lerp(tint, migration * .60).multiplyScalar(cue.paneGain);
     this.gateRim.set(tint.r, tint.g, tint.b, view === 'all' || view === 'glass' ? cue.rim : 0);
     const index = this.zones.findIndex(zone => station < zone.end);
     securityTint(this.zones[index] ?? exit, this.zones[index + 1], station, this.railBounce, this.signalTarget);
     const rail = score.groups[ControlLamp.Rail];
-    this.railBounce.lerp(tint.setRGB(rail.x, rail.y, rail.z), focus === -1 ? cue.amount * .42 : 0)
+    this.railBounce.lerp(tint.setRGB(rail.x, rail.y, rail.z), focus === -1 ? .24 + cue.amount * .18 : 0)
       .multiplyScalar(.005 + rail.w * .018);
     return .0055 - .00118 * well - .00052 * core - .0010 * outside;
   }
@@ -123,6 +128,7 @@ export class DescentFacility {
   get lighting() {
     const { beat, phrase, amount, travel, relay } = this.cue;
     return { beat, phrase, amount, travel, relay, rim: this.gateRim.w,
+      pane: this.gateFace.toArray(),
       fixtures: this.score.groups.slice(0, 4).map(({ x, y, z, w }) => [x, y, z, w]) };
   }
 
