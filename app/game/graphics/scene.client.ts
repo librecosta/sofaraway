@@ -103,6 +103,7 @@ class VolumeScene {
       } else this.scene.background = this.facilityBackground ?? (this.sky = makeSky(volume));
       this.scene.environment = environmentFor(this.exterior?.sun);
       if (this.exterior) this.scene.environmentIntensity = .90;
+      if (this.facility) this.scene.environmentIntensity = .66;
       if (volume.id === 'elsewhere') {
         // Keep the existing PMREM and temper its contribution under the new local rig.
         this.scene.environmentIntensity = 1.56;
@@ -166,7 +167,8 @@ class VolumeScene {
     }
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.facility && this.facilityBackground) {
-      this.fog.density = this.facility.light(distance, dynamics.fixtureGain, this.fog.color, this.facilityBackground);
+      const beat = sim.phase === 'menu' ? 0 : lighting?.rhythmBeat ?? lightBeat;
+      this.fog.density = this.facility.light(distance, beat, dynamics, this.fog.color, this.facilityBackground);
     }
     const junction = this.junction;
     if (this.scenic) {

@@ -10,10 +10,11 @@ import { descentGateKinds, laserBandPitch, laserBeamRadius, laserOpening, matrix
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { idleInput } from '../../app/game/core/input';
 import { referenceFor } from '../../app/game/core/reference-track';
+import { controlFixtureCue, steadyLights } from '../../app/game/core/rhythmic-lights';
 import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
-import { IndustrialSurface, IndustrialTrim } from '../../app/game/graphics/industrial-geometry';
+import { IndustrialLight, IndustrialSurface, IndustrialTrim } from '../../app/game/graphics/industrial-geometry';
 import { DESCENT_GLASS_THICKNESS, descentGlassPanes } from '../../app/game/graphics/descent-glass';
 import { GateGeometries } from '../../app/game/graphics/gates.client';
 import { descentExamples } from '../../app/game/debug/catalog';
@@ -88,14 +89,14 @@ test('outer room dimensions vary while the laser lanes stay clear of architectur
       const origin = frame.p.clone().addScaledVector(frame.r, x).addScaledVector(frame.u, y);
       expect(new Raycaster(origin, frame.f, 0, 71).intersectObjects([structure, work, security]), zone.name).toHaveLength(0);
     }
-    const steady = work.material.color.clone();
-    room.light(20, 0, new Color(), new Color());
-    const idle = security.material.color.clone();
-    room.light(20, 1, new Color(), new Color());
-    expect(work.material.color).toEqual(steady);
-    expect(security.material.color.r).toBeGreaterThan(idle.r);
-    room.light(20, 2, new Color(), new Color());
-    expect(security.material.color.r - idle.r).toBeLessThan(.2);
+    const roles = (geometry: BufferGeometry) => {
+      const tags = geometry.getAttribute('industrialLight');
+      return new Set(Array.from({ length: tags.count }, (_, i) => tags.getY(i)));
+    };
+    expect(roles(work.geometry)).toEqual(new Set(zone.name === 'CORE'
+      ? [IndustrialLight.Work, IndustrialLight.Stator] : [IndustrialLight.Work]));
+    expect(roles(security.geometry)).toEqual(new Set([IndustrialLight.Guide,
+      zone.name === 'LOCKDOWN' ? IndustrialLight.Alarm : IndustrialLight.Marker]));
     for (const mesh of [structure, work, security]) mesh.geometry.dispose();
     room.dispose();
   }
@@ -167,8 +168,8 @@ test('DESCENT room air blends through authored boundaries independently of the s
   const zones = facilityZones(volume, 'standard');
   const room = new DescentFacility(new Path(120, 10, 'facility'), zones);
   const fog = new Color(), backdrop = new Color();
-  const sample = (station: number, gain = 1) => {
-    const density = room.light(station, gain, fog, backdrop);
+  const sample = (station: number, pulse = 0) => {
+    const density = room.light(station, 314, { ...steadyLights, amount: 1, pulse }, fog, backdrop);
     return { density, fog: fog.clone(), backdrop: backdrop.clone() };
   };
   try {
@@ -180,7 +181,7 @@ test('DESCENT room air blends through authored boundaries independently of the s
     const exitStart = sample(zones[6].start), exitEnd = sample(zones[6].finish);
     expect(exitEnd.backdrop.r).toBeGreaterThan(exitStart.backdrop.r);
     for (const station of [...middle, zones[6].finish]) {
-      expect(sample(station, 0)).toEqual(sample(station, 2));
+      expect(sample(station, 0)).toEqual(sample(station, 1));
     }
     for (const { start } of zones.slice(1)) {
       const a = sample(start - .02), b = sample(start + .02);
@@ -190,6 +191,30 @@ test('DESCENT room air blends through authored boundaries independently of the s
     }
   } finally {
     room.dispose();
+  }
+});
+
+test('the CONTROL lighting score separates travel, stator breath and warning accents', () => {
+  const sample = (beat: number, pulse: number, amount = 1) => {
+    const cue = { marker: 0, flow: 0, alarm: 0, stator: 0, phase: 0 };
+    controlFixtureCue(beat, { ...steadyLights, pulse, amount }, cue);
+    return cue;
+  };
+  const order = sample(16, 1), lock = sample(40, 1), flight = sample(116, 1);
+  const well = sample(208, 1), hold = sample(268, 1), lockdown = sample(312, 1), breach = sample(378, 1);
+  expect(lock.marker).toBeGreaterThan(order.marker);
+  expect(flight.flow).toBeGreaterThan(lock.flow * 2);
+  expect(well.marker).toBeLessThan(flight.marker);
+  expect(hold.stator - sample(264, 1).stator).toBeGreaterThan(.45);
+  expect(lockdown.alarm).toBeGreaterThan(flight.alarm * 2);
+  expect(breach.alarm).toBeLessThan(order.alarm);
+  expect(sample(312, 0).alarm).toBeLessThan(lockdown.alarm);
+  expect(sample(312, 1, 0)).toMatchObject({ flow: 0, alarm: 0, stator: 1 });
+  for (const { startBeat } of controlTrack.sections.slice(1)) {
+    const before = sample(startBeat - .0001, .7), after = sample(startBeat + .0001, .7);
+    for (const field of ['marker', 'flow', 'alarm', 'stator'] as const) {
+      expect(Math.abs(after[field] - before[field])).toBeLessThan(.001);
+    }
   }
 });
 

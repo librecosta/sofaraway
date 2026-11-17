@@ -1,5 +1,52 @@
 import * as THREE from 'three';
-import { IndustrialSurface, IndustrialTrim, industrialSurfacePeriod } from './industrial-geometry';
+import { IndustrialLight, IndustrialSurface, IndustrialTrim, industrialSurfacePeriod } from './industrial-geometry';
+
+const warningRed = new THREE.Color(0xff4228);
+
+export function facilityLampMaterial(cue: THREE.Vector4, phase: { value: number }, color = 0xffffff) {
+  const material = new THREE.MeshBasicMaterial({
+    vertexColors: true, side: THREE.DoubleSide, toneMapped: false, color,
+  });
+  material.onBeforeCompile = shader => {
+    shader.uniforms.facilityCue = { value: cue };
+    shader.uniforms.facilityPhase = phase;
+    shader.uniforms.warningRed = { value: warningRed };
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `
+      #include <common>
+      attribute vec2 industrialLight;
+      varying vec2 vIndustrialLight;
+    `).replace('#include <begin_vertex>', `
+      #include <begin_vertex>
+      vIndustrialLight = industrialLight;
+    `);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
+      #include <common>
+      varying vec2 vIndustrialLight;
+      uniform vec4 facilityCue;
+      uniform float facilityPhase;
+      uniform vec3 warningRed;
+    `).replace('#include <color_fragment>', `
+      #include <color_fragment>
+      float station = vIndustrialLight.x;
+      float role = vIndustrialLight.y;
+      if (role > ${IndustrialLight.Alarm - .5}) {
+        // Neighboring bulkheads answer each other. The stable amber level stays visible.
+        float relay = 0.5 + 0.5 * cos(6.2831853 * (station / 18.0 - facilityPhase));
+        float alarm = facilityCue.z * (0.20 + 0.80 * relay);
+        diffuseColor.rgb = mix(diffuseColor.rgb, warningRed, clamp(alarm * 0.82, 0.0, 0.82)) * (0.67 + alarm);
+      } else if (role > ${IndustrialLight.Guide - .5}) {
+        float travel = abs(fract(station / 52.0 - facilityPhase + 0.5) - 0.5);
+        float packet = 1.0 - smoothstep(0.08, 0.39, travel);
+        diffuseColor.rgb *= facilityCue.x + facilityCue.y * packet;
+      } else if (role > ${IndustrialLight.Marker - .5}) {
+        diffuseColor.rgb *= facilityCue.x;
+      } else if (role > ${IndustrialLight.Stator - .5}) {
+        diffuseColor.rgb *= facilityCue.w;
+      }
+    `);
+  };
+  return material;
+}
 
 export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Color) {
   const material = new THREE.MeshStandardMaterial({
@@ -65,7 +112,7 @@ export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Col
       }
     `).replace('#include <lights_fragment_end>', `
       #include <lights_fragment_end>
-      float work = vIndustrialSurface.w;
+      float work = vIndustrialSurface.w * (0.58 + 0.42 * vIndustrialSurface.w);
       reflectedLight.indirectDiffuse += diffuseColor.rgb *
         (facilityFill * cavity + vec3(0.77, 0.88, 1.0) * work) * (1.0 - 0.38 * metalnessFactor);
       float glancing = 1.0 - clamp(dot(geometryNormal, geometryViewDir), 0.0, 1.0);

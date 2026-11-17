@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { facilityZones } from '../core/descent-facility';
 import { SECTION, SECTION_OUTLINE } from '../core/section';
-import { IndustrialGeometry, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
+import { IndustrialGeometry, IndustrialLight, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
 import type { Path, PathFrame } from './path';
 
 type Zone = ReturnType<typeof facilityZones>[number];
@@ -13,8 +13,8 @@ const lining = new THREE.Color(0x242d34);
 const equipment = new THREE.Color(0x4e626e);
 const lamp = new THREE.Color(0xaec7d5);
 const pressureAccent = new THREE.Color(0xd098cc);
-const alarmAccent = new THREE.Color(0xe87358);
-const lockdownAmber = new THREE.Color(0xfdae60);
+const alarmAccent = new THREE.Color(0xef5337);
+const lockdownAmber = new THREE.Color(0xfaa246);
 const innerScale = 1.17;
 const flightCollarThroat = innerScale - .032;
 const shellStep = 6;
@@ -262,7 +262,7 @@ export function securityTint(zone: Zone, next: Zone | undefined, station: number
 }
 
 function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: number) {
-  const fixtures = new IndustrialGeometry();
+  const fixtures = new IndustrialGeometry(undefined, true);
   const sources: { station: number; extent: number; origin: THREE.Vector3; toEnd: THREE.Vector3;
     inverseLength: number; reachSq: number }[] = [];
   for (const [i, zone] of zones.entries()) {
@@ -274,9 +274,12 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
       const fixture = (a: readonly [number, number], b: readonly [number, number], halfWidth: number,
-        halfDepth: number, reach: number, offset = 0) => {
+        halfDepth: number, reach: number, offset = 0, cue = IndustrialLight.Work) => {
         const origin = point(frame, ...a, offset), end = point(frame, ...b, offset);
-        if (s >= from && s < to) fixtures.beam(origin, end, frame.f, halfWidth, halfDepth, lamp);
+        if (s >= from && s < to) {
+          fixtures.lightAt(cue, s + offset);
+          fixtures.beam(origin, end, frame.f, halfWidth, halfDepth, lamp);
+        }
         const toEnd = end.sub(origin);
         sources.push({ station: s + offset, extent: reach + 5, origin, toEnd,
           inverseLength: 1 / toEnd.lengthSq(), reachSq: reach ** 2 });
@@ -300,7 +303,7 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       }
       if (zone.name === 'CORE' && bay % 2 === 0) {
         for (const side of [-1, 1]) for (const level of [-1, 1]) {
-          fixture([side * 3.3, level * 8.66], [side * 7.24, level * 8.11], .075, 1.10, 15);
+          fixture([side * 3.3, level * 8.66], [side * 7.24, level * 8.11], .075, 1.10, 15, 0, IndustrialLight.Stator);
         }
       }
     }
@@ -331,7 +334,7 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
 
 export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], from: number, to: number) {
   const { structure: metal, fixtures, lightAt } = buildWorkLights(path, zones, from, to);
-  const security = new IndustrialGeometry();
+  const security = new IndustrialGeometry(undefined, true);
   const tone = new THREE.Color(), signal = new THREE.Color(), signalTarget = new THREE.Color();
   for (const [i, zone] of zones.entries()) {
     const start = Math.max(from, zone.start), end = Math.min(to, zone.end);
@@ -357,6 +360,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const mid = (span[0] + span[1]) / 2;
       lightAt(mid);
       securityTint(zone, nextZone, mid, signal, signalTarget);
+      security.lightAt(IndustrialLight.Guide, ...span);
       const outside = zone.name === 'BREACH' && mid > roofRelease;
       for (const [k, edge] of walls[j].entries()) {
         const next = (k + 1) % walls[j].length;
@@ -405,6 +409,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const frame = path.sample(s);
       lightAt(s);
       securityTint(zone, nextZone, s, signal, signalTarget);
+      security.lightAt(zone.name === 'LOCKDOWN' ? IndustrialLight.Alarm : IndustrialLight.Marker, s);
       const [width, height] = dimensions(s, i, zones);
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;

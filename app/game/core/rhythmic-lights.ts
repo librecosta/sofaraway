@@ -1,6 +1,6 @@
-import { ease } from './lighting-score';
+import { breath, ease } from './lighting-score';
 import { drums as daybreakDrums } from './daybreak-score';
-import { controlEvents, controlSteps, step as descentStep } from './descent-score';
+import { controlEvents, controlSteps, controlTrack, step as descentStep } from './descent-score';
 import { sectionAt } from './volumes';
 import type { VolumeDefinition } from './volumes';
 
@@ -60,6 +60,43 @@ export interface DynamicLightEnvelope {
 export const steadyLights: Readonly<DynamicLightEnvelope> = Object.freeze({
   fixtureGain: 1, rimGain: 1, physicalGain: 1, pulse: 0, amount: 0,
 });
+
+// Marker level, drum accent, slow swell, forward guide, warning chase, stator breath.
+const controlFixturePhrases = [
+  [.42, .08, .06, .08, .20, .08], // ORDER
+  [.54, .20, .08, .32, .24, .10], // LOCK
+  [.46, .16, .09, .76, .33, .12], // FLIGHT
+  [.31, .12, .24, .24, .36, .11], // PRESSURE
+  [.26, .04, .12, .07, .20, .54], // HOLD
+  [.45, .24, .10, .33, 1.05, .12], // LOCKDOWN
+  [.31, .05, .07, .10, .17, .07], // BREACH
+] as const;
+
+export interface ControlFixtureCue {
+  marker: number;
+  flow: number;
+  alarm: number;
+  stator: number;
+  phase: number;
+}
+
+/** The authored light rig shares the audible beat and the existing CONTROL drum envelope. */
+export function controlFixtureCue(beat: number, dynamics: Readonly<DynamicLightEnvelope>, out: ControlFixtureCue) {
+  let i = controlTrack.sections.length - 1;
+  while (i > 0 && beat < controlTrack.sections[i].startBeat) i--;
+  const from = controlFixturePhrases[Math.max(0, i - 1)], to = controlFixturePhrases[i];
+  const blend = ease((beat - controlTrack.sections[i].startBeat) / 3);
+  const release = 1 - .85 * ease((beat - controlTrack.sections[6].startBeat) / 24);
+  const amount = dynamics.amount * release;
+  const swell = breath(beat, 8) - .5;
+  const strike = dynamics.pulse;
+  out.marker = lerp(from[0], to[0], blend) +
+    amount * (lerp(from[1], to[1], blend) * strike + lerp(from[2], to[2], blend) * swell);
+  out.flow = amount * lerp(from[3], to[3], blend) * (.55 + .45 * strike);
+  out.alarm = amount * lerp(from[4], to[4], blend) * (.28 + .72 * strike);
+  out.stator = 1 + amount * lerp(from[5], to[5], blend) * swell;
+  out.phase = beat / 4;
+}
 
 const elsewhereLevels: Readonly<Record<string, readonly [number, number]>> = {
   INTRO: [.85, 1.15], A: [.50, 1.70], B: [.50, 1.70], BUILD: [.40, 1.90],

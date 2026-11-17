@@ -70,14 +70,32 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   await page.getByRole('checkbox', { name: 'Boost view' }).check();
   const boost = await canvas.screenshot({ path: info.outputPath('lockdown-boost.png') });
   expect(boost.equals(cruise)).toBe(false);
+
+  const facility = page.locator('#descent');
+  await facility.getByRole('checkbox', { name: 'Boost view' }).uncheck();
+  // Low has no depth-of-field easing, so only the light cue changes between draws.
+  await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('low');
+  const firstCue = await canvas.screenshot();
+  const offset = facility.getByRole('slider', { name: 'Light beat offset' });
+  const station = await canvas.getAttribute('data-station');
+  await offset.fill('1.25');
+  await expect(canvas).toHaveAttribute('data-light-beat', '315.250');
+  await expect(canvas).toHaveAttribute('data-station', station!);
+  expect((await canvas.screenshot()).equals(firstCue)).toBe(false);
+
+  await facility.getByRole('checkbox', { name: 'Dynamic lights' }).uncheck();
+  const steady = await canvas.screenshot();
+  await offset.fill('2');
+  await expect(canvas).toHaveAttribute('data-light-beat', '316.000');
+  expect((await canvas.screenshot()).equals(steady)).toBe(true);
   expect(errors).toEqual([]);
 });
 
 for (const difficulty of ['normal', 'hard'] as const) {
-  test(`live ${difficulty} flight through the shaft and stator chamber keeps the view and gates stable`, async ({ page }, info) => {
+  test(`live ${difficulty} flight keeps gates readable through the shaft, core and escape`, async ({ page }, info) => {
     await page.goto('http://127.0.0.1:8090/');
     await page.evaluate(async difficulty => {
-      await window.b0Harness.mount({ volumeId: 'descent', difficulty, quality: 'high', diagnostics: {
+      await window.b0Harness.mount({ volumeId: 'descent', difficulty, quality: 'high', dynamicLights: true, diagnostics: {
         fixedTime: null, autoplay: false, god: false, align: true, boost: false,
         mobileQuality: false, post: true, record: false, debug: true,
       } });
@@ -85,8 +103,11 @@ for (const difficulty of ['normal', 'hard'] as const) {
     }, difficulty);
     const metrics = () => page.evaluate(() => JSON.parse(window.b0Harness.metrics() || '{}') as {
       phase: string; beat: number; speed: number; hitCount: number; chunks: number; postFailure: string | null;
+      dynamics: { amount: number };
     });
-    for (const [label, beat, boost] of [['shaft', 204, true], ['core', 269, false]] as const) {
+    for (const [label, beat, boost] of [
+      ['shaft', 204, true], ['core', 269, false], ['lockdown', 312, true], ['breach', 367, false],
+    ] as const) {
       await page.evaluate(async at => {
         window.b0Harness.advanceAndPause(at);
         await window.b0Harness.resume(true);
@@ -94,7 +115,7 @@ for (const difficulty of ['normal', 'hard'] as const) {
       if (boost) await page.keyboard.down('Shift');
       await expect.poll(async () => (await metrics()).beat).toBeGreaterThan(beat + 3);
       const snapshot = await metrics();
-      expect(snapshot).toMatchObject({ phase: 'playing', hitCount: 0, postFailure: null });
+      expect(snapshot).toMatchObject({ phase: 'playing', hitCount: 0, postFailure: null, dynamics: { amount: 1 } });
       expect(snapshot.chunks).toBeLessThanOrEqual(5);
       if (boost) {
         expect(snapshot.speed).toBeGreaterThan(43);

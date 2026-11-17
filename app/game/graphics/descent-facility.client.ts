@@ -1,18 +1,20 @@
 import * as THREE from 'three';
 import type { facilityZones } from '../core/descent-facility';
+import { controlFixtureCue } from '../core/rhythmic-lights';
+import type { ControlFixtureCue, DynamicLightEnvelope } from '../core/rhythmic-lights';
 import { buildFacilityArchitecture, securityTint } from './descent-architecture';
-import { facilityStructureMaterial } from './descent-materials.client';
+import { facilityLampMaterial, facilityStructureMaterial } from './descent-materials.client';
 import type { Path } from './path';
 
 type Zone = ReturnType<typeof facilityZones>[number];
-const interior = new THREE.Color(0x111720);
-const air = new THREE.Color(0x202b37);
-const wellAir = new THREE.Color(0x35485d);
-const wellBackdrop = new THREE.Color(0x1d2939);
-const coreAir = new THREE.Color(0x2b2e3c);
-const coreBackdrop = new THREE.Color(0x171c27);
-const breachAir = new THREE.Color(0x607481);
-const breachBackdrop = new THREE.Color(0x798c97);
+const interior = new THREE.Color(0x10151d);
+const air = new THREE.Color(0x151e29);
+const wellAir = new THREE.Color(0x28394c);
+const wellBackdrop = new THREE.Color(0x172333);
+const coreAir = new THREE.Color(0x232634);
+const coreBackdrop = new THREE.Color(0x151924);
+const breachAir = new THREE.Color(0x546a78);
+const breachBackdrop = new THREE.Color(0x758791);
 const endTint = new THREE.Color();
 
 function roomWeight(station: number, zone: Zone | undefined, edge: number) {
@@ -24,13 +26,12 @@ export class DescentFacility {
   private readonly fill = new THREE.Color();
   private readonly railBounce = new THREE.Color();
   private readonly signalTarget = new THREE.Color();
+  private readonly cue: ControlFixtureCue = { marker: 0, flow: 0, alarm: 0, stator: 1, phase: 0 };
+  private readonly lampGains = new THREE.Vector4(.42, 0, 0, 1);
+  private readonly lampPhase = { value: 0 };
   private readonly shell = facilityStructureMaterial(this.fill, this.railBounce);
-  private readonly fixtures = new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide, color: 0xc9c9c9, toneMapped: false,
-  });
-  private readonly security = new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide, toneMapped: false,
-  });
+  private readonly fixtures = facilityLampMaterial(this.lampGains, this.lampPhase, 0xbac1c7);
+  private readonly security = facilityLampMaterial(this.lampGains, this.lampPhase);
   private readonly well: Zone | undefined;
   private readonly core: Zone | undefined;
 
@@ -46,22 +47,24 @@ export class DescentFacility {
     return out.setHex(first).lerp(endTint.setHex(last), THREE.MathUtils.smoothstep(station, start, finish));
   }
 
-  light(station: number, fixtureGain: number, fog: THREE.Color, background: THREE.Color) {
+  light(station: number, beat: number, dynamics: Readonly<DynamicLightEnvelope>, fog: THREE.Color, background: THREE.Color) {
     const well = roomWeight(station, this.well, 43);
     const core = roomWeight(station, this.core, 43);
     const exit = this.zones[this.zones.length - 1];
     const outside = exit.name === 'BREACH' ?
-      THREE.MathUtils.smoothstep(station, exit.start + (exit.finish - exit.start) * .40, exit.finish) : 0;
+      THREE.MathUtils.smoothstep(station, exit.start + (exit.finish - exit.start) * .24, exit.finish) : 0;
     fog.copy(air).lerp(wellAir, well).lerp(coreAir, core).lerp(breachAir, outside);
     background.copy(interior).lerp(wellBackdrop, well).lerp(coreBackdrop, core).lerp(breachBackdrop, outside);
-    this.fill.setRGB(.145 + .021 * well + .035 * core + .039 * outside,
-      .154 + .060 * well + .034 * core + .052 * outside,
-      .171 + .087 * well + .045 * core + .062 * outside);
-    const rhythm = THREE.MathUtils.clamp(fixtureGain - 1, -1, 1);
-    this.security.color.setScalar(.72 + .074 * rhythm);
+    this.fill.setRGB(.081 - .024 * well + .016 * core + .095 * outside,
+      .094 - .019 * well + .018 * core + .108 * outside,
+      .112 - .013 * well + .024 * core + .121 * outside);
+    const cue = this.cue;
+    controlFixtureCue(beat, dynamics, cue);
+    this.lampGains.set(cue.marker, cue.flow, cue.alarm, cue.stator);
+    this.lampPhase.value = cue.phase;
     const index = this.zones.findIndex(zone => station < zone.end);
     securityTint(this.zones[index] ?? exit, this.zones[index + 1], station, this.railBounce, this.signalTarget);
-    this.railBounce.multiplyScalar(.020 + .011 * rhythm);
+    this.railBounce.multiplyScalar(.005 + cue.marker * .018);
     return .0055 - .00118 * well - .00052 * core - .0010 * outside;
   }
 

@@ -68,7 +68,7 @@ export class Runtime implements GameRuntime {
   private lightAmount = 0;
   private lightStamp = 0;
   private lightMotion?: MediaQueryList;
-  private readonly lightInput = { beat: 0, dynamics: { ...steadyLights } };
+  private readonly lightInput = { beat: 0, rhythmBeat: 0, dynamics: { ...steadyLights } };
   private lightTime = 0;
 
   constructor(private readonly view: RuntimeView) {}
@@ -332,6 +332,7 @@ export class Runtime implements GameRuntime {
     const beatSeconds = 60 / volume.bpm;
     this.lightTime = menu ? volume.sections[0].beats * beatSeconds + sim.time % (8 * beatSeconds)
       : renderTime ?? (this.snapshot.phase === 'paused' ? this.lightTime : sim.time);
+    this.lightInput.rhythmBeat = this.lightTime / beatSeconds;
     const dynamics = this.lightInput.dynamics;
     if (this.lightAmount && !this.lightMotion?.matches) dynamicLightEnvelope(volume, this.lightTime, this.lightAmount, false, dynamics);
     else Object.assign(dynamics, steadyLights);

@@ -3,6 +3,7 @@ import type { QualityTier } from '../game/contracts';
 import { facilityStages } from '../game/core/descent-facility';
 import { controlTrack } from '../game/core/descent-score';
 import { referenceFor } from '../game/core/reference-track';
+import { dynamicLightEnvelope } from '../game/core/rhythmic-lights';
 import { volumeById } from '../game/core/volumes';
 import type { ScenicPreview } from '../game/debug/scenic-preview.client';
 import s from '../styles/debug.module.css';
@@ -16,6 +17,8 @@ export function DescentFacilityPreview() {
   const [status, setStatus] = useState('');
   const [section, setSection] = useState(1);
   const [boost, setBoost] = useState(false);
+  const [dynamic, setDynamic] = useState(true);
+  const [lightOffset, setLightOffset] = useState(0);
   const [quality, setQuality] = useState<QualityTier>('high');
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<ScenicPreview>(null);
@@ -43,8 +46,14 @@ export function DescentFacilityPreview() {
     const preview = viewer.current;
     preview.configure(quality, window.devicePixelRatio);
     preview.select({ label, beat, boost }, 'standard', beat, 'descent', station);
-    preview.draw({ beat });
   }, [ready, quality, label, beat, boost, station]);
+  useEffect(() => {
+    if (!ready || !viewer.current) return;
+    const lightBeat = beat + lightOffset;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    viewer.current.draw({ beat: lightBeat,
+      dynamics: dynamicLightEnvelope(descent, lightBeat * 60 / descent.bpm, Number(dynamic), reduced) });
+  }, [ready, quality, beat, boost, lightOffset, dynamic]);
 
   return <section id="descent" className={s.section}>
     <h2>DESCENT facility</h2>
@@ -55,14 +64,20 @@ export function DescentFacilityPreview() {
         {status && <p role="status">{status}</p>}
       </div>
       <div className={s.scenicControls}>
-        <label>CONTROL chapter <select value={section} onChange={event => setSection(Number(event.currentTarget.value))}>
+        <label>CONTROL chapter <select value={section} onChange={event => {
+          setSection(Number(event.currentTarget.value));
+          setLightOffset(0);
+        }}>
           {controlTrack.sections.map(({ name }, i) => <option key={name} value={i}>{name} · {facilityStages[i].name}</option>)}
         </select></label>
         <label>Facility quality <select value={quality} onChange={event => setQuality(event.currentTarget.value as QualityTier)}>
           <option value="low">Low</option><option value="auto">Auto</option><option value="high">High</option>
         </select></label>
         <label><input type="checkbox" checked={boost} onChange={event => setBoost(event.currentTarget.checked)} /> Boost view</label>
-        <a href={`/?vol=descent&t=${(beat * 60 / descent.bpm).toFixed(4)}&align=1&q=${quality}`}>Open the game view</a>
+        <label><input type="checkbox" checked={dynamic} onChange={event => setDynamic(event.currentTarget.checked)} /> Dynamic lights</label>
+        <label>Light beat offset <input type="range" min="0" max="4" step=".0625" value={lightOffset}
+          onChange={event => setLightOffset(event.currentTarget.valueAsNumber)} /></label>
+        <a href={`/?vol=descent&t=${(beat * 60 / descent.bpm).toFixed(4)}&align=1&q=${quality}&lights=${dynamic}`}>Open the game view</a>
         <a href="#gates-descent">Inspect the holographic glass gates</a>
       </div>
     </div>
