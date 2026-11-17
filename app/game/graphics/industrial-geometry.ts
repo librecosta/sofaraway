@@ -17,13 +17,15 @@ export class IndustrialGeometry {
   private readonly normalValues: number[] = [];
   private readonly surfaceValues: number[] = [];
   private readonly lightValues: number[] = [];
+  private readonly lensValues: number[] = [];
   private readonly spillGroups: number[] = [];
-  private readonly spill = { group: ControlLamp.Roof };
+  private readonly spill = { group: ControlLamp.Route, station: 0 };
   private light = ControlLamp.Roof;
   private lightStart = 0;
   private lightEnd = 0;
 
-  constructor(private readonly workSpill?: (point: THREE.Vector3, normal: THREE.Vector3, target: { group: ControlLamp }) => number,
+  constructor(private readonly workSpill?: (point: THREE.Vector3, normal: THREE.Vector3,
+    target: { group: ControlLamp; station: number }) => number,
     private readonly scoredLights = false) {}
 
   lightAt(light: ControlLamp, start: number, end = start) {
@@ -52,16 +54,18 @@ export class IndustrialGeometry {
       this.surfaceVertex(c, u, v1, finish);
       this.surfaceVertex(d, 0, v1, finish);
     }
-    if (this.scoredLights) this.lightValues.push(this.lightStart, this.light, this.lightEnd, this.light,
-      this.lightEnd, this.light, this.lightStart, this.light);
+    if (this.scoredLights) {
+      this.lightValues.push(this.lightStart, this.light, this.lightEnd, this.light, this.lightEnd, this.light, this.lightStart, this.light);
+      this.lensValues.push(0, 0, 1, 0, 1, 1, 0, 1);
+    }
     this.indices.push(index, index + 1, index + 2, index, index + 2, index + 3);
   }
 
   private surfaceVertex(p: THREE.Vector3, u: number, v: number, finish: number) {
-    this.spill.group = ControlLamp.Roof;
+    this.spill.group = ControlLamp.Route;
     const strength = this.workSpill!(p, this.normal, this.spill);
     this.surfaceValues.push(u, v, finish, half(strength));
-    this.spillGroups.push(this.spill.group);
+    this.spillGroups.push(half(this.spill.group), half(this.spill.station % 128));
   }
 
   beam(a: THREE.Vector3, b: THREE.Vector3, forward: THREE.Vector3, halfWidth: number, halfDepth: number, color: THREE.Color,
@@ -88,9 +92,12 @@ export class IndustrialGeometry {
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normalValues, 3));
     if (this.workSpill) {
       geometry.setAttribute('industrialSurface', new THREE.Float16BufferAttribute(this.surfaceValues, 4));
-      geometry.setAttribute('industrialSpill', new THREE.Uint8BufferAttribute(this.spillGroups, 1));
+      geometry.setAttribute('industrialSpill', new THREE.Float16BufferAttribute(this.spillGroups, 2));
     }
-    if (this.scoredLights) geometry.setAttribute('industrialLight', new THREE.Float32BufferAttribute(this.lightValues, 2));
+    if (this.scoredLights) {
+      geometry.setAttribute('industrialLight', new THREE.Float32BufferAttribute(this.lightValues, 2));
+      geometry.setAttribute('uv', new THREE.Float16BufferAttribute(this.lensValues.map(half), 2));
+    }
     geometry.setIndex(this.indices);
     return geometry;
   }

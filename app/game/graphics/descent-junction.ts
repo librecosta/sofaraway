@@ -53,14 +53,14 @@ export class DescentJunction {
       const lampHeight = separated ? 3.48 : SECTION.b * (h - .15) - .034;
       return { station, base, w, h, separated, lampHeight,
         workLights: [-1, 1].map(sign => ({
-          origin: point(base, 0, sign * lampHeight), group: sign < 0 ? ControlLamp.Floor : ControlLamp.Roof,
+          origin: point(base, 0, sign * lampHeight), group: sign < 0 ? ControlLamp.Floor : ControlLamp.Roof, station,
         })) };
     });
     const workLights = gantries.flatMap(gantry => gantry.workLights);
     const lampDelta = new THREE.Vector3();
     const metal = new IndustrialGeometry((p, normal, target) => {
       let spill = .11, strongest = 0;
-      for (const { origin, group } of workLights) {
+      for (const { origin, group, station } of workLights) {
         lampDelta.subVectors(origin, p);
         const distance = lampDelta.length();
         if (distance >= 17 || distance < .001) continue;
@@ -70,6 +70,7 @@ export class DescentJunction {
         if (strength > strongest) {
           strongest = strength;
           target.group = group;
+          target.station = station;
         }
       }
       return Math.min(.59, spill);

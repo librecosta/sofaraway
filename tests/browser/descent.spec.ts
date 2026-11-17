@@ -204,6 +204,73 @@ test('the fixed DESCENT camera plays, isolates and restores the production light
   expect(errors).toEqual([]);
 });
 
+test('the original DESCENT ceiling and floor lenses render distinct score colors over a phrase', async ({ page }) => {
+  await page.goto('/debug/#descent');
+  const facility = page.locator('#descent');
+  await facility.getByRole('button', { name: 'Open live facility' }).click();
+  const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
+  await facility.getByRole('combobox', { name: 'CONTROL chapter' }).selectOption('5');
+  await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('low');
+  await facility.getByRole('combobox', { name: 'Lighting phrase' }).selectOption('19');
+  const cursor = facility.getByRole('slider', { name: 'Score beat' });
+  const dynamics = facility.getByRole('checkbox', { name: 'Dynamic lights' });
+  const shot = async (beat: number, enabled: boolean) => {
+    await dynamics.setChecked(enabled);
+    await cursor.fill(String(beat));
+    await expect(canvas).toHaveAttribute('data-light-beat', beat.toFixed(3));
+    await expect(canvas).toHaveAttribute('data-light-amount', enabled ? '1.000' : '0.000');
+    return (await canvas.screenshot()).toString('base64');
+  };
+  const steady = await shot(310, false);
+  const redRelay = await shot(310, true);
+  const [roof, floor] = JSON.parse((await canvas.getAttribute('data-fixtures'))!) as number[][];
+  expect(roof[0]).toBeGreaterThan(roof[1] * 2);
+  expect(floor[1]).toBeGreaterThan(roof[1] * 2);
+  const armed = await shot(305, true);
+  const reply = await shot(314, true);
+  const regions = await page.evaluate(async ([base, ...frames]) => {
+    const pixels = async (png: string) => {
+      const img = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
+      const readback = new OffscreenCanvas(img.width, img.height).getContext('2d')!;
+      readback.drawImage(img, 0, 0);
+      const data = readback.getImageData(0, 0, img.width, img.height);
+      img.close();
+      return data;
+    };
+    const [{ width, height, data: off }, ...on] = await Promise.all([base, ...frames].map(pixels));
+    return [[.12, .31], [.66, .86]].map(([y0, y1]) => {
+      // The unscored diffuser is a neutral bright rectangle. Use that same mask in all three scored frames.
+      const mask: number[] = [];
+      for (let j = Math.floor(height * y0); j < Math.floor(height * y1); j++) {
+        for (let i = Math.floor(width * .26); i < Math.floor(width * .74); i++) {
+          const p = (j * width + i) * 4;
+          const [r, g, b] = off.subarray(p, p + 3);
+          if (Math.max(r, g, b) - Math.min(r, g, b) < 65 && r + g + b > 270) mask.push(p);
+        }
+      }
+      return { count: mask.length, frames: on.map(({ data }) => {
+        let red = 0, green = 0, blue = 0, changed = 0;
+        for (const p of mask) {
+          const [r, g, b] = data.subarray(p, p + 3);
+          red += r;
+          green += g;
+          blue += b;
+          if (Math.max(Math.abs(r - off[p]), Math.abs(g - off[p + 1]), Math.abs(b - off[p + 2])) > 30) changed++;
+        }
+        return { warm: (red - blue) / mask.length, green: green / mask.length,
+          luma: (.213 * red + .715 * green + .072 * blue) / mask.length, coverage: changed / mask.length };
+      }) };
+    });
+  }, [steady, redRelay, armed, reply]);
+  for (const { count, frames } of regions) {
+    expect(count).toBeGreaterThan(90);
+    expect(frames[0].coverage).toBeGreaterThan(.58);
+    expect(frames[0].warm).toBeGreaterThan(24);
+    expect(Math.max(...frames.map(frame => frame.luma)) - Math.min(...frames.map(frame => frame.luma))).toBeGreaterThan(12);
+  }
+  expect(regions[1].frames[0].green).toBeGreaterThan(regions[0].frames[0].green + 13);
+});
+
 const transferFlights = [
   { route: 'main', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'cruise' },
   { route: 'challenge', difficulty: 'hard', mode: 'standard', seed: 1, speed: 'boost' },

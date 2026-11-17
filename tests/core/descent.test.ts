@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { Color, Mesh, MeshBasicMaterial, Raycaster, Vector3, DoubleSide } from 'three';
+import { Color, InstancedMesh, Mesh, MeshBasicMaterial, Raycaster, Vector3, DoubleSide } from 'three';
 import type { BufferGeometry } from 'three';
 import { difficulties } from '../../app/game/contracts';
 import { branchLayout, routeSides } from '../../app/game/core/branches';
@@ -29,23 +29,32 @@ const volume = volumeById('descent');
 test('the closed facility bays mirror across both local axes', () => {
   const path = new Path(120, 10, 'facility');
   path.straight(120);
-  const vertices = (geometry: BufferGeometry, mirrorX = 1, mirrorY = 1) => {
+  const vertices = (geometry: BufferGeometry, mirrorX = 1, mirrorY = 1, includeTint = true) => {
     const { position, color } = geometry.attributes;
     return Array.from({ length: position.count }, (_, i) => [
       mirrorX * position.getX(i), mirrorY * position.getY(i), position.getZ(i),
-      color.getX(i), color.getY(i), color.getZ(i),
+      ...(includeTint ? [color.getX(i), color.getY(i), color.getZ(i)] : []),
     ].map(value => Math.round(value * 1e5)).join(',')).sort();
   };
-  const mirrored = (geometry: BufferGeometry, label: string) => {
+  const mirrored = (geometry: BufferGeometry, label: string, separateLensBanks: boolean) => {
     const reference = vertices(geometry);
     expect(vertices(geometry, -1, 1), label + ' horizontal mirror').toEqual(reference);
-    expect(vertices(geometry, 1, -1), label + ' vertical mirror').toEqual(reference);
+    expect(vertices(geometry, 1, -1, !separateLensBanks), label + ' vertical mirror')
+      .toEqual(separateLensBanks ? vertices(geometry, 1, 1, false) : reference);
     geometry.dispose();
   };
   for (const zone of facilityZones(volume, 'standard')) {
     const room = new DescentFacility(path, [{ ...zone, start: 0, finish: 120, end: 120 }]);
     // This window includes the framing before the BREACH roof opens.
-    for (const mesh of room.build(0, 52)) mirrored(mesh.geometry, zone.section + ' ' + mesh.name);
+    for (const mesh of room.build(0, 52)) {
+      // The staggered optical layouts are independent from the symmetric structural hardware.
+      if (mesh instanceof InstancedMesh) {
+        expect(mesh.count).toBeGreaterThan(0);
+        expect(mesh.geometry.getAttribute('lightSpan').count).toBe(mesh.count);
+        mesh.dispose();
+        mesh.geometry.dispose();
+      } else mirrored(mesh.geometry, zone.section + ' ' + mesh.name, mesh.name === 'facility-fixtures');
+    }
     room.dispose();
   }
 });
@@ -224,14 +233,19 @@ test('CONTROL has 24 continuous lighting phrases with independent groups and bou
     }
   }
   expect(levels.size).toBe(24);
+  const low = [1, 1], high = [1, 1];
   for (let beat = 0; beat < controlTrack.beats; beat += .0625) {
     const cue = sample(beat);
     cue.accents.forEach((level, voice) => { if (level > .1) voices.add(voice); });
-    expect(cue.gains[ControlLamp.Roof]).toBeGreaterThan(.85);
-    expect(cue.gains[ControlLamp.Floor]).toBeGreaterThan(.85);
+    for (const group of [ControlLamp.Roof, ControlLamp.Floor]) {
+      low[group] = Math.min(low[group], cue.gains[group]);
+      high[group] = Math.max(high[group], cue.gains[group]);
+    }
     expect(cue.gains[ControlLamp.Route]).toBeCloseTo(neutralLampGains[ControlLamp.Route]);
-    expect(cue.rim).toBeLessThan(.5);
+    expect(cue.rim).toBeLessThan(.77);
   }
+  expect(low.every(gain => gain < .42)).toBe(true);
+  expect(high.every((gain, group) => gain - low[group] > .65 && gain < 1.8)).toBe(true);
   expect(voices.size).toBe(6);
   expect(sample(120).travel).toBeGreaterThan(.4);
   expect(sample(136).travel).toBeLessThan(-.4);
@@ -268,7 +282,10 @@ test('service assemblies and the BREACH roof cap stay attached to their world st
         expect(roof(after)).toHaveLength(0);
       }
     } finally {
-      for (const mesh of [...whole, ...leading, ...trailing]) mesh.geometry.dispose();
+      for (const mesh of [...whole, ...leading, ...trailing]) {
+        if (mesh instanceof InstancedMesh) mesh.dispose();
+        mesh.geometry.dispose();
+      }
       facility.dispose();
     }
   }

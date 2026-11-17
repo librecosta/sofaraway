@@ -1,61 +1,191 @@
 import * as THREE from 'three';
-import { ControlLamp, controlLampCount } from '../core/descent-lighting';
+import { ControlLamp, controlLampCount, FacilityLightShape } from '../core/descent-lighting';
 import { IndustrialSurface, IndustrialTrim, industrialSurfacePeriod } from './industrial-geometry';
 
 export interface FacilityLightingUniforms {
   groups: THREE.Vector4[];
+  accents: THREE.Vector3[];
   spill: THREE.Vector3[];
   motion: THREE.Vector4;
+  events: THREE.Vector4;
+  energy: { value: number };
   focus: { value: number };
 }
 
 const scoreUniforms = `
   uniform vec4 controlLamps[${controlLampCount}];
-  uniform vec4 controlMotion; // Color mix, directional movement, warning relay, music beat.
+  uniform vec3 controlAccents[${controlLampCount}];
+  uniform vec4 controlMotion; // Mix, direction, alarm, audible beat.
+  uniform vec4 controlEvents; // Kick, snare, signal, sweep.
+  uniform float controlEnergy;
   uniform int controlFocus;
   float scoreWeight(int group) {
-    return (controlFocus == -1 || controlFocus == group) ? controlMotion.x : 0.0;
+    return (group != ${ControlLamp.Route} && (controlFocus == -1 || controlFocus == group)) ? controlMotion.x : 0.0;
+  }
+  float lane(int group) {
+    if (group == ${ControlLamp.Floor} || group == ${ControlLamp.Right} || group == ${ControlLamp.DeepDeck}) return 0.5;
+    if (group == ${ControlLamp.Roof} || group == ${ControlLamp.Left}) return 0.0;
+    return 0.25;
+  }
+  float waveAt(float station, float pitch, float beatPhase) {
+    return 0.5 + 0.5 * cos(6.2831853 * (station / pitch - beatPhase));
+  }
+  float bank(int group, float station) {
+    float beat = controlMotion.w;
+    float phase = lane(group);
+    float forward = waveAt(station, 32.0, beat / 8.0 + phase);
+    float backwards = waveAt(station, 32.0, -beat / 8.0 + phase);
+    return mix(forward, backwards, 0.5 - 0.5 * controlMotion.y);
+  }
+  vec4 lampAt(int group, float station) {
+    vec4 cue = controlLamps[group];
+    float weight = scoreWeight(group);
+    float local = bank(group, station);
+    float flash = controlEvents.x * 0.14;
+    float dim = 0.37 + 0.74 * local;
+    if (group == ${ControlLamp.Alarm}) {
+      float phase = station / 32.0;
+      float reply = waveAt(station, 32.0, controlMotion.w / 4.0 + 0.09 * sin(phase * 6.2831853));
+      dim = mix(dim, 0.20 + 1.14 * reply * reply, controlMotion.z);
+      flash += 0.32 * controlEvents.y * controlMotion.z * reply;
+    }
+    float depth = weight * (0.24 + 0.76 * controlEnergy);
+    cue.rgb = mix(cue.rgb, controlAccents[group], clamp((0.12 + 0.60 * local + flash) * depth, 0.0, 0.8));
+    cue.w *= mix(1.0, dim + flash, depth);
+    return cue;
   }
 `;
 
-export function facilityLampMaterial(score: FacilityLightingUniforms, color = 0xffffff) {
+const scoreValues = (score: FacilityLightingUniforms) => ({
+  controlLamps: { value: score.groups }, controlAccents: { value: score.accents },
+  controlMotion: { value: score.motion }, controlEvents: { value: score.events }, controlFocus: score.focus,
+  controlEnergy: score.energy,
+});
+
+export function facilityLampMaterial(score: FacilityLightingUniforms) {
   const material = new THREE.MeshBasicMaterial({
-    vertexColors: true, side: THREE.DoubleSide, toneMapped: false, color,
+    vertexColors: true, side: THREE.DoubleSide, toneMapped: false,
   });
   material.onBeforeCompile = shader => {
-    shader.uniforms.controlLamps = { value: score.groups };
-    shader.uniforms.controlMotion = { value: score.motion };
-    shader.uniforms.controlFocus = score.focus;
+    Object.assign(shader.uniforms, scoreValues(score));
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `
       #include <common>
       attribute vec2 industrialLight;
+      varying vec2 fixtureLens;
+      varying float lensMix;
       ${scoreUniforms}
     `).replace('#include <color_vertex>', `
       #include <color_vertex>
       int group = int(industrialLight.y + 0.5);
-      vec4 cue = controlLamps[group];
-      float gain = cue.w;
-      if (group != ${ControlLamp.Route}) {
-        float station = industrialLight.x;
-        float enabled = float(controlFocus == -1 || controlFocus == group);
-        float travel = controlMotion.y;
-        float beat = controlMotion.w;
-        if (group == ${ControlLamp.Rail} || group == ${ControlLamp.Deck} || group == ${ControlLamp.DeepDeck} ||
-            group == ${ControlLamp.Left} || group == ${ControlLamp.Right}) {
-          float delay = group == ${ControlLamp.DeepDeck} || group == ${ControlLamp.Right} ? 0.27 : 0.0;
-          float wave = cos(6.2831853 * (station / 64.0 - sign(travel) * (beat / 7.0 - delay)));
-          gain += enabled * abs(travel) * wave *
-            (group == ${ControlLamp.Rail} ? 0.21 : 0.11);
-        } else if (group == ${ControlLamp.Alarm}) {
-          float relay = 0.5 + 0.5 * cos(6.2831853 * (station / 18.0 - beat / 4.0));
-          gain += enabled * controlMotion.z * (0.31 * relay * relay - 0.07);
-        }
-        vColor.rgb = mix(vColor.rgb, cue.rgb, 0.73 * scoreWeight(group));
-      }
-      vColor.rgb *= max(gain, 0.29);
+      vec4 cue = lampAt(group, industrialLight.x);
+      float weight = scoreWeight(group);
+      fixtureLens = uv;
+      lensMix = weight * float(group == ${ControlLamp.Roof} || group == ${ControlLamp.Floor});
+      vColor.rgb = mix(vColor.rgb, cue.rgb * mix(1.0, 1.23, lensMix), weight) * max(cue.w, 0.14);
+    `);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
+      #include <common>
+      varying vec2 fixtureLens;
+      varying float lensMix;
+    `).replace('#include <color_fragment>', `
+      #include <color_fragment>
+      vec2 edge = abs(2.0 * fixtureLens - 1.0);
+      float lens = 1.0 - 0.34 * smoothstep(0.53, 1.0, max(edge.x, edge.y));
+      diffuseColor.rgb *= mix(1.0, lens, lensMix);
     `);
   };
   return material;
+}
+
+/** Wall-mounted instanced optics share the fixture colors but have their own spatial envelopes. */
+export function facilityInstallationMaterial(score: FacilityLightingUniforms) {
+  return new THREE.ShaderMaterial({
+    name: 'facility-installation',
+    uniforms: scoreValues(score),
+    side: THREE.DoubleSide, forceSinglePass: true, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending, toneMapped: false,
+    vertexShader: /* glsl */ `
+      ${scoreUniforms}
+      attribute vec4 lightSpan;
+      attribute float lightFade;
+      varying vec2 lens;
+      varying vec4 span;
+      varying float depth;
+      varying float fade;
+      varying vec4 fixtureTone;
+      void main() {
+        lens = uv;
+        span = lightSpan;
+        fade = lightFade;
+        float station = lightSpan.x + (uv.y - 0.5) * lightSpan.y;
+        fixtureTone = lampAt(int(lightSpan.z + 0.5), station);
+        vec4 view = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        depth = -view.z;
+        gl_Position = projectionMatrix * view;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      ${scoreUniforms}
+      varying vec2 lens;
+      varying vec4 span; // Station, signed run length, lamp group, shape plus sector offset.
+      varying float depth;
+      varying float fade;
+      varying vec4 fixtureTone;
+      const vec3 steady[] = vec3[](
+        vec3(0.19, 0.37, 0.55), vec3(0.13, 0.46, 0.59), vec3(0.41, 0.29, 0.63),
+        vec3(0.16, 0.35, 0.55), vec3(0.66, 0.37, 0.14), vec3(0.14, 0.41, 0.52)
+      );
+      void main() {
+        int group = int(span.z + 0.5);
+        if (controlFocus >= 0 && controlFocus != group) discard;
+        float motion = scoreWeight(group);
+        float style = floor(span.w);
+        float offset = fract(span.w);
+        float station = span.x + (lens.y - 0.5) * span.y;
+        float beat = controlMotion.w;
+        float x = abs(lens.x * 2.0 - 1.0);
+        float y = abs(lens.y * 2.0 - 1.0);
+        float wing = (1.0 - smoothstep(0.18, 1.0, x));
+        float end = 1.0 - smoothstep(0.61, 1.0, y);
+        float core = 1.0 - smoothstep(0.06, 0.40, x);
+        float fog = exp(-0.000027 * depth * depth) * fade;
+        float steadyEnd = style == ${FacilityLightShape.Flow}.0 || style == ${FacilityLightShape.Release}.0 ? 1.0 : end;
+        vec4 idle = vec4(steady[int(style)], 0.25 * fog * (0.83 * core + 0.17 * wing) * steadyEnd);
+        if (motion <= 0.001) {
+          gl_FragColor = idle;
+          return;
+        }
+        float accent = 0.0;
+        if (style == ${FacilityLightShape.Cell}.0) {
+          float chase = waveAt(station, 32.0, beat / 4.0 + offset);
+          accent = 0.24 + chase * chase * (1.24 + 0.34 * controlEvents.z);
+        } else if (style == ${FacilityLightShape.Flow}.0) {
+          float push = waveAt(station, 64.0, beat / 4.0 + offset);
+          float pull = waveAt(station, 64.0, -beat / 4.0 + offset);
+          float packet = mix(push, pull, 0.5 - 0.5 * controlMotion.y);
+          accent = 0.22 + packet * packet * (1.40 + 0.48 * controlEvents.w);
+          end = 1.0;
+        } else if (style == ${FacilityLightShape.Rake}.0) {
+          float roll = waveAt(station + lens.y * 8.0, 64.0, beat / 6.0 + offset);
+          accent = 0.31 + roll * roll * (1.64 + 0.46 * controlEvents.w);
+        } else if (style == ${FacilityLightShape.Stator}.0) {
+          float turn = waveAt(station, 128.0, beat / 16.0 + offset);
+          accent = 0.16 + turn * turn * 1.17;
+          end = 1.0 - 0.66 * smoothstep(0.77, 1.0, y);
+        } else if (style == ${FacilityLightShape.Lock}.0) {
+          float relay = waveAt(station, 32.0, beat / 4.0 + offset + 0.095 * sin(station * 0.23));
+          accent = 0.11 + relay * relay * (0.46 + 0.50 * controlMotion.z + 0.31 * controlEvents.x);
+        } else {
+          float wave = waveAt(station, 128.0, beat / 12.0 + offset);
+          accent = 0.18 + wave * 0.64 + 0.26 * controlEvents.w;
+          end = 1.0;
+        }
+        float falloff = (0.65 * core + 0.35 * wing) * end;
+        vec3 glow = mix(fixtureTone.rgb, controlAccents[group], min(accent * 0.25, 0.52));
+        gl_FragColor = mix(idle, vec4(glow * (0.88 + 0.43 * core), fog * falloff * accent * fixtureTone.w), motion);
+      }
+    `,
+  });
 }
 
 export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Color, score: FacilityLightingUniforms) {
@@ -66,17 +196,22 @@ export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Col
     shader.uniforms.facilityFill = { value: fill };
     shader.uniforms.facilitySecurity = { value: security };
     shader.uniforms.controlSpill = { value: score.spill };
+    Object.assign(shader.uniforms, scoreValues(score));
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `
       #include <common>
       attribute vec4 industrialSurface;
-      attribute float industrialSpill;
+      attribute vec2 industrialSpill;
       varying vec4 vIndustrialSurface;
       varying vec3 vFixtureTint;
       uniform vec3 controlSpill[${controlLampCount}];
+      ${scoreUniforms}
     `).replace('#include <begin_vertex>', `
       #include <begin_vertex>
       vIndustrialSurface = industrialSurface;
-      vFixtureTint = controlSpill[int(industrialSpill + 0.5)];
+      int group = int(industrialSpill.x + 0.5);
+      float weight = scoreWeight(group);
+      float pass = bank(group, industrialSpill.y);
+      vFixtureTint = controlSpill[group] * mix(1.0, 0.62 + 0.79 * pass + 0.16 * controlEvents.x, weight);
     `);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
       #include <common>

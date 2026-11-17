@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import type { facilityZones } from '../core/descent-facility';
 import { SECTION, SECTION_OUTLINE } from '../core/section';
-import { ControlLamp } from '../core/descent-lighting';
+import { ControlLamp, FacilityLightShape } from '../core/descent-lighting';
+import { alarmCollars, controlCells, FacilityInstallations, installationFade, pressureRakes, statorLenses }
+  from './descent-installations.client';
 import { IndustrialGeometry, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
 import type { Path, PathFrame } from './path';
 
@@ -13,6 +15,11 @@ const statorSteel = new THREE.Color(0x45525b);
 const lining = new THREE.Color(0x242d34);
 const equipment = new THREE.Color(0x4e626e);
 const lamp = new THREE.Color(0xaec7d5);
+const restLens = {
+  ORDER: [0xb9d5e7, 0xc5cfdb], LOCK: [0x83cce6, 0x879fdd], FLIGHT: [0x81c9e1, 0x849fdb],
+  PRESSURE: [0x9696d9, 0xb393cc], HOLD: [0x94adc9, 0x849dc3],
+  LOCKDOWN: [0xc4bbb3, 0xc8b7a6], BREACH: [0xb3d7e3, 0x84bacb],
+} as const;
 const pressureAccent = new THREE.Color(0xd098cc);
 const alarmAccent = new THREE.Color(0xef5337);
 const lockdownAmber = new THREE.Color(0xfaa246);
@@ -264,6 +271,8 @@ export function securityTint(zone: Zone, next: Zone | undefined, station: number
 
 function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: number) {
   const fixtures = new IndustrialGeometry(undefined, true);
+  const housing = new THREE.Color();
+  const nextHousing = new THREE.Color();
   const sources: { station: number; extent: number; origin: THREE.Vector3; toEnd: THREE.Vector3;
     inverseLength: number; reachSq: number; group: ControlLamp; gain: number }[] = [];
   for (const [i, zone] of zones.entries()) {
@@ -274,13 +283,20 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       const [width, height] = dimensions(s, i, zones);
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
+      const next = zones[i + 1];
+      const fade = next ? THREE.MathUtils.smoothstep(s, zone.end - 32, zone.end) : 0;
       const fixture = (a: readonly [number, number], b: readonly [number, number], halfWidth: number,
         halfDepth: number, reach: number, offset = 0, group = a[1] + b[1] >= 0 ? ControlLamp.Roof : ControlLamp.Floor,
         spillOnly = false) => {
         const origin = point(frame, ...a, offset), end = point(frame, ...b, offset);
         if (!spillOnly && s >= from && s < to) {
           fixtures.lightAt(group, s + offset);
-          fixtures.beam(origin, end, frame.f, halfWidth, halfDepth, lamp);
+          const surface = group === ControlLamp.Roof || group === ControlLamp.Floor;
+          if (surface) {
+            housing.setHex(restLens[zone.section][group]);
+            if (next && fade) housing.lerp(nextHousing.setHex(restLens[next.section][group]), fade);
+          }
+          fixtures.beam(origin, end, frame.f, halfWidth, halfDepth, surface ? housing : lamp);
         }
         const toEnd = end.sub(origin);
         sources.push({ station: s + offset, extent: reach + 5, origin, toEnd,
@@ -327,7 +343,7 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
   const towardLight = new THREE.Vector3();
   const structure = new IndustrialGeometry((vertex, normal, target) => {
     let irradiance = 0, strongest = 0;
-    for (const { origin, toEnd, inverseLength, reachSq, group, gain } of nearby) {
+    for (const { origin, toEnd, inverseLength, reachSq, group, gain, station } of nearby) {
       towardLight.subVectors(origin, vertex);
       const t = THREE.MathUtils.clamp(-towardLight.dot(toEnd) * inverseLength, 0, 1);
       towardLight.addScaledVector(toEnd, t);
@@ -341,6 +357,7 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       if (strength > strongest) {
         strongest = strength;
         target.group = group;
+        target.station = station;
       }
     }
     // Compress overlapping fixtures smoothly so adjacent faces keep their lighting contrast.
@@ -355,6 +372,7 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
 export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], from: number, to: number) {
   const { structure: metal, fixtures, lightAt } = buildWorkLights(path, zones, from, to);
   const security = new IndustrialGeometry(undefined, true);
+  const installations = new FacilityInstallations();
   const tone = new THREE.Color(), signal = new THREE.Color(), signalTarget = new THREE.Color();
   for (const [i, zone] of zones.entries()) {
     const start = Math.max(from, zone.start), end = Math.min(to, zone.end);
@@ -382,6 +400,8 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       securityTint(zone, nextZone, mid, signal, signalTarget);
       security.lightAt(ControlLamp.Rail, ...span);
       const outside = zone.name === 'BREACH' && mid > roofRelease;
+      const tracks = zone.name === 'TRANSIT' || zone.name === 'BREACH';
+      const trackFade = tracks ? installationFade(mid, zone.start, zone.name === 'BREACH' ? zone.finish + 190 : zone.end) : 0;
       for (const [k, edge] of walls[j].entries()) {
         const next = (k + 1) % walls[j].length;
         const shade = k % 4 === 0 ? .91 : k % 4 === 2 ? 1.15 : .82;
@@ -404,6 +424,23 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
         conduit(metal, a, b, rail, level * 1.12, .24, .25, steel, IndustrialSurface.Machined,
           rail, level * 1.12, IndustrialTrim.SecurityRail);
         conduit(security, a, b, rail - side * .135, level * 1.12, .014, .028, tone.copy(signal).multiplyScalar(.59));
+        if (tracks && (!outside || level < 0)) {
+          const stationPhase = (side > 0 ? .50 : 0) + (level > 0 ? .25 : 0);
+          installations.track(a, b, [rail - side * .124, level * 1.12], [0, 1], .246, ...span,
+            ControlLamp.Rail, outside ? FacilityLightShape.Release : FacilityLightShape.Flow, stationPhase, trackFade);
+          if (zone.name === 'TRANSIT') {
+            installations.track(a, b, [side * 8.251, level * 5.08], [0, 1], .42, ...span,
+              level < 0 ? ControlLamp.Floor : ControlLamp.Roof, FacilityLightShape.Flow, stationPhase, trackFade * .84);
+            if (innerPanel(zone.name, 0, mid, zone)) {
+              installations.track(a, b, [side * 2.76, level * (SECTION.b * innerScale - .031)], [1, 0], 1.08, ...span,
+                level < 0 ? ControlLamp.Floor : ControlLamp.Roof, FacilityLightShape.Flow, stationPhase, trackFade);
+            }
+          } else if (level < 0) {
+            const floor = (j: number) => [side * 5.45, -SECTION.b * sizes[j][1] + .067] as const;
+            installations.track(a, b, floor(j), [1, 0], 1.63, ...span, ControlLamp.Floor,
+              FacilityLightShape.Release, stationPhase, trackFade, floor(j + 1));
+          }
+        }
         if (!outside || level < 0) {
           conduit(metal, a, b, side * service.serviceX, level * service.serviceY, .58,
             zone.name === 'THE WELL' ? 1.15 : .62, structural);
@@ -433,6 +470,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
       const released = zone.name === 'BREACH' && s > roofRelease;
+      const fade = installationFade(s, zone.start, zone.finish);
       if (hasFlightCollar(zone, bay, s)) {
         collar(metal, frame, flightCollarThroat, flightCollarThroat, innerScale + .075, innerScale + .075, depth, steel, structural);
       }
@@ -455,6 +493,10 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       }
       switch (zone.name) {
         case 'CONTROL':
+          if (zone.section === 'LOCK' && s + 5.5 < zone.end) {
+            const lo = s + 2.5, hi = s + 5.5;
+            controlCells(installations, path.sample(lo), path.sample(hi), lo, hi, bay, innerScale, width, fade);
+          }
           if (bay % 2 === 0 && s + 7.8 < zone.end) {
             const panelFrame = path.sample(s + 4.68);
             lightAt(s + 4.68);
@@ -485,6 +527,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
               Math.max(.55, (x - 13) * .50), .62, steel, 5.6);
           }
           wellServiceDeck(metal, frame, width, height);
+          pressureRakes(installations, frame, s, bay, h * .79, w * .83, fade);
           break;
         case 'CORE':
           if (bay % 2 === 0) {
@@ -493,6 +536,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
             collar(metal, frame, 3.03, 2.63, 3.80, 3.36, 1.07, alloy, steel,
               statorOutline, IndustrialSurface.Machined, IndustrialSurface.Machined);
             statorMounts(metal, frame, width, height);
+            statorLenses(installations, frame, s, bay, statorOutline, width, height, fade);
           }
           break;
         case 'LOCKDOWN':
@@ -512,6 +556,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
           for (const level of [-1, 1]) {
             crossBeam(security, frame, [-2.26, level * 4.13], [2.26, level * 4.13], .060, 1.46, signal);
           }
+          alarmCollars(installations, frame, s, bay, width, height, fade);
           break;
         case 'BREACH':
           if (released) {
@@ -525,5 +570,5 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       }
     }
   }
-  return { structure: metal.build(), fixtures: fixtures.build(), security: security.build() };
+  return { structure: metal.build(), fixtures: fixtures.build(), security: security.build(), installations };
 }

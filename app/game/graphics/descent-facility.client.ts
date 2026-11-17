@@ -7,7 +7,7 @@ import type { ControlLightView } from '../core/descent-lighting';
 import type { DynamicLightEnvelope } from '../core/rhythmic-lights';
 import { buildFacilityArchitecture, securityTint } from './descent-architecture';
 import { DescentJunction } from './descent-junction';
-import { facilityLampMaterial, facilityStructureMaterial } from './descent-materials.client';
+import { facilityInstallationMaterial, facilityLampMaterial, facilityStructureMaterial } from './descent-materials.client';
 import type { BranchPath } from './branch-path';
 import type { Path } from './path';
 
@@ -28,6 +28,8 @@ const palettes = controlLightPhrases.map(phrase => ({
 const focusGroup: Record<ControlLightView, number> = {
   all: -1, glass: -2, roof: ControlLamp.Roof, floor: ControlLamp.Floor, left: ControlLamp.Left, right: ControlLamp.Right,
 };
+const complement = [ControlLamp.Floor, ControlLamp.Roof, ControlLamp.Right, ControlLamp.Left,
+  ControlLamp.Deck, ControlLamp.DeepDeck, ControlLamp.Deck, ControlLamp.Roof, ControlLamp.Floor, ControlLamp.Route];
 
 function roomWeight(station: number, zone: Zone | undefined, edge: number) {
   return zone ? THREE.MathUtils.smoothstep(station, zone.start - edge, zone.start + edge) *
@@ -41,15 +43,20 @@ export class DescentFacility {
   private readonly cue = newControlLighting();
   private readonly score = {
     groups: Array.from({ length: controlLampCount }, (_, i) => new THREE.Vector4(1, 1, 1, neutralLampGains[i])),
+    accents: Array.from({ length: controlLampCount }, () => new THREE.Vector3(1, 1, 1)),
     spill: Array.from({ length: controlLampCount }, () => fixtureBase.clone()),
     motion: new THREE.Vector4(0, 0, 0, 0),
+    events: new THREE.Vector4(0, 0, 0, 0),
+    energy: { value: 0 },
     focus: { value: -1 },
   };
   private readonly tint = new THREE.Color();
+  private readonly accent = new THREE.Color();
   readonly gateRim = new THREE.Vector4(1, 1, 1, 0);
   private readonly shell = facilityStructureMaterial(this.fill, this.railBounce, this.score);
-  private readonly fixtures = facilityLampMaterial(this.score, 0xbac1c7);
+  private readonly fixtures = facilityLampMaterial(this.score);
   private readonly security = facilityLampMaterial(this.score);
+  private readonly installation = facilityInstallationMaterial(this.score);
   private readonly well: Zone | undefined;
   private readonly core: Zone | undefined;
 
@@ -77,20 +84,29 @@ export class DescentFacility {
     this.fill.setRGB(.081 - .024 * well + .016 * core + .095 * outside,
       .094 - .019 * well + .018 * core + .108 * outside,
       .112 - .013 * well + .024 * core + .121 * outside);
-    const { cue, score, tint } = this;
+    const { cue, score, tint, accent } = this;
     controlLightingAt(beat, dynamics.amount, cue);
     const from = palettes[cue.previous], to = palettes[cue.phrase], blend = cue.blend;
     const focus = score.focus.value = focusGroup[view];
+    this.installation.visible = view !== 'glass';
     score.motion.set(cue.amount, cue.travel, cue.relay, beat);
+    score.energy.value = cue.energy;
+    const [kick, snare, signal, chord, , sweep] = cue.accents;
+    score.events.set(kick, snare, signal, sweep);
+    const migration = chord * cue.energy * .46;
     for (let i = 0; i < score.groups.length; i++) {
       tint.copy(from.groups[i]).lerp(to.groups[i], blend);
+      const pair = complement[i];
+      accent.copy(from.groups[pair]).lerp(to.groups[pair], blend);
+      score.accents[i].set(accent.r, accent.g, accent.b);
+      tint.lerp(accent, migration);
       const active = focus === -1 || focus === i;
       const gain = active ? cue.gains[i] : neutralLampGains[i];
       score.groups[i].set(tint.r, tint.g, tint.b, gain);
       const spill = score.spill[i].copy(fixtureBase);
-      const weight = active ? .38 * cue.amount : 0;
+      const weight = active && i !== ControlLamp.Route ? cue.amount * (.12 + cue.energy * .57) : 0;
       if (weight) {
-        tint.multiplyScalar(1.2 + .3 * gain);
+        tint.lerp(accent, .20).multiplyScalar(.92 + .53 * gain);
         spill.set(tint.r, tint.g, tint.b).lerp(fixtureBase, 1 - weight);
       }
     }
@@ -106,7 +122,8 @@ export class DescentFacility {
 
   get lighting() {
     const { beat, phrase, amount, travel, relay } = this.cue;
-    return { beat, phrase, amount, travel, relay, rim: this.gateRim.w };
+    return { beat, phrase, amount, travel, relay, rim: this.gateRim.w,
+      fixtures: this.score.groups.slice(0, 4).map(({ x, y, z, w }) => [x, y, z, w]) };
   }
 
   build(from: number, to: number) {
@@ -114,10 +131,14 @@ export class DescentFacility {
     const structure = new THREE.Mesh(geometry.structure, this.shell);
     const fixtures = new THREE.Mesh(geometry.fixtures, this.fixtures);
     const security = new THREE.Mesh(geometry.security, this.security);
+    const installations = geometry.installations.build(this.installation);
+    if (installations) {
+      installations.onBeforeRender = () => { this.installation.uniformsNeedUpdate = true; };
+    }
     structure.name = 'facility-structure';
     fixtures.name = 'facility-fixtures';
     security.name = 'facility-security';
-    return [structure, fixtures, security];
+    return installations ? [structure, fixtures, security, installations] : [structure, fixtures, security];
   }
 
   junction(path: BranchPath, layout: BranchLayout) {
@@ -128,5 +149,6 @@ export class DescentFacility {
     this.shell.dispose();
     this.fixtures.dispose();
     this.security.dispose();
+    this.installation.dispose();
   }
 }

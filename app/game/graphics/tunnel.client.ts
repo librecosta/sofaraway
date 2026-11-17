@@ -544,6 +544,7 @@ export class Tunnel {
   _disposeChunk(chunk: Chunk) {
     for (const mesh of chunk.meshes) {
       this.group.remove(mesh);
+      if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
       mesh.geometry.dispose();
     }
   }

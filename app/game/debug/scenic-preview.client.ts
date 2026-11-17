@@ -91,6 +91,7 @@ export class ScenicPreview {
     if (descentLighting) {
       this.canvas.dataset.lightPhrase = String(descentLighting.phrase);
       this.canvas.dataset.lightAmount = descentLighting.amount.toFixed(3);
+      this.canvas.dataset.fixtures = JSON.stringify(descentLighting.fixtures);
     }
     return metrics;
   }
