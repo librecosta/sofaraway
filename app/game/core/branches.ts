@@ -30,9 +30,11 @@ export interface BranchSpec {
   readonly merge: Record<PlayMode, number>;
   readonly rejoin: number;
   readonly guideEnd: number;
+  readonly sideThreshold?: number;
   readonly spacing: number;
   readonly rise: number;
-  readonly sightseeingPattern: 'authored' | 'even';
+  readonly spiral?: boolean;
+  readonly sightseeingPattern: 'authored' | 'even' | 'preserve-main';
   readonly charts: typeof routeCharts;
 }
 
@@ -49,23 +51,23 @@ export function branchLayout(seed: number): BranchLayout {
     : { left: 'score', center: 'main', right: 'challenge' };
 }
 
-export function selectSide(x: number): RouteSide {
-  return x <= -BRANCH_SIDE_THRESHOLD ? 'left' : x >= BRANCH_SIDE_THRESHOLD ? 'right' : 'center';
+export function selectSide(x: number, threshold = BRANCH_SIDE_THRESHOLD): RouteSide {
+  return x <= -threshold ? 'left' : x >= threshold ? 'right' : 'center';
 }
 
-function ease(t: number) {
+export function junctionEase(t: number) {
   const u = clamp(t, 0, 1);
   return u * u * u * (10 + u * (-15 + 6 * u));
 }
 
 export function branchSpread(station: number, start: number, open: number, merge: number, end: number, spacing = BRANCH_SPACING) {
-  return spacing * ease((station - start) / (open - start)) * (1 - ease((station - merge) / (end - merge)));
+  return spacing * junctionEase((station - start) / (open - start)) * (1 - junctionEase((station - merge) / (end - merge)));
 }
 
 export function branchSteeringWidth(station: number, start: number, split: number, open: number, spacing = BRANCH_SPACING) {
   if (station <= start || station >= open) return 0;
-  return Math.min(6, spacing * ease((station - start) / (open - start)) * 0.7)
-    * (1 - ease((station - split) / (open - split)));
+  return Math.min(6, spacing * junctionEase((station - start) / (open - start)) * 0.7)
+    * (1 - junctionEase((station - split) / (open - split)));
 }
 
 export interface BranchRun {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { branchSpread, branchSteeringWidth, elsewhereBranch } from '../core/branches';
+import { branchSpread, branchSteeringWidth, elsewhereBranch, junctionEase } from '../core/branches';
 import type { PlayMode } from '../contracts';
 import type { BranchSpec, RouteSide } from '../core/branches';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale } from '../core/reference-track';
@@ -43,7 +43,9 @@ export class BranchPath {
 
   distanceAt(beat: number) { return this.reference.station(beat, this.mode); }
 
-  steeringWidth(station: number) { return branchSteeringWidth(station, this.start, this.split, this.open, this.spec.spacing); }
+  steeringWidth(station: number) {
+    return this.spec.spiral ? 0 : branchSteeringWidth(station, this.start, this.split, this.open, this.spec.spacing);
+  }
 
   spreadAt(distance: number, start: number) {
     return branchSpread(distance, start, this.open, this.merge, this.end, this.spec.spacing);
@@ -51,6 +53,12 @@ export class BranchPath {
 
   private offset(sample: PathFrame, distance: number, sign: number) {
     const spread = this.spreadAt(distance, this.split);
+    if (this.spec.spiral) {
+      const angle = Math.PI * junctionEase((distance - this.split) / (this.end - this.split));
+      sample.p.addScaledVector(sample.r, sign * spread * Math.cos(angle))
+        .addScaledVector(sample.u, sign * spread * Math.sin(angle));
+      return;
+    }
     sample.p.addScaledVector(sample.r, sign * spread).addScaledVector(sample.u, this.spec.rise * spread / this.spec.spacing);
   }
 
@@ -100,7 +108,7 @@ export class BranchPath {
     const ds = Math.min(0.25, distance - this.split, this.end - distance);
     this.base.sample(distance - ds, this.before);
     this.base.sample(distance + ds, this.after);
-    if (this.spec.rise) {
+    if (this.spec.rise || this.spec.spiral) {
       this.offset(this.before, distance - ds, sign);
       this.offset(this.after, distance + ds, sign);
       out.f.subVectors(this.after.p, this.before.p).normalize();

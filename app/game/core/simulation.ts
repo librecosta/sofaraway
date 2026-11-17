@@ -156,13 +156,17 @@ export class Simulation {
     return this.phase === 'playing' && path && this.trackDistance >= path.guideStart && this.trackDistance < path.guideEnd
       ? this.branch?.layout ?? null : null;
   }
-  get routeSide() { return this.routeGuide ? this.branch?.side ?? selectSide(this.camera.x) : null; }
+  get routeSide() {
+    return this.routeGuide ? this.branch?.side ?? selectSide(this.camera.x, this.gameplay.branch?.sideThreshold) : null;
+  }
   get steeringWidth() { return this.junctionPath?.steeringWidth(this.trackDistance) ?? 0; }
   get trackDistance() {
     return this.branch?.side ? this.junctionPath!.stationAt(this.distance, this.branch.side) : this.distance;
   }
   get pickupVisible() {
-    return this.pickup?.status === 'pending' && this.distance >= this.pickupPreviewStation;
+    const route = this.gameplay.pickup?.route;
+    return this.pickup?.status === 'pending' && (!route || this.route === route) &&
+      this.trackDistance >= this.pickupPreviewStation;
   }
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
@@ -204,23 +208,27 @@ export class Simulation {
       const sideFor = (route: RouteKind): RouteSide => left === route ? 'left' : right === route ? 'right' : 'center';
       const inside = (gate: { beat: number }) => gate.beat >= branch.split && gate.beat < branch.rejoin;
       const { main, challenge, score } = branch.charts(authored.filter(inside), difficulty);
+      const preserveMain = sightseeing && branch.sightseeingPattern === 'preserve-main';
+      const primary = preserveMain ? sightseeingChart(gates, this.volume.sections) : gates;
       this.branchGates = {
-        main: main.map(gate => makeGate(gate, 0, 'main')),
-        challenge: challenge.map(gate => makeGate(gate, 0, 'challenge', sideFor('challenge'))),
-        score: score.map(gate => makeGate(gate, 0, 'score', sideFor('score'))),
+        main: preserveMain ? primary.filter(inside).map(gate => ({ ...gate, route: 'main' }))
+          : main.map(gate => makeGate(gate, gate.axis ?? 0, 'main')),
+        challenge: challenge.map(gate => makeGate(gate, gate.axis ?? 0, 'challenge', sideFor('challenge'))),
+        score: score.map(gate => makeGate(gate, gate.axis ?? 0, 'score', sideFor('score'))),
       };
-      this.chart = gates.filter(gate => !inside(gate));
+      this.chart = primary.filter(gate => !inside(gate));
     } else {
       this.branchGates = null;
       this.chart = gates;
     }
     this.referenceProgress = 0;
     if (sightseeing) {
-      this.chart = sightseeingChart(this.chart, this.volume.sections);
+      if (branch?.sightseeingPattern !== 'preserve-main') this.chart = sightseeingChart(this.chart, this.volume.sections);
       if (this.branchGates) {
         const { main, challenge, score } = this.branchGates;
         this.branchGates = {
-          main: sightseeingRoute(main, 'main', branch), challenge: sightseeingRoute(challenge, 'challenge', branch),
+          main: branch?.sightseeingPattern === 'preserve-main' ? main : sightseeingRoute(main, 'main', branch),
+          challenge: sightseeingRoute(challenge, 'challenge', branch),
           score: sightseeingRoute(score, 'score', branch),
         };
       }
@@ -372,7 +380,9 @@ export class Simulation {
     while (travel > 0) {
       const gate = this.chart[this.judged];
       const encore = this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined;
-      const pickup = this.pickup?.status === 'pending' ? this.pickupStation : Infinity;
+      const pickupRoute = this.gameplay.pickup?.route;
+      const pickup = this.pickup?.status === 'pending' && (!pickupRoute || this.route === pickupRoute)
+        ? this.junctionPath?.arcAt(this.pickupStation, this.branch?.side ?? 'center') ?? this.pickupStation : Infinity;
       const split = this.branch && !this.branch.side ? this.junctionPath!.split : Infinity;
       const station = Math.min(gate?.routeStation ?? Infinity, pickup, split, encore?.routeStation ?? Infinity);
       // The cursor consumes each event once, including the inclusive end of the tick.
@@ -385,7 +395,7 @@ export class Simulation {
         continue;
       }
       if (station === split) {
-        this.chooseRoute(selectSide(localX));
+        this.chooseRoute(selectSide(localX, this.gameplay.branch?.sideThreshold));
         continue;
       }
       if (encore && station === encore.routeStation) {
@@ -435,6 +445,8 @@ export class Simulation {
   private chooseRoute(side: RouteSide) {
     const { layout } = this.branch!;
     this.branch = { layout, side };
+    const pickupRoute = this.gameplay.pickup?.route;
+    if (pickupRoute && layout[side] !== pickupRoute) this.pickup = null;
     this.chart.splice(this.judged, this.chart.length - this.judged,
       ...this.branchGates![layout[side]], ...this.suffixBySide![side]);
     this.previewGates = this.previewGates.filter(gate => gate.worldStation < this.junctionPath!.end);

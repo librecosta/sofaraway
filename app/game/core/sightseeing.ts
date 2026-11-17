@@ -21,7 +21,7 @@ export function sightseeingChart<T extends { beat: number }>(gates: readonly T[]
 
 export function sightseeingRoute<T extends { beat: number }>(gates: readonly T[], route: RouteKind, branch: BranchSpec = elsewhereBranch) {
   const open = gates.filter(gate => gate.beat < branch.merge.sightseeing);
-  if (branch.sightseeingPattern === 'even') return sample(open);
+  if (branch.sightseeingPattern !== 'authored') return sample(open);
   if (route === 'main') return open.filter((_, i) => i === 2 || i === 4 || i === 6); // Square, Diamond, Iris.
   if (route === 'score') return open.filter((_, i) => i % 3 === 0); // Keep alternating central openings.
   return sample(open, 4);

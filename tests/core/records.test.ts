@@ -62,14 +62,17 @@ test('DAYBREAK choreography records remain independent of all legacy charts afte
   expect(recordFor(reloaded, 'daybreak', 'normal', 'sightseeing').last).toEqual(daybreak);
 });
 
-test('the DESCENT choreography records preserve all earlier charts', () => {
+test('the DESCENT spiral junction records preserve all earlier charts', () => {
   const old = { score: 119039, outcome: 'ESCAPED' } as const;
   const control = { ...old, score: 79234 };
   const laser = { ...old, score: 76834 };
+  const choreography = { ...old, score: 131315 };
   const legacy = { standard: { descent: { normal: { best: old.score, last: old } },
     'descent-control': { normal: { best: control.score, last: control } },
-    'descent-laser-security': { normal: { best: laser.score, last: laser } } },
-    sightseeing: { descent: { last: old }, 'descent-control': { last: control }, 'descent-laser-security': { last: laser } } };
+    'descent-laser-security': { normal: { best: laser.score, last: laser } },
+    'descent-laser-choreography': { normal: { best: choreography.score, last: choreography } } },
+    sightseeing: { descent: { last: old }, 'descent-control': { last: control },
+      'descent-laser-security': { last: laser }, 'descent-laser-choreography': { last: choreography } } };
   const records = parseRecords(JSON.stringify({ version: 1, ...legacy }));
   expect(recordFor(records, 'descent', 'normal', 'standard')).toEqual({ best: null, last: null });
   expect(recordFor(records, 'descent', 'normal', 'sightseeing').last).toBeNull();
@@ -83,6 +86,8 @@ test('the DESCENT choreography records preserve all earlier charts', () => {
   expect(reloaded.sightseeing['descent-control']).toEqual(legacy.sightseeing['descent-control']);
   expect(reloaded.standard['descent-laser-security']).toEqual(legacy.standard['descent-laser-security']);
   expect(reloaded.sightseeing['descent-laser-security']).toEqual(legacy.sightseeing['descent-laser-security']);
+  expect(reloaded.standard['descent-laser-choreography']).toEqual(legacy.standard['descent-laser-choreography']);
+  expect(reloaded.sightseeing['descent-laser-choreography']).toEqual(legacy.sightseeing['descent-laser-choreography']);
   expect(recordFor(reloaded, 'descent', 'normal', 'standard')).toEqual({ best: current.score, last: current });
   expect(recordFor(reloaded, 'descent', 'normal', 'sightseeing').last).toEqual(current);
 });

@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { branchLayout, ROUTE_LABELS, routeSides } from '../../app/game/core/branches';
+import { chartFor } from '../../app/game/core/chart';
+import { lanePoint, RANGE_X, RANGE_Y } from '../../app/game/core/collision';
 import { descentGateKinds } from '../../app/game/core/descent-gates';
+import { descentCargo, descentJunction } from '../../app/game/core/descent-routes';
+import { volumeById } from '../../app/game/core/volumes';
 import { descentExamples, gateDescription } from '../../app/game/debug/catalog';
 
 test('DESCENT glass is loaded before entering view and drawn across the full sight range', async ({ page }) => {
@@ -88,8 +93,69 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   await offset.fill('2');
   await expect(canvas).toHaveAttribute('data-light-beat', '316.000');
   expect((await canvas.screenshot()).equals(steady)).toBe(true);
+
+  const transfer = facility.getByRole('combobox', { name: 'Transfer chamber' });
+  await transfer.selectOption({ label: 'Challenge guideway' });
+  await expect(canvas).toHaveAttribute('data-route', 'challenge');
+  const challenge = await canvas.screenshot({ path: info.outputPath('guideway-challenge.png') });
+  await transfer.selectOption({ label: 'Bonus guideway' });
+  await expect(canvas).toHaveAttribute('data-route', 'score');
+  expect((await canvas.screenshot({ path: info.outputPath('guideway-bonus.png') })).equals(challenge)).toBe(false);
+  await transfer.selectOption({ label: 'Supply carrier' });
+  await expect(canvas).toHaveAttribute('data-light-beat', (descentCargo.beat - .9).toFixed(3));
+  await canvas.screenshot({ path: info.outputPath('guideway-supply-carrier.png') });
   expect(errors).toEqual([]);
 });
+
+for (const route of ['main', 'challenge', 'score'] as const) {
+  test(`the live DESCENT turnout accepts real steering through ${route} and back to the spine`, async ({ page }, info) => {
+    const difficulty = route === 'main' ? 'normal' : 'hard';
+    const seed = route === 'challenge' ? 1 : 0;
+    const boost = route !== 'main';
+    const layout = branchLayout(seed);
+    const side = routeSides.find(side => layout[side] === route)!;
+    const base = chartFor(volumeById('descent'), difficulty);
+    const inside = base.filter(gate => gate.beat >= descentJunction.split && gate.beat < descentJunction.rejoin);
+    const common = base.filter(gate => gate.beat >= descentJunction.rejoin && gate.beat <= 175);
+    const gates = [...descentJunction.charts(inside)[route], ...common];
+    await page.goto('http://127.0.0.1:8090/');
+    const before = await page.evaluate(async ({ difficulty, seed }) => {
+      const test = window.b0Harness;
+      await test.mount({ volumeId: 'descent', runSeed: seed, difficulty, quality: 'high', dynamicLights: true,
+        diagnostics: { fixedTime: null, autoplay: false, god: false, align: true, boost: false,
+          mobileQuality: false, post: true, record: false, debug: true } });
+      await test.start(true);
+      test.advanceAndPause(137.07, true);
+      await test.resume(true);
+      return test.snapshot().gatesPassed;
+    }, { difficulty, seed } as const);
+    const snap = () => page.evaluate(() => window.b0Harness.snapshot());
+    const { width, height } = page.viewportSize()!;
+    const steer = (x: number, y: number) => page.mouse.move(width * (1 + x / RANGE_X) / 2, height * (1 - y / RANGE_Y) / 2);
+    if (boost) await page.keyboard.down('Shift');
+    await steer(side === 'left' ? -3.1 : side === 'right' ? 3.1 : 0, 0);
+    await expect.poll(async () => (await snap()).routeHint?.[side]).toBe(route);
+    await expect.poll(async () => (await snap()).route).toBe(route);
+    expect(await page.evaluate(() => window.b0Harness.branchState().metrics.junctionMeshes)).toBe(2);
+
+    for (const [index, gate] of gates.entries()) {
+      if (route === 'score' && gate === common[0]) {
+        await steer(0, 0);
+        await expect.poll(async () => (await page.evaluate(() => window.b0Harness.branchState().pickup))?.status,
+          { intervals: [20, 40, 50] }).toBe('collected');
+      }
+      await steer(...lanePoint(gate.kind, gate.sector, gate.axis ?? 0));
+      await expect.poll(async () => (await snap()).gatesPassed, { intervals: [20, 40, 50] }).toBeGreaterThanOrEqual(before + index + 1);
+    }
+    if (boost) await page.keyboard.up('Shift');
+    expect(await snap()).toMatchObject({ phase: 'playing', route, lives: difficulty === 'hard' ? 1 : 2 });
+    await page.locator('canvas').screenshot({ path: info.outputPath(`transfer-${ROUTE_LABELS[route].toLowerCase()}.png`) });
+    const after = await page.evaluate(() => window.b0Harness.branchState());
+    expect(after.sharedPath).toBe(true);
+    expect(after.metrics.junctionMeshes).toBe(0);
+    await page.evaluate(() => window.b0Harness.dispose());
+  });
+}
 
 for (const difficulty of ['normal', 'hard'] as const) {
   test(`live ${difficulty} flight keeps gates readable through the shaft, core and escape`, async ({ page }, info) => {

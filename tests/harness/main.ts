@@ -74,12 +74,13 @@ const harness = {
       clock.consume(clock.elapsed + STEP, () => step.call(runtime, sim));
     }
   },
-  advanceAndPause(beat: number) {
+  advanceAndPause(beat: number, manual = false) {
     harness.advance(beat);
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
     graphics.draw(sim, true);
     runtime!.pause('user');
+    if (manual) Reflect.get(sim, 'options').align = false;
     return harness.branchState();
   },
   streamResources(id: GameOptions['volumeId']) {

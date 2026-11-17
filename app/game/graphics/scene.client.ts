@@ -15,6 +15,8 @@ import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
 import { DaybreakExterior } from './daybreak-exterior.client';
 import { DescentFacility } from './descent-facility.client';
+import { descentRouteSwatches } from './descent-junction';
+import type { DescentJunction } from './descent-junction';
 import type { CirrusLayer } from './daybreak-cirrus';
 import { makeDaybreakEnvMap, makeEnvMap, makeSky } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
@@ -71,7 +73,7 @@ class VolumeScene {
   private saturation = 1;
   private phase?: Simulation['phase'];
   private pickup?: PickupVisual;
-  private junction?: BranchVisual;
+  private junction?: BranchVisual | DescentJunction;
   private disposeJunctionPrograms?: () => void;
   private readonly surfaceLibrary?: MaterialLibrary;
   private readonly gameplay;
@@ -117,7 +119,8 @@ class VolumeScene {
           material.emissive.copy(this.scenic.base);
         }
       }
-      if (this.gameplay.branch) this.hologram = new RouteHologram(!!this.gameplay.world?.continuous);
+      if (this.gameplay.branch) this.hologram = new RouteHologram(!!this.gameplay.world?.continuous,
+        this.facility ? descentRouteSwatches : undefined);
     } catch (error) {
       this.dispose();
       throw error;
@@ -133,7 +136,7 @@ class VolumeScene {
     for (const preview of previews) this.scene.add(preview);
     try {
       this.tunnel.surfaces?.upload(renderer);
-      if (this.gameplay.branch && !this.disposeJunctionPrograms) {
+      if (this.gameplay.branch && !this.facility && !this.disposeJunctionPrograms) {
         this.disposeJunctionPrograms = prepareJunctionPrograms(renderer, this.scene, this.camera);
       } else {
         renderer.compile(this.scene, this.camera);
@@ -178,7 +181,7 @@ class VolumeScene {
       this.saturation = state.saturation;
       this.tunnel.setScenic(base, sky, ground, state, dynamics);
       this.fog.color.copy(this.scenic.fog);
-      if (junction) {
+      if (junction instanceof BranchVisual) {
         junction.updateLighting(state.beat, state.branch, dynamics.rimGain);
         if (sim.route && distance >= junction.path.split && distance < junction.path.end) {
           const { hue, saturation } = junction.tones[sim.route];
@@ -186,7 +189,7 @@ class VolumeScene {
           this.fog.color.lerp(this.routeFog.setHSL(hue, saturation * .65, .105).multiplyScalar(.041), .48 * envelope);
         }
       }
-    } else junction?.updateLighting(lightBeat, 1, dynamics.rimGain);
+    } else if (junction instanceof BranchVisual) junction.updateLighting(lightBeat, 1, dynamics.rimGain);
     const cameraFrame = junction && sim.branch?.side
       ? junction.path.sample(distance, sim.branch.side, this.cameraFrame)
       : this.path.sample(distance, this.cameraFrame);
@@ -251,7 +254,9 @@ class VolumeScene {
         THREE.MathUtils.smoothstep(phase - index, 0.78, 1));
       this.tunnel.setHue((this.hue + 1) % 1);
       this.tunnel.pulse(this.volume.id === 'daybreak' ? 0 : pulse * (sim.phase === 'playing' ? 0.55 : 0.18), dynamics);
-      if (junction && junctionFill > 0) this.tunnel.tintJunctionLights(junctionFill, sim.route ? junction.tones[sim.route] : undefined);
+      if (junction instanceof BranchVisual && junctionFill > 0) {
+        this.tunnel.tintJunctionLights(junctionFill, sim.route ? junction.tones[sim.route] : undefined);
+      }
       if (!this.exterior) this.fog.color.setHSL((this.hue + 1) % 1, 0.75, 0.030);
     }
 
@@ -276,10 +281,14 @@ class VolumeScene {
         this.scene.add(...visual.meshes);
       }
       const ahead = gate.routeStation - sim.distance;
-      const tone = route && junction ? junction.tones[route] : undefined;
+      const tone = route && junction instanceof BranchVisual ? junction.tones[route] : undefined;
       const gateTint = this.facility?.gateTint(gate.worldStation, this.gateTint);
+      // The first Main shutter shares the turnout throat until the guideways separate.
+      const threshold = this.facility && junction?.path.spec.sideThreshold;
+      const routeOpacity = threshold && junction && route === 'main' && !sim.branch?.side &&
+        gate.worldStation < junction.path.split + 3 ? 1 - ease((Math.abs(x) - threshold + .60) / .60) : 1;
       if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale,
-        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint)) continue;
+        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint, routeOpacity)) continue;
       if (!route || route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
@@ -304,10 +313,12 @@ class VolumeScene {
     const path = sim.junctionPath;
     const layout = sim.branch?.layout;
     const past = path && sim.trackDistance > path.end + 95;
-    if (path && layout && (this.gameplay.world?.continuous || (!past && sim.trackDistance >= path.guideStart - 100))) {
+    const visible = path && sim.trackDistance >= (this.facility ? path.start - this.camera.far : path.guideStart - 100);
+    if (path && layout && (this.gameplay.world?.continuous || (!past && visible))) {
       if (this.junction?.path === path && this.junction.layout === layout) return;
       this.junction?.dispose();
-      this.junction = new BranchVisual(path, layout, this.tunnel.junctionShell, this.tunnel.junctionCanopy);
+      this.junction = this.facility?.junction(path, layout) ??
+        new BranchVisual(path, layout, this.tunnel.junctionShell, this.tunnel.junctionCanopy);
       this.scene.add(this.junction.group);
       this.tunnel.setJunction(this.junction.path);
     } else if (this.junction) {
@@ -325,8 +336,8 @@ class VolumeScene {
     for (const [gate, visual] of this.visuals) if ('index' in gate) count += visual.meshes.length;
     return count;
   }
-  get routeLighting() { return this.junction ? { ...this.junction.tones } : undefined; }
-  get junctionLightLevel() { return this.junction?.lightLevel; }
+  get routeLighting() { return this.junction instanceof BranchVisual ? { ...this.junction.tones } : undefined; }
+  get junctionLightLevel() { return this.junction instanceof BranchVisual ? this.junction.lightLevel : undefined; }
 
   private updatePickup(sim: SceneState) {
     const spec = this.gameplay.pickup;
@@ -336,15 +347,17 @@ class VolumeScene {
       return;
     }
     if (!this.pickup) {
-      this.pickup = new PickupVisual(sim.pickup.kind);
+      this.pickup = new PickupVisual(sim.pickup.kind, !!this.facility);
       this.scene.add(this.pickup.group);
     }
-    const { p, r, u, f } = this.path.sample(sim.pickupStation, this.pickupFrame);
+    const { p, r, u, f } = spec.route && sim.junctionPath && sim.branch?.side
+      ? sim.junctionPath.sample(sim.pickupStation, sim.branch.side, this.pickupFrame)
+      : this.path.sample(sim.pickupStation, this.pickupFrame);
     const group = this.pickup.group;
     group.position.copy(p).addScaledVector(r, spec.x).addScaledVector(u, spec.y);
     this.basis.makeBasis(r, u, this.backwards.copy(f).negate());
     group.quaternion.setFromRotationMatrix(this.basis);
-    this.pickup.update(sim.beat, (sim.pickupStation - sim.distance) / (sim.pickupStation - sim.pickupPreviewStation));
+    this.pickup.update(sim.beat, (sim.pickupStation - sim.trackDistance) / (sim.pickupStation - sim.pickupPreviewStation));
   }
 
   dispose() {

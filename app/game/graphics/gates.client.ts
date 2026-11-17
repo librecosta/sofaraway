@@ -157,7 +157,7 @@ export class GateVisual {
   }
 
   update(time: number, hue: number, distance: number, modeScale: number, hit: boolean, microContrast = 1, saturation = 1,
-    tint?: THREE.Color | number) {
+    tint?: THREE.Color | number, routeOpacity = 1) {
     const u = this.mat.uniforms;
     u.uTime.value = time;
     u.uHit.value = hit ? 0.8 : 0;
@@ -166,7 +166,7 @@ export class GateVisual {
     else u.uColor.value.set(tint);
     const fadeIn = this.fullSightRange ? 1 : 1 - THREE.MathUtils.smoothstep(distance, 140 * modeScale, 190 * modeScale);
     const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / (this.fullSightRange ? 2.5 : 3), 0, 1);
-    u.uFade.value = fadeIn * fadeOut;
+    u.uFade.value = fadeIn * fadeOut * routeOpacity;
     const visible = u.uFade.value > 0;
     for (const mesh of this.meshes) mesh.visible = visible;
     return visible;

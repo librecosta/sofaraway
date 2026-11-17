@@ -2,10 +2,12 @@ import { expect, test } from 'vitest';
 import { Color, Mesh, MeshBasicMaterial, Raycaster, Vector3, DoubleSide } from 'three';
 import type { BufferGeometry } from 'three';
 import { difficulties } from '../../app/game/contracts';
+import { branchLayout, routeSides } from '../../app/game/core/branches';
 import { chartFor } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, clampSection, lanePoint } from '../../app/game/core/collision';
 import { facilityZones } from '../../app/game/core/descent-facility';
+import { descentCargo } from '../../app/game/core/descent-routes';
 import { descentGateKinds, laserBandPitch, laserBeamRadius, laserOpening, matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { idleInput } from '../../app/game/core/input';
@@ -351,27 +353,89 @@ test.each(['standard', 'sightseeing'] as const)('the %s path meets the CONTROL s
   expect(path.length - reference.boostFinish(mode)).toBeGreaterThan(440);
 });
 
-test.each([...difficulties, 'sightseeing'] as const)('%s completes with real 60 Hz steering at cruise and Boost', mode => {
+const descentRuns = [
+  ...difficulties.map(mode => ({ mode, route: 'main' as const, seed: 0 })),
+  ...([0, 1] as const).flatMap(seed => (['challenge', 'score'] as const).flatMap(route =>
+    (['hard', 'sightseeing'] as const).map(mode => ({ mode, route, seed })))),
+  { mode: 'sightseeing', route: 'main', seed: 0 },
+] as const;
+
+test.each(descentRuns)('$mode $route seed $seed completes with real 60 Hz steering at cruise and Boost', ({ mode, route, seed }) => {
   const difficulty = mode === 'sightseeing' ? 'normal' : mode;
   const chart = chartFor(volume, difficulty);
   expect(new Set(chart.map(gate => gate.kind))).toEqual(new Set(descentGateKinds));
   expect(chart.at(-1)!.beat).toBeLessThanOrEqual(372);
   for (const boost of ['cruise', 'continuous', 'intervals']) {
     const sim = new Simulation(volume, undefined, undefined, mode === 'sightseeing' ? mode : 'standard');
-    sim.start(difficulty, 0, undefined, mode === 'sightseeing' ? mode : 'standard');
+    sim.start(difficulty, seed, 'lumen', mode === 'sightseeing' ? mode : 'standard');
+    const side = routeSides.find(side => branchLayout(seed)[side] === route)!;
+    const path = sim.junctionPath!;
+    const chosen = [...sim.mainGates, ...sim.branchGates![route]].sort((a, b) => a.worldStation - b.worldStation);
+    if (route === 'main' && mode !== 'sightseeing') expect(chosen.map(gate => [gate.beat, gate.kind, gate.open, gate.axis]))
+      .toEqual(chart.map(gate => [gate.beat, gate.kind, gate.sector, gate.axis]));
     let lastCrossing = -Infinity;
     const axis = (delta: number) => Math.abs(delta) < .08 ? 0 : Math.sign(delta);
     while (sim.phase === 'playing') {
       const previous = sim.gatesJudged;
-      const gate = sim.mainGates[previous];
+      const gate = chosen[previous];
       const steer = gate && sim.time >= lastCrossing + .15 - 1e-9;
-      const [x, y] = steer ? lanePoint(gate.kind, gate.open, gate.axis) : [sim.camera.tx, sim.camera.ty];
+      const [x, y] = !steer ? [sim.camera.tx, sim.camera.ty]
+        : !sim.route && gate.worldStation > path.split ? [side === 'left' ? -3.15 : side === 'right' ? 3.15 : 0, 0]
+        : sim.pickup?.status === 'pending' && sim.pickupVisible && gate.worldStation > sim.pickupStation ? [0, 0]
+        : lanePoint(gate.kind, gate.open, gate.axis);
       const boosting = boost === 'continuous' || (boost === 'intervals' && sim.time % 6 < 2.5);
       sim.step(STEP, { ...idleInput, boosting, axisX: axis(x - sim.camera.tx), axisY: axis(y - sim.camera.ty) });
       if (previous === sim.gatesJudged) continue;
-      lastCrossing = gate.crossedAt!;
-      expect(sim.gatesPassed, `${mode} ${boost} missed ${gate.kind} at ${gate.beat}`).toBe(previous + 1);
+      lastCrossing = sim.mainGates[previous].crossedAt!;
+      expect(sim.gatesPassed, `${mode} ${boost} missed ${gate.kind} at ${gate.beat} on ${sim.route} ` +
+        `(${sim.camera.x.toFixed(2)}, ${sim.camera.y.toFixed(2)} → ${x}, ${y})`).toBe(previous + 1);
     }
-    expect(sim.result).toMatchObject({ title: 'ESCAPED', unreached: 0, accuracy: 1 });
+    expect(sim.result).toMatchObject({ title: 'ESCAPED', unreached: 0, accuracy: 1, route });
+    expect(sim.pickup?.status).toBe(route === 'score' ? 'collected' : undefined);
   }
+});
+
+test.each(['standard', 'sightseeing'] as const)('TRANSFER in %s crosses above and below the main axis with clear flight envelopes', mode => {
+  const sim = new Simulation(volume);
+  sim.start('normal', 0, 'shield', mode);
+  const path = sim.junctionPath!;
+  const mid = (path.split + path.end) / 2;
+  const center = path.sample(mid, 'center');
+  const left = path.sample(mid, 'left'), right = path.sample(mid, 'right');
+  expect(left.p.clone().sub(center.p).dot(center.u)).toBeCloseTo(-path.spec.spacing);
+  expect(right.p.clone().sub(center.p).dot(center.u)).toBeCloseTo(path.spec.spacing);
+  expect(path.sample(path.open, 'left').p.clone().sub(path.sample(path.open, 'center').p)
+    .dot(center.r)).toBeLessThan(-10);
+  expect(path.sample(path.merge, 'left').p.clone().sub(path.sample(path.merge, 'center').p)
+    .dot(center.r)).toBeGreaterThan(10);
+  const facility = new DescentFacility(sim.path, facilityZones(volume, mode));
+  const junction = facility.junction(path, sim.branch!.layout);
+  const bothFaces = new MeshBasicMaterial({ side: DoubleSide });
+  const blockers = junction.group.children.map(child => new Mesh((child as Mesh).geometry, bothFaces));
+  for (const side of routeSides) {
+    const checkClear = (s: number, x: number, y: number) => {
+      const from = path.sample(s - 1, side), to = path.sample(s + 1, side);
+      const start = from.p.addScaledVector(from.r, x).addScaledVector(from.u, y);
+      const ray = to.p.addScaledVector(to.r, x).addScaledVector(to.u, y).sub(start);
+      expect(new Raycaster(start, ray.clone().normalize(), 0, ray.length()).intersectObjects(blockers),
+        `${side} at ${s.toFixed(2)} (${x}, ${y})`).toHaveLength(0);
+    };
+    for (const boundary of [path.split, path.end]) {
+      expect(path.sample(boundary - .02, side).p.distanceTo(path.sample(boundary + .02, side).p)).toBeCloseTo(.04, 6);
+      expect(path.sample(boundary - .02, side).f.angleTo(path.sample(boundary + .02, side).f)).toBeLessThan(1e-4);
+    }
+    for (let s = path.start + 1; s < path.end - 1; s += 2) {
+      checkClear(s, 0, 0);
+      const arc = path.arcAt(s, side);
+      expect(path.stationAt(arc, side)).toBeCloseTo(s, 7);
+    }
+    for (const gate of sim.branchGates![sim.branch!.layout[side]]) {
+      checkClear(gate.worldStation, ...lanePoint(gate.kind, gate.open, gate.axis));
+    }
+  }
+  const cargoStation = path.distanceAt(descentCargo.beat);
+  expect(Math.min(...sim.branchGates!.score.map(gate => Math.abs(cargoStation - gate.worldStation)))).toBeGreaterThan(12);
+  junction.dispose();
+  bothFaces.dispose();
+  facility.dispose();
 });

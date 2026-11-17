@@ -1,12 +1,13 @@
-import type { BranchSpec } from './branches';
+import type { BranchSpec, RouteKind } from './branches';
 import { elsewhereBranch } from './branches';
 import { DAYBREAK_PICKUP_BEAT, daybreakJunctionWindow, daybreakRouteCharts } from './daybreak-chart';
+import { descentCargo, descentJunction } from './descent-routes';
 import { PICKUP_APPEAR_BEAT, PICKUP_BEAT, PICKUP_LOCAL_X, PICKUP_LOCAL_Y, PICKUP_RADIUS } from './pickups';
 import type { GateKind } from './volumes';
 import type { VolumeId } from '../contracts';
 import { clamp } from './collision';
 
-interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number }
+interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number; route?: RouteKind }
 interface EncoreSpec { first: number; minSpacing: number; maxSpacing: number; kinds: readonly GateKind[]; reserve: number }
 interface GameplaySpec {
   gateLoadAhead?: number;
@@ -36,7 +37,8 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
     ending: { beats: 12, protectGates: true },
     world: { continuous: true, settleResults: true },
   },
-  descent: { gateLoadAhead: 450, world: { continuous: false, settleResults: true, modePath: true } },
+  descent: { gateLoadAhead: 450, branch: descentJunction, pickup: descentCargo,
+    world: { continuous: false, settleResults: true, modePath: true } },
 };
 
 export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }

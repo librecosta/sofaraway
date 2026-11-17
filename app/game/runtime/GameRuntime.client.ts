@@ -530,7 +530,7 @@ export class Runtime implements GameRuntime {
     const { lives, pickup, branch, gatesNeutralized, encore } = sim;
     sim.step(STEP, input, neutralize);
     this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty, sim.steeringWidth);
-    if (this.pendingPickupDraw && sim.pickup && sim.distance >= sim.pickupPreviewStation) {
+    if (this.pendingPickupDraw && sim.pickupVisible) {
       this.pickupDeck.consume();
       this.pendingPickupDraw = false;
     }

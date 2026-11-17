@@ -1,9 +1,12 @@
 import * as THREE from 'three';
+import type { BranchLayout } from '../core/branches';
 import type { facilityZones } from '../core/descent-facility';
 import { controlFixtureCue } from '../core/rhythmic-lights';
 import type { ControlFixtureCue, DynamicLightEnvelope } from '../core/rhythmic-lights';
 import { buildFacilityArchitecture, securityTint } from './descent-architecture';
+import { DescentJunction } from './descent-junction';
 import { facilityLampMaterial, facilityStructureMaterial } from './descent-materials.client';
+import type { BranchPath } from './branch-path';
 import type { Path } from './path';
 
 type Zone = ReturnType<typeof facilityZones>[number];
@@ -77,6 +80,10 @@ export class DescentFacility {
     fixtures.name = 'facility-fixtures';
     security.name = 'facility-security';
     return [structure, fixtures, security];
+  }
+
+  junction(path: BranchPath, layout: BranchLayout) {
+    return new DescentJunction(path, layout, this.shell, this.security);
   }
 
   dispose() {

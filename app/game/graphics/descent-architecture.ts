@@ -33,20 +33,20 @@ const layouts = {
   BREACH: { serviceX: 7.40, serviceY: 4.50 },
 } as const;
 
-const point = (frame: PathFrame, x: number, y: number, depth = 0) =>
+export const point = (frame: PathFrame, x: number, y: number, depth = 0) =>
   frame.p.clone().addScaledVector(frame.r, x).addScaledVector(frame.u, y).addScaledVector(frame.f, depth);
 
-function section(frame: PathFrame, xScale: number, yScale: number) {
+export function section(frame: PathFrame, xScale: number, yScale: number) {
   return SECTION_OUTLINE.map(([x, y]) => point(frame, x * xScale, y * yScale));
 }
 
-function crossBeam(batch: IndustrialGeometry, frame: PathFrame, a: readonly [number, number],
+export function crossBeam(batch: IndustrialGeometry, frame: PathFrame, a: readonly [number, number],
   b: readonly [number, number], width: number, depth: number, tint: THREE.Color, offset = 0,
   surface = IndustrialSurface.Cast) {
   batch.beam(point(frame, ...a, offset), point(frame, ...b, offset), frame.f, width, depth, tint, surface);
 }
 
-function conduit(batch: IndustrialGeometry, a: PathFrame, b: PathFrame, x: number, y: number,
+export function conduit(batch: IndustrialGeometry, a: PathFrame, b: PathFrame, x: number, y: number,
   width: number, height: number, tint: THREE.Color, surface = IndustrialSurface.Cast, endX = x, endY = y,
   trim = IndustrialTrim.None) {
   const corners = [[-width / 2, -height / 2], [width / 2, -height / 2],
@@ -188,7 +188,7 @@ function roofBulkhead(batch: IndustrialGeometry, frame: PathFrame, width: number
 }
 
 /** A closed collar with a real open throat and continuous thickness around its perimeter. */
-function collar(batch: IndustrialGeometry, frame: PathFrame, x: number, y: number,
+export function collar(batch: IndustrialGeometry, frame: PathFrame, x: number, y: number,
   outerX: number, outerY: number, depth: number, face: THREE.Color, inside: THREE.Color,
   shape: readonly (readonly [number, number])[] = SECTION_OUTLINE, lip = IndustrialSurface.Polymer,
   finish = IndustrialSurface.Cast) {

@@ -119,8 +119,9 @@ export class RouteHologram {
   private readonly swatches;
   visibleLabels: Record<RouteSide, string> | undefined;
 
-  constructor(private readonly daylight = false) {
-    this.swatches = daylight ? daybreakRouteSwatches : routeSwatches;
+  constructor(private readonly daylight = false, swatches: Readonly<Record<RouteKind, string>> =
+    daylight ? daybreakRouteSwatches : routeSwatches) {
+    this.swatches = swatches;
     this.markers = routeSides.map(side => {
       const root = new THREE.Group();
       const surface = material(daylight);
