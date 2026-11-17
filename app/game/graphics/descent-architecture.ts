@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { facilityZones } from '../core/descent-facility';
 import { SECTION, SECTION_OUTLINE } from '../core/section';
-import { IndustrialGeometry, IndustrialSurface } from './industrial-geometry';
+import { IndustrialGeometry, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
 import type { Path, PathFrame } from './path';
 
 type Zone = ReturnType<typeof facilityZones>[number];
@@ -46,14 +46,15 @@ function crossBeam(batch: IndustrialGeometry, frame: PathFrame, a: readonly [num
 }
 
 function conduit(batch: IndustrialGeometry, a: PathFrame, b: PathFrame, x: number, y: number,
-  width: number, height: number, tint: THREE.Color, surface = IndustrialSurface.Cast, endX = x, endY = y) {
+  width: number, height: number, tint: THREE.Color, surface = IndustrialSurface.Cast, endX = x, endY = y,
+  trim = IndustrialTrim.None) {
   const corners = [[-width / 2, -height / 2], [width / 2, -height / 2],
     [width / 2, height / 2], [-width / 2, height / 2]];
   const start = corners.map(([dx, dy]) => point(a, x + dx, y + dy));
   const end = corners.map(([dx, dy]) => point(b, endX + dx, endY + dy));
   for (let i = 0; i < 4; i++) {
     const next = (i + 1) % 4;
-    batch.quad(start[i], end[i], end[next], start[next], tint, surface);
+    batch.quad(start[i], end[i], end[next], start[next], tint, surface, undefined, trim);
   }
 }
 
@@ -154,7 +155,7 @@ function statorMounts(batch: IndustrialGeometry, frame: PathFrame, width: number
       const outer = (offset: number, d: number) => at(width * .57, height * .67, offset, d);
       const a = inner(-1.24, -.041), b = inner(-1.24, .041);
       const c = outer(-2.86, .068), d = outer(-2.86, -.068);
-      batch.quad(a, b, c, d, alloy, IndustrialSurface.Machined, undefined, true);
+      batch.quad(a, b, c, d, alloy, IndustrialSurface.Machined, undefined, IndustrialTrim.PolishedLip);
       batch.quad(a, d, outer(-2.20, -.068), inner(-.98, -.041), structural);
       batch.quad(c, b, inner(-.98, .041), outer(-2.20, .068), structural);
       batch.quad(d, c, outer(-2.20, .068), outer(-2.20, -.068), steel);
@@ -162,7 +163,7 @@ function statorMounts(batch: IndustrialGeometry, frame: PathFrame, width: number
       for (const [from, to] of [[-.25, -.076], [.076, .25]]) {
         const inA = at(2.98, 2.58, -1.19, from), inB = at(2.98, 2.58, -1.19, to);
         const outA = at(3.71, 3.29, -2.62, from), outB = at(3.71, 3.29, -2.62, to);
-        batch.quad(inA, inB, outB, outA, alloy, IndustrialSurface.Machined, undefined, true);
+        batch.quad(inA, inB, outB, outA, alloy, IndustrialSurface.Machined, undefined, IndustrialTrim.PolishedLip);
         batch.quad(inB, inA, at(2.98, 2.58, -.92, from), at(2.98, 2.58, -.92, to), steel);
         batch.quad(outA, outB, at(3.71, 3.29, -2.18, to), at(3.71, 3.29, -2.18, from), steel);
       }
@@ -177,7 +178,7 @@ function roofBulkhead(batch: IndustrialGeometry, frame: PathFrame, width: number
   for (const i of [3, 4, 5]) {
     const a = inner[i], b = inner[i + 1];
     const c = outer[i + 1], d = outer[i];
-    batch.quad(a, b, c, d, alloy, IndustrialSurface.Machined, undefined, true);
+    batch.quad(a, b, c, d, alloy, IndustrialSurface.Machined, undefined, IndustrialTrim.PolishedLip);
     batch.quad(b, a, rear(a), rear(b), structural);
     batch.quad(rear(a), rear(d), rear(c), rear(b), steel);
   }
@@ -194,11 +195,13 @@ function collar(batch: IndustrialGeometry, frame: PathFrame, x: number, y: numbe
     .map(([u, v]) => point(frame, u * width, v * height, offset));
   const a = outline(x, y, -depth), b = outline(outerX, outerY, -depth);
   const c = outline(x, y, depth), d = outline(outerX, outerY, depth);
+  const faceTrim = finish === IndustrialSurface.Machined ? IndustrialTrim.PolishedLip : IndustrialTrim.None;
+  const throatTrim = lip === IndustrialSurface.Machined ? IndustrialTrim.PolishedLip : IndustrialTrim.None;
   for (let i = 0; i < a.length; i++) {
     const j = (i + 1) % a.length;
-    batch.quad(a[i], b[i], b[j], a[j], face, finish, undefined, finish === IndustrialSurface.Machined);
-    batch.quad(c[j], d[j], d[i], c[i], face, finish, undefined, finish === IndustrialSurface.Machined);
-    batch.quad(a[j], c[j], c[i], a[i], inside, lip, undefined, lip === IndustrialSurface.Machined);
+    batch.quad(a[i], b[i], b[j], a[j], face, finish, undefined, faceTrim);
+    batch.quad(c[j], d[j], d[i], c[i], face, finish, undefined, faceTrim);
+    batch.quad(a[j], c[j], c[i], a[i], inside, lip, undefined, throatTrim);
     batch.quad(b[i], d[i], d[j], b[j], inside);
   }
 }
@@ -239,7 +242,7 @@ function securityBase(zone: Zone, out: THREE.Color) {
   return out.setHex(zone.light).multiplyScalar(zone.name === 'CORE' ? .38 : zone.name === 'BREACH' ? .55 : 1);
 }
 
-function securityTint(zone: Zone, next: Zone | undefined, station: number, out: THREE.Color, target: THREE.Color) {
+export function securityTint(zone: Zone, next: Zone | undefined, station: number, out: THREE.Color, target: THREE.Color) {
   securityBase(zone, out);
   const progress = THREE.MathUtils.smoothstep(station, zone.start, zone.finish);
   if (zone.name === 'THE WELL') out.lerp(pressureAccent, progress * .72);
@@ -303,12 +306,13 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       towardLight.addScaledVector(toEnd, t);
       const distSq = towardLight.lengthSq();
       if (distSq >= reachSq) continue;
-      // Fixture strips illuminate both faces of the unshadowed, double-sided shell.
+      // The strips light the double-sided plates, with weaker spill along grazing faces.
       const incidence = Math.abs(normal.dot(towardLight)) / Math.sqrt(Math.max(distSq, .25));
       const falloff = 1 - distSq / reachSq;
-      irradiance += falloff ** 3 * (.28 + .72 * incidence);
+      irradiance += falloff ** 3 * (.16 + .84 * incidence);
     }
-    return Math.min(1, irradiance * .62);
+    // Compress overlapping fixtures smoothly so adjacent faces keep their lighting contrast.
+    return irradiance / (.64 + irradiance);
   });
   const lightAt = (station: number) => {
     nearby = sources.filter(source => Math.abs(source.station - station) <= source.extent);
@@ -364,7 +368,8 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       }
       for (const side of [-1, 1]) for (const level of [-1, 1]) {
         const rail = side * (SECTION.a + .18);
-        conduit(metal, a, b, rail, level * 1.12, .24, .25, steel, IndustrialSurface.Machined);
+        conduit(metal, a, b, rail, level * 1.12, .24, .25, steel, IndustrialSurface.Machined,
+          rail, level * 1.12, IndustrialTrim.SecurityRail);
         conduit(security, a, b, rail - side * .135, level * 1.12, .014, .028, tone.copy(signal).multiplyScalar(.59));
         if (!outside || level < 0) {
           conduit(metal, a, b, side * service.serviceX, level * service.serviceY, .58,

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 export const enum IndustrialSurface { Cast, Coated, Machined, Polymer }
+export const enum IndustrialTrim { None = 0, PolishedLip = .25, SecurityRail = .50 }
 
 const half = THREE.DataUtils.toHalfFloat;
 export const industrialSurfacePeriod = 120;
@@ -18,7 +19,7 @@ export class IndustrialGeometry {
   constructor(private readonly workSpill?: (point: THREE.Vector3, normal: THREE.Vector3) => number) {}
 
   quad(a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, color: THREE.Color,
-    surface = IndustrialSurface.Cast, stations?: readonly [number, number], polishedEdge = false) {
+    surface = IndustrialSurface.Cast, stations?: readonly [number, number], trim = IndustrialTrim.None) {
     const index = this.positions.length / 3;
     this.normal.subVectors(b, a).cross(this.tangent.subVectors(c, a)).normalize();
     for (const point of [a, b, c, d]) {
@@ -30,8 +31,8 @@ export class IndustrialGeometry {
       const start = stations ? stations[0] % industrialSurfacePeriod : 0;
       const end = start + (stations ? stations[1] - stations[0] : a.distanceTo(d));
       const u = half(a.distanceTo(b)), v0 = half(start), v1 = half(end);
-      // Fractional finish code marks a machined lip without adding another attribute.
-      const finish = half(surface + (polishedEdge ? .25 : 0));
+      // Each face shares a finish and trim code in the same attribute.
+      const finish = half(surface + trim);
       this.surfaceValues.push(
         0, v0, finish, half(this.workSpill(a, this.normal)),
         u, v0, finish, half(this.workSpill(b, this.normal)),

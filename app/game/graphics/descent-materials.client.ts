@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import { IndustrialSurface, industrialSurfacePeriod } from './industrial-geometry';
+import { IndustrialSurface, IndustrialTrim, industrialSurfacePeriod } from './industrial-geometry';
 
-export function facilityStructureMaterial() {
+export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Color) {
   const material = new THREE.MeshStandardMaterial({
     name: 'facility-structure', vertexColors: true, side: THREE.DoubleSide,
   });
   material.onBeforeCompile = shader => {
+    shader.uniforms.facilityFill = { value: fill };
+    shader.uniforms.facilitySecurity = { value: security };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `
       #include <common>
       attribute vec4 industrialSurface;
@@ -17,53 +19,59 @@ export function facilityStructureMaterial() {
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
       #include <common>
       varying vec4 vIndustrialSurface;
+      uniform vec3 facilityFill;
+      uniform vec3 facilitySecurity;
 
-      // Fade small tooling marks before they can alias during fast flight.
-      float filteredRib(float phase, float width) {
-        float footprint = fwidth(phase);
-        return (1.0 - smoothstep(width, width + max(0.004, footprint), abs(fract(phase + 0.5) - 0.5)))
-          * (1.0 - smoothstep(0.20, 0.46, footprint));
+      float filteredRib(float phase, float width, float footprint) {
+        float centre = abs(fract(phase + 0.5) - 0.5);
+        return (1.0 - smoothstep(width, width + max(0.012, footprint), centre))
+          * (1.0 - smoothstep(0.12, 0.40, footprint));
       }
     `).replace('#include <metalnessmap_fragment>', `
       #include <metalnessmap_fragment>
       vec2 surfaceUV = vIndustrialSurface.xy;
-      float finish = vIndustrialSurface.z;
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.213, 0.715, 0.072))), 0.24);
+      vec2 footprint = fwidth(surfaceUV);
+      float finish = floor(vIndustrialSurface.z + 0.001);
+      float trim = vIndustrialSurface.z - finish;
       float machinedEdge = 0.0;
-      if (finish < ${IndustrialSurface.Coated - .5}) {
-        float phase = surfaceUV.y * ${Math.PI * 2 / industrialSurfacePeriod};
-        float relief = sin(surfaceUV.x * 3.2 + sin(phase * 31.0)) * sin(phase * 43.0);
-        relief *= 1.0 - smoothstep(0.2, 0.65, fwidth(surfaceUV.x + surfaceUV.y));
-        roughnessFactor = 0.75 + relief * 0.047;
-        metalnessFactor = 0.42;
-        diffuseColor.rgb *= vec3(0.81, 0.88, 0.93) * (1.0 + relief * 0.036);
+      float cavity = 1.0;
+      if (finish == ${IndustrialSurface.Cast}.0) {
+        float phase = surfaceUV.y * ${Math.PI * 2 * 15 / industrialSurfacePeriod};
+        float relief = sin(phase) * sin(surfaceUV.x * 1.7);
+        relief *= 1.0 - smoothstep(0.15, 0.60, max(footprint.x, footprint.y));
+        roughnessFactor = 0.78 + relief * 0.075;
+        metalnessFactor = 0.47;
+        diffuseColor.rgb *= vec3(0.91, 0.99, 1.04) * (1.0 + relief * 0.045);
       } else if (finish < ${IndustrialSurface.Machined - .5}) {
-        float join = filteredRib(surfaceUV.y * 0.0833333, 0.006);
-        roughnessFactor = 0.51 + join * 0.16;
-        metalnessFactor = 0.19;
-        diffuseColor.rgb *= vec3(1.03, 1.10, 1.17) * (1.0 - join * 0.19);
+        float join = filteredRib(surfaceUV.y / 12.0, 0.010, footprint.y / 12.0);
+        roughnessFactor = 0.48 + join * 0.22;
+        metalnessFactor = 0.16;
+        diffuseColor.rgb *= vec3(1.27, 1.18, 1.04) * (1.0 - join * 0.22);
       } else if (finish < ${IndustrialSurface.Polymer - .5}) {
-        float milling = filteredRib(surfaceUV.y * 10.0, 0.10);
-        float footprint = fwidth(surfaceUV.x);
-        machinedEdge = step(${IndustrialSurface.Machined + .125}, finish) *
-          (1.0 - smoothstep(0.021, 0.12, surfaceUV.x)) * (1.0 - smoothstep(0.085, 0.28, footprint));
-        roughnessFactor = 0.34 + milling * 0.12 - machinedEdge * 0.11;
-        metalnessFactor = 0.64;
-        diffuseColor.rgb *= vec3(1.19, 1.26, 1.32) * (1.0 - milling * 0.09);
+        float milling = filteredRib(surfaceUV.y * 3.0, 0.13, footprint.y * 3.0);
+        float lip = 1.0 - step(0.125, abs(trim - ${IndustrialTrim.PolishedLip}));
+        machinedEdge = lip * (1.0 - smoothstep(0.042, 0.23 + footprint.x, surfaceUV.x)) *
+          (1.0 - smoothstep(0.14, 0.45, footprint.x));
+        roughnessFactor = 0.38 + milling * 0.12 - machinedEdge * 0.13;
+        metalnessFactor = 0.71;
+        float steelGrey = dot(diffuseColor.rgb, vec3(0.213, 0.715, 0.072));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(steelGrey), 0.30);
+        diffuseColor.rgb *= vec3(1.42, 1.39, 1.32) * (1.0 - milling * 0.075);
       } else {
-        float groove = filteredRib(surfaceUV.y * 3.0, 0.08);
-        roughnessFactor = 0.87 + groove * 0.05;
-        metalnessFactor = 0.04;
-        diffuseColor.rgb *= vec3(0.41, 0.46, 0.51) * (1.0 - groove * 0.15);
+        roughnessFactor = 0.94;
+        metalnessFactor = 0.02;
+        cavity = 0.55;
+        diffuseColor.rgb *= vec3(0.52, 0.55, 0.58);
       }
     `).replace('#include <lights_fragment_end>', `
       #include <lights_fragment_end>
-      // Baked irradiance from the existing work fixtures, bounded to avoid flattening the recesses.
+      float work = vIndustrialSurface.w;
       reflectedLight.indirectDiffuse += diffuseColor.rgb *
-        (vec3(0.162, 0.169, 0.185) + vec3(0.67, 0.72, 0.77) * vIndustrialSurface.w) *
-        (1.0 - 0.38 * metalnessFactor);
-      reflectedLight.indirectSpecular += vec3(0.018, 0.024, 0.028) * machinedEdge *
-        (0.38 + 0.62 * vIndustrialSurface.w);
+        (facilityFill * cavity + vec3(0.77, 0.88, 1.0) * work) * (1.0 - 0.38 * metalnessFactor);
+      float glancing = 1.0 - clamp(dot(geometryNormal, geometryViewDir), 0.0, 1.0);
+      reflectedLight.indirectSpecular += vec3(0.041, 0.054, 0.064) * machinedEdge *
+        (0.28 + work) * (0.52 + 0.48 * glancing * glancing);
+      reflectedLight.indirectSpecular += facilitySecurity * step(0.375, trim) * (0.5 + 0.5 * glancing);
     `);
   };
   return material;

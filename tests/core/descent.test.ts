@@ -13,7 +13,7 @@ import { referenceFor } from '../../app/game/core/reference-track';
 import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
-import { IndustrialSurface } from '../../app/game/graphics/industrial-geometry';
+import { IndustrialSurface, IndustrialTrim } from '../../app/game/graphics/industrial-geometry';
 import { DESCENT_GLASS_THICKNESS, descentGlassPanes } from '../../app/game/graphics/descent-glass';
 import { GateGeometries } from '../../app/game/graphics/gates.client';
 import { descentExamples } from '../../app/game/debug/catalog';
@@ -113,10 +113,23 @@ test('facility finishes and static fixture spill share the structural batch acro
   const facility = new DescentFacility(path, [{ ...zone, start: 0, finish: 240, end: 240 }]);
   const left = facility.build(0, 210), right = facility.build(210, 240);
   const data = left[0].geometry.getAttribute('industrialSurface');
+  const positions = left[0].geometry.getAttribute('position');
   const finishes = new Set<number>();
-  let unlit = 0, lit = 0;
+  let unlit = 0, lit = 0, securityRail = 0;
   for (let i = 0; i < data.count; i++) {
-    finishes.add(data.getZ(i));
+    const code = data.getZ(i);
+    const finish = Math.floor(code);
+    finishes.add(finish);
+    if (code - finish === IndustrialTrim.SecurityRail) {
+      securityRail++;
+      expect(finish).toBe(IndustrialSurface.Machined);
+      const x = Math.abs(positions.getX(i));
+      const y = Math.abs(positions.getY(i));
+      expect(x).toBeGreaterThan(3.80);
+      expect(x).toBeLessThan(4.06);
+      expect(y).toBeGreaterThan(.99);
+      expect(y).toBeLessThan(1.26);
+    }
     const spill = data.getW(i);
     expect(spill).toBeGreaterThanOrEqual(0);
     expect(spill).toBeLessThanOrEqual(1);
@@ -128,6 +141,7 @@ test('facility finishes and static fixture spill share the structural batch acro
   ]));
   expect(unlit).toBeGreaterThan(0);
   expect(lit).toBeGreaterThan(0);
+  expect(securityRail).toBeGreaterThan(0);
   expect(right[0].material).toBe(left[0].material);
   for (const fixture of left.slice(1)) expect(fixture.geometry.getAttribute('industrialSurface')).toBeUndefined();
 
@@ -147,6 +161,36 @@ test('facility finishes and static fixture spill share the structural batch acro
   expect(seam(right[0].geometry)).toEqual(shared);
   for (const mesh of [...left, ...right]) mesh.geometry.dispose();
   facility.dispose();
+});
+
+test('DESCENT room air blends through authored boundaries independently of the security beat', () => {
+  const zones = facilityZones(volume, 'standard');
+  const room = new DescentFacility(new Path(120, 10, 'facility'), zones);
+  const fog = new Color(), backdrop = new Color();
+  const sample = (station: number, gain = 1) => {
+    const density = room.light(station, gain, fog, backdrop);
+    return { density, fog: fog.clone(), backdrop: backdrop.clone() };
+  };
+  try {
+    const middle = zones.map(({ start, finish }) => (start + finish) / 2);
+    const control = sample(middle[0]), well = sample(middle[3]), core = sample(middle[4]);
+    expect(well.density).toBeLessThan(core.density);
+    expect(core.density).toBeLessThan(control.density);
+    expect(well.backdrop.b).toBeGreaterThan(core.backdrop.b);
+    const exitStart = sample(zones[6].start), exitEnd = sample(zones[6].finish);
+    expect(exitEnd.backdrop.r).toBeGreaterThan(exitStart.backdrop.r);
+    for (const station of [...middle, zones[6].finish]) {
+      expect(sample(station, 0)).toEqual(sample(station, 2));
+    }
+    for (const { start } of zones.slice(1)) {
+      const a = sample(start - .02), b = sample(start + .02);
+      expect(Math.abs(b.density - a.density)).toBeLessThan(.0000015);
+      expect(b.fog.r).toBeCloseTo(a.fog.r, 4);
+      expect(b.backdrop.b).toBeCloseTo(a.backdrop.b, 4);
+    }
+  } finally {
+    room.dispose();
+  }
 });
 
 test('service assemblies and the BREACH roof cap stay attached to their world stations across chunks', () => {

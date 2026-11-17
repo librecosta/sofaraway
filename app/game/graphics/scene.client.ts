@@ -166,7 +166,7 @@ class VolumeScene {
     }
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.facility && this.facilityBackground) {
-      this.facility.light(distance, dynamics.fixtureGain, this.fog.color, this.facilityBackground);
+      this.fog.density = this.facility.light(distance, dynamics.fixtureGain, this.fog.color, this.facilityBackground);
     }
     const junction = this.junction;
     if (this.scenic) {
