@@ -91,7 +91,7 @@ class VolumeScene {
     try {
       const atlas = makeLightingAtlas(volume, mode);
       if (volume.topology === 'facility') {
-        this.facility = new DescentFacility(path, facilityZones(volume, mode));
+        this.facility = new DescentFacility(path, facilityZones(volume, mode, path.reference));
         this.facilityBackground = new THREE.Color(0x111720);
         this.fog.density = .0055;
       }

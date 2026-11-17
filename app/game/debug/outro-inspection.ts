@@ -65,7 +65,7 @@ export class OutroInspection {
 
   constructor(mode: PlayMode, seed: number, private readonly route: RouteKind, path?: Simulation['path'], difficulty: Difficulty = 'normal',
     readonly volume: VolumeDefinition = outroVolume) {
-    this.sim = new Simulation(volume, {}, path, mode);
+    this.sim = new Simulation(volume, {}, path, mode, difficulty);
     this.sim.start(difficulty, seed, undefined, mode);
     this.plan = this.sim.outroPlan!;
     const { layout } = this.sim.branch!;
@@ -169,7 +169,7 @@ export class OutroInspection {
   }
 
   roam(phase: 'menu' | 'results', minutes: number) {
-    const sim = new Simulation(this.volume, { align: true, branchSide: this.side }, this.sim.path, this.sim.mode);
+    const sim = new Simulation(this.volume, { align: true, branchSide: this.side }, this.sim.path, this.sim.mode, this.sim.difficulty);
     if (phase === 'results') {
       sim.start(this.sim.difficulty, this.plan.seed, undefined, this.sim.mode);
       while (sim.phase === 'playing' || sim.phase === 'crash') sim.step(STEP, { ...idleInput, boosting: true });

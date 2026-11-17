@@ -138,7 +138,7 @@ export class DescentFacility {
 
   get lighting() {
     const { beat, phrase, amount, travel, relay } = this.cue;
-    return { beat, phrase, amount, travel, relay, rim: this.gateRim.w,
+    return { beat, room: this.zoneAt(this.score.spatial.x).name, phrase, amount, travel, relay, rim: this.gateRim.w,
       pane: this.gateFace.toArray(),
       fixtures: this.score.groups.slice(0, 4).map(({ x, y, z, w }) => [x, y, z, w]) };
   }

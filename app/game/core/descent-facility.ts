@@ -14,8 +14,7 @@ export const facilityStages = [
   { name: 'BREACH', width: 6.20, height: 5.30, bay: 45, armor: 0x304047, light: 0xc8e0e9, glass: [0xe1a994, 0xc5d7e2] },
 ] as const;
 
-export function facilityZones(volume: VolumeDefinition, mode: PlayMode) {
-  const reference = referenceFor(volume);
+export function facilityZones(volume: VolumeDefinition, mode: PlayMode, reference = referenceFor(volume)) {
   return controlTrack.sections.map((section, i) => ({ ...facilityStages[i], section: section.name,
     start: i === 0 ? 0 : reference.station(section.startBeat, mode),
     finish: reference.station(section.endBeat, mode),

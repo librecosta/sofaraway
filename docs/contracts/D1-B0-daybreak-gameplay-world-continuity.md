@@ -10,6 +10,8 @@ The Normal and Hard Main chart has 120 gates. The OPEN / GLIDE / LIFT / BREEZE /
 
 The chart matcher assigns phrase slots to the actual Kick, Snare and Fill onsets. Bonus can also use a Hat onset. The canonical Main chart is the input to `ReferenceTrack` and the speed ramp, and each crossing uses its fixed world station. Boost changes the arrival time. Branch gates replace the canonical run segment at route selection, and each route carries its measured 3D arc length through the merge.
 
+Impossible Standard uses stations at 1.15× the normal distance from the runway start for the centerline curves, gates, pickup and junction. Gate beats and profiles carry forward. The same reference supplies the cruise finish and full-Boost reach for Encore. `daybreak-impossible-timing` holds results from this layout, and `daybreak-choreography` retains the earlier Impossible results.
+
 | Junction cue | Beat |
 | --- | --- |
 | Preview | 224 |

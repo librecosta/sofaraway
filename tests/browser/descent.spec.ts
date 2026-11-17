@@ -9,6 +9,33 @@ import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { descentExamples, gateDescription } from '../../app/game/debug/catalog';
 
+test('Impossible cruise renders the DESCENT music rooms and the DAYBREAK junction on their cues', async ({ page }, info) => {
+  for (const { id, beat, section, room } of [
+    { id: 'descent', beat: 272, section: 'HOLD', room: 'CORE' },
+    { id: 'descent', beat: 300, section: 'LOCKDOWN', room: 'LOCKDOWN' },
+    { id: 'daybreak', beat: 226, section: 'RETURN', room: undefined },
+  ] as const) {
+    const volume = volumeById(id);
+    const sim = new Simulation(volume);
+    sim.start('impossible', 0);
+    const station = sim.reference.station(beat, 'standard');
+    await page.goto(`/?vol=${id}&diff=impossible&align=1&god=0&t=${beat * 60 / volume.bpm}&q=low&dbg=1`);
+    const diagnostics = page.locator('#errbox');
+    await expect(diagnostics).toContainText('"trackDistance"');
+    await expect(page.locator('#hud-section')).toHaveText(section);
+    const actual = JSON.parse((await diagnostics.textContent())!);
+    expect(Math.abs(actual.trackDistance - station)).toBeLessThan(2);
+    if (room) {
+      expect(actual.descentLighting.room).toBe(room);
+      expect(actual.descentLighting.beat).toBeCloseTo(beat, 5);
+    } else {
+      expect(actual.routeHologram).toMatchObject({ center: 'MAIN' });
+      expect(actual.branch.side).toBeNull();
+    }
+    await page.locator('canvas').screenshot({ path: info.outputPath(`${id}-${section}.png`) });
+  }
+});
+
 test('DESCENT glass is loaded before entering view and drawn across the full sight range', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   for (const kind of descentGateKinds) for (const boost of [false, true]) {
@@ -572,7 +599,7 @@ test('the production DESCENT Impossible run shows its result and restarts with o
   await expect(page.locator('#over-gates')).toHaveText('0/189');
   await expect.poll(() => page.evaluate(() => {
     const records = JSON.parse(localStorage.getItem('sofaraway.records.v1') ?? '{}');
-    return records.standard?.['descent-junction-approach']?.impossible?.last?.outcome;
+    return records.standard?.['descent-impossible-timing']?.impossible?.last?.outcome;
   })).toBe('TERMINATED');
   await page.locator('[data-act=restart]').click();
   await expect(page.locator('#hud-lives i')).toHaveCount(1);

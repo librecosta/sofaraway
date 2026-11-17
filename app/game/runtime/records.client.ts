@@ -10,10 +10,15 @@ const laserRecordId = 'descent-laser-security';
 const choreographyRecordId = 'descent-laser-choreography';
 const spiralRecordId = 'descent-spiral-junction';
 const approachRecordId = 'descent-junction-approach';
+const timedImpossibleIds = { daybreak: 'daybreak-impossible-timing', descent: 'descent-impossible-timing' } as const;
 type RecordId = VolumeId | typeof daybreakRecordIds[number] | typeof controlRecordId | typeof laserRecordId
-  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId;
-const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-choreography'
-  : volume === 'descent' ? approachRecordId : volume;
+  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId
+  | typeof timedImpossibleIds[keyof typeof timedImpossibleIds];
+
+function recordId(volume: VolumeId, difficulty?: Difficulty): RecordId {
+  if (difficulty === 'impossible' && (volume === 'daybreak' || volume === 'descent')) return timedImpossibleIds[volume];
+  return volume === 'daybreak' ? 'daybreak-choreography' : volume === 'descent' ? approachRecordId : volume;
+}
 
 interface RecordsV1 {
   version: 1;
@@ -54,10 +59,14 @@ export function parseRecords(raw: string | null): RecordsV1 {
     { id: choreographyRecordId, volume: 'descent' },
     { id: spiralRecordId, volume: 'descent' },
     { id: approachRecordId, volume: 'descent' },
+    { id: timedImpossibleIds.daybreak, volume: 'daybreak' },
+    { id: timedImpossibleIds.descent, volume: 'descent' },
   ];
   for (const { id, volume } of ids) {
     const entries = object(standard[id]);
-    for (const difficulty of id === recordId(volume) ? difficultiesFor(volume) : difficulties) {
+    const supported = id === recordId(volume) ? difficultiesFor(volume)
+      : id === recordId(volume, 'impossible') ? ['impossible'] as const : difficulties;
+    for (const difficulty of supported) {
       const entry = object(entries[difficulty]);
       let best = score(entry.best) ? entry.best : null;
       const last = lastRun(entry.last);
@@ -78,9 +87,8 @@ export function readRecords(fallback = emptyRecords()) {
 }
 
 export function recordFor(records: RecordsV1, volume: VolumeId, difficulty: Difficulty, mode: PlayMode): LocalRecord {
-  const id = recordId(volume);
-  if (mode === 'sightseeing') return { best: null, last: records.sightseeing[id]?.last ?? null };
-  return records.standard[id]?.[difficulty] ?? { best: null, last: null };
+  if (mode === 'sightseeing') return { best: null, last: records.sightseeing[recordId(volume)]?.last ?? null };
+  return records.standard[recordId(volume, difficulty)]?.[difficulty] ?? { best: null, last: null };
 }
 
 export function recordRun(records: RecordsV1, volume: VolumeId, difficulty: Difficulty, mode: PlayMode, last: LastRun) {
@@ -91,7 +99,7 @@ export function recordRun(records: RecordsV1, volume: VolumeId, difficulty: Diff
   const { best } = recordFor(records, volume, difficulty, mode);
   const total = totalRunScore(last);
   const newBest = !last.recovery && (best === null || total > best);
-  (records.standard[recordId(volume)] ??= {})[difficulty] = { best: newBest ? total : best, last };
+  (records.standard[recordId(volume, difficulty)] ??= {})[difficulty] = { best: newBest ? total : best, last };
   return newBest;
 }
 

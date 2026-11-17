@@ -60,7 +60,8 @@ export interface OutroPlan {
 export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: number, mainLastStation: number,
   difficulty: Difficulty = 'normal', reserveStation?: (seconds: number) => number): OutroPlan {
   const impossible = mode === 'standard' && difficulty === 'impossible';
-  const musicEndStation = referenceFor(volume).boostFinish(mode, impossible ? IMPOSSIBLE_SPEED_FACTOR : 1);
+  const reference = referenceFor(volume, impossible ? difficulty : 'normal');
+  const musicEndStation = reference.boostFinish(mode, impossible ? IMPOSSIBLE_SPEED_FACTOR : 1);
   // After rejoin, branch arc offsets carry through to the ending. The closing
   // frame has extra depth so either side can reach the end without seeing a seam.
   const end = musicEndStation + 72;
@@ -70,7 +71,7 @@ export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: nu
   const cutoff = spec && mode === 'standard'
     ? reserveStation?.(volume.beats * 60 / volume.bpm - spec.reserve) ?? musicEndStation - 550 : Infinity;
   const first = mainLastStation + (spec?.first ?? ENCORE_FIRST_OFFSET);
-  let station = spec ? Math.max(first, referenceFor(volume).station(volume.beats, mode) + 12) : first;
+  let station = spec ? Math.max(first, reference.station(volume.beats, mode) + 12) : first;
   const gates: EncoreGate[] = [];
   const word = (index: number, field: number) => runRandomWord(seed, ENCORE_STREAM ^ Math.imul(1 + index * 3 + field, 0x9e3779b9));
   const minSpacing = spec?.minSpacing ?? ENCORE_MIN_SPACING;

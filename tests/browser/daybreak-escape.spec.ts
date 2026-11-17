@@ -5,7 +5,7 @@ import type { Graphics } from '../../app/game/graphics/scene.client';
 import type { GameOptions } from '../../app/game/contracts';
 
 for (const profile of [
-  { width: 1920, height: 1080, quality: 'high', lights: true, difficulty: 'impossible', side: 'left', motion: 'toggle', crossings: 4 },
+  { width: 1920, height: 1080, quality: 'high', lights: true, difficulty: 'impossible', side: 'left', motion: 'toggle', crossings: 2 },
   { width: 1280, height: 720, quality: 'auto', lights: false, difficulty: 'hard', side: 'right', motion: 'half', crossings: 4 },
   { width: 960, height: 540, quality: 'low', lights: true, difficulty: 'normal', side: 'center', motion: 'late', crossings: 1 },
 ] as const) {
@@ -23,15 +23,17 @@ for (const profile of [
         new URL(entry.name).pathname === '/app/game/runtime/GameRuntime.client.ts')!.name;
       const { Runtime: Engine }: typeof import('../../app/game/runtime/GameRuntime.client') = await import(source);
       let runtime: Runtime | undefined;
+      let launched: Promise<void> | undefined;
       const start = Engine.prototype.start;
       Engine.prototype.start = function () {
         runtime = this;
         const options: GameOptions = Reflect.get(this, 'options');
         options.runSeed = 0;
-        return start.call(this, true);
+        return launched = start.call(this, true);
       };
       try { document.querySelector<HTMLButtonElement>('[data-act=start]')!.click(); }
       finally { Engine.prototype.start = start; }
+      await launched;
       const live = runtime!;
       cancelAnimationFrame(Reflect.get(live, 'raf'));
       Reflect.set(live, 'raf', 0);

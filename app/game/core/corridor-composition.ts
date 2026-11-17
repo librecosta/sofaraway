@@ -74,6 +74,7 @@ export type CorridorSegment =
 export function corridorLength(volume: VolumeDefinition, mode: PlayMode = 'standard') {
   const original = START_DISTANCE + volume.beats * 60 / volume.bpm
     * cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(mode) + 650;
+  // The base reference reaches speed-ramp stations earlier than the scaled course.
   return supportsDifficulty(volume.id, 'impossible') && mode === 'standard'
     ? Math.max(original, referenceFor(volume).boostFinish(mode, IMPOSSIBLE_SPEED_FACTOR) + 650) : original;
 }
@@ -111,8 +112,7 @@ export function composeElsewhere(volume: VolumeDefinition, mode: PlayMode): Corr
   return segments;
 }
 
-export function composeDaybreak(volume: VolumeDefinition, mode: PlayMode): CorridorSegment[] {
-  const reference = referenceFor(volume);
+export function composeDaybreak(volume: VolumeDefinition, mode: PlayMode, reference = referenceFor(volume)): CorridorSegment[] {
   const station = (beat: number) => reference.station(beat, mode);
   const segments: CorridorSegment[] = [];
   let from = 0;
@@ -126,8 +126,7 @@ export function composeDaybreak(volume: VolumeDefinition, mode: PlayMode): Corri
   return segments;
 }
 
-export function composeDescent(volume: VolumeDefinition, mode: PlayMode): CorridorSegment[] {
-  const reference = referenceFor(volume);
+export function composeDescent(volume: VolumeDefinition, mode: PlayMode, reference = referenceFor(volume)): CorridorSegment[] {
   const start = (name: typeof controlTrack.sections[number]['name']) =>
     controlTrack.sections.find(section => section.name === name)!.startBeat;
   const flight = start('FLIGHT'), well = start('PRESSURE'), core = start('HOLD');

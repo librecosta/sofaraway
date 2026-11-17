@@ -102,6 +102,22 @@ test('the DESCENT junction approach records preserve the original spiral junctio
   expect(recordFor(reloaded, 'descent', 'normal', 'sightseeing').last).toEqual(current);
 });
 
+test.each([
+  ['daybreak', 'daybreak-choreography', 'daybreak-impossible-timing'],
+  ['descent', 'descent-junction-approach', 'descent-impossible-timing'],
+] as const)('%s keeps earlier Impossible results in storage after the timing change', (volume, earlier, timed) => {
+  const last = { score: 180000, outcome: 'ESCAPED' } as const;
+  const standard = { [earlier]: { impossible: { best: last.score, last }, hard: { best: 98000, last: null } } };
+  const records = parseRecords(JSON.stringify({ version: 1, standard }));
+  expect(recordFor(records, volume, 'impossible', 'standard')).toEqual({ best: null, last: null });
+  const newRun = { ...last, score: 135000 };
+  expect(recordRun(records, volume, 'impossible', 'standard', newRun)).toBe(true);
+  const restored = parseRecords(JSON.stringify(records));
+  expect(restored.standard[earlier]).toEqual(standard[earlier]);
+  expect(restored.standard[timed]).toEqual({ impossible: { best: newRun.score, last: newRun } });
+  expect(recordFor(restored, volume, 'hard', 'standard').best).toBe(98000);
+});
+
 test('records reject invalid or unknown storage values and tolerate a missing browser', () => {
   for (const raw of [null, '{bad', 'null', '[]', '{"version":2}', '{"version":"1"}']) expect(parseRecords(raw)).toEqual(emptyRecords());
   const raw = '{"version":1,"standard":{"elsewhere":{"hard":{"best":1e999,"last":{"score":-1,"outcome":"ESCAPED"}},' +

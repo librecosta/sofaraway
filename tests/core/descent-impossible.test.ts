@@ -5,6 +5,7 @@ import { chartFor, difficultySettings } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { clamp, lanePoint } from '../../app/game/core/collision';
 import { isDescentGate, laserOpening, type DescentGateKind } from '../../app/game/core/descent-gates';
+import { descentCargo } from '../../app/game/core/descent-routes';
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { difficultiesFor } from '../../app/game/core/difficulty';
 import { idleInput } from '../../app/game/core/input';
@@ -15,7 +16,7 @@ const volume = volumeById('descent');
 const totals = { main: 189, challenge: 190, score: 184 };
 const routeGates = { main: 10, challenge: 11, score: 5 };
 
-test('DESCENT Impossible adds fixed CONTROL accents without moving any Hard gate', () => {
+test('DESCENT Impossible keeps Hard opening choreography on the faster reference and adds CONTROL accents', () => {
   expect(difficultiesFor('descent')).toEqual([...difficulties, 'impossible']);
   expect(difficultiesFor('orbit')).toEqual(difficulties);
   expect(difficultySettings(volume, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
@@ -37,17 +38,19 @@ test('DESCENT Impossible adds fixed CONTROL accents without moving any Hard gate
     const before = new Simulation(volume), after = new Simulation(volume);
     before.start('hard', seed);
     after.start('impossible', seed);
-    expect(after.reference).toBe(before.reference);
-    expect(after.pickupStation).toBe(before.pickupStation);
+    expect(before.reference.scale).toBe(1);
+    expect(after.reference.scale).toBe(1.15);
+    expect(after.pickupStation).toBe(after.reference.station(descentCargo.beat, 'standard'));
     expect(after.speed).toBeCloseTo(27.6, 8);
     expect(after.lives).toBe(1);
     expect(after.outroPlan).toBeUndefined();
     expect(after.gatesTotal).toBe(totals.main);
     const compare = (base: readonly RunGate[], dense: readonly RunGate[]) => {
-      expect(dense.filter(gate => !gate.inserted)).toEqual(base);
+      expect(dense.filter(gate => !gate.inserted).map(({ beat, kind, open, axis }) => [beat, kind, open, axis]))
+        .toEqual(base.map(({ beat, kind, open, axis }) => [beat, kind, open, axis]));
+      for (const gate of dense) expect(gate.worldStation).toBe(after.reference.station(gate.beat, 'standard'));
       for (const gate of dense.filter(gate => gate.inserted)) {
         expect(accents.has(gate.beat), `CONTROL onset at ${gate.beat}`).toBe(true);
-        expect(gate.worldStation).toBe(after.reference.station(gate.beat, 'standard'));
       }
     };
     compare(before.mainGates, after.mainGates);

@@ -1,5 +1,6 @@
 import type { Diagnostics, Difficulty, PlayMode, QualityTier } from '../contracts';
 import type { RouteKind } from '../core/branches';
+import { referenceFor } from '../core/reference-track';
 import { dynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { VolumeDefinition } from '../core/volumes';
 import type { CirrusLayer } from '../graphics/daybreak-cirrus';
@@ -37,7 +38,9 @@ export class OutroPreview {
   }
 
   select(mode: PlayMode, seed: number, route: RouteKind, difficulty: Difficulty, volume: VolumeDefinition = outroVolume) {
-    const rebuild = this.mode !== mode || this.volume !== volume;
+    const reference = referenceFor(volume, mode === 'standard' ? difficulty : 'normal');
+    const rebuild = this.mode !== mode || this.volume !== volume ||
+      (this.graphics.path?.reference ?? referenceFor(volume)) !== reference;
     const inspection = this.inspection = new OutroInspection(mode, seed, route, rebuild ? undefined : this.graphics.path, difficulty, volume);
     if (!this.lost && rebuild) {
       this.graphics.load(volume, inspection.sim.path, mode);
@@ -137,7 +140,7 @@ export class OutroPreview {
     try {
       const inspection = this.inspection;
       this.graphics.restore(this.volume);
-      if (inspection && (this.mode !== inspection.sim.mode || this.volume !== inspection.volume)) {
+      if (inspection && (this.mode !== inspection.sim.mode || this.volume !== inspection.volume || this.graphics.path !== inspection.sim.path)) {
         this.graphics.load(inspection.volume, inspection.sim.path, inspection.sim.mode);
         this.graphics.prepare();
         this.mode = inspection.sim.mode;

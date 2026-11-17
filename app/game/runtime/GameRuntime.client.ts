@@ -5,6 +5,7 @@ import { clamp } from '../core/collision';
 import { resolveDifficulty, supportsDifficulty } from '../core/difficulty';
 import { idleInput } from '../core/input';
 import { PickupDeck } from '../core/pickups';
+import { referenceFor } from '../core/reference-track';
 import { approachDynamicLights, dynamicLightEnvelope, steadyLights } from '../core/rhythmic-lights';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
@@ -120,10 +121,11 @@ export class Runtime implements GameRuntime {
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
     const silentFallback = silent && this.snapshot.error?.kind === 'audio';
     const generation = ++this.generation;
-    const { volumeId, mode } = this.snapshot;
+    const { volumeId, mode, difficulty } = this.snapshot;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
-    if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode)) {
+    const reference = referenceFor(sim.volume, mode === 'standard' ? difficulty : 'normal');
+    if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode) || sim.reference !== reference) {
       // Unlock within the initiating gesture and let the menu paint STARTING before building.
       if (!silent) this.primeAudio();
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -133,7 +135,7 @@ export class Runtime implements GameRuntime {
         return;
       }
       try {
-        this.loadVolume(volumeId);
+        this.loadVolume(volumeId, difficulty);
         sim = this.simulation!;
       } catch (error) {
         this.fail(error);
@@ -377,12 +379,13 @@ export class Runtime implements GameRuntime {
       error: Object.freeze({ kind, stage, message: error instanceof Error ? error.message : 'Could not load the game.' }) });
   }
 
-  private loadVolume(id: VolumeId) {
+  private loadVolume(id: VolumeId, difficulty: Difficulty = 'normal') {
     const flags = this.options!.diagnostics;
     const volume = volumeById(id);
     const graphics = this.graphics!;
     const mode = this.snapshot.mode;
-    const sim = this.simulation = new Simulation(volume, flags, undefined, mode);
+    const sim = this.simulation = new Simulation(volume, flags, undefined, mode,
+      flags.fixedTime === null ? difficulty : this.snapshot.difficulty);
     graphics.load(volume, sim.path, mode);
     if (flags.fixedTime === null) {
       this.draw(this.simulation, performance.now());

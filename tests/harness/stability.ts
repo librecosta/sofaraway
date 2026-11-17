@@ -277,7 +277,8 @@ const stability = {
     const output = document.createElement('canvas');
     document.body.prepend(output);
     const surface = new Graphics(output, quality, false, diagnostics);
-    const sim = new Simulation(definition, diagnostics, undefined, mode);
+    const difficulty = sample?.difficulty ?? 'normal';
+    const sim = new Simulation(definition, diagnostics, undefined, mode, difficulty);
     const started = performance.now();
     const path = sim.path;
     const pathBuild = { ms: performance.now() - started, frames: path.retainedFrameCount, segments: path.segments.length,
@@ -288,7 +289,6 @@ const stability = {
       surface.load(definition, path, mode);
       surface.prepare();
       const planStarted = performance.now();
-      const difficulty = sample?.difficulty ?? 'normal';
       sim.start(difficulty, 0, undefined, mode);
       const runSetupMs = performance.now() - planStarted;
       const planBuildStarted = performance.now();

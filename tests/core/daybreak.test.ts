@@ -7,6 +7,7 @@ import type { RouteSide } from '../../app/game/core/branches';
 import type { Difficulty, PlayMode } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, clamp, HUB_R, lanePoint } from '../../app/game/core/collision';
+import { DAYBREAK_PICKUP_BEAT } from '../../app/game/core/daybreak-chart';
 import { rhythmTimeline } from '../../app/game/core/daybreak-score';
 import { difficultiesFor } from '../../app/game/core/difficulty';
 import { crystalOpenings, daybreakGateKinds, daybreakGates, daybreakProfile, isCabinEdge } from '../../app/game/core/daybreak-gates';
@@ -53,7 +54,7 @@ test('the real kick, snare and fill onsets drive the Main gates and the referenc
   }
 });
 
-test('Impossible adds scored accents while preserving every Hard gate and its station', () => {
+test('Impossible keeps Hard opening choreography on the faster reference and adds scored accents', () => {
   expect(difficultiesFor(volume.id)).toEqual([...difficulties, 'impossible']);
   expect(difficultySettings(volume, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
   const base = chartFor(volume, 'hard');
@@ -70,16 +71,18 @@ test('Impossible adds scored accents while preserving every Hard gate and its st
   impossible.start('impossible', 0);
   expect(impossible.speed).toBeCloseTo(27.6, 10);
   expect(impossible.lives).toBe(1);
-  expect(impossible.reference).toBe(hard.reference);
-  expect(impossible.pickupStation).toBe(hard.pickupStation);
+  expect(hard.reference.scale).toBe(1);
+  expect(impossible.reference.scale).toBe(1.15);
+  expect(impossible.pickupStation).toBe(impossible.reference.station(DAYBREAK_PICKUP_BEAT, 'standard'));
   expect(impossible.gatesTotal).toBe(147);
   const routes = ['main', 'challenge', 'score'] as const;
   const onsets = new Set(rhythmTimeline().filter(hit => ['kick', 'snare', 'fill'].includes(hit.kind)).map(hit => hit.beat));
   const check = (anchors: readonly RunGate[], expanded: readonly RunGate[]) => {
-    expect(expanded.filter(gate => !gate.inserted)).toEqual(anchors);
+    expect(expanded.filter(gate => !gate.inserted).map(({ beat, kind, open, axis }) => [beat, kind, open, axis]))
+      .toEqual(anchors.map(({ beat, kind, open, axis }) => [beat, kind, open, axis]));
+    for (const gate of expanded) expect(gate.worldStation).toBe(impossible.reference.station(gate.beat, 'standard'));
     for (const gate of expanded.filter(gate => gate.inserted)) {
       expect(onsets.has(gate.beat)).toBe(true);
-      expect(gate.worldStation).toBe(impossible.reference.station(gate.beat, 'standard'));
       expect(gate.axis).toBe(0);
     }
   };
@@ -255,7 +258,7 @@ test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears ev
     expect(sim.trackDistance + GATE_LOAD_AHEAD).toBeLessThan(sim.path.length);
     if (motion === 'boost') {
       expect(sim.escapeWhite).toBe(1);
-      expect(plan.gates.length).toBeGreaterThan(24);
+      expect(plan.gates.length).toBeGreaterThanOrEqual(24);
       expect(sim.encore).toMatchObject({ passed: plan.gates.length, clean: plan.gates.length, bonusScore: 300 * plan.gates.length });
       expect(144 - afterglow).toBeGreaterThanOrEqual(10 - STEP);
       expect(144 - afterglow).toBeLessThanOrEqual(12);
@@ -266,7 +269,7 @@ test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears ev
         afterglow, final: sim.trackDistance, path: sim.path.length });
     } else {
       expect(sim.encore?.passed).toBe(sim.encore?.encountered);
-      expect(sim.encore!.passed).toBeLessThan(plan.gates.length);
+      expect(sim.encore?.passed ?? 0).toBeLessThan(plan.gates.length);
     }
   }
 });
@@ -300,16 +303,15 @@ test.each(endingPolicies)('%s carries one continuous white rise through the real
     };
     const { sim } = fly(difficulty, boost, side, 0, 'standard', undefined, false, checkRise);
     expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, route: branchLayout(0)[side] });
-    const finalGate = sim.outroPlan!.gates.filter(gate => gate.judged).at(-1);
-    if (policy === 'second-half Boost' || (difficulty === 'impossible' && policy !== 'sustained Boost')) {
+    if (policy === 'second-half Boost') {
       expect(lateCrossings).toBeGreaterThanOrEqual(3);
       expect(sim.encore?.missed).toBe(0);
     }
     if (policy === 'Boost at the cue' || policy === 'repeated Boost switches') expect(lateCrossings).toBeGreaterThan(0);
     if (policy === 'sustained Boost') expect(sim.escapeWhite).toBeCloseTo(1);
     if (difficulty === 'impossible' && policy === 'cruise') {
-      expect(finalGate?.crossedAt).toBeGreaterThan(143.9);
-      expect(sim.escapeWhite).toBeLessThan(.13);
+      expect(sim.encore).toBeUndefined();
+      expect(sim.escapeWhite).toBeGreaterThan(.70);
     }
 
     let peaked = previous >= 1 - 1e-9;

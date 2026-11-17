@@ -1,7 +1,8 @@
-import type { PlayMode } from '../contracts';
+import type { Difficulty, PlayMode } from '../contracts';
 import { chartFor } from './chart';
 import { gameplayFor } from './gameplay';
 import { STEP } from './clock';
+import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
 import { BOOST_MULTIPLIER, CRUISE_SPEED, cruiseTarget, referenceMotion } from './reference-motion';
 import { SIGHTSEEING_SPEED } from './sightseeing';
 import type { VolumeDefinition } from './volumes';
@@ -16,7 +17,7 @@ export class ReferenceTrack {
   private readonly duration: number;
   private readonly gateStations: number[];
 
-  constructor(volume: VolumeDefinition) {
+  constructor(volume: VolumeDefinition, readonly scale = 1) {
     const secondsPerBeat = 60 / volume.bpm;
     this.duration = volume.beats * secondsPerBeat;
     const normal = chartFor(volume, 'normal');
@@ -30,7 +31,7 @@ export class ReferenceTrack {
   }
 
   station(beat: number, mode: PlayMode) {
-    return START_DISTANCE + this.sample(beat) * modeScale(mode);
+    return START_DISTANCE + this.sample(beat) * modeScale(mode) * this.scale;
   }
 
   countThrough(station: number, mode: PlayMode, previousCount: number) {
@@ -64,12 +65,17 @@ export class ReferenceTrack {
 }
 
 const references = new WeakMap<VolumeDefinition, ReferenceTrack>();
+const fasterReferences = new WeakMap<VolumeDefinition, ReferenceTrack>();
 
-export function referenceFor(volume: VolumeDefinition) {
-  let track = references.get(volume);
+export function referenceFor(volume: VolumeDefinition, difficulty: Difficulty = 'normal') {
+  // The later courses pair physical chapter landmarks with their authored cues.
+  // ELSEWHERE retains the original Impossible stations and Encore timing.
+  const faster = difficulty === 'impossible' && (volume.id === 'daybreak' || volume.id === 'descent');
+  const cache = faster ? fasterReferences : references;
+  let track = cache.get(volume);
   if (!track) {
-    track = new ReferenceTrack(volume);
-    references.set(volume, track);
+    track = new ReferenceTrack(volume, faster ? IMPOSSIBLE_SPEED_FACTOR : 1);
+    cache.set(volume, track);
   }
   return track;
 }

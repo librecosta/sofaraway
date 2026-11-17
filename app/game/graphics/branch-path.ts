@@ -34,7 +34,8 @@ export class BranchPath {
     this.mergeBeat = spec.merge[mode];
     this.open = this.distanceAt(this.openBeat);
     this.merge = this.distanceAt(this.mergeBeat);
-    this.guideStart = Math.min(this.start, this.split - cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(mode) * 1.8);
+    this.guideStart = Math.min(this.start,
+      this.split - cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(mode) * reference.scale * 1.8);
     this.guideEnd = this.distanceAt(spec.guideEnd);
     const count = Math.ceil((this.end - this.split) / 0.25);
     this.stationStep = (this.end - this.split) / count;

@@ -98,10 +98,10 @@ export class Simulation {
   private runDifficulty: Difficulty = 'normal';
   private speedFactor = 1;
   private playMode: PlayMode;
-  private readonly paths = new Map<PlayMode, Path>();
-  readonly reference;
+  private readonly paths = new Map<PlayMode | 'impossible', Path>();
+  private track;
   readonly gameplay;
-  private readonly junctions = new Map<PlayMode, BranchPath>();
+  private readonly junctions = new WeakMap<Path, BranchPath>();
   private suffixBySide?: Record<RouteSide, RunGate[]>;
   private referenceProgress = 0;
   readonly secondsPerBeat: number;
@@ -111,12 +111,13 @@ export class Simulation {
     private readonly options: { align?: boolean; god?: boolean; branchSide?: RouteSide } = {},
     path?: Path,
     mode: PlayMode = 'standard',
+    initialDifficulty: Difficulty = 'normal',
   ) {
     this.playMode = mode;
     this.gameplay = gameplayFor(volume.id);
-    if (path) this.paths.set(this.modeSpecificPath ? mode : 'standard', path);
+    this.track = referenceFor(volume, mode === 'standard' ? initialDifficulty : 'normal');
+    if (path) this.paths.set(this.pathKey, path);
     this.secondsPerBeat = 60 / volume.bpm;
-    this.reference = referenceFor(volume);
   }
 
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
@@ -141,12 +142,15 @@ export class Simulation {
   get mode() { return this.playMode; }
   get difficulty() { return this.runDifficulty; }
   get modeSpecificPath() { return !!(this.gameplay.branch || this.gameplay.world?.modePath); }
+  get reference() { return this.track; }
+  private get pathMode() { return this.modeSpecificPath ? this.mode : 'standard'; }
+  private get pathKey() { return this.track.scale > 1 ? 'impossible' : this.pathMode; }
   get path() {
-    const mode = this.modeSpecificPath ? this.mode : 'standard';
-    let path = this.paths.get(mode);
+    const key = this.pathKey;
+    let path = this.paths.get(key);
     if (!path) {
-      path = buildRunPath(this.volume, mode);
-      this.paths.set(mode, path);
+      path = buildRunPath(this.volume, this.pathMode, this.track);
+      this.paths.set(key, path);
     }
     return path;
   }
@@ -176,6 +180,7 @@ export class Simulation {
     this.playMode = mode;
     const sightseeing = mode === 'sightseeing';
     difficulty = sightseeing ? 'normal' : resolveDifficulty(this.volume.id, difficulty);
+    this.track = referenceFor(this.volume, difficulty);
     const rules = difficultySettings(this.volume, difficulty);
     let rng = 987654321;
     const station = (beat: number) => this.reference.station(beat, mode);
@@ -198,10 +203,11 @@ export class Simulation {
     const { branch, pickup, encore } = this.gameplay;
     this.branch = branch ? { layout: branchLayout(runSeed), side: null } : null;
     if (branch) {
-      let path = this.junctions.get(mode);
+      const base = this.path;
+      let path = this.junctions.get(base);
       if (!path) {
-        path = new BranchPath(this.path, this.reference, mode, branch);
-        this.junctions.set(mode, path);
+        path = new BranchPath(base, this.reference, mode, branch);
+        this.junctions.set(base, path);
       }
       this.junctionPath = path;
       const { left, right } = this.branch!.layout;
