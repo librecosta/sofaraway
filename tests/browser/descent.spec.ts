@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { branchLayout, ROUTE_LABELS, routeSides } from '../../app/game/core/branches';
+import { STEP } from '../../app/game/core/clock';
 import { lanePoint, RANGE_X, RANGE_Y } from '../../app/game/core/collision';
-import { descentGateKinds } from '../../app/game/core/descent-gates';
+import { descentGateKinds, matrixCell } from '../../app/game/core/descent-gates';
 import { descentCargo, descentJunction } from '../../app/game/core/descent-routes';
+import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { descentExamples, gateDescription } from '../../app/game/debug/catalog';
@@ -35,6 +37,21 @@ test('rear glass gates contribute a distinct render through a real PRESSURE sequ
     }
     expect(glError).toBe(0);
   }
+});
+
+test('an Impossible Matrix is visible behind earlier PRESSURE gates at full Boost', async ({ page }) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const { beat, samples, glError } = await page.evaluate(() =>
+    window.b0Harness.inspectGateApproach('descent', 'laser-matrix', 'high', false, true, true, 'impossible'));
+  expect(beat).toBe(202.75);
+  for (const { ahead, inFront, visible, fade, contrastPixels } of samples.filter(sample => sample.ahead >= 85)) {
+    expect(inFront, `gate order at distance ${ahead}`).toBeGreaterThanOrEqual(2);
+    expect(visible).toBe(true);
+    expect(fade).toBe(1);
+    expect(contrastPixels).toBeGreaterThan(5);
+  }
+  expect(samples.find(sample => sample.ahead === 32)!.contrastPixels).toBeGreaterThan(20);
+  expect(glError).toBe(0);
 });
 
 test('the Debug library renders all 20 DESCENT glass profiles and seven facility chapters', async ({ page }, info) => {
@@ -380,21 +397,27 @@ const transferFlights = [
   { route: 'main', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'cruise' },
   { route: 'challenge', difficulty: 'hard', mode: 'standard', seed: 1, speed: 'boost' },
   { route: 'score', difficulty: 'hard', mode: 'standard', seed: 0, speed: 'boost' },
+  { route: 'challenge', difficulty: 'impossible', mode: 'standard', seed: 0, speed: 'boost' },
   { route: 'challenge', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'intervals' },
   { route: 'score', difficulty: 'normal', mode: 'sightseeing', seed: 1, speed: 'intervals' },
 ] as const;
 
 for (const { route, difficulty, mode, seed, speed } of transferFlights) {
-  test(`the live DESCENT approach uses manual steering through ${route}, ${mode}, ${seed}, ${speed}`, async ({ page }, info) => {
-    const startBeat = 123;
+  test(`the live DESCENT approach uses manual steering through ${route}, ${mode}, ${seed}, ${speed}, ${difficulty}`, async ({ page }, info) => {
+    const impossible = difficulty === 'impossible';
+    const approachBeat = impossible ? 122 : 123;
     const layout = branchLayout(seed);
     const side = routeSides.find(side => layout[side] === route)!;
-    const sim = new Simulation(volumeById('descent'));
+    const sim = new Simulation(volumeById('descent'), { align: true });
     sim.start(difficulty, seed, undefined, mode);
     const path = sim.junctionPath!;
-    const lead = sim.mainGates.filter(gate => gate.beat > startBeat && gate.worldStation < path.split);
+    const lead = sim.mainGates.filter(gate => gate.beat > approachBeat && gate.worldStation < path.split);
     const exit = sim.mainGates.find(gate => gate.worldStation >= path.end)!;
     const gates = sim.branchGates![route];
+    // Impossible reaches the same approach station at an earlier music beat.
+    const approachStation = sim.reference.station(approachBeat, mode);
+    if (impossible) while (sim.trackDistance < approachStation && sim.phase === 'playing') sim.step(STEP, idleInput);
+    const startBeat = impossible ? sim.beat : approachBeat;
     await page.goto('http://127.0.0.1:8090/');
     const before = await page.evaluate(async ({ difficulty, mode, seed, startBeat }) => {
       const test = window.b0Harness;
@@ -423,7 +446,7 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
     expect(last.metrics.routeHologram).toBeUndefined();
     expect(last.metrics.junctionMeshes).toBe(3);
     expect(last.route).toBeNull();
-    if (speed === 'boost') expect(last.speed).toBeGreaterThan(49);
+    if (speed === 'boost') expect(last.speed).toBeGreaterThan(impossible ? 56 : 49);
     if (speed === 'intervals') await page.keyboard.up('Shift');
 
     const labels = { left: ROUTE_LABELS[layout.left], center: 'MAIN', right: ROUTE_LABELS[layout.right] };
@@ -442,8 +465,8 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
     expect(committed.branch?.side).toBe(side);
     expect(committed.trackDistance).toBeGreaterThanOrEqual(path.split);
     expect(committed.lastGate).toEqual(last.lastGate);
-    expect(committed.time - last.lastGate!.crossedAt!).toBeGreaterThan(3.6);
-    expect(committed.time - recognition.time).toBeGreaterThan(3.1);
+    expect(committed.time - last.lastGate!.crossedAt!).toBeGreaterThan(impossible ? 3.25 : 3.6);
+    expect(committed.time - recognition.time).toBeGreaterThan(impossible ? 2.75 : 3.1);
 
     let firstEntry = 0;
     for (const [i, gate] of gates.entries()) {
@@ -455,7 +478,7 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
       await poll(async () => (await snap()).gatesPassed).toBe(before + lead.length + i + 1);
       if (i === 0) {
         firstEntry = (await state()).lastGate!.crossedAt!;
-        expect(firstEntry - committed.time).toBeGreaterThan(1.7);
+        expect(firstEntry - committed.time).toBeGreaterThan(impossible ? 1.55 : 1.7);
       }
     }
     const lastOnRoute = (await state()).lastGate!;
@@ -469,7 +492,8 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
     await poll(async () => (await snap()).gatesPassed).toBe(before + lead.length + gates.length + 1);
     if (speed === 'boost') await page.keyboard.up('Shift');
     expect(await snap()).toMatchObject({ phase: 'playing', route,
-      lives: mode === 'sightseeing' ? 5 : difficulty === 'hard' ? 1 : 2 });
+      lives: mode === 'sightseeing' ? 5 : difficulty === 'hard' || impossible ? 1 : 2 });
+    if (impossible) expect((await snap()).gatesTotal).toBe(190);
     const after = await state();
     expect(after.sharedPath).toBe(true);
     expect(after.lastGate?.beat).toBe(exit.beat);
@@ -482,7 +506,7 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
   });
 }
 
-for (const difficulty of ['normal', 'hard'] as const) {
+for (const difficulty of ['normal', 'hard', 'impossible'] as const) {
   test(`live ${difficulty} flight keeps gates readable through the shaft, core and escape`, async ({ page }, info) => {
     await page.goto('http://127.0.0.1:8090/');
     await page.evaluate(async difficulty => {
@@ -512,7 +536,7 @@ for (const difficulty of ['normal', 'hard'] as const) {
       expect(snapshot.descentLighting.rim).toBeGreaterThan(0);
       expect(snapshot.chunks).toBeLessThanOrEqual(5);
       if (boost) {
-        expect(snapshot.speed).toBeGreaterThan(43);
+        expect(snapshot.speed).toBeGreaterThan(difficulty === 'impossible' ? 49 : 43);
         await page.keyboard.up('Shift');
       }
       if (label === 'lockdown') {
@@ -530,6 +554,68 @@ for (const difficulty of ['normal', 'hard'] as const) {
   });
 }
 
+test('the production DESCENT Impossible run shows its result and restarts with one life', async ({ page }) => {
+  await page.goto('/?vol=descent&q=low');
+  const next = page.getByRole('button', { name: 'Next difficulty' });
+  await next.click();
+  await next.click();
+  await expect(page.locator('#diff [data-selected=true]')).toHaveText('IMPOSSIBLE');
+  const start = page.locator('[data-act=start]');
+  await start.click();
+  await expect(page.locator('#hud-gates')).toHaveText('0/189');
+  await expect(page.locator('#hud-lives i')).toHaveCount(1);
+  const { width, height } = page.viewportSize()!;
+  // Steer into the first Matrix pane at its central beam footprint.
+  await page.mouse.move(width * (1 + matrixCell[0] / 6 / RANGE_X) / 2, height / 2);
+  await expect(page.locator('#over-title')).toHaveText('TERMINATED', { timeout: 15_000 });
+  await expect(page.locator('#over').getByText('IMPOSSIBLE', { exact: true })).toBeVisible();
+  await expect(page.locator('#over-gates')).toHaveText('0/189');
+  await expect.poll(() => page.evaluate(() => {
+    const records = JSON.parse(localStorage.getItem('sofaraway.records.v1') ?? '{}');
+    return records.standard?.['descent-junction-approach']?.impossible?.last?.outcome;
+  })).toBe('TERMINATED');
+  await page.locator('[data-act=restart]').click();
+  await expect(page.locator('#hud-lives i')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(start).toBeVisible();
+  await expect(page.locator('#diff [data-selected=true]')).toHaveText('IMPOSSIBLE');
+});
+
+test('full Boost on DESCENT Impossible streams the final corridor through escape', async ({ page }, info) => {
+  await page.goto('http://127.0.0.1:8090/');
+  await page.evaluate(async () => {
+    const test = window.b0Harness;
+    await test.mount({ volumeId: 'descent', difficulty: 'impossible', quality: 'low', diagnostics: {
+      fixedTime: null, autoplay: false, god: false, align: true, boost: false,
+      mobileQuality: false, post: true, record: false, debug: true,
+    } });
+    await test.start(true);
+  });
+  await page.keyboard.down('Shift');
+  const ending = await page.evaluate(async () => {
+    const test = window.b0Harness;
+    const state = test.advanceAndPause(382);
+    const runway = test.corridor()!.length - state.trackDistance;
+    await test.resume(true);
+    return { ...state, runway };
+  });
+  expect(ending.speed).toBeCloseTo(56.695, 4);
+  expect(ending.runway).toBeGreaterThan(650);
+  expect(ending.metrics.calls).toBeGreaterThan(0);
+  expect(ending.metrics.chunks).toBeGreaterThan(1);
+  expect(ending.metrics.chunks).toBeLessThanOrEqual(5);
+  await page.keyboard.up('Shift');
+  await page.keyboard.down('Shift');
+  await page.locator('canvas').screenshot({ path: info.outputPath('impossible-full-boost-exit.png') });
+  await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot())).toMatchObject({
+    phase: 'results', difficulty: 'impossible', gatesPassed: 189, gatesTotal: 189, result: { title: 'ESCAPED', unreached: 0 },
+  });
+  await page.keyboard.up('Shift');
+  const error = await page.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.getContext('webgl2')!.getError());
+  expect(error).toBe(0);
+  await page.evaluate(() => window.b0Harness.dispose());
+});
+
 test('DESCENT restores the glass scene at the same station and releases it on switch', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   const streamed = await page.evaluate(() => window.b0Harness.streamResources('descent'));
@@ -539,7 +625,7 @@ test('DESCENT restores the glass scene at the same station and releases it on sw
   const snapshot = () => page.evaluate(() => window.b0Harness.snapshot());
   const at = await page.evaluate(async () => {
     const test = window.b0Harness;
-    await test.mount({ volumeId: 'descent', quality: 'low', diagnostics: {
+    await test.mount({ volumeId: 'descent', difficulty: 'impossible', quality: 'low', diagnostics: {
       fixedTime: null, autoplay: false, god: false, align: true, boost: false,
       mobileQuality: false, post: true, record: false, debug: true,
     } });

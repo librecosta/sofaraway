@@ -14,6 +14,9 @@ test('local records follow the selected volume, difficulty and mode at narrow si
       'daybreak-choreography': { impossible: { best: 46800, last: { score: 36000, outcome: 'ESCAPED', encoreBonus: 10200 } } },
       'descent-control': { normal: { best: 79234, last: { score: 79234, outcome: 'ESCAPED' } } },
       'descent-laser-security': { normal: { best: 76834, last: { score: 76834, outcome: 'ESCAPED' } } },
+      'descent-junction-approach': { normal: { best: 111000, last: { score: 111000, outcome: 'ESCAPED' } },
+        hard: { best: 222000, last: { score: 222000, outcome: 'ESCAPED' } },
+        impossible: { best: 333000, last: { score: 321000, outcome: 'ESCAPED' } } },
       descent: { normal: { best: 119039, last: { score: 119039, outcome: 'ESCAPED' } } },
       drift: { normal: { best: 21000, last: { score: 1200, outcome: 'TERMINATED' } } } },
       sightseeing: { elsewhere: { last: { score: 930, outcome: 'ESCAPED' } } } }));
@@ -61,6 +64,18 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await expect(record).toContainText(/LAST RUN\s*46,200/);
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page.locator('#vol-name')).toContainText('DESCENT');
+  await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(1);
+  await expect(difficulty).toHaveText('IMPOSSIBLE');
+  await expect(record).toContainText(/BEST SCORE\s*333,000/);
+  await expect(record).toContainText(/LAST RUN\s*321,000/);
+  await previous.click();
+  await expect(record).toContainText(/BEST SCORE\s*222,000/);
+  await previous.click();
+  await expect(record).toContainText(/BEST SCORE\s*111,000/);
+  await next.click();
+  await next.click();
+  await page.getByRole('button', { name: 'next volume' }).click();
+  await expect(page.locator('#vol-name')).toContainText('ORBIT');
   await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
   await expect(difficulty).toHaveText('NORMAL');
   await expect(record).toContainText(/BEST SCORE\s*—/);
@@ -69,7 +84,7 @@ test('local records follow the selected volume, difficulty and mode at narrow si
     await page.goto(`/?vol=${volume}&diff=impossible&t=2&dbg=1&q=low`);
     const diagnostics = page.locator('#errbox');
     await expect(diagnostics).toContainText('"speed":');
-    expect(JSON.parse((await diagnostics.textContent())!).speed).toBeCloseTo(volume === 'daybreak' ? 27.6 : 24);
+    expect(JSON.parse((await diagnostics.textContent())!).speed).toBeCloseTo(volume === 'orbit' ? 24 : 27.6);
   }
   expect(await page.evaluate(() => localStorage.getItem('sofaraway.best'))).toBe('999999');
 });

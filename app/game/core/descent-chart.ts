@@ -1,3 +1,4 @@
+import type { Difficulty } from '../contracts';
 import type { ChartGate } from './chart';
 import type { Axis } from './collision';
 import type { DescentGateKind } from './descent-gates';
@@ -71,10 +72,50 @@ const phrases: Record<Chapter, readonly Phrase[]> = {
   ],
 };
 
-export function descentChart(): ChartGate[] {
-  return controlTrack.sections.flatMap(section => phrases[section.name].flatMap(([beats, openings], phrase) =>
-    beats.map((offset, i) => {
-      const [kind, sector, axis] = openings[i];
-      return { beat: section.startBeat + phrase * 16 + offset, section: section.name, kind, sector, axis };
-    })));
+type Accent = readonly [beat: number, opening: Opening];
+
+function accents(section: Chapter, entries: readonly Accent[]): ChartGate[] {
+  return entries.map(([beat, [kind, sector, axis]]) => ({ beat, kind, sector, axis, section, inserted: true }));
+}
+
+const anchors = controlTrack.sections.flatMap(section => phrases[section.name].flatMap(([beats, openings], phrase) =>
+  beats.map((offset, i) => {
+    const [kind, sector, axis] = openings[i];
+    return { beat: section.startBeat + phrase * 16 + offset, section: section.name, kind, sector, axis };
+  })));
+
+// CONTROL kick, snare and fill onsets. Slices leave room to set up the next
+// opening, while Matrix and Weave answer the direction of the existing phrase.
+const impossibleMain = [
+  ...anchors,
+  ...accents('LOCK', [
+    [38, vertical(1)], [53.75, vertical(1)], [63.25, horizontal(1)],
+    [72, vertical(-1)], [84, horizontal(1)], [93, vertical(-1)],
+  ]),
+  ...accents('FLIGHT', [
+    [97, weave(0, 4)], [103, weave(1, 0)], [108, weave(0, 0)],
+    [112, vertical(0)], [118, matrix(6)], [123.75, vertical(0)],
+    // Two replies inside Main, clear of the turnout and merge.
+    [146, horizontal(0)], [158, matrix(0)],
+  ]),
+  ...accents('PRESSURE', [
+    [183, weave(0, 4)], [189, vertical(0)], [202.75, matrix(0)], [221, horizontal(0)],
+    [231, horizontal(-1)], [237, horizontal(0)], [250.75, vertical(0)],
+  ]),
+  ...accents('LOCKDOWN', [
+    [289, horizontal(1)], [301, matrix(3)], [318, horizontal(0)], [326.75, weave(0, 4)],
+    [333, vertical(-1)], [341, matrix(4)], [349, matrix(7)],
+  ]),
+].sort((a, b) => a.beat - b.beat);
+
+const challengeAccents = accents('FLIGHT', [[146, weave(1, 0)], [154, matrix(4)], [158, weave(0, 1)]]);
+
+export function descentChart(difficulty: Difficulty = 'normal'): ChartGate[] {
+  return (difficulty === 'impossible' ? impossibleMain : anchors).map(gate => ({ ...gate }));
+}
+
+export function descentChallengeChart(anchors: ChartGate[], difficulty: Difficulty): ChartGate[] {
+  return difficulty === 'impossible'
+    ? [...anchors, ...challengeAccents.map(gate => ({ ...gate }))].sort((a, b) => a.beat - b.beat)
+    : anchors;
 }

@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { VOLUMES } from '../../app/game/core/volumes';
+import { STEP } from '../../app/game/core/clock';
+import { idleInput } from '../../app/game/core/input';
+import { Simulation } from '../../app/game/core/simulation';
+import { VOLUMES, volumeById } from '../../app/game/core/volumes';
 import { readMetrics } from './diagnostics';
 
 test('@perf comparable frame, resource and restart samples', async ({ browser }) => {
@@ -75,20 +78,28 @@ test('@perf comparable frame, resource and restart samples', async ({ browser })
   }
 });
 
-test('@perf DESCENT laser flight keeps bounded resources across quality tiers', async ({ page }) => {
+test('@perf DESCENT Hard and Impossible keep bounded glass resources across quality tiers', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
-  for (const quality of ['low', 'auto', 'high'] as const) {
-    const before = await page.evaluate(async quality => {
+  const samples = (['hard', 'impossible'] as const).map(difficulty => {
+    const sim = new Simulation(volumeById('descent'), { align: true });
+    sim.start(difficulty);
+    const station = sim.reference.station(211, 'standard');
+    while (sim.trackDistance < station && sim.phase === 'playing') sim.step(STEP, idleInput);
+    return { difficulty, beat: sim.beat };
+  });
+  for (const quality of ['low', 'auto', 'high'] as const) for (const samplePoint of samples) {
+    const { difficulty } = samplePoint;
+    const before = await page.evaluate(async ({ quality, difficulty, beat }) => {
       const test = window.b0Harness;
-      await test.mount({ volumeId: 'descent', quality, diagnostics: {
+      await test.mount({ volumeId: 'descent', difficulty, quality, diagnostics: {
         fixedTime: null, autoplay: false, god: false, align: true, boost: false,
         mobileQuality: false, post: true, record: false, debug: true,
       } });
       await test.start(true);
-      const before = test.advanceAndPause(211).metrics;
+      const before = test.advanceAndPause(beat).metrics;
       await test.resume(true);
       return before;
-    }, quality);
+    }, { quality, ...samplePoint });
     await page.keyboard.down('Shift');
     const sample = await page.evaluate(async () => {
       const test = window.b0Harness;
@@ -119,7 +130,7 @@ test('@perf DESCENT laser flight keeps bounded resources across quality tiers', 
     });
     await page.keyboard.up('Shift');
     const { metrics: { calls, triangles, geometries, textures, programs, chunks, canvas }, resources } = sample;
-    console.log('DESCENT LASER PERF', { quality, canvas, calls, triangles, geometries, textures, programs, chunks,
+    console.log('DESCENT GLASS PERF', { difficulty, quality, canvas, calls, triangles, geometries, textures, programs, chunks,
       ...resources, p95: sample.p95, fps: sample.fps, frames: sample.frames, renderer: sample.renderer });
     expect(sample.glError).toBe(0);
     expect(sample.boosting).toBe(true);

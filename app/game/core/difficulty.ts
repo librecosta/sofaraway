@@ -7,7 +7,7 @@ export const IMPOSSIBLE_LIVES = 1;
 const impossibleDifficulties = [...difficulties, 'impossible'] as const;
 
 export function difficultiesFor(volume: VolumeId): readonly Difficulty[] {
-  return volume === 'elsewhere' || volume === 'daybreak' ? impossibleDifficulties : difficulties;
+  return volume === 'elsewhere' || volume === 'daybreak' || volume === 'descent' ? impossibleDifficulties : difficulties;
 }
 
 export function supportsDifficulty(volume: VolumeId, value: unknown): value is Difficulty {

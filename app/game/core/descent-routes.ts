@@ -1,5 +1,7 @@
+import type { Difficulty } from '../contracts';
 import type { ChartGate } from './chart';
 import type { BranchSpec } from './branches';
+import { descentChallengeChart } from './descent-chart';
 
 export const descentJunction = {
   preview: 128, split: 138.92, guideEnd: 141, sideThreshold: 2.13,
@@ -16,15 +18,16 @@ function routeGate(beat: number, kind: ChartGate['kind'], sector: number, axis: 
   return { beat, kind, sector, axis, section: 'FLIGHT' };
 }
 
-function descentRouteCharts(main: readonly ChartGate[]) {
+function descentRouteCharts(main: readonly ChartGate[], difficulty: Difficulty = 'normal') {
+  const challenge = descentChallengeChart([
+    routeGate(145, 'laser-slice', 0), routeGate(147, 'laser-matrix', 1),
+    routeGate(149, 'laser-weave', 2), routeGate(151, 'laser-matrix', 3),
+    routeGate(153, 'laser-slice', 4), routeGate(155, 'laser-weave', 4, 1),
+    routeGate(157, 'laser-matrix', 5), routeGate(159, 'laser-slice', 6, 1),
+  ], difficulty);
   return {
     main: [...main],
-    challenge: [
-      routeGate(145, 'laser-slice', 0), routeGate(147, 'laser-matrix', 1),
-      routeGate(149, 'laser-weave', 2), routeGate(151, 'laser-matrix', 3),
-      routeGate(153, 'laser-slice', 4), routeGate(155, 'laser-weave', 4, 1),
-      routeGate(157, 'laser-matrix', 5), routeGate(159, 'laser-slice', 6, 1),
-    ],
+    challenge,
     score: [
       routeGate(146, 'laser-slice', 2), routeGate(149, 'laser-slice', 0, 1),
       routeGate(152, 'laser-weave', 1), routeGate(155, 'laser-slice', 2),

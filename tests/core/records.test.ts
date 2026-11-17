@@ -81,6 +81,10 @@ test('the DESCENT junction approach records preserve the original spiral junctio
   expect(recordFor(records, 'descent', 'normal', 'sightseeing').last).toBeNull();
   const current = { score: 131315, outcome: 'ESCAPED' } as const;
   expect(recordRun(records, 'descent', 'normal', 'standard', current)).toBe(true);
+  const impossible = { score: 310000, outcome: 'ESCAPED' } as const;
+  const lastImpossible = { score: 750, outcome: 'TERMINATED' } as const;
+  expect(recordRun(records, 'descent', 'impossible', 'standard', impossible)).toBe(true);
+  expect(recordRun(records, 'descent', 'impossible', 'standard', lastImpossible)).toBe(false);
   recordRun(records, 'descent', 'normal', 'sightseeing', current);
   const reloaded = parseRecords(JSON.stringify(records));
   expect(reloaded.standard.descent).toEqual(legacy.standard.descent);
@@ -94,6 +98,7 @@ test('the DESCENT junction approach records preserve the original spiral junctio
   expect(reloaded.standard['descent-spiral-junction']).toEqual(legacy.standard['descent-spiral-junction']);
   expect(reloaded.sightseeing['descent-spiral-junction']).toEqual(legacy.sightseeing['descent-spiral-junction']);
   expect(recordFor(reloaded, 'descent', 'normal', 'standard')).toEqual({ best: current.score, last: current });
+  expect(recordFor(reloaded, 'descent', 'impossible', 'standard')).toEqual({ best: impossible.score, last: lastImpossible });
   expect(recordFor(reloaded, 'descent', 'normal', 'sightseeing').last).toEqual(current);
 });
 

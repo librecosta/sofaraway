@@ -9,7 +9,7 @@ import { difficultiesFor } from '../../app/game/core/difficulty';
 import { idleInput } from '../../app/game/core/input';
 import { LUMEN_POINTS } from '../../app/game/core/pickups';
 import { Simulation } from '../../app/game/core/simulation';
-import { sectionAt, VOLUMES } from '../../app/game/core/volumes';
+import { sectionAt, VOLUMES, volumeById } from '../../app/game/core/volumes';
 
 const [elsewhere] = VOLUMES;
 const axis = (delta: number) => Math.abs(delta) < .052 ? 0 : Math.sign(delta);
@@ -46,13 +46,11 @@ test('Impossible preserves every Hard gate and reaches the authored density with
   expect(again.pickup).toEqual(hard.pickup);
   expect(LUMEN_POINTS.impossible).toBe(10000);
   expect(difficultySettings(elsewhere, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
-  for (const volume of VOLUMES.slice(2)) {
-    const sim = new Simulation(volume);
-    sim.start('impossible');
-    expect(difficultiesFor(volume.id)).toEqual(difficulties);
-    expect(sim.difficulty).toBe('normal');
-    expect(sim.speed).toBe(24);
-  }
+  const orbit = new Simulation(volumeById('orbit'));
+  orbit.start('impossible');
+  expect(difficultiesFor('orbit')).toEqual(difficulties);
+  expect(orbit.difficulty).toBe('normal');
+  expect(orbit.speed).toBe(24);
   const tour = new Simulation(elsewhere);
   tour.start('impossible', 0, undefined, 'sightseeing');
   expect([tour.difficulty, tour.speed, tour.lives, tour.outroPlan?.gates.length]).toEqual(['normal', 8, 5, 0]);

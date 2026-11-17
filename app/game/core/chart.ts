@@ -92,9 +92,10 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
 export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed = difficultySettings(volume, difficulty).seed): ChartGate[] {
   difficulty = resolveDifficulty(volume.id, difficulty);
   if (volume.music === 'breakbeat') return daybreakChart(difficulty);
+  if (volume.music === 'control') return descentChart(difficulty);
   const base = buildChart(volume, seed);
   if (difficulty === 'impossible') return impossibleChart(base);
-  if (difficulty !== 'easy' || volume.music === 'control') return base;
+  if (difficulty !== 'easy') return base;
 
   const out: ChartGate[] = [];
   let last = -99;

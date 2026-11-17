@@ -1,4 +1,4 @@
-import type { Diagnostics, QualityTier, VolumeId } from '../../app/game/contracts';
+import type { Diagnostics, Difficulty, QualityTier, VolumeId } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
@@ -13,12 +13,13 @@ const flags: Diagnostics = {
 const distances = [211, 208, 195, 180, 160, 140, 120, 100, 85, 75, 65, 55, 45, 32, 20, 9, 5];
 
 export function inspectGateApproach(id: VolumeId, kind: GateKind, quality: QualityTier = 'high', capture = false, boost = false,
-  keepOtherGates = false) {
+  keepOtherGates = false, difficulty: Difficulty = 'normal') {
   const sim = new Simulation(volumeById(id), { align: true });
-  sim.start('normal', 0);
+  sim.start(difficulty, 0);
   const samplesAhead = id === 'descent' ? [451, 445, 405, 350, 280, ...distances] : distances;
   const straightLength = keepOtherGates ? 140 : samplesAhead[0];
   const gate = sim.mainGates.find((gate, index) => {
+    if (difficulty === 'impossible' && !gate.inserted) return false;
     if (keepOtherGates && (gate.beat < 180 || gate.routeStation - sim.mainGates[index - 2].routeStation > 75)) return false;
     if (gate.kind !== kind || gate.routeStation - sim.distance <= straightLength) return false;
     const at = sim.path.sample(gate.worldStation);
