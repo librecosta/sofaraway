@@ -43,8 +43,11 @@ const harness = {
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
+    const lastGate = sim.mainGates[sim.gatesJudged - 1];
     return { sharedPath: sim.path === graphics.path && (!sim.junctionPath || sim.junctionPath.base === graphics.path),
-      trackDistance: sim.trackDistance, branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
+      trackDistance: sim.trackDistance, time: sim.time, speed: sim.speed, routeSide: sim.routeSide,
+      lastGate: lastGate && { beat: lastGate.beat, crossedAt: lastGate.crossedAt },
+      branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
   },
   meshResources() {
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');

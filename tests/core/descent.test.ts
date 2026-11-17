@@ -7,7 +7,7 @@ import { chartFor } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { canPass, clampSection, lanePoint } from '../../app/game/core/collision';
 import { facilityZones } from '../../app/game/core/descent-facility';
-import { descentCargo } from '../../app/game/core/descent-routes';
+import { descentCargo, descentJunction } from '../../app/game/core/descent-routes';
 import { descentGateKinds, laserBandPitch, laserBeamRadius, laserOpening, matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { idleInput } from '../../app/game/core/input';
@@ -282,12 +282,12 @@ test('HOLD and BREACH work strips are recessed into their collars and stop when 
   }
 });
 
-test('CONTROL accents anchor 174 gates with clear chapter and movement roles', () => {
+test('CONTROL accents anchor 161 gates with clear chapter and movement roles', () => {
   const chart = chartFor(volume, 'normal');
   const perSection = (name: string) => chart.filter(gate => gate.section === name);
   const accents = new Set(controlEvents.filter(event => event.voice === 'kick' || event.voice === 'snare' || event.voice === 'ghost')
     .map(event => Math.round(event.at / step) / 4));
-  expect(volume.sections.map(({ name }) => perSection(name).length)).toEqual([8, 28, 42, 40, 5, 40, 11]);
+  expect(volume.sections.map(({ name }) => perSection(name).length)).toEqual([8, 28, 29, 40, 5, 40, 11]);
   expect(chart.every((gate, i) => accents.has(gate.beat) && (i === 0 || gate.beat - chart[i - 1].beat >= 1.25))).toBe(true);
   expect(chart.at(0)!.beat).toBe(6);
   expect(chart.at(-1)!.beat).toBe(372);
@@ -295,7 +295,7 @@ test('CONTROL accents anchor 174 gates with clear chapter and movement roles', (
   for (const section of ['ORDER', 'LOCK', 'LOCKDOWN']) {
     expect(perSection(section).filter(gate => gate.kind === 'laser-matrix').length).toBeGreaterThan(perSection(section).length * .45);
   }
-  expect(perSection('FLIGHT').filter(gate => gate.kind === 'laser-slice').length).toBeGreaterThan(25);
+  expect(perSection('FLIGHT').filter(gate => gate.kind === 'laser-slice').length).toBeGreaterThan(20);
   expect(perSection('PRESSURE').filter(gate => gate.kind === 'laser-weave').length).toBeGreaterThan(12);
   for (const kind of ['laser-slice', 'laser-weave']) {
     expect(new Set(chart.filter(gate => gate.kind === kind).map(gate => gate.axis))).toEqual(new Set([0, 1]));
@@ -360,6 +360,27 @@ const descentRuns = [
   { mode: 'sightseeing', route: 'main', seed: 0 },
 ] as const;
 
+test.each(['standard', 'sightseeing'] as const)('TRANSFER stages in %s leave the approach, turnout and merge free of gates', mode => {
+  const sim = new Simulation(volume);
+  sim.start('normal', 0, 'shield', mode);
+  const path = sim.junctionPath!;
+  const scenic = mode === 'sightseeing';
+  const lead = sim.mainGates.filter(gate => gate.worldStation < path.split).at(-1)!;
+  const shared = sim.mainGates.find(gate => gate.worldStation >= path.end)!;
+  expect(lead.beat).toBe(scenic ? 125 : 126.5);
+  expect(lead.worldStation).toBeLessThan(path.guideStart);
+  expect(path.split - lead.worldStation).toBeCloseTo(scenic ? 69.6 : 186.3, 2);
+  expect(shared.beat).toBe(scenic ? 173 : 169);
+  expect(shared.worldStation - path.end).toBeGreaterThanOrEqual(29.99);
+  if (!scenic) expect(lanePoint(shared.kind, shared.open, shared.axis)).toEqual([0, 0]);
+  for (const [i, route] of (['main', 'challenge', 'score'] as const).entries()) {
+    const gates = sim.branchGates![route];
+    expect(gates[0].beat).toBe((scenic ? [147, 147, 149] : [145, 145, 146])[i]);
+    expect(gates[0].worldStation + 1e-8).toBeGreaterThanOrEqual(path.open);
+    expect(gates.at(-1)!.beat).toBeLessThanOrEqual(descentJunction.merge[mode] - 2);
+  }
+});
+
 test.each(descentRuns)('$mode $route seed $seed completes with real 60 Hz steering at cruise and Boost', ({ mode, route, seed }) => {
   const difficulty = mode === 'sightseeing' ? 'normal' : mode;
   const chart = chartFor(volume, difficulty);
@@ -374,13 +395,18 @@ test.each(descentRuns)('$mode $route seed $seed completes with real 60 Hz steeri
     if (route === 'main' && mode !== 'sightseeing') expect(chosen.map(gate => [gate.beat, gate.kind, gate.open, gate.axis]))
       .toEqual(chart.map(gate => [gate.beat, gate.kind, gate.sector, gate.axis]));
     let lastCrossing = -Infinity;
+    let recognizedAt: number | undefined, committedAt: number | undefined;
     const axis = (delta: number) => Math.abs(delta) < .08 ? 0 : Math.sign(delta);
     while (sim.phase === 'playing') {
       const previous = sim.gatesJudged;
       const gate = chosen[previous];
       const steer = gate && sim.time >= lastCrossing + .15 - 1e-9;
+      if (sim.routeGuide) recognizedAt ??= sim.time;
+      if (sim.route) committedAt ??= sim.time;
       const [x, y] = !steer ? [sim.camera.tx, sim.camera.ty]
-        : !sim.route && gate.worldStation > path.split ? [side === 'left' ? -3.15 : side === 'right' ? 3.15 : 0, 0]
+        : !sim.route && gate.worldStation > path.split ? [
+          sim.time - (recognizedAt ?? Infinity) < .5 ? 0 : side === 'left' ? -3.15 : side === 'right' ? 3.15 : 0, 0,
+        ]
         : sim.pickup?.status === 'pending' && sim.pickupVisible && gate.worldStation > sim.pickupStation ? [0, 0]
         : lanePoint(gate.kind, gate.open, gate.axis);
       const boosting = boost === 'continuous' || (boost === 'intervals' && sim.time % 6 < 2.5);
@@ -390,6 +416,10 @@ test.each(descentRuns)('$mode $route seed $seed completes with real 60 Hz steeri
       expect(sim.gatesPassed, `${mode} ${boost} missed ${gate.kind} at ${gate.beat} on ${sim.route} ` +
         `(${sim.camera.x.toFixed(2)}, ${sim.camera.y.toFixed(2)} → ${x}, ${y})`).toBe(previous + 1);
     }
+    const lastBefore = chosen.filter(gate => gate.worldStation < path.split).at(-1)!;
+    expect(recognizedAt! - lastBefore.crossedAt!).toBeGreaterThan(.4);
+    expect(committedAt! - recognizedAt!).toBeGreaterThan(3.25);
+    expect(sim.branchGates![route][0].crossedAt! - committedAt!).toBeGreaterThan(1.8);
     expect(sim.result).toMatchObject({ title: 'ESCAPED', unreached: 0, accuracy: 1, route });
     expect(sim.pickup?.status).toBe(route === 'score' ? 'collected' : undefined);
   }

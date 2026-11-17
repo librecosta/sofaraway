@@ -15,8 +15,9 @@ import s from '../styles/debug.module.css';
 const descent = volumeById('descent');
 const offsets = [16, 7, 21, 31, 15, 26, 25];
 const layout = branchLayout(CAPTURE_RUN_SEED);
+const approachStart = descentJunction.preview - 5;
 const junctionViews: readonly { label: string; beat: number; route?: RouteKind }[] = [
-  { label: 'Approach', beat: descentJunction.split - .8 },
+  { label: 'Approach', beat: approachStart },
   { label: 'Main spine', beat: 148, route: 'main' },
   { label: 'Challenge guideway', beat: 151, route: 'challenge' },
   { label: 'Bonus guideway', beat: 151, route: 'score' },
@@ -30,6 +31,8 @@ export function DescentFacilityPreview() {
   const [status, setStatus] = useState('');
   const [section, setSection] = useState(1);
   const [junction, setJunction] = useState(-1);
+  const [approachBeat, setApproachBeat] = useState(approachStart);
+  const [approachRoute, setApproachRoute] = useState<RouteKind>('main');
   const [boost, setBoost] = useState(false);
   const [dynamic, setDynamic] = useState(true);
   const [lightOffset, setLightOffset] = useState(0);
@@ -53,10 +56,11 @@ export function DescentFacilityPreview() {
 
   const chapter = controlTrack.sections[section];
   const view = junctionViews[junction];
+  const approach = junction === 0;
   const label = view?.label ?? facilityStages[section].name;
-  const beat = view?.beat ?? chapter.startBeat + offsets[section];
-  const side: RouteSide | undefined = view?.route === 'main' ? 'center'
-    : view?.route && (layout.left === view.route ? 'left' : 'right');
+  const beat = approach ? approachBeat : view?.beat ?? chapter.startBeat + offsets[section];
+  const route = approach ? approachRoute : view?.route;
+  const side: RouteSide | undefined = route === 'main' ? 'center' : route && (layout.left === route ? 'left' : 'right');
   const station = referenceFor(descent).station(beat, 'standard');
   useEffect(() => {
     if (!ready || !viewer.current) return;
@@ -90,11 +94,20 @@ export function DescentFacilityPreview() {
         </select></label>
         <label>Transfer chamber <select value={junction} onChange={event => {
           setJunction(Number(event.currentTarget.value));
+          setApproachBeat(approachStart);
           setLightOffset(0);
         }}>
           <option value="-1">Chapter camera</option>
           {junctionViews.map(({ label }, i) => <option key={label} value={i}>{label}</option>)}
         </select></label>
+        {approach && <>
+          <label>Approach beat <input type="range" min={approachStart} max={descentJunction.open.standard + .5}
+            step=".125" value={approachBeat} onChange={event => setApproachBeat(event.currentTarget.valueAsNumber)} />
+            <output>{approachBeat.toFixed(2)}</output></label>
+          <label>Approach route <select value={approachRoute} onChange={event => setApproachRoute(event.currentTarget.value as RouteKind)}>
+            <option value="main">Main</option><option value="challenge">Challenge</option><option value="score">Bonus</option>
+          </select></label>
+        </>}
         <label>Facility quality <select value={quality} onChange={event => setQuality(event.currentTarget.value as QualityTier)}>
           <option value="low">Low</option><option value="auto">Auto</option><option value="high">High</option>
         </select></label>

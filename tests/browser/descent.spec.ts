@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { branchLayout, ROUTE_LABELS, routeSides } from '../../app/game/core/branches';
-import { chartFor } from '../../app/game/core/chart';
 import { lanePoint, RANGE_X, RANGE_Y } from '../../app/game/core/collision';
 import { descentGateKinds } from '../../app/game/core/descent-gates';
 import { descentCargo, descentJunction } from '../../app/game/core/descent-routes';
+import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { descentExamples, gateDescription } from '../../app/game/debug/catalog';
 
@@ -95,6 +95,18 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   expect((await canvas.screenshot()).equals(steady)).toBe(true);
 
   const transfer = facility.getByRole('combobox', { name: 'Transfer chamber' });
+  await transfer.selectOption({ label: 'Approach' });
+  const approach = facility.getByRole('slider', { name: 'Approach beat' });
+  await expect(canvas).toHaveAttribute('data-light-beat', '123.000');
+  await canvas.screenshot({ path: info.outputPath('approach-before-last-shutter.png') });
+  await approach.fill('130');
+  await expect(canvas).toHaveAttribute('data-light-beat', '130.000');
+  await expect(canvas).toHaveAttribute('data-route', '');
+  await canvas.screenshot({ path: info.outputPath('approach-recognition.png') });
+  await facility.getByRole('combobox', { name: 'Approach route' }).selectOption('challenge');
+  await approach.press('End');
+  await expect(canvas).toHaveAttribute('data-light-beat', '145.500');
+  await expect(canvas).toHaveAttribute('data-route', 'challenge');
   await transfer.selectOption({ label: 'Challenge guideway' });
   await expect(canvas).toHaveAttribute('data-route', 'challenge');
   const challenge = await canvas.screenshot({ path: info.outputPath('guideway-challenge.png') });
@@ -107,52 +119,108 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   expect(errors).toEqual([]);
 });
 
-for (const route of ['main', 'challenge', 'score'] as const) {
-  test(`the live DESCENT turnout accepts real steering through ${route} and back to the spine`, async ({ page }, info) => {
-    const difficulty = route === 'main' ? 'normal' : 'hard';
-    const seed = route === 'challenge' ? 1 : 0;
-    const boost = route !== 'main';
+const transferFlights = [
+  { route: 'main', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'cruise' },
+  { route: 'challenge', difficulty: 'hard', mode: 'standard', seed: 1, speed: 'boost' },
+  { route: 'score', difficulty: 'hard', mode: 'standard', seed: 0, speed: 'boost' },
+  { route: 'challenge', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'intervals' },
+  { route: 'score', difficulty: 'normal', mode: 'sightseeing', seed: 1, speed: 'intervals' },
+] as const;
+
+for (const { route, difficulty, mode, seed, speed } of transferFlights) {
+  test(`the live DESCENT approach uses manual steering through ${route}, ${mode}, ${seed}, ${speed}`, async ({ page }, info) => {
+    const startBeat = 123;
     const layout = branchLayout(seed);
     const side = routeSides.find(side => layout[side] === route)!;
-    const base = chartFor(volumeById('descent'), difficulty);
-    const inside = base.filter(gate => gate.beat >= descentJunction.split && gate.beat < descentJunction.rejoin);
-    const common = base.filter(gate => gate.beat >= descentJunction.rejoin && gate.beat <= 175);
-    const gates = [...descentJunction.charts(inside)[route], ...common];
+    const sim = new Simulation(volumeById('descent'));
+    sim.start(difficulty, seed, undefined, mode);
+    const path = sim.junctionPath!;
+    const lead = sim.mainGates.filter(gate => gate.beat > startBeat && gate.worldStation < path.split);
+    const exit = sim.mainGates.find(gate => gate.worldStation >= path.end)!;
+    const gates = sim.branchGates![route];
     await page.goto('http://127.0.0.1:8090/');
-    const before = await page.evaluate(async ({ difficulty, seed }) => {
+    const before = await page.evaluate(async ({ difficulty, mode, seed, startBeat }) => {
       const test = window.b0Harness;
-      await test.mount({ volumeId: 'descent', runSeed: seed, difficulty, quality: 'high', dynamicLights: true,
+      await test.mount({ volumeId: 'descent', runSeed: seed, difficulty, mode, quality: 'high', dynamicLights: true,
         diagnostics: { fixedTime: null, autoplay: false, god: false, align: true, boost: false,
           mobileQuality: false, post: true, record: false, debug: true } });
       await test.start(true);
-      test.advanceAndPause(137.07, true);
+      test.advanceAndPause(startBeat, true);
       await test.resume(true);
       return test.snapshot().gatesPassed;
-    }, { difficulty, seed } as const);
+    }, { difficulty, mode, seed, startBeat });
     const snap = () => page.evaluate(() => window.b0Harness.snapshot());
+    const state = () => page.evaluate(() => window.b0Harness.branchState());
+    const poll = <T>(query: () => Promise<T>) => expect.poll(query, { intervals: [20, 30, 50] });
     const { width, height } = page.viewportSize()!;
     const steer = (x: number, y: number) => page.mouse.move(width * (1 + x / RANGE_X) / 2, height * (1 - y / RANGE_Y) / 2);
-    if (boost) await page.keyboard.down('Shift');
-    await steer(side === 'left' ? -3.1 : side === 'right' ? 3.1 : 0, 0);
-    await expect.poll(async () => (await snap()).routeHint?.[side]).toBe(route);
-    await expect.poll(async () => (await snap()).route).toBe(route);
-    expect(await page.evaluate(() => window.b0Harness.branchState().metrics.junctionMeshes)).toBe(2);
-
-    for (const [index, gate] of gates.entries()) {
-      if (route === 'score' && gate === common[0]) {
-        await steer(0, 0);
-        await expect.poll(async () => (await page.evaluate(() => window.b0Harness.branchState().pickup))?.status,
-          { intervals: [20, 40, 50] }).toBe('collected');
-      }
-      await steer(...lanePoint(gate.kind, gate.sector, gate.axis ?? 0));
-      await expect.poll(async () => (await snap()).gatesPassed, { intervals: [20, 40, 50] }).toBeGreaterThanOrEqual(before + index + 1);
+    const aim = (gate: typeof exit) => steer(...lanePoint(gate.kind, gate.open, gate.axis));
+    const canvas = page.locator('canvas');
+    if (speed !== 'cruise') await page.keyboard.down('Shift');
+    for (const [i, gate] of lead.entries()) {
+      await aim(gate);
+      await poll(async () => (await snap()).gatesPassed).toBe(before + i + 1);
     }
-    if (boost) await page.keyboard.up('Shift');
-    expect(await snap()).toMatchObject({ phase: 'playing', route, lives: difficulty === 'hard' ? 1 : 2 });
-    await page.locator('canvas').screenshot({ path: info.outputPath(`transfer-${ROUTE_LABELS[route].toLowerCase()}.png`) });
-    const after = await page.evaluate(() => window.b0Harness.branchState());
+    const last = await state();
+    expect(last.lastGate?.beat).toBe(lead.at(-1)?.beat);
+    expect(last.metrics.routeHologram).toBeUndefined();
+    expect(last.metrics.junctionMeshes).toBe(2);
+    expect(last.route).toBeNull();
+    if (speed === 'boost') expect(last.speed).toBeGreaterThan(49);
+    if (speed === 'intervals') await page.keyboard.up('Shift');
+
+    const labels = { left: ROUTE_LABELS[layout.left], center: 'MAIN', right: ROUTE_LABELS[layout.right] };
+    await poll(async () => (await state()).metrics.routeHologram).toEqual(labels);
+    const recognition = await state();
+    expect(recognition.route).toBeNull();
+    expect(recognition.trackDistance).toBeGreaterThan(lead.at(-1)!.worldStation);
+    await canvas.screenshot({ path: info.outputPath('recognition.png') });
+    await poll(async () => (await state()).time).toBeGreaterThanOrEqual(recognition.time + .5);
+    await steer(side === 'left' ? -3.1 : side === 'right' ? 3.1 : 0, 0);
+    await poll(async () => (await state()).routeSide).toBe(side);
+    expect((await state()).route).toBeNull();
+    if (speed === 'intervals') await page.keyboard.down('Shift');
+    await poll(async () => (await snap()).route).toBe(route);
+    const committed = await state();
+    expect(committed.branch?.side).toBe(side);
+    expect(committed.trackDistance).toBeGreaterThanOrEqual(path.split);
+    expect(committed.lastGate).toEqual(last.lastGate);
+    expect(committed.time - last.lastGate!.crossedAt!).toBeGreaterThan(3.6);
+    expect(committed.time - recognition.time).toBeGreaterThan(3.1);
+
+    let firstEntry = 0;
+    for (const [i, gate] of gates.entries()) {
+      await aim(gate);
+      if (i === 0) {
+        await poll(async () => (await state()).trackDistance).toBeGreaterThanOrEqual(gate.worldStation - 33 * (mode === 'sightseeing' ? 1 / 3 : 1));
+        await canvas.screenshot({ path: info.outputPath('first-route-shutter.png') });
+      }
+      await poll(async () => (await snap()).gatesPassed).toBe(before + lead.length + i + 1);
+      if (i === 0) {
+        firstEntry = (await state()).lastGate!.crossedAt!;
+        expect(firstEntry - committed.time).toBeGreaterThan(1.7);
+      }
+    }
+    const lastOnRoute = (await state()).lastGate!;
+    if (speed === 'intervals') await page.keyboard.up('Shift');
+    await steer(0, 0);
+    if (route === 'score') await poll(async () => (await state()).pickup?.status).toBe('collected');
+    await aim(exit);
+    await poll(async () => (await state()).trackDistance).toBeGreaterThanOrEqual(path.end);
+    const merged = await state();
+    expect(merged.lastGate).toEqual(lastOnRoute);
+    await poll(async () => (await snap()).gatesPassed).toBe(before + lead.length + gates.length + 1);
+    if (speed === 'boost') await page.keyboard.up('Shift');
+    expect(await snap()).toMatchObject({ phase: 'playing', route,
+      lives: mode === 'sightseeing' ? 5 : difficulty === 'hard' ? 1 : 2 });
+    const after = await state();
     expect(after.sharedPath).toBe(true);
-    expect(after.metrics.junctionMeshes).toBe(0);
+    expect(after.lastGate?.beat).toBe(exit.beat);
+    await info.attach('choice-window', { contentType: 'application/json', body: JSON.stringify({
+      speed, crossingSpeed: last.speed, lastGate: last.lastGate, recognition: recognition.time,
+      commitment: committed.time, firstEntry, merge: merged.time, backOnSpine: after.lastGate,
+      stations: { last: lead.at(-1)!.worldStation, choice: path.split, first: gates[0].worldStation, merge: path.end, shared: exit.worldStation },
+    }, null, 2) });
     await page.evaluate(() => window.b0Harness.dispose());
   });
 }

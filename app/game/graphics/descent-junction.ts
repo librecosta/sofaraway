@@ -87,8 +87,11 @@ export class DescentJunction {
       lights.lightAt(IndustrialLight.Guide, a.station, b.station);
       for (const sign of [-1, 1]) for (const level of [-1, 1]) {
         const x = sign * (SECTION.a + .18), y = level * 1.12;
+        const approach = level < 0 && b.station <= path.split;
+        const route = approach ? layout[sign < 0 ? 'left' : 'right'] : 'main';
         conduit(metal, a.base, b.base, x, y, .26, .24, rail, IndustrialSurface.Machined);
-        conduit(lights, a.base, b.base, x - sign * .15, y, .035, .058, tint.set(descentRouteSwatches.main));
+        conduit(lights, a.base, b.base, x - sign * .15, y, .035, approach ? .12 : .058,
+          tint.set(descentRouteSwatches[route]));
       }
       for (const [side, level] of quadrants) {
         conduit(metal, a.base, b.base, side * 2.25 * a.w, level * 2.59 * a.h, .63, .55, rib,

@@ -283,12 +283,8 @@ class VolumeScene {
       const ahead = gate.routeStation - sim.distance;
       const tone = route && junction instanceof BranchVisual ? junction.tones[route] : undefined;
       const gateTint = this.facility?.gateTint(gate.worldStation, this.gateTint);
-      // The first Main shutter shares the turnout throat until the guideways separate.
-      const threshold = this.facility && junction?.path.spec.sideThreshold;
-      const routeOpacity = threshold && junction && route === 'main' && !sim.branch?.side &&
-        gate.worldStation < junction.path.split + 3 ? 1 - ease((Math.abs(x) - threshold + .60) / .60) : 1;
       if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale,
-        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint, routeOpacity)) continue;
+        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint)) continue;
       if (!route || route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;

@@ -30,12 +30,13 @@ const phrases: Record<Chapter, readonly Phrase[]> = {
       [vertical(-1), vertical(0), matrix(2), horizontal(1), vertical(0), vertical(1), matrix(0), vertical(0), horizontal(0)]],
     [[1, 3, 5, 7, 8.75, 10.75, 13, 14.5],
       [horizontal(-1), matrix(6), horizontal(-1), vertical(0), horizontal(0), horizontal(1), matrix(2), vertical(0)]],
-    [[0, 2, 4, 6, 7.75, 9, 11, 13, 14.75],
-      [vertical(1), matrix(0), vertical(1), vertical(0), matrix(6), horizontal(-1), vertical(0), vertical(-1), matrix(4)]],
+    // Let the centered shutter at 126.5 close the approach phrase. The next
+    // shutters belong to the individual tracks, after the turnout opens.
+    [[], []],
     [[1, 3, 5, 7, 9, 11, 13, 14.75],
-      [vertical(-1), vertical(0), horizontal(0), horizontal(1), matrix(2), vertical(0), horizontal(0), vertical(1)]],
-    [[1, 3, 4.75, 6.75, 9, 10.75, 13, 15],
-      [matrix(0), vertical(1), horizontal(0), vertical(0), horizontal(-1), matrix(6), horizontal(-1), vertical(0)]],
+      [vertical(0), vertical(0), horizontal(0), horizontal(1), matrix(2), vertical(0), horizontal(0), vertical(1)]],
+    // Leave the merge clear. A centered shutter welcomes all three tracks back.
+    [[9, 10.75, 13, 15], [horizontal(0), matrix(6), horizontal(-1), vertical(0)]],
   ],
   PRESSURE: [
     [[1, 2.5, 4, 5.5, 7.75, 9, 11, 14],

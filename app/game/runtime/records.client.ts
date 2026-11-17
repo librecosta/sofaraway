@@ -9,10 +9,11 @@ const controlRecordId = 'descent-control';
 const laserRecordId = 'descent-laser-security';
 const choreographyRecordId = 'descent-laser-choreography';
 const spiralRecordId = 'descent-spiral-junction';
+const approachRecordId = 'descent-junction-approach';
 type RecordId = VolumeId | typeof daybreakRecordIds[number] | typeof controlRecordId | typeof laserRecordId
-  | typeof choreographyRecordId | typeof spiralRecordId;
+  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId;
 const recordId = (volume: VolumeId): RecordId => volume === 'daybreak' ? 'daybreak-choreography'
-  : volume === 'descent' ? spiralRecordId : volume;
+  : volume === 'descent' ? approachRecordId : volume;
 
 interface RecordsV1 {
   version: 1;
@@ -52,6 +53,7 @@ export function parseRecords(raw: string | null): RecordsV1 {
     { id: laserRecordId, volume: 'descent' },
     { id: choreographyRecordId, volume: 'descent' },
     { id: spiralRecordId, volume: 'descent' },
+    { id: approachRecordId, volume: 'descent' },
   ];
   for (const { id, volume } of ids) {
     const entries = object(standard[id]);

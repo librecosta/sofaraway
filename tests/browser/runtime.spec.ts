@@ -117,7 +117,7 @@ test('context recovery and cached navigation preserve progress and a single fram
 test('DESCENT reaches its CONTROL ending in the shared runtime with the laser chart', async ({ page }) => {
   await page.goto('/?vol=descent&diff=hard&t=170.22&q=low&align=1&god=0&boost=0');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
-  await expect(page.locator('#over-gates')).toHaveText('174/174');
+  await expect(page.locator('#over-gates')).toHaveText('161/161');
   await expect(page.locator('#over-acc')).toHaveText('100%');
 });
 
