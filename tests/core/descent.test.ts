@@ -149,6 +149,33 @@ test('facility finishes and static fixture spill share the structural batch acro
   facility.dispose();
 });
 
+test('service assemblies and the BREACH roof cap stay attached to their world stations across chunks', () => {
+  const path = new Path(420, 10, 'facility');
+  path.straight(420);
+  const geometryKeys = (geometry: BufferGeometry) => {
+    const { position, industrialSurface } = geometry.attributes;
+    return Array.from({ length: position.count }, (_, i) =>
+      [position.getX(i), position.getY(i), position.getZ(i), industrialSurface.getZ(i)].join(','));
+  };
+  for (const zone of facilityZones(volume, 'standard')) {
+    const facility = new DescentFacility(path, [{ ...zone, start: 0, finish: 400, end: 420 }]);
+    const whole = facility.build(174, 246), leading = facility.build(174, 204), trailing = facility.build(204, 246);
+    try {
+      expect([...geometryKeys(leading[0].geometry), ...geometryKeys(trailing[0].geometry)].sort(),
+        zone.section).toEqual(geometryKeys(whole[0].geometry).sort());
+      if (zone.name === 'BREACH') {
+        const before = path.sample(203.5), after = path.sample(204.5);
+        const roof = (frame: typeof before) => new Raycaster(frame.p, frame.u).intersectObject(whole[0]);
+        expect(roof(before)).not.toHaveLength(0);
+        expect(roof(after)).toHaveLength(0);
+      }
+    } finally {
+      for (const mesh of [...whole, ...leading, ...trailing]) mesh.geometry.dispose();
+      facility.dispose();
+    }
+  }
+});
+
 test('CONTROL accents anchor 174 gates with clear chapter and movement roles', () => {
   const chart = chartFor(volume, 'normal');
   const perSection = (name: string) => chart.filter(gate => gate.section === name);
