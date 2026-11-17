@@ -10,13 +10,15 @@ const laserRecordId = 'descent-laser-security';
 const choreographyRecordId = 'descent-laser-choreography';
 const spiralRecordId = 'descent-spiral-junction';
 const approachRecordId = 'descent-junction-approach';
+const encoreRecordId = 'descent-encore';
 const timedImpossibleIds = { daybreak: 'daybreak-impossible-timing', descent: 'descent-impossible-timing' } as const;
 type RecordId = VolumeId | typeof daybreakRecordIds[number] | typeof controlRecordId | typeof laserRecordId
-  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId
+  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId | typeof encoreRecordId
   | typeof timedImpossibleIds[keyof typeof timedImpossibleIds];
 
 function recordId(volume: VolumeId, difficulty?: Difficulty): RecordId {
-  if (difficulty === 'impossible' && (volume === 'daybreak' || volume === 'descent')) return timedImpossibleIds[volume];
+  if (volume === 'descent' && difficulty !== undefined) return encoreRecordId;
+  if (difficulty === 'impossible' && volume === 'daybreak') return timedImpossibleIds.daybreak;
   return volume === 'daybreak' ? 'daybreak-choreography' : volume === 'descent' ? approachRecordId : volume;
 }
 
@@ -59,13 +61,15 @@ export function parseRecords(raw: string | null): RecordsV1 {
     { id: choreographyRecordId, volume: 'descent' },
     { id: spiralRecordId, volume: 'descent' },
     { id: approachRecordId, volume: 'descent' },
+    { id: encoreRecordId, volume: 'descent' },
     { id: timedImpossibleIds.daybreak, volume: 'daybreak' },
     { id: timedImpossibleIds.descent, volume: 'descent' },
   ];
   for (const { id, volume } of ids) {
     const entries = object(standard[id]);
-    const supported = id === recordId(volume) ? difficultiesFor(volume)
-      : id === recordId(volume, 'impossible') ? ['impossible'] as const : difficulties;
+    const priorImpossible = id === timedImpossibleIds.daybreak || id === timedImpossibleIds.descent;
+    const supported = id === recordId(volume) || id === encoreRecordId ? difficultiesFor(volume)
+      : priorImpossible ? ['impossible'] as const : difficulties;
     for (const difficulty of supported) {
       const entry = object(entries[difficulty]);
       let best = score(entry.best) ? entry.best : null;

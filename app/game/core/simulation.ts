@@ -32,6 +32,7 @@ const GATE_ALIGN_AHEAD = 145;
 export const GATE_RELEASE_BEHIND = 8;
 const STATION_EPSILON = 1e-8;
 const RESULTS_SETTLE_SECONDS = .7;
+const DESCENT_COAST_SECONDS = 1.05;
 
 export interface RunGate {
   readonly beat: number;
@@ -126,6 +127,7 @@ export class Simulation {
   get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
   private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && (!this.branch || !!this.branch.side); }
   get escapeWhite() {
+    if (this.volume.id === 'descent') return 0;
     const ending = this.gameplay.ending;
     const duration = ending?.beats ?? 12;
     const elapsed = this.beat - (this.volume.beats - duration);
@@ -321,17 +323,19 @@ export class Simulation {
       camera.roll += (-camera.x * 0.05 - camera.roll) * (1 - Math.exp(-dt * 5));
       return;
     }
-    if (this.phase === 'results') {
+    if (this.phase === 'results' || (this.phase === 'crash' && this.volume.id === 'descent' && this.result?.title === 'ESCAPED')) {
       if (!this.gameplay.world?.settleResults) {
         this.distance += 3 * dt;
         return;
       }
-      const decay = -Math.expm1(-dt / 3);
-      this.distance = Math.min(this.path.length - 440, this.distance + this.settleSpeed * 3 * decay);
+      const coast = this.volume.id === 'descent' && this.result?.title === 'ESCAPED' ? DESCENT_COAST_SECONDS : 3;
+      const decay = -Math.expm1(-dt / coast);
+      this.distance = Math.min(this.path.length - 440, this.distance + this.settleSpeed * coast * decay);
       this.settleSpeed *= 1 - decay;
       camera.x *= 1 - decay;
       camera.y *= 1 - decay;
       camera.roll *= 1 - decay;
+      if (this.phase === 'crash' && this.time + 1e-9 >= this.settleAt) this.phase = 'results';
       return;
     }
     if (this.phase === 'crash') {
@@ -563,6 +567,12 @@ export class Simulation {
       ...(this.encore ? { encore: this.encore } : {}) });
     this.phase = 'crash';
     this.settleAt = this.time + RESULTS_SETTLE_SECONDS;
+    if (title === 'ESCAPED' && this.volume.id === 'descent') {
+      this.settleAt = this.time + (this.volume.soundtrack?.tail ?? RESULTS_SETTLE_SECONDS);
+      const next = this.chart[this.judged] ?? this.outroPlan?.gates[this.encoreCursor];
+      const coastRoom = Math.max(0, (next?.routeStation ?? Infinity) - this.distance - 4);
+      this.settleSpeed = Math.min(this.speed, coastRoom / DESCENT_COAST_SECONDS);
+    }
     if (title === 'ESCAPED' && this.gameplay.ending) {
       const duration = this.gameplay.ending.beats * this.secondsPerBeat;
       this.daylightReleasedAt ??= duration;

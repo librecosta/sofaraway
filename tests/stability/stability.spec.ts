@@ -106,6 +106,43 @@ test('Impossible streams dense and extended corridors within the existing resour
   }
 });
 
+test('DESCENT streams Encore shutters and the open viaduct within the facility budget @descent-outro-perf', async ({ browser }) => {
+  const volume = VOLUMES[2];
+  const normal = new OutroInspection('standard', 0, 'main', undefined, 'normal', volume);
+  const impossible = new OutroInspection('standard', 0, 'main', undefined, 'impossible', volume);
+  const views = [['encore-middle', normal], ['afterglow-peak', impossible]] as const;
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [scene, inspection] of views) for (const quality of ['low', 'auto', 'high'] as const) {
+        const { station, musicBeat } = inspection.view(scene);
+        const result = await page.evaluate(({ station, beat, difficulty, quality }) =>
+          window.stability.fixedGlass(beat, quality, true, 'standard', 'center', 120, true,
+            { station, fly: true, difficulty, volumeId: 'descent', dynamic: true }),
+        { station, beat: musicBeat!, difficulty: inspection.sim.difficulty, quality });
+        log('descent-outro', { scene, quality, sample, build: build.label, station,
+          frame: result.trace.frame, cpu: result.trace.cpu.frame, gpu: result.trace.gpu.frame, gpuStatus: result.trace.gpuStatus,
+          fps: result.trace.fps, metrics: result.metrics, renderer: result.renderer, webgl: result.webgl });
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(120);
+        expect(result.metrics.chunks).toBeLessThanOrEqual(5);
+        if (build === candidate) {
+          if (scene === 'encore-middle') {
+            expect(result.metrics.encoreMeshes).toBeGreaterThan(0);
+            expect(result.metrics.encoreMeshes).toBeLessThanOrEqual(7);
+          } else {
+            expect(result.metrics.encoreMeshes).toBe(0);
+            expect(result.metrics.descentLighting!.afterglow).toBeGreaterThan(.6);
+          }
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 test('ending remains legible through the light cue and leaves the other volumes pixel-identical @outro-visual', async ({ browser }, info) => {
   const page = await browser.newPage({ viewport: { width: 1100, height: 760 }, deviceScaleFactor: 1 });
   const errors = captureErrors(page);

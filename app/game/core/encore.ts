@@ -1,5 +1,5 @@
 import type { Difficulty, PlayMode } from '../contracts';
-import { opening } from './collision';
+import { lanePoint, opening } from './collision';
 import { crystalOpenings } from './daybreak-gates';
 import type { Axis } from './collision';
 import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
@@ -57,6 +57,25 @@ export interface OutroPlan {
   readonly afterglow: readonly AfterglowSection[];
 }
 
+function descentEncoreOpening(index: number, seed: number) {
+  const phrase = Math.floor(index / 4);
+  const direction = (seed % 4 + phrase) % 4;
+  const sector = direction * 2;
+  const axis: Axis = (direction % 2) as Axis;
+  const mirror: Axis = ((phrase + (seed >>> 2)) % 2) as Axis;
+  // A centered entry allows a reset. The next three shutters turn the same
+  // corner from a cardinal opening, through a diagonal, onto the other axis.
+  switch (index % 4) {
+    case 0: return { kind: 'laser-slice', sector: axis === 0 ? 2 : 0, axis } as const;
+    case 1: return { kind: 'laser-matrix', sector, axis: 0 } as const;
+    case 2: return { kind: 'laser-weave', sector, axis: mirror } as const;
+    default: {
+      const [x, y] = lanePoint('laser-weave', sector, mirror);
+      return { kind: 'laser-slice', sector: axis === 0 ? (y > 0 ? 2 : 6) : (x > 0 ? 0 : 4), axis: (1 - axis) as Axis } as const;
+    }
+  }
+}
+
 export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: number, mainLastStation: number,
   difficulty: Difficulty = 'normal', reserveStation?: (seconds: number) => number): OutroPlan {
   const impossible = mode === 'standard' && difficulty === 'impossible';
@@ -68,24 +87,32 @@ export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: nu
   const rule = gameplayFor(volume.id).encore;
   const spec = rule === 'legacy' ? undefined : rule;
   const release = spec ? 42 : 120;
+  const reserveAt = volume.beats * 60 / volume.bpm - (spec?.reserve ?? 0);
   const cutoff = spec && mode === 'standard'
-    ? reserveStation?.(volume.beats * 60 / volume.bpm - spec.reserve) ?? musicEndStation - 550 : Infinity;
+    ? reserveStation?.(reserveAt) ?? (volume.id === 'descent'
+      ? reference.boostAt(reserveAt, mode, impossible ? IMPOSSIBLE_SPEED_FACTOR : 1) : musicEndStation - 550) : Infinity;
   const first = mainLastStation + (spec?.first ?? ENCORE_FIRST_OFFSET);
   let station = spec ? Math.max(first, reference.station(volume.beats, mode) + 12) : first;
   const gates: EncoreGate[] = [];
   const word = (index: number, field: number) => runRandomWord(seed, ENCORE_STREAM ^ Math.imul(1 + index * 3 + field, 0x9e3779b9));
-  const minSpacing = spec?.minSpacing ?? ENCORE_MIN_SPACING;
-  const maxSpacing = spec?.maxSpacing ?? ENCORE_MAX_SPACING;
+  const spacingScale = impossible ? spec?.impossibleSpacing ?? 1 : 1;
+  const minSpacing = (spec?.minSpacing ?? ENCORE_MIN_SPACING) * spacingScale;
+  const maxSpacing = (spec?.maxSpacing ?? ENCORE_MAX_SPACING) * spacingScale;
+  const kinds = spec?.kinds;
   const gateCount = mode === 'sightseeing' ? 0 : spec ? Math.max(0, Math.ceil((cutoff - station) / minSpacing))
     : impossible ? IMPOSSIBLE_ENCORE_COUNT : ENCORE_GATE_COUNT;
   for (let index = 0; index < gateCount; index++) {
     if (index) station += minSpacing + (maxSpacing - minSpacing) * word(index, 0) / 0xffffffff;
     if (station + release > cutoff) break;
-    const slot = index % 3;
-    const swap = word(index - slot, 1) % 2;
-    const kind = spec?.kinds[index % spec.kinds.length] ?? (slot === 0 ? 'iris' : slot - 1 === swap ? 'square' : 'diamond');
-    const sector = kind === 'iris' ? word(index, 2) % 8 : kind === 'daybreak-crystal' ? word(index, 2) % crystalOpenings.length : 0;
-    gates.push({ index, kind, sector, open: opening(kind, sector), axis: 0,
+    let kind: GateKind, sector: number, axis: Axis = 0;
+    if (volume.id === 'descent') ({ kind, sector, axis } = descentEncoreOpening(index, word(0, 1)));
+    else {
+      const slot = index % 3;
+      const swap = word(index - slot, 1) % 2;
+      kind = kinds?.[index % kinds.length] ?? (slot === 0 ? 'iris' : slot - 1 === swap ? 'square' : 'diamond');
+      sector = kind === 'iris' ? word(index, 2) % 8 : kind === 'daybreak-crystal' ? word(index, 2) % crystalOpenings.length : 0;
+    }
+    gates.push({ index, kind, sector, open: opening(kind, sector), axis,
       worldStation: station, routeStation: station, judged: false, passed: false, clean: false, neutralized: false });
   }
   const start = gates.length ? gates[gates.length - 1].worldStation + release : mainLastStation + (spec ? 14 : 45);

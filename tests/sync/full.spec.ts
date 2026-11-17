@@ -4,8 +4,8 @@ import { onsetLead } from '../../app/game/core/daybreak-score';
 import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [105326, 89395, 131315, 65069];
-const gateCounts = [141, 120, 174, 91];
+const normalScores = [105326, 89395, 120915, 65069];
+const gateCounts = [141, 120, 161, 91];
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];
@@ -65,14 +65,17 @@ for (const difficulty of ['normal', 'impossible'] as const) test(`ELSEWHERE ${di
   } finally { await page.keyboard.up('Shift'); }
 });
 
-for (const [index, volume] of VOLUMES.entries()) {
-  test(`${volume.id} completes the full song on real audio time`, async ({ page, browser }) => {
+const fullRuns = [...VOLUMES.map((volume, index) => ({ volume, count: gateCounts[index], score: normalScores[index], boost: false })),
+  { volume: VOLUMES[2], count: 189, score: undefined, boost: true }];
+for (const { volume, count, score, boost } of fullRuns) {
+  test(`${volume.id} completes the full song on real audio time${boost ? ' under full Impossible Boost' : ''}`, async ({ page, browser }) => {
     const duration = volume.beats * 60 / volume.bpm;
     test.setTimeout((duration + 45) * 1000);
     const errors = await openSync(page);
-    await mount(page, volume.id, 'standard', 'normal', volume.id === 'daybreak' ? 0 : undefined);
+    await mount(page, volume.id, 'standard', boost ? 'impossible' : 'normal', volume.id === 'daybreak' || boost ? 0 : undefined);
     await page.locator('#start').click();
     await phase(page, 'playing');
+    if (boost) await page.keyboard.down('Shift');
     await page.waitForFunction(() => ['paused', 'crash', 'results', 'error'].includes(window.b0Harness.snapshot().phase),
       undefined, { timeout: (duration + 8) * 1000, polling: 200 });
     const transition = await state(page);
@@ -113,11 +116,19 @@ for (const [index, volume] of VOLUMES.entries()) {
     expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeGreaterThanOrEqual(-1e-8);
     expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeLessThanOrEqual(STEP + 1e-8);
     expect(data.end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: !!volume.soundtrack?.tail });
-    expect(result).toMatchObject({ beat: volume.beats, passed: gateCounts[index], judged: gateCounts[index],
-      total: gateCounts[index], score: normalScores[index], lives: volume.lives.normal, scheduler: false, runBus: false });
-    expect(await page.evaluate(() => window.b0Harness.snapshot().result)).toMatchObject({
+    if (volume.id === 'descent') {
+      expect(result.simTime - data.end!.simTime).toBeGreaterThanOrEqual(volume.soundtrack!.tail - STEP);
+    }
+    expect(result).toMatchObject({ beat: volume.beats, passed: count, judged: count, total: count,
+      ...(score === undefined ? {} : { score }), lives: boost ? 1 : volume.lives.normal, scheduler: false, runBus: false });
+    const summary = await page.evaluate(() => window.b0Harness.snapshot().result);
+    expect(summary).toMatchObject({
       title: 'ESCAPED', rank: 'S', accuracy: 1, neutralized: 0, unreached: 0, ...(volume.id === 'elsewhere' ? { route: 'main' } : {}),
     });
+    if (boost) {
+      expect(summary?.encore).toMatchObject({ encountered: 23, passed: 23, missed: 0, bonusScore: 6900 });
+      await page.keyboard.up('Shift');
+    }
     expect(errors).toEqual([]);
   });
 }

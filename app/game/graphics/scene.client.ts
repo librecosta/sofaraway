@@ -162,11 +162,14 @@ class VolumeScene {
     const lightBeat = lighting?.beat ?? sim.beat;
     this.updateJunction(sim);
     const plan = sim.outroPlan && distance + 650 >= sim.outroPlan.afterglowStart ? sim.outroPlan : undefined;
-    if (this.scenic && this.outro !== plan) {
+    if (this.outro !== plan) {
       this.outro = plan;
-      const atlas = this.outro ? makeAfterglowAtlas(this.outro) : [];
-      this.tunnel.setAfterglow(atlas);
-      this.scenic.setAfterglow(atlas);
+      if (this.scenic) {
+        const atlas = plan ? makeAfterglowAtlas(plan) : [];
+        this.tunnel.setAfterglow(atlas);
+        this.scenic.setAfterglow(atlas);
+      }
+      if (this.facility) this.tunnel.setFacilityOutro(plan);
     }
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.facility && this.facilityBackground) {

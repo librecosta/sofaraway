@@ -11,6 +11,7 @@ import type { BranchPath } from './branch-path';
 import { START_DISTANCE } from '../core/reference-track';
 import { CABIN_HOOP, CABIN_WAIST, cabinEnvelope, cabinLower, cabinUpper } from './cabin-geometry';
 import type { DescentFacility } from './descent-facility.client';
+import type { OutroPlan } from '../core/encore';
 import type { Path, PathFrame } from './path';
 import type { buildTextures } from './textures.client';
 import { MaterialLibrary } from './materials/library.client';
@@ -584,6 +585,14 @@ export class Tunnel {
   setAfterglow(atlas: readonly LightingZone[]) {
     const from = Math.min(this.outroAtlas[0]?.start ?? Infinity, atlas[0]?.start ?? Infinity);
     this.outroAtlas = atlas;
+    this.rebuildFrom(from);
+  }
+
+  setFacilityOutro(plan: OutroPlan | undefined) {
+    if (this.facility) this.rebuildFrom(this.facility.setOutro(plan));
+  }
+
+  private rebuildFrom(from: number) {
     for (let i = 0; i < this.chunks.length; i++) {
       const chunk = this.chunks[i];
       if (chunk.s1 <= from) continue;

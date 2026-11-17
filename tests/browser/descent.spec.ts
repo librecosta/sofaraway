@@ -599,7 +599,7 @@ test('the production DESCENT Impossible run shows its result and restarts with o
   await expect(page.locator('#over-gates')).toHaveText('0/189');
   await expect.poll(() => page.evaluate(() => {
     const records = JSON.parse(localStorage.getItem('sofaraway.records.v1') ?? '{}');
-    return records.standard?.['descent-impossible-timing']?.impossible?.last?.outcome;
+    return records.standard?.['descent-encore']?.impossible?.last?.outcome;
   })).toBe('TERMINATED');
   await page.locator('[data-act=restart]').click();
   await expect(page.locator('#hud-lives i')).toHaveCount(1);
@@ -619,6 +619,19 @@ test('full Boost on DESCENT Impossible streams the final corridor through escape
     await test.start(true);
   });
   await page.keyboard.down('Shift');
+  const reward = await page.evaluate(async () => {
+    const test = window.b0Harness;
+    const state = test.advanceAndPause(320);
+    const result = test.snapshot();
+    await test.resume(true);
+    return { state, result };
+  });
+  expect(reward.state.metrics.encoreMeshes).toBeGreaterThan(0);
+  expect(reward.result.encore?.passed).toBeGreaterThan(0);
+  expect(reward.state.metrics.descentLighting?.afterglow).toBe(0);
+  await page.locator('canvas').screenshot({ path: info.outputPath('impossible-encore.png') });
+  await page.keyboard.up('Shift');
+  await page.keyboard.down('Shift');
   const ending = await page.evaluate(async () => {
     const test = window.b0Harness;
     const state = test.advanceAndPause(382);
@@ -631,16 +644,60 @@ test('full Boost on DESCENT Impossible streams the final corridor through escape
   expect(ending.metrics.calls).toBeGreaterThan(0);
   expect(ending.metrics.chunks).toBeGreaterThan(1);
   expect(ending.metrics.chunks).toBeLessThanOrEqual(5);
+  expect(ending.metrics.descentLighting?.afterglow).toBeCloseTo(1);
+  expect(ending.metrics.encoreMeshes).toBe(0);
   await page.keyboard.up('Shift');
   await page.keyboard.down('Shift');
   await page.locator('canvas').screenshot({ path: info.outputPath('impossible-full-boost-exit.png') });
   await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot())).toMatchObject({
-    phase: 'results', difficulty: 'impossible', gatesPassed: 189, gatesTotal: 189, result: { title: 'ESCAPED', unreached: 0 },
+    phase: 'results', difficulty: 'impossible', gatesPassed: 189, gatesTotal: 189,
+    result: { title: 'ESCAPED', unreached: 0, encore: { missed: 0, neutralized: 0 } },
   });
   await page.keyboard.up('Shift');
   const error = await page.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.getContext('webgl2')!.getError());
   expect(error).toBe(0);
+  await page.evaluate(async () => {
+    const test = window.b0Harness;
+    test.returnToMenu();
+    await test.start(true);
+  });
+  const retry = await page.evaluate(() => window.b0Harness.snapshot());
+  expect(retry).toMatchObject({ phase: 'playing', lives: 1, gatesPassed: 0 });
+  expect(retry.encore).toBeUndefined();
   await page.evaluate(() => window.b0Harness.dispose());
+});
+
+test('DESCENT reaches the score cutoff before showing results and keeps its terminal view behind the UI', async ({ page }, info) => {
+  const sim = new Simulation(volumeById('descent'), { align: true });
+  sim.start('normal', 0);
+  const duration = sim.volume.beats * sim.secondsPerBeat;
+  const capture = (time: number) => page.goto(`/?vol=descent&diff=normal&align=1&boost=1&t=${time}&q=high&dbg=1`);
+  const diagnostics = page.locator('#errbox');
+  const flash = page.locator('#flash');
+  await capture(duration - .25);
+  await expect(diagnostics).toContainText('"outroPhase":"afterglow"');
+  await expect(flash).toHaveCSS('opacity', '0');
+  const before = JSON.parse((await diagnostics.textContent())!);
+  await capture(duration + .55);
+  await expect(diagnostics).toContainText('"phase":"crash"');
+  await expect(diagnostics).toContainText('"beat":384');
+  await expect(flash).toHaveCSS('opacity', '0');
+  await capture(duration + 1.7);
+  await expect(page.locator('#over-title')).toHaveText('ESCAPED');
+  await expect(page.locator('#over')).toContainText('ENCORE BONUS');
+  await expect(flash).toHaveCSS('opacity', '0');
+  const result = JSON.parse((await diagnostics.textContent())!);
+  expect(result.trackDistance).toBeGreaterThan(before.trackDistance);
+  expect(result.encore).toEqual(before.encore);
+  expect(result.descentLighting.afterglow).toBe(1);
+  await page.screenshot({ path: info.outputPath('descent-results.png') });
+
+  await page.goto(`/?vol=descent&diff=normal&align=1&t=${duration + 1.7}&q=high&dbg=1`);
+  await expect(page.locator('#over-title')).toHaveText('ESCAPED');
+  await expect(diagnostics).toContainText('"outroPhase":"transition"');
+  const cruise = JSON.parse((await diagnostics.textContent())!);
+  expect(cruise.trackDistance).toBeLessThan(sim.outroPlan!.gates[0].worldStation - 4);
+  expect(cruise.encore).toBeUndefined();
 });
 
 test('DESCENT restores the glass scene at the same station and releases it on switch', async ({ page }) => {

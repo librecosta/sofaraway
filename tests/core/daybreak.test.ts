@@ -338,13 +338,13 @@ test.each(endingPolicies)('%s carries one continuous white rise through the real
   }
 });
 
-test('TERMINATED skips DAYBREAK white and other volumes keep the legacy cue', () => {
+test('TERMINATED skips DAYBREAK white and ELSEWHERE and ORBIT keep the legacy cue', () => {
   const sim = new Simulation(volume);
   sim.start('hard', 0);
   while (sim.phase === 'playing') sim.step(STEP, idleInput);
   expect(sim.result?.title).toBe('TERMINATED');
   expect(sim.escapeWhite).toBe(0);
-  for (const id of ['elsewhere', 'descent', 'orbit'] as const) {
+  for (const id of ['elsewhere', 'orbit'] as const) {
     const run = new Simulation(volumeById(id), { align: true });
     run.start('normal', 0);
     while (run.beat < run.volume.beats - 6) run.step(STEP, idleInput);

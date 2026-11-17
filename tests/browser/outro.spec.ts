@@ -1,6 +1,75 @@
 import { expect, test } from '@playwright/test';
 import { OutroInspection, outroView } from '../../app/game/debug/outro-inspection';
+import { volumeById } from '../../app/game/core/volumes';
 import type {} from '../harness/main';
+
+test('DESCENT End Sequence Studio renders each route through its bonus gates and industrial Afterglow', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/debug/#outro');
+  const studio = page.locator('#outro');
+  await studio.getByLabel('World', { exact: true }).selectOption('descent');
+  await studio.getByRole('button', { name: 'Open live ending' }).click();
+  const canvas = studio.getByRole('img', { name: 'Live DESCENT ending' });
+  const jump = (label: string) => studio.getByRole('button', { name: label, exact: true }).click();
+  const volume = volumeById('descent');
+  for (const [quality, difficulty, route, seed] of [
+    ['low', 'normal', 'main', 0], ['auto', 'hard', 'challenge', 1], ['high', 'impossible', 'score', 0],
+  ] as const) {
+    const inspection = new OutroInspection('standard', seed, route, undefined, difficulty, volume);
+    await studio.getByLabel('Route', { exact: true }).selectOption(route);
+    await studio.getByLabel('Chart difficulty').selectOption(difficulty);
+    await studio.getByLabel('Run seed').fill(String(seed));
+    await studio.getByLabel('Preview quality').selectOption(quality);
+    await jump('Main Last Gate');
+    await expect(canvas).toHaveAttribute('data-station', inspection.view('main-last').station.toFixed(6));
+    for (const [label, preset] of [['Encore First Gate', 'encore-first'], ['Encore Middle', 'encore-middle'], ['Encore Final Gate', 'encore-final']] as const) {
+      await jump(label);
+      const { station, gate } = inspection.view(preset);
+      await expect(canvas).toHaveAttribute('data-station', station.toFixed(6));
+      await expect(studio.getByText(`Encore ${gate!.index + 1} · ${gate!.kind}`, { exact: false })).toBeVisible();
+      expect(Number(await canvas.getAttribute('data-encore-meshes'))).toBeGreaterThan(0);
+    }
+    await jump('Afterglow Entry');
+    await expect(canvas).toHaveAttribute('data-facility-release', '0');
+    await jump('Afterglow Peak');
+    await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
+    await expect(canvas).toHaveAttribute('data-encore-meshes', '0');
+    expect(Number(await canvas.getAttribute('data-facility-release'))).toBeGreaterThan(.6);
+    await canvas.screenshot({ path: info.outputPath(`${quality}-${route}-afterglow.png`) });
+    await studio.getByLabel('Movement').selectOption('Cruise');
+    await jump('Music End');
+    await expect(canvas).toHaveAttribute('data-station', inspection.view('music-end', 'Cruise').station.toFixed(6));
+    await studio.getByLabel('Movement').selectOption('Boost');
+    await expect(canvas).toHaveAttribute('data-station', inspection.view('music-end', 'Boost').station.toFixed(6));
+    await jump('Results Background');
+    await expect(canvas).toHaveAttribute('data-phase', 'results');
+    await expect(canvas).toHaveAttribute('data-station', inspection.view('results-world', 'Boost').station.toFixed(6));
+    await expect(canvas).toHaveAttribute('data-escape-white', '0');
+    expect(await canvas.evaluate((element: HTMLCanvasElement) => element.getContext('webgl2')!.getError())).toBe(0);
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await studio.getByLabel('Dynamic Lights preview').check();
+  await jump('Afterglow Peak');
+  const station = await canvas.getAttribute('data-station');
+  await canvas.evaluate((element: HTMLCanvasElement) => {
+    const extension = element.getContext('webgl2')!.getExtension('WEBGL_lose_context')!;
+    extension.loseContext();
+    setTimeout(() => extension.restoreContext(), 250);
+  });
+  await expect(studio.getByRole('status').filter({ hasText: 'WebGL interrupted' })).toBeVisible();
+  await expect(studio.getByRole('status').filter({ hasText: 'WebGL interrupted' })).toHaveCount(0);
+  await expect(canvas).toHaveAttribute('data-station', station!);
+  await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
+  await studio.getByLabel('Play mode').selectOption('sightseeing');
+  await studio.getByLabel('Movement').selectOption('Cruise');
+  await jump('Music End');
+  await expect(canvas).toHaveAttribute('data-encore-meshes', '0');
+  await expect(canvas).toHaveAttribute('data-mode', 'sightseeing');
+  await studio.getByLabel('Results preview').selectOption('Perfect Encore');
+  await expect(studio.locator('#preview-over')).toContainText('ENCORE BONUS');
+  expect(errors).toEqual([]);
+});
 
 test('ELSEWHERE fades to white on the music clock at cruise and under sustained Boost', async ({ page }) => {
   const flash = page.locator('#flash');

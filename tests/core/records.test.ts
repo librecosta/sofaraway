@@ -103,9 +103,9 @@ test('the DESCENT junction approach records preserve the original spiral junctio
 });
 
 test.each([
-  ['daybreak', 'daybreak-choreography', 'daybreak-impossible-timing'],
-  ['descent', 'descent-junction-approach', 'descent-impossible-timing'],
-] as const)('%s keeps earlier Impossible results in storage after the timing change', (volume, earlier, timed) => {
+  ['daybreak', 'daybreak-choreography', 'daybreak-impossible-timing', 'daybreak-impossible-timing'],
+  ['descent', 'descent-junction-approach', 'descent-impossible-timing', 'descent-encore'],
+] as const)('%s keeps earlier Impossible results in storage across changes', (volume, earlier, timed, current) => {
   const last = { score: 180000, outcome: 'ESCAPED' } as const;
   const standard = { [earlier]: { impossible: { best: last.score, last }, hard: { best: 98000, last: null } } };
   const records = parseRecords(JSON.stringify({ version: 1, standard }));
@@ -114,8 +114,27 @@ test.each([
   expect(recordRun(records, volume, 'impossible', 'standard', newRun)).toBe(true);
   const restored = parseRecords(JSON.stringify(records));
   expect(restored.standard[earlier]).toEqual(standard[earlier]);
-  expect(restored.standard[timed]).toEqual({ impossible: { best: newRun.score, last: newRun } });
-  expect(recordFor(restored, volume, 'hard', 'standard').best).toBe(98000);
+  expect(restored.standard[current]).toEqual({ impossible: { best: newRun.score, last: newRun } });
+  expect(recordFor(restored, volume, 'hard', 'standard').best).toBe(volume === 'descent' ? null : 98000);
+});
+
+test('DESCENT keeps both retired Standard records and the active Sightseeing last run', () => {
+  const last = { score: 175000, outcome: 'ESCAPED' } as const;
+  const standard = {
+    'descent-junction-approach': { normal: { best: last.score, last } },
+    'descent-impossible-timing': { impossible: { best: last.score, last } },
+  };
+  const sightseeing = { 'descent-junction-approach': { last } };
+  const records = parseRecords(JSON.stringify({ version: 1, standard, sightseeing }));
+  const newRun = { ...last, encoreBonus: 800 };
+  expect(recordFor(records, 'descent', 'normal', 'standard').best).toBeNull();
+  expect(recordFor(records, 'descent', 'impossible', 'standard').best).toBeNull();
+  recordRun(records, 'descent', 'impossible', 'standard', newRun);
+  const restored = parseRecords(JSON.stringify(records));
+  expect(restored.standard['descent-junction-approach']).toEqual(standard['descent-junction-approach']);
+  expect(restored.standard['descent-impossible-timing']).toEqual(standard['descent-impossible-timing']);
+  expect(recordFor(restored, 'descent', 'impossible', 'standard')).toEqual({ best: 175800, last: newRun });
+  expect(recordFor(restored, 'descent', 'normal', 'sightseeing').last).toEqual(last);
 });
 
 test('records reject invalid or unknown storage values and tolerate a missing browser', () => {

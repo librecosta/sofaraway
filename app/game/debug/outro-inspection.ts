@@ -1,5 +1,6 @@
 import { initialSnapshot } from '../contracts';
 import type { Difficulty, GameSnapshot, PlayMode } from '../contracts';
+import { branchLayout } from '../core/branches';
 import type { RouteKind, RouteSide } from '../core/branches';
 import { clamp } from '../core/collision';
 import { STEP } from '../core/clock';
@@ -36,6 +37,8 @@ export const exteriorViews = {
 } as const;
 export type ExteriorView = keyof typeof exteriorViews;
 const chapters = { build: 'BUILD', drop: 'DROP', finale: 'FINALE' } as const;
+const descentChapters = { build: 'PRESSURE', drop: 'LOCKDOWN', finale: 'BREACH' } as const;
+const sideFor = (route: RouteKind, left: RouteKind): RouteSide => route === 'main' ? 'center' : left === route ? 'left' : 'right';
 
 export function outroView(plan: OutroPlan, preset: OutroPreset) {
   const peek = 22 * modeScale(plan.mode);
@@ -60,6 +63,7 @@ export class OutroInspection {
   private readonly side: RouteSide;
   private readonly main: RunGate[];
   private readonly encore: EncoreGate[];
+  private readonly descentFinishes = new Map<boolean, { cutoff: number; results: number }>();
   readonly min: number;
   readonly max: number;
 
@@ -69,22 +73,26 @@ export class OutroInspection {
     this.sim.start(difficulty, seed, undefined, mode);
     this.plan = this.sim.outroPlan!;
     const { layout } = this.sim.branch!;
-    this.side = route === 'main' ? 'center' : layout.left === route ? 'left' : 'right';
+    this.side = sideFor(route, layout.left);
     const routeStation = (station: number) => this.sim.junctionPath!.arcAt(station, this.side);
     this.main = [...this.sim.mainGates.map(gate => ({ ...gate, routeStation: routeStation(gate.worldStation) })),
       ...this.sim.branchGates![route]].sort((a, b) => a.worldStation - b.worldStation);
     this.encore = this.plan.gates.map(gate => ({ ...gate, routeStation: routeStation(gate.worldStation) }));
-    this.min = this.sim.reference.station(volume.id === 'daybreak' ? 0 : 158, mode);
+    this.min = this.sim.reference.station(volume.id === 'daybreak' ? 0 : volume.id === 'descent' ? 128 : 158, mode);
     this.max = Math.min(this.plan.afterglowEnd, this.sim.path.length - 430);
   }
 
-  view(preset: OutroPreset) {
+  view(preset: OutroPreset, movement: OutroMovement = 'Paused'): { station: number; gate?: EncoreGate; musicBeat?: number } {
     const { sim, volume, side } = this;
     const path = sim.junctionPath!;
     if (preset === 'branch-preview') return { station: path.start + 9 * modeScale(sim.mode), musicBeat: path.spec.preview };
     if (preset === 'branch-entry') return { station: path.open - 30 * modeScale(sim.mode), musicBeat: path.openBeat };
     if (preset === 'branch-rejoin') return { station: path.merge - 24 * modeScale(sim.mode), musicBeat: path.mergeBeat };
     if (preset === 'pickup') return { station: sim.pickupStation - 15 * modeScale(sim.mode), musicBeat: sim.gameplay.pickup!.beat };
+    if (volume.id === 'descent' && (preset === 'music-end' || preset === 'results-world')) {
+      const finish = this.descentFinish(movement);
+      return { station: preset === 'music-end' ? finish.cutoff : finish.results, musicBeat: volume.beats };
+    }
     if (preset === 'white-start' || preset === 'white-peak' || preset === 'results-world') {
       const musicBeat = preset === 'white-start' ? volume.beats - 12 : volume.beats;
       const station = sim.reference.boostAt(musicBeat * sim.secondsPerBeat, sim.mode,
@@ -101,16 +109,39 @@ export class OutroInspection {
     }
     if (preset in chapters) {
       const chapter = volume.id === 'daybreak' ? { build: 'LIFT', drop: 'SUNBURST', finale: 'RETURN' }[preset as keyof typeof chapters]
-        : chapters[preset as keyof typeof chapters];
+        : (volume.id === 'descent' ? descentChapters : chapters)[preset as keyof typeof chapters];
       const gates = this.main.filter(gate => sectionAt(volume, gate.beat)?.name === chapter);
       const gate = gates.find(gate => gate.inserted) ?? gates[0];
       return { station: gate.worldStation - 22 * modeScale(this.sim.mode), musicBeat: gate.beat };
     }
     const view = outroView(this.plan, preset);
+    if (volume.id === 'descent') {
+      const boosting = movement !== 'Cruise' || preset.startsWith('encore-');
+      const end = this.descentFinish(boosting ? 'Boost' : 'Cruise').cutoff;
+      const speed = cruiseTarget(Infinity) * modeScale(sim.mode) * difficultySettings(volume, sim.difficulty).speedFactor
+        * (boosting ? BOOST_MULTIPLIER : 1);
+      return { ...view, musicBeat: clamp(volume.beats - (end - view.station) / (speed * sim.secondsPerBeat), 0, volume.beats) };
+    }
     if (volume.id !== 'daybreak') return view;
     const end = path.stationAt(this.plan.musicEndStation, side);
     const speed = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(sim.mode) * difficultySettings(volume, sim.difficulty).speedFactor;
     return { ...view, musicBeat: clamp(volume.beats - (end - view.station) / (speed * sim.secondsPerBeat), 0, volume.beats) };
+  }
+
+  private descentFinish(movement: OutroMovement) {
+    const boosting = movement !== 'Cruise';
+    let finish = this.descentFinishes.get(boosting);
+    if (!finish) {
+      const { volume, sim, plan, side } = this;
+      const flight = new Simulation(volume, { align: true, branchSide: side }, sim.path, sim.mode, sim.difficulty);
+      flight.start(sim.difficulty, plan.seed, undefined, sim.mode);
+      while (flight.phase === 'playing') flight.step(STEP, { ...idleInput, boosting });
+      const cutoff = flight.trackDistance;
+      while (flight.phase === 'crash') flight.step(STEP, idleInput);
+      finish = { cutoff, results: flight.trackDistance };
+      this.descentFinishes.set(boosting, finish);
+    }
+    return finish;
   }
 
   stationAfter(station: number, travel: number) {
@@ -183,9 +214,9 @@ export class OutroInspection {
 export const resultPresets = ['Main Complete', 'Partial Encore', 'Perfect Encore', 'Sightseeing Complete'] as const;
 
 export function previewResults(seed: number, preset: typeof resultPresets[number], difficulty: Difficulty = 'normal',
-  volume = outroVolume): GameSnapshot {
+  volume = outroVolume, route: RouteKind = 'main'): GameSnapshot {
   const mode = preset === 'Sightseeing Complete' ? 'sightseeing' : 'standard';
-  const sim = new Simulation(volume, { align: true }, undefined, mode);
+  const sim = new Simulation(volume, { align: true, branchSide: sideFor(route, branchLayout(seed).left) }, undefined, mode);
   sim.start(difficulty, seed, 'lumen', mode);
   while (sim.phase === 'playing') {
     const boosting = preset === 'Perfect Encore' || (preset === 'Partial Encore' && sim.beat > (volume.id === 'elsewhere' ? 205 : 132));

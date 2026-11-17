@@ -16,7 +16,8 @@ for (const [index, volume] of VOLUMES.entries()) {
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     // DAYBREAK can finish the white rise during the visual settle when a gate stays in reach.
-    const time = volume.beats * 60 / volume.bpm + (volume.id === 'daybreak' ? 2 : 0.8);
+    const settle = volume.id === 'daybreak' ? 2 : Math.max(.8, (volume.soundtrack?.tail ?? 0) + STEP);
+    const time = volume.beats * 60 / volume.bpm + settle;
     for (const [i, difficulty] of difficulties.entries()) {
       await page.goto(`/?vol=${volume.id}&diff=${difficulty}&q=low&t=${time}&align=1&god=0&dbg=1`);
       const count = expectedCounts[index][i];

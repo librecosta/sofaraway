@@ -45,7 +45,7 @@ test.each(cases)('$volume.id $side seed $seed keeps authored gates reachable wit
   expect(Math.min(...chart.slice(1).map((gate, i) => gate.beat - chart[i].beat))).toBeGreaterThanOrEqual(gap);
   expect(sim.lives).toBe(5);
 
-  const ticks = Math.ceil((volume.beats * sim.secondsPerBeat + 0.8) / STEP);
+  const ticks = Math.ceil((volume.beats * sim.secondsPerBeat + Math.max(.8, (volume.soundtrack?.tail ?? 0) + STEP)) / STEP);
   let previousCrossing = -Infinity;
   for (let i = 0; i < ticks; i++) {
     const before = sim.gatesJudged;

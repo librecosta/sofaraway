@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { BranchLayout } from '../core/branches';
 import type { facilityZones } from '../core/descent-facility';
+import type { OutroPlan } from '../core/encore';
 import { ControlLamp, controlLampCount, controlLightingAt, controlLightPhrases, controlSetpieceAt, neutralLampGains, newControlLighting }
   from '../core/descent-lighting';
 import type { ControlLightView } from '../core/descent-lighting';
@@ -20,6 +21,9 @@ const coreAir = new THREE.Color(0x232634);
 const coreBackdrop = new THREE.Color(0x151924);
 const breachAir = new THREE.Color(0x546a78);
 const breachBackdrop = new THREE.Color(0x758791);
+const escapeAir = new THREE.Color(0x567587);
+const escapeBackdrop = new THREE.Color(0x456373);
+const exitLight = new THREE.Color(0xc5e6e9);
 const endTint = new THREE.Color();
 const fixtureBase = new THREE.Vector3(.77, .88, 1);
 const palettes = controlLightPhrases.map(phrase => ({
@@ -65,6 +69,8 @@ export class DescentFacility {
   private readonly installation = facilityInstallationMaterial(this.score);
   private readonly well: Zone | undefined;
   private readonly core: Zone | undefined;
+  private outro?: OutroPlan;
+  private release = 0;
 
   constructor(private readonly path: Path, private readonly zones: readonly Zone[]) {
     this.well = zones.find(zone => zone.name === 'THE WELL');
@@ -73,6 +79,13 @@ export class DescentFacility {
   }
 
   zoneAt(station: number) { return this.zones.find(zone => station < zone.end) ?? this.zones[this.zones.length - 1]; }
+
+  setOutro(plan: OutroPlan | undefined) {
+    const previous = this.outro?.afterglowStart ?? Infinity;
+    const next = plan?.afterglowStart ?? Infinity;
+    this.outro = plan;
+    return previous === next ? Infinity : Math.min(previous, next);
+  }
 
   gateTint(station: number, out: THREE.Color) {
     const { glass: [first, last], start, finish } = this.zoneAt(station);
@@ -88,8 +101,10 @@ export class DescentFacility {
     const exit = this.zones[this.zones.length - 1];
     const outside = exit.name === 'BREACH' ?
       THREE.MathUtils.smoothstep(station, exit.start + (exit.finish - exit.start) * .24, exit.finish) : 0;
-    fog.copy(air).lerp(wellAir, well).lerp(coreAir, core).lerp(breachAir, outside);
-    background.copy(interior).lerp(wellBackdrop, well).lerp(coreBackdrop, core).lerp(breachBackdrop, outside);
+    const outro = this.outro;
+    const release = this.release = outro ? THREE.MathUtils.smoothstep(station, outro.afterglowStart, outro.afterglow[2].end) : 0;
+    fog.copy(air).lerp(wellAir, well).lerp(coreAir, core).lerp(breachAir, outside).lerp(escapeAir, release);
+    background.copy(interior).lerp(wellBackdrop, well).lerp(coreBackdrop, core).lerp(breachBackdrop, outside).lerp(escapeBackdrop, release);
     this.fill.setRGB(.081 - .024 * well + .016 * core + .095 * outside,
       .094 - .019 * well + .018 * core + .108 * outside,
       .112 - .013 * well + .024 * core + .121 * outside);
@@ -100,7 +115,7 @@ export class DescentFacility {
     const armed = THREE.MathUtils.smoothstep(station, this.lockdown.start - 12,
       THREE.MathUtils.lerp(this.lockdown.start, this.lockdown.finish, .56));
     const exitProgress = THREE.MathUtils.smoothstep(station, exit.start, exit.finish);
-    this.score.security.set(Math.max(armed, setpiece.lockdown), Math.max(exitProgress, setpiece.release));
+    this.score.security.set(Math.max(armed, setpiece.lockdown) * (1 - release), Math.max(exitProgress, setpiece.release, release));
     const from = palettes[cue.previous], to = palettes[cue.phrase], blend = cue.blend;
     const focus = score.focus.value = focusGroup[view];
     this.installation.visible = view !== 'glass';
@@ -115,6 +130,7 @@ export class DescentFacility {
       accent.copy(from.groups[pair]).lerp(to.groups[pair], blend);
       score.accents[i].set(accent.r, accent.g, accent.b);
       tint.lerp(accent, migration);
+      if (i === ControlLamp.Rail) tint.lerp(exitLight, release * .82);
       const active = focus === -1 || focus === i;
       const gain = active ? cue.gains[i] : neutralLampGains[i];
       score.groups[i].set(tint.r, tint.g, tint.b, gain);
@@ -133,29 +149,36 @@ export class DescentFacility {
     const rail = score.groups[ControlLamp.Rail];
     this.railBounce.lerp(tint.setRGB(rail.x, rail.y, rail.z), focus === -1 ? .24 + cue.amount * .18 : 0)
       .multiplyScalar(.005 + rail.w * .018);
-    return .0055 - .00118 * well - .00052 * core - .0010 * outside;
+    return .0055 - .00118 * well - .00052 * core - .0010 * outside - .0014 * release;
   }
 
   get lighting() {
     const { beat, phrase, amount, travel, relay } = this.cue;
     return { beat, room: this.zoneAt(this.score.spatial.x).name, phrase, amount, travel, relay, rim: this.gateRim.w,
+      afterglow: this.release,
       pane: this.gateFace.toArray(),
       fixtures: this.score.groups.slice(0, 4).map(({ x, y, z, w }) => [x, y, z, w]) };
   }
 
   build(from: number, to: number) {
-    const geometry = buildFacilityArchitecture(this.path, this.zones, from, to);
+    const geometry = buildFacilityArchitecture(this.path, this.zones, from, to, this.outro?.afterglowStart);
     const structure = new THREE.Mesh(geometry.structure, this.shell);
-    const fixtures = new THREE.Mesh(geometry.fixtures, this.fixtures);
     const security = new THREE.Mesh(geometry.security, this.security);
     const installations = geometry.installations.build(this.installation);
     if (installations) {
       installations.onBeforeRender = () => { this.installation.uniformsNeedUpdate = true; };
     }
     structure.name = 'facility-structure';
-    fixtures.name = 'facility-fixtures';
     security.name = 'facility-security';
-    return installations ? [structure, fixtures, security, installations] : [structure, fixtures, security];
+    const meshes: THREE.Mesh[] = [structure];
+    if (geometry.fixtures.index?.count) {
+      const fixtures = new THREE.Mesh(geometry.fixtures, this.fixtures);
+      fixtures.name = 'facility-fixtures';
+      meshes.push(fixtures);
+    } else geometry.fixtures.dispose();
+    meshes.push(security);
+    if (installations) meshes.push(installations);
+    return meshes;
   }
 
   junction(path: BranchPath, layout: BranchLayout) {

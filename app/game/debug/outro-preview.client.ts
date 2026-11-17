@@ -91,12 +91,13 @@ export class OutroPreview {
 
   private paint(state: SceneState, angle: number) {
     const inspection = this.inspection!;
-    const dynamics = this.dynamic && this.volume.id === 'daybreak'
-      ? dynamicLightEnvelope(this.volume, state.time, 1, matchMedia('(prefers-reduced-motion: reduce)').matches) : undefined;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dynamics = this.dynamic || this.volume.id === 'descent'
+      ? dynamicLightEnvelope(this.volume, state.time, Number(this.dynamic), reducedMotion) : undefined;
     const [yaw, pitch, cameraLift] = exteriorViews[this.volume.id === 'daybreak' ? this.exteriorView : 'Forward'];
     this.graphics.setCirrusLayer(this.cirrusLayer);
     this.graphics.draw(state, true, true, { beat: state.beat, yaw: (angle + yaw) * Math.PI / 180,
-      pitch: pitch * Math.PI / 180, cameraLift, dynamics });
+      pitch: pitch * Math.PI / 180, cameraLift, dynamics, reducedMotion });
     const metrics = this.graphics.metrics();
     const station = state.trackDistance;
     const stage = inspection.plan.afterglow.find(slice => station >= slice.start && station <= slice.end)?.stage;
@@ -107,6 +108,7 @@ export class OutroPreview {
       mode: state.mode, phase: state.phase, difficulty: inspection.sim.difficulty, route: state.route, seed: inspection.plan.seed,
       pickup: state.pickupVisible, escapeWhite: white, skyDaylight: metrics.skyDaylight ?? '', junctionMeshes: metrics.junctionMeshes,
       exterior: JSON.stringify(metrics.exterior ?? null), cameraY: this.graphics.camera?.position.y,
+      facilityRelease: metrics.descentLighting?.afterglow ?? '',
       junctionLight: metrics.junctionLightLevel?.toFixed(4) ?? '', routeHologram: JSON.stringify(metrics.routeHologram ?? null),
       previewGates: JSON.stringify(state.previewGates.filter(gate => gate.routeStation > state.distance).slice(0, 3)
         .map(gate => [gate.kind, gate.open, +(gate.routeStation - state.distance).toFixed(2)])),

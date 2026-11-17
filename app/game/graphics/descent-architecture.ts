@@ -374,13 +374,66 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
   return { structure, fixtures, lightAt };
 }
 
-export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], from: number, to: number) {
-  const { structure: metal, fixtures, lightAt } = buildWorkLights(path, zones, from, to);
+function escapeViaduct(path: Path, from: number, to: number, start: number, metal: IndustrialGeometry,
+  security: IndustrialGeometry, installations: FacilityInstallations, lightAt: (station: number) => void) {
+  const deckY = -SECTION.b * 5.30;
+  const deckWidth = (SECTION.a - SECTION.ch) * 6.20;
+  const deckColor = new THREE.Color(0x3d515c), lights = new THREE.Color(0x9ad9dd);
+  // Rails cross the former shell opening on an exposed loading deck. The
+  // outboard piers carry separate service ways below the player's horizon.
+  const stations = [from];
+  for (let s = (Math.floor(from / 18) + 1) * 18; s < to; s += 18) stations.push(s);
+  stations.push(to);
+  for (let i = 1; i < stations.length; i++) {
+    const s0 = stations[i - 1], s1 = stations[i];
+    const a = path.sample(s0), b = path.sample(s1);
+    lightAt(s0);
+    conduit(metal, a, b, 0, deckY - 1.2, deckWidth * 2, 2.4, deckColor, IndustrialSurface.Coated);
+    security.lightAt(ControlLamp.Rail, s0, s1);
+    for (const side of [-1, 1]) {
+      const rail = side * (SECTION.a + .18);
+      for (const level of [-1, 1]) {
+        conduit(metal, a, b, rail, level * 1.12, .24, .25, steel, IndustrialSurface.Machined);
+        conduit(security, a, b, rail - side * .135, level * 1.12, .014, .028, lights);
+      }
+      conduit(metal, a, b, side * 29, deckY - 4, 8, 3.8, structural);
+      const lane = [side * (deckWidth - 1.15), deckY + .065] as const;
+      installations.track(a, b, lane, [1, 0], .68, s0, s1,
+        ControlLamp.Rail, FacilityLightShape.Release, side > 0 ? .5 : 0, .76);
+    }
+  }
+  const spacing = 78;
+  for (let bay = Math.ceil((from - start) / spacing); start + bay * spacing < to; bay++) {
+    const s = start + bay * spacing;
+    const frame = path.sample(s);
+    lightAt(s);
+    for (const side of [-1, 1]) {
+      crossBeam(metal, frame, [side * 4.01, -1.16], [side * 7.8, deckY + .2], .35, 1.16, steel);
+      crossBeam(metal, frame, [side * 4, 1.12], [side * 5.10, -5.3], .24, .93, alloy);
+      crossBeam(metal, frame, [side * 29, deckY + 19], [side * 34, deckY - 31], 1.38, 3.6, structural);
+      crossBeam(metal, frame, [side * 29.5, deckY + 14], [side * 45, deckY + 4], 1.05, 2.9, structural);
+      crossBeam(metal, frame, [side * 9, deckY - 4], [side * 32, deckY - 4], 1.28, 3.0, steel);
+      security.lightAt(ControlLamp.Rail, s);
+      crossBeam(security, frame, [side * 29.51, deckY + 13.9], [side * 30.2, deckY + 7], .10, 3.62, lights);
+      if (bay % 3 === 1) {
+        // Cargo lifts share the outboard pier and reach across the distant service way.
+        conduit(metal, path.sample(s - 7), path.sample(s + 7), side * 34, deckY + 5, 8, 43, structural);
+        crossBeam(metal, frame, [side * 34, deckY + 22], [side * 59, deckY + 19], 1.3, 4.5, deckColor);
+        crossBeam(metal, frame, [side * 37, deckY + 14], [side * 52, deckY + 19], .65, 3.1, steel);
+      }
+    }
+    if (s === start) crossBeam(metal, frame, [-deckWidth, deckY], [deckWidth, deckY], .53, 1.18, steel);
+  }
+}
+
+export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], from: number, to: number, escapeStart = Infinity) {
+  const facilityEnd = Math.min(to, escapeStart);
+  const { structure: metal, fixtures, lightAt } = buildWorkLights(path, zones, from, Math.max(from, facilityEnd));
   const security = new IndustrialGeometry(undefined, true);
   const installations = new FacilityInstallations();
   const tone = new THREE.Color(), signal = new THREE.Color(), signalTarget = new THREE.Color();
   for (const [i, zone] of zones.entries()) {
-    const start = Math.max(from, zone.start), end = Math.min(to, zone.end);
+    const start = Math.max(from, zone.start), end = Math.min(facilityEnd, zone.end);
     if (start >= end - 1e-7) continue;
     const armor = new THREE.Color(zone.armor);
     const nextZone = zones[i + 1];
@@ -578,5 +631,6 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       }
     }
   }
+  if (escapeStart < to) escapeViaduct(path, Math.max(from, escapeStart), to, escapeStart, metal, security, installations, lightAt);
   return { structure: metal.build(), fixtures: fixtures.build(), security: security.build(), installations };
 }

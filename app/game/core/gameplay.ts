@@ -8,7 +8,10 @@ import type { VolumeId } from '../contracts';
 import { clamp } from './collision';
 
 interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number; route?: RouteKind }
-interface EncoreSpec { first: number; minSpacing: number; maxSpacing: number; kinds: readonly GateKind[]; reserve: number }
+interface EncoreSpec {
+  first: number; minSpacing: number; maxSpacing: number; kinds?: readonly GateKind[]; reserve: number;
+  impossibleSpacing?: number;
+}
 interface GameplaySpec {
   gateLoadAhead?: number;
   branch?: BranchSpec;
@@ -38,6 +41,7 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
     world: { continuous: true, settleResults: true },
   },
   descent: { gateLoadAhead: 450, branch: descentJunction, pickup: descentCargo,
+    encore: { first: 155, minSpacing: 83, maxSpacing: 96, reserve: 12, impossibleSpacing: 1.10 },
     world: { continuous: false, settleResults: true, modePath: true } },
 };
 
