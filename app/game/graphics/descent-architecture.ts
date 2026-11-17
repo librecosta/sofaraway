@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { facilityZones } from '../core/descent-facility';
 import { SECTION, SECTION_OUTLINE } from '../core/section';
 import { ControlLamp, FacilityLightShape } from '../core/descent-lighting';
-import { alarmCollars, controlCells, FacilityInstallations, installationFade, pressureRakes, statorLenses }
+import { alarmCollars, controlCells, FacilityInstallations, installationFade, pressureRakes, releaseInterlock, statorLenses }
   from './descent-installations.client';
 import { IndustrialGeometry, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
 import type { Path, PathFrame } from './path';
@@ -317,11 +317,16 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
         for (const side of [-1, 1]) {
           fixture([side * 9.72, -6.4], [side * 9.72, 6.4], .085, 1.80, 14, 0, ControlLamp.Deck);
           fixture([side * 13.12, -y * .60], [side * 13.12, y * .60], .061, .66, workReach, 5.6, ControlLamp.DeepDeck);
+          for (const level of [-1, 1]) {
+            fixture([side * 10.18, level * y * .45], [side * 13.55, level * y * .51],
+              0, 0, 7.5, -1.86, ControlLamp.DeepDeck, true);
+          }
         }
       }
       if (zone.name === 'CORE' && bay % 2 === 0) {
         for (const side of [-1, 1]) for (const level of [-1, 1]) {
           fixture([side * 3.3, level * 8.66], [side * 7.24, level * 8.11], .075, 1.10, 15, 0, ControlLamp.Stator);
+          fixture([side * 6.3, level * 2.75], [side * 12.1, level * 5.95], 0, 0, 8.0, -2.36, ControlLamp.Stator, true);
         }
       }
       // These sources sit at the security strips emitted in the other batch.
@@ -427,7 +432,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
         if (tracks && (!outside || level < 0)) {
           const stationPhase = (side > 0 ? .50 : 0) + (level > 0 ? .25 : 0);
           installations.track(a, b, [rail - side * .124, level * 1.12], [0, 1], .246, ...span,
-            ControlLamp.Rail, outside ? FacilityLightShape.Release : FacilityLightShape.Flow, stationPhase, trackFade);
+            ControlLamp.Rail, zone.name === 'BREACH' ? FacilityLightShape.Release : FacilityLightShape.Flow, stationPhase, trackFade);
           if (zone.name === 'TRANSIT') {
             installations.track(a, b, [side * 8.251, level * 5.08], [0, 1], .42, ...span,
               level < 0 ? ControlLamp.Floor : ControlLamp.Roof, FacilityLightShape.Flow, stationPhase, trackFade * .84);
@@ -471,6 +476,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
       const released = zone.name === 'BREACH' && s > roofRelease;
       const fade = installationFade(s, zone.start, zone.finish);
+      const progress = THREE.MathUtils.clamp((s - zone.start) / (zone.finish - zone.start), 0, 1);
       if (hasFlightCollar(zone, bay, s)) {
         collar(metal, frame, flightCollarThroat, flightCollarThroat, innerScale + .075, innerScale + .075, depth, steel, structural);
       }
@@ -527,7 +533,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
               Math.max(.55, (x - 13) * .50), .62, steel, 5.6);
           }
           wellServiceDeck(metal, frame, width, height);
-          pressureRakes(installations, frame, s, bay, h * .79, w * .83, fade);
+          pressureRakes(installations, frame, s, bay, width, height, service.serviceX, service.serviceY, fade, progress);
           break;
         case 'CORE':
           if (bay % 2 === 0) {
@@ -536,7 +542,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
             collar(metal, frame, 3.03, 2.63, 3.80, 3.36, 1.07, alloy, steel,
               statorOutline, IndustrialSurface.Machined, IndustrialSurface.Machined);
             statorMounts(metal, frame, width, height);
-            statorLenses(installations, frame, s, bay, statorOutline, width, height, fade);
+            statorLenses(installations, frame, s, bay, statorOutline, width, height, fade, progress);
           }
           break;
         case 'LOCKDOWN':
@@ -556,9 +562,11 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
           for (const level of [-1, 1]) {
             crossBeam(security, frame, [-2.26, level * 4.13], [2.26, level * 4.13], .060, 1.46, signal);
           }
-          alarmCollars(installations, frame, s, bay, width, height, fade);
+          alarmCollars(installations, frame, s, bay, width, height, fade, progress);
           break;
         case 'BREACH':
+          releaseInterlock(installations, frame, s, service.serviceX - .56,
+            service.serviceY * (released ? .42 : .87) * .64, -.96, bay, progress, fade);
           if (released) {
             for (const side of [-1, 1]) {
               crossBeam(metal, frame, [side * 8.5, -4.8], [side * w * .76, -h * .54], .66, 1.32, steel);

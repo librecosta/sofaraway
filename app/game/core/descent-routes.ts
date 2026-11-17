@@ -10,6 +10,7 @@ export const descentJunction = {
 } satisfies BranchSpec;
 
 export const descentCargo = { beat: 161, preview: 153, x: 0, y: 0, radius: .95, route: 'score' } as const;
+export const descentRouteSwatches = { main: '#a3d8e6', challenge: '#a9a2fa', score: '#ffbc73' } as const;
 
 function routeGate(beat: number, kind: ChartGate['kind'], sector: number, axis: 0 | 1 = 0): ChartGate {
   return { beat, kind, sector, axis, section: 'FLIGHT' };

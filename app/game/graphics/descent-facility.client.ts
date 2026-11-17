@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { BranchLayout } from '../core/branches';
 import type { facilityZones } from '../core/descent-facility';
-import { ControlLamp, controlLampCount, controlLightingAt, controlLightPhrases, neutralLampGains, newControlLighting }
+import { ControlLamp, controlLampCount, controlLightingAt, controlLightPhrases, controlSetpieceAt, neutralLampGains, newControlLighting }
   from '../core/descent-lighting';
 import type { ControlLightView } from '../core/descent-lighting';
 import type { DynamicLightEnvelope } from '../core/rhythmic-lights';
@@ -42,6 +42,7 @@ export class DescentFacility {
   private readonly railBounce = new THREE.Color();
   private readonly signalTarget = new THREE.Color();
   private readonly cue = newControlLighting();
+  private readonly lockdown: Zone;
   private readonly score = {
     groups: Array.from({ length: controlLampCount }, (_, i) => new THREE.Vector4(1, 1, 1, neutralLampGains[i])),
     accents: Array.from({ length: controlLampCount }, () => new THREE.Vector3(1, 1, 1)),
@@ -50,6 +51,9 @@ export class DescentFacility {
     events: new THREE.Vector4(0, 0, 0, 0),
     energy: { value: 0 },
     focus: { value: -1 },
+    spatial: new THREE.Vector4(),
+    security: new THREE.Vector2(),
+    transfer: new THREE.Vector3(),
   };
   private readonly tint = new THREE.Color();
   private readonly accent = new THREE.Color();
@@ -65,6 +69,7 @@ export class DescentFacility {
   constructor(private readonly path: Path, private readonly zones: readonly Zone[]) {
     this.well = zones.find(zone => zone.name === 'THE WELL');
     this.core = zones.find(zone => zone.name === 'CORE');
+    this.lockdown = zones.find(zone => zone.name === 'LOCKDOWN') ?? zones[0];
   }
 
   zoneAt(station: number) { return this.zones.find(zone => station < zone.end) ?? this.zones[this.zones.length - 1]; }
@@ -90,6 +95,12 @@ export class DescentFacility {
       .112 - .013 * well + .024 * core + .121 * outside);
     const { cue, score, tint, accent } = this;
     controlLightingAt(beat, dynamics.amount, cue, reducedMotion);
+    const setpiece = controlSetpieceAt(beat, dynamics.amount, reducedMotion);
+    this.score.spatial.set(station, setpiece.motion, setpiece.shaft, setpiece.precharge);
+    const armed = THREE.MathUtils.smoothstep(station, this.lockdown.start - 12,
+      THREE.MathUtils.lerp(this.lockdown.start, this.lockdown.finish, .56));
+    const exitProgress = THREE.MathUtils.smoothstep(station, exit.start, exit.finish);
+    this.score.security.set(Math.max(armed, setpiece.lockdown), Math.max(exitProgress, setpiece.release));
     const from = palettes[cue.previous], to = palettes[cue.phrase], blend = cue.blend;
     const focus = score.focus.value = focusGroup[view];
     this.installation.visible = view !== 'glass';
@@ -148,7 +159,8 @@ export class DescentFacility {
   }
 
   junction(path: BranchPath, layout: BranchLayout) {
-    return new DescentJunction(path, layout, this.shell, this.security);
+    this.score.transfer.set(path.start, path.split, path.end);
+    return new DescentJunction(path, layout, this.shell, this.security, this.installation);
   }
 
   dispose() {

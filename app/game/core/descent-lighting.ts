@@ -5,7 +5,21 @@ export const CONTROL_PHRASE_BEATS = 16;
 export const enum ControlLamp { Roof, Floor, Left, Right, Rail, Deck, DeepDeck, Stator, Alarm, Route }
 export const controlLampCount = 10;
 export type ControlLightView = 'all' | 'roof' | 'floor' | 'left' | 'right' | 'glass';
-export const enum FacilityLightShape { Cell, Flow, Rake, Stator, Lock, Release }
+export const enum FacilityLightShape { Cell, Flow, Rake, Stator, Lock, Release, Transfer, Interlock }
+
+const [, , , shaft, hold, lockdown, breach] = controlTrack.sections;
+
+/** Slow score transitions enrich the world cues even when a pilot reaches a room early. */
+export function controlSetpieceAt(beat: number, dynamics: number, reducedMotion: boolean) {
+  return {
+    motion: reducedMotion ? 0 : .68 + .32 * dynamics,
+    shaft: ease((beat - shaft.startBeat) / 34) * (1 - ease((beat - (hold.startBeat - 12)) / 12)),
+    precharge: ease((beat - (hold.startBeat + CONTROL_PHRASE_BEATS)) / 15) *
+      (1 - ease((beat - lockdown.startBeat) / 8)),
+    lockdown: ease((beat - lockdown.startBeat) / CONTROL_PHRASE_BEATS),
+    release: ease((beat - breach.startBeat) / 24),
+  };
+}
 
 const palette = {
   white: 0xc1d9ea, steel: 0x7599bf, frost: 0xa6d5ff, ice: 0x59d6ff, cyan: 0x08d9ec,

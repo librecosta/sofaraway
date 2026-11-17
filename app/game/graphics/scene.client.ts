@@ -15,7 +15,7 @@ import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
 import { DaybreakExterior } from './daybreak-exterior.client';
 import { DescentFacility } from './descent-facility.client';
-import { descentRouteSwatches } from './descent-junction';
+import { descentRouteSwatches } from '../core/descent-routes';
 import type { DescentJunction } from './descent-junction';
 import type { CirrusLayer } from './daybreak-cirrus';
 import { makeDaybreakEnvMap, makeEnvMap, makeSky } from './environment.client';

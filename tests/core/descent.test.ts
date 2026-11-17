@@ -12,7 +12,7 @@ import { descentGateKinds, laserBandPitch, laserBeamRadius, laserOpening, matrix
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { idleInput } from '../../app/game/core/input';
 import { referenceFor } from '../../app/game/core/reference-track';
-import { ControlLamp, controlLightingAt, controlLightPhrases, neutralLampGains, newControlLighting }
+import { ControlLamp, controlLightingAt, controlLightPhrases, controlSetpieceAt, FacilityLightShape, neutralLampGains, newControlLighting }
   from '../../app/game/core/descent-lighting';
 import { steadyLights } from '../../app/game/core/rhythmic-lights';
 import { Simulation } from '../../app/game/core/simulation';
@@ -301,6 +301,45 @@ test('service assemblies and the BREACH roof cap stay attached to their world st
   }
 });
 
+test('spatial cues enrich their rooms without requiring Dynamic Lights', () => {
+  expect(controlSetpieceAt(214, 0, false)).toMatchObject({ motion: .68, shaft: 1, precharge: 0, release: 0 });
+  expect(controlSetpieceAt(256, 1, false)).toMatchObject({ motion: 1, shaft: 0, precharge: 0, release: 0 });
+  expect(controlSetpieceAt(282, 0, false).precharge).toBeGreaterThan(.7);
+  expect(controlSetpieceAt(300, 0, false).precharge).toBe(0);
+  expect(controlSetpieceAt(353, 0, false).release).toBeLessThan(controlSetpieceAt(368, 0, false).release);
+  expect(controlSetpieceAt(376, 1, true)).toMatchObject({ motion: 0, release: 1 });
+});
+
+test.each(['standard', 'sightseeing'] as const)('shaft and stator optics keep their depth and phase across %s chunks', mode => {
+  const path = buildRunPath(volume, mode), zones = facilityZones(volume, mode);
+  const facility = new DescentFacility(path, zones);
+  const rows = (from: number, to: number) => {
+    const meshes = facility.build(from, to);
+    const optics = meshes.find(mesh => mesh instanceof InstancedMesh) as InstancedMesh | undefined;
+    try {
+      if (!optics) return [];
+      const { lightSpan: span, lightCue: cue } = optics.geometry.attributes;
+      return Array.from({ length: optics.count }, (_, i) =>
+        [span.getX(i), Math.floor(span.getW(i)), span.getW(i), cue.getY(i), cue.getZ(i)].join(','));
+    } finally {
+      for (const mesh of meshes) {
+        if (mesh instanceof InstancedMesh) mesh.dispose();
+        mesh.geometry.dispose();
+      }
+    }
+  };
+  try {
+    for (const [room, shape, depth] of [[3, FacilityLightShape.Rake, 2], [4, FacilityLightShape.Stator, 1]]) {
+      const zone = zones[room], split = (zone.start + zone.finish) / 2;
+      const whole = rows(zone.start, zone.finish);
+      expect([...rows(zone.start, split), ...rows(split, zone.finish)].sort()).toEqual(whole.sort());
+      const layers = whole.map(row => row.split(',').map(Number));
+      expect(layers.every(([, style]) => style === shape)).toBe(true);
+      expect(new Set(layers.map(layer => layer[4]))).toEqual(new Set(Array.from({ length: depth + 1 }, (_, i) => i)));
+    }
+  } finally { facility.dispose(); }
+});
+
 test('HOLD and BREACH work strips are recessed into their collars and stop when the collars do', () => {
   const path = new Path(200, 10, 'facility');
   path.straight(200);
@@ -494,8 +533,20 @@ test.each(['standard', 'sightseeing'] as const)('TRANSFER in %s crosses above an
     .dot(center.r)).toBeGreaterThan(10);
   const facility = new DescentFacility(sim.path, facilityZones(volume, mode));
   const junction = facility.junction(path, sim.branch!.layout);
+  const chase = junction.group.getObjectByName('descent-transfer-chase') as InstancedMesh;
+  const { lightSpan, lightCue } = chase.geometry.attributes;
+  const routeLayers = new Set<number>();
+  for (let i = 0; i < chase.count; i++) {
+    expect(Math.floor(lightSpan.getW(i))).toBe(FacilityLightShape.Transfer);
+    expect(lightSpan.getY(i)).toBeGreaterThan(0);
+    routeLayers.add(lightCue.getZ(i));
+  }
+  expect(routeLayers).toEqual(new Set([0, 1, 2]));
+  const disposed = new Set();
+  chase.addEventListener('dispose', () => disposed.add(chase));
+  chase.geometry.addEventListener('dispose', () => disposed.add(chase.geometry));
   const bothFaces = new MeshBasicMaterial({ side: DoubleSide });
-  const blockers = junction.group.children.map(child => new Mesh((child as Mesh).geometry, bothFaces));
+  const blockers = junction.group.children.filter(child => child !== chase).map(child => new Mesh((child as Mesh).geometry, bothFaces));
   for (const side of routeSides) {
     const checkClear = (s: number, x: number, y: number) => {
       const from = path.sample(s - 1, side), to = path.sample(s + 1, side);
@@ -503,6 +554,7 @@ test.each(['standard', 'sightseeing'] as const)('TRANSFER in %s crosses above an
       const ray = to.p.addScaledVector(to.r, x).addScaledVector(to.u, y).sub(start);
       expect(new Raycaster(start, ray.clone().normalize(), 0, ray.length()).intersectObjects(blockers),
         `${side} at ${s.toFixed(2)} (${x}, ${y})`).toHaveLength(0);
+      expect(new Raycaster(start, ray.clone().normalize(), 0, ray.length()).intersectObject(chase)).toHaveLength(0);
     };
     for (const boundary of [path.split, path.end]) {
       expect(path.sample(boundary - .02, side).p.distanceTo(path.sample(boundary + .02, side).p)).toBeCloseTo(.04, 6);
@@ -520,6 +572,7 @@ test.each(['standard', 'sightseeing'] as const)('TRANSFER in %s crosses above an
   const cargoStation = path.distanceAt(descentCargo.beat);
   expect(Math.min(...sim.branchGates!.score.map(gate => Math.abs(cargoStation - gate.worldStation)))).toBeGreaterThan(12);
   junction.dispose();
+  expect(disposed).toEqual(new Set([chase, chase.geometry]));
   bothFaces.dispose();
   facility.dispose();
 });

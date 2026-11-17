@@ -75,6 +75,16 @@ export class ScenicPreview {
     this.graphics.resize(800, 450, dpr);
   }
 
+  advance(toSeconds: number, boost: boolean) {
+    const sim = this.sim;
+    if (this.lost || !sim) return;
+    const input = boost ? { ...idleInput, boosting: true } : idleInput;
+    while (sim.phase === 'playing' && sim.time + STEP * .5 < toSeconds) sim.step(STEP, input);
+    this.station = undefined;
+    this.canvas.dataset.station = sim.trackDistance.toFixed(6);
+    this.canvas.dataset.route = sim.route ?? '';
+  }
+
   draw(lighting: LightingPreview) {
     this.lighting = lighting;
     if (this.lost || !this.sim) return;

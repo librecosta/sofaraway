@@ -319,6 +319,63 @@ test('a fresh DESCENT game uses the CONTROL lighting score without changing pref
   await page.locator('#gl').screenshot({ path: info.outputPath('default-descent-flight.png') });
 });
 
+test('the four setpieces fly continuously in the production preview with selectable transfer routes', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto('/debug/#descent');
+  const facility = page.locator('#descent');
+  await facility.getByRole('button', { name: 'Open live facility' }).click();
+  const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
+  const flight = facility.getByRole('combobox', { name: 'Setpiece flight' });
+  const beat = facility.getByRole('slider', { name: 'Score beat' });
+  const play = facility.getByRole('button', { name: 'Play lighting', exact: true });
+  const pause = facility.getByRole('button', { name: 'Pause lighting' });
+  const station = async () => Number(await canvas.getAttribute('data-station'));
+  const scrub = async (at: number) => {
+    await beat.fill(String(at));
+    await expect(canvas).toHaveAttribute('data-light-beat', at.toFixed(3));
+  };
+  await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('auto');
+  await facility.getByRole('checkbox', { name: 'Dynamic lights' }).uncheck();
+  await flight.selectOption('0');
+  await scrub(133);
+  await expect(canvas).toHaveAttribute('data-route', '');
+  for (const route of ['main', 'challenge', 'score']) {
+    await facility.getByRole('combobox', { name: 'Approach route' }).selectOption(route);
+    await scrub(155);
+    await expect(canvas).toHaveAttribute('data-route', route);
+    await canvas.screenshot({ path: info.outputPath(`transfer-${route}.png`) });
+  }
+  await scrub(165);
+  await scrub(133);
+  await expect(canvas).toHaveAttribute('data-route', '');
+  for (const [index, name, start] of [[0, 'transfer', 132], [1, 'well', 207], [2, 'core', 264], [3, 'release', 351]] as const) {
+    await flight.selectOption(String(index));
+    await scrub(start);
+    const opening = await station();
+    await play.click();
+    await expect(pause).toBeVisible();
+    for (const offset of [1, 2, 3]) {
+      await expect.poll(async () => Number(await canvas.getAttribute('data-light-beat'))).toBeGreaterThan(start + offset);
+      await canvas.screenshot({ path: info.outputPath(`${name}-${offset}.png`) });
+    }
+    await pause.click();
+    const held = await station();
+    expect(held).toBeGreaterThan(opening + 22);
+    await expect.poll(station).toBe(held);
+    await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await flight.selectOption('0');
+  await facility.getByRole('combobox', { name: 'Flight mode' }).selectOption('sightseeing');
+  await facility.getByRole('checkbox', { name: 'Boost view' }).check();
+  await scrub(149);
+  await expect(canvas).toHaveAttribute('data-mode', 'sightseeing');
+  await expect(canvas).toHaveAttribute('data-route', 'score');
+  expect(errors).toEqual([]);
+});
+
 const transferFlights = [
   { route: 'main', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'cruise' },
   { route: 'challenge', difficulty: 'hard', mode: 'standard', seed: 1, speed: 'boost' },
@@ -364,7 +421,7 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
     const last = await state();
     expect(last.lastGate?.beat).toBe(lead.at(-1)?.beat);
     expect(last.metrics.routeHologram).toBeUndefined();
-    expect(last.metrics.junctionMeshes).toBe(2);
+    expect(last.metrics.junctionMeshes).toBe(3);
     expect(last.route).toBeNull();
     if (speed === 'boost') expect(last.speed).toBeGreaterThan(49);
     if (speed === 'intervals') await page.keyboard.up('Shift');

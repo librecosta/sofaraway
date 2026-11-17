@@ -2,15 +2,16 @@ import * as THREE from 'three';
 import { routeSides } from '../core/branches';
 import type { BranchLayout, RouteSide } from '../core/branches';
 import { facilityStages } from '../core/descent-facility';
-import { descentCargo } from '../core/descent-routes';
+import { descentCargo, descentRouteSwatches } from '../core/descent-routes';
 import { SECTION } from '../core/section';
 import type { BranchPath } from './branch-path';
 import { collar, conduit, crossBeam, point, section } from './descent-architecture';
-import { ControlLamp } from '../core/descent-lighting';
+import { ControlLamp, FacilityLightShape } from '../core/descent-lighting';
+import { FacilityInstallations } from './descent-installations.client';
 import { IndustrialGeometry, IndustrialSurface } from './industrial-geometry';
 import type { PathFrame } from './path';
 
-export const descentRouteSwatches = { main: '#a3d8e6', challenge: '#a9a2fa', score: '#ffbc73' } as const;
+const routeLayers = { main: 0, challenge: 1, score: 2 } as const;
 const armor = new THREE.Color(0x39515e);
 const rail = new THREE.Color(0x7e96a8);
 const rib = new THREE.Color(0x586a78);
@@ -42,7 +43,8 @@ function runner(path: BranchPath, station: number, side: Exclude<RouteSide, 'cen
 export class DescentJunction {
   readonly group = new THREE.Group();
 
-  constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material, fixtures: THREE.Material) {
+  constructor(readonly path: BranchPath, readonly layout: BranchLayout, shell: THREE.Material, fixtures: THREE.Material,
+    installation: THREE.ShaderMaterial) {
     this.group.name = 'descent-spiral-junction';
     const length = path.end - path.start;
     const gantries = Array.from({ length: 10 }, (_, i) => {
@@ -76,6 +78,7 @@ export class DescentJunction {
       return Math.min(.59, spill);
     });
     const lights = new IndustrialGeometry(undefined, true);
+    const optics = new FacilityInstallations();
     const count = Math.ceil(length / 5);
     const stations = new Set([path.start, path.split, path.open, path.merge, path.end]);
     for (let i = 1; i < count; i++) stations.add(path.start + i * length / count);
@@ -88,6 +91,8 @@ export class DescentJunction {
     const tint = new THREE.Color();
     for (let i = 1; i < slices.length; i++) {
       const a = slices[i - 1], b = slices[i];
+      const mid = (a.station + b.station) / 2;
+      const progress = (mid - path.start) / length;
       for (let edge = 0; edge < a.wall.length; edge++) {
         const next = (edge + 1) % a.wall.length;
         metal.quad(a.wall[edge], a.wall[next], b.wall[next], b.wall[edge],
@@ -101,6 +106,9 @@ export class DescentJunction {
         conduit(metal, a.base, b.base, x, y, .26, .24, rail, IndustrialSurface.Machined);
         conduit(lights, a.base, b.base, x - sign * .15, y, .035, approach ? .12 : .058,
           tint.set(descentRouteSwatches[route]));
+        const at = [x - sign * .267, y] as const;
+        optics.track(a.base, b.base, at, [0, 1], .34, a.station, b.station,
+          ControlLamp.Route, FacilityLightShape.Transfer, approach ? .5 : 0, 1, at, progress, routeLayers[route]);
       }
       for (const [side, level] of quadrants) {
         conduit(metal, a.base, b.base, side * 2.25 * a.w, level * 2.59 * a.h, .63, .55, rib,
@@ -113,10 +121,18 @@ export class DescentJunction {
         conduit(metal, from, to, start.x, start.y, .60, .56, rail, IndustrialSurface.Machined, end.x, end.y);
         conduit(lights, from, to, start.x * .92, start.y * .92, .094, .09,
           tint.set(descentRouteSwatches[layout[side]]), IndustrialSurface.Machined, end.x * .92, end.y * .92);
+        const outer = [start.x * .818, start.y * .818] as const;
+        const arcStart = path.arcAt(a.station, side), arcEnd = path.arcAt(b.station, side);
+        const layer = routeLayers[layout[side]];
+        optics.track(from, to, outer, [-start.y / 4.72, start.x / 4.72], .73, arcStart, arcEnd,
+          ControlLamp.Route, FacilityLightShape.Transfer, .78, 1, [end.x * .818, end.y * .818], progress, layer);
         if (a.station < path.open || b.station > path.merge) continue;
         for (const x of [-2.05, 2.05]) {
           conduit(metal, from, to, x, -3.46, .48, .42, armor, IndustrialSurface.Coated);
           conduit(lights, from, to, x, -3.22, .08, .055, tint);
+          const at = [x, -3.18] as const;
+          optics.track(from, to, at, [1, 0], .43, arcStart, arcEnd,
+            ControlLamp.Route, FacilityLightShape.Transfer, .78, .78, at, progress, layer);
         }
       }
     }
@@ -179,11 +195,20 @@ export class DescentJunction {
     const guides = new THREE.Mesh(lights.build(), fixtures);
     guides.name = 'descent-transfer-guideways';
     this.group.add(hull, guides);
+    const chase = optics.build(installation);
+    if (chase) {
+      chase.name = 'descent-transfer-chase';
+      chase.onBeforeRender = () => { installation.uniformsNeedUpdate = true; };
+      this.group.add(chase);
+    }
   }
 
   dispose() {
     this.group.removeFromParent();
-    for (const mesh of this.group.children as THREE.Mesh[]) mesh.geometry.dispose();
+    for (const mesh of this.group.children as THREE.Mesh[]) {
+      if (mesh instanceof THREE.InstancedMesh) mesh.dispose();
+      mesh.geometry.dispose();
+    }
     this.group.clear();
   }
 }
