@@ -119,6 +119,91 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   expect(errors).toEqual([]);
 });
 
+test('the fixed DESCENT camera plays, isolates and restores the production lighting score with CONTROL audio', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto('/debug/#descent');
+  const facility = page.locator('#descent');
+  await facility.getByRole('button', { name: 'Open live facility' }).click();
+  const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
+  const phrase = facility.getByRole('combobox', { name: 'Lighting phrase' });
+  const quality = facility.getByRole('combobox', { name: 'Facility quality' });
+  const focus = facility.getByRole('combobox', { name: 'Lighting focus' });
+  const seek = facility.getByRole('slider', { name: 'Score beat' });
+  await facility.getByRole('combobox', { name: 'CONTROL chapter' }).selectOption('5');
+  await expect(canvas).toHaveAttribute('data-light-beat', '314.000');
+  const station = await canvas.getAttribute('data-station');
+  await expect(phrase.locator('option')).toHaveCount(25);
+  await phrase.selectOption('18');
+  await facility.getByRole('combobox', { name: 'Playback length' }).selectOption('16');
+  await expect(seek).toHaveAttribute('max', '352');
+  const play = facility.getByRole('button', { name: 'Play lighting', exact: true });
+  const pause = facility.getByRole('button', { name: 'Pause lighting' });
+  const currentBeat = async () => Number(await canvas.getAttribute('data-light-beat'));
+  await play.click();
+  await expect(pause).toBeVisible();
+  const frames: Buffer[] = [];
+  for (const target of [289, 290, 292]) {
+    await expect.poll(currentBeat).toBeGreaterThan(target);
+    frames.push(await canvas.screenshot({ path: info.outputPath(`score-playback-${target}.png`) }));
+  }
+  expect(frames.every((frame, i) => i === 0 || !frame.equals(frames[i - 1]))).toBe(true);
+  await pause.click();
+  const paused = await currentBeat();
+  await page.waitForTimeout(350);
+  expect(await currentBeat()).toBe(paused);
+  await play.click();
+  await expect.poll(currentBeat).toBeGreaterThan(paused + .5);
+  await facility.getByRole('button', { name: 'Replay lighting' }).click();
+  await expect(pause).toBeVisible();
+  expect(await currentBeat()).toBeLessThan(290);
+  await pause.click();
+  await facility.getByRole('combobox', { name: 'Playback length' }).selectOption('8');
+  await expect(seek).toHaveAttribute('max', '320');
+  await seek.fill('311');
+  await expect(canvas).toHaveAttribute('data-light-beat', '311.000');
+  const isolated = new Set<string>();
+  for (const group of ['roof', 'floor', 'left', 'right', 'glass']) {
+    await focus.selectOption(group);
+    const frame = await canvas.screenshot({ path: info.outputPath(`group-${group}.png`) });
+    isolated.add(frame.toString('base64'));
+  }
+  expect(isolated.size).toBe(5);
+  for (const profile of ['low', 'auto', 'high']) {
+    await quality.selectOption(profile);
+    await focus.selectOption('all');
+    await seek.press('ArrowRight');
+    await expect(canvas).toHaveAttribute('data-station', station!);
+    await expect(canvas).toHaveAttribute('data-light-amount', '1.000');
+  }
+  const dynamics = facility.getByRole('checkbox', { name: 'Dynamic lights' });
+  await quality.selectOption('low');
+  await dynamics.uncheck();
+  await seek.fill('316');
+  await expect(canvas).toHaveAttribute('data-light-beat', '316.000');
+  await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
+  const quiet = await canvas.screenshot();
+  await seek.fill('317');
+  await expect(canvas).toHaveAttribute('data-light-beat', '317.000');
+  expect((await canvas.screenshot()).equals(quiet)).toBe(true);
+  await dynamics.check();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(canvas).toHaveAttribute('data-light-amount', '0.000');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await expect(canvas).toHaveAttribute('data-light-amount', '1.000');
+  const recovery = await canvas.evaluateHandle(element => (element as HTMLCanvasElement).getContext('webgl2')!
+    .getExtension('WEBGL_lose_context'));
+  await recovery.evaluate(ext => ext!.loseContext());
+  const status = facility.locator('p[role="status"]');
+  await expect(status).toContainText('Waiting for WebGL');
+  await recovery.evaluate(ext => ext!.restoreContext());
+  await expect(status).toHaveCount(0);
+  await expect(canvas).toHaveAttribute('data-station', station!);
+  await expect(canvas).toHaveAttribute('data-light-amount', '1.000');
+  expect(errors).toEqual([]);
+});
+
 const transferFlights = [
   { route: 'main', difficulty: 'normal', mode: 'standard', seed: 0, speed: 'cruise' },
   { route: 'challenge', difficulty: 'hard', mode: 'standard', seed: 1, speed: 'boost' },
@@ -238,6 +323,7 @@ for (const difficulty of ['normal', 'hard'] as const) {
     const metrics = () => page.evaluate(() => JSON.parse(window.b0Harness.metrics() || '{}') as {
       phase: string; beat: number; speed: number; hitCount: number; chunks: number; postFailure: string | null;
       dynamics: { amount: number };
+      lightTime: number; descentLighting: { beat: number; phrase: number; amount: number; rim: number };
     });
     for (const [label, beat, boost] of [
       ['shaft', 204, true], ['core', 269, false], ['lockdown', 312, true], ['breach', 367, false],
@@ -250,10 +336,21 @@ for (const difficulty of ['normal', 'hard'] as const) {
       await expect.poll(async () => (await metrics()).beat).toBeGreaterThan(beat + 3);
       const snapshot = await metrics();
       expect(snapshot).toMatchObject({ phase: 'playing', hitCount: 0, postFailure: null, dynamics: { amount: 1 } });
+      expect(snapshot.descentLighting.beat).toBeCloseTo(snapshot.lightTime * 136 / 60, 7);
+      expect(snapshot.descentLighting.rim).toBeGreaterThan(0);
       expect(snapshot.chunks).toBeLessThanOrEqual(5);
       if (boost) {
         expect(snapshot.speed).toBeGreaterThan(43);
         await page.keyboard.up('Shift');
+      }
+      if (label === 'lockdown') {
+        await page.evaluate(() => window.b0Harness.pause());
+        await expect.poll(async () => (await metrics()).phase).toBe('paused');
+        const held = (await metrics()).descentLighting.beat;
+        await page.waitForTimeout(320);
+        expect((await metrics()).descentLighting.beat).toBe(held);
+        await page.evaluate(() => window.b0Harness.resume(true));
+        await expect.poll(async () => (await metrics()).descentLighting.beat).toBeGreaterThan(held + .25);
       }
       await page.locator('canvas').screenshot({ path: info.outputPath(`live-${label}.png`) });
     }

@@ -132,6 +132,7 @@ export class GateVisual {
         ...(descent ? {
           uDescentOpening: { value: new THREE.Vector4(...descent.target, descent.extent[0], descent.extent[1] ?? 0) },
           uDescentNormal: { value: new THREE.Vector2(...descent.normal) },
+          uDescentRimDelta: { value: new THREE.Color(0, 0, 0) },
         } : glass ? { uMicroContrast: { value: 1 } } : {
           uHull: { value: new THREE.Vector3(SECTION.a, SECTION.b, SECTION.ch) },
           uSize: { value: new THREE.Vector2(WALL.w, WALL.h) },
@@ -157,13 +158,23 @@ export class GateVisual {
   }
 
   update(time: number, hue: number, distance: number, modeScale: number, hit: boolean, microContrast = 1, saturation = 1,
-    tint?: THREE.Color | number) {
+    tint?: THREE.Color | number, rim?: THREE.Vector4) {
     const u = this.mat.uniforms;
     u.uTime.value = time;
     u.uHit.value = hit ? 0.8 : 0;
     if (u.uMicroContrast) u.uMicroContrast.value = microContrast;
     if (tint === undefined) u.uColor.value.setHSL((hue + 1) % 1, 0.72 * saturation, 0.55);
     else u.uColor.value.set(tint);
+    if (rim && u.uDescentRimDelta) {
+      const base = u.uColor.value as THREE.Color;
+      const weight = rim.w * (hit ? .20 : 1);
+      const gain = 1 + .24 * weight;
+      u.uDescentRimDelta.value.setRGB(
+        (base.r + weight * (rim.x - base.r)) * gain - base.r,
+        (base.g + weight * (rim.y - base.g)) * gain - base.g,
+        (base.b + weight * (rim.z - base.b)) * gain - base.b,
+      );
+    }
     const fadeIn = this.fullSightRange ? 1 : 1 - THREE.MathUtils.smoothstep(distance, 140 * modeScale, 190 * modeScale);
     const fadeOut = THREE.MathUtils.clamp((distance + 2.5) / (this.fullSightRange ? 2.5 : 3), 0, 1);
     u.uFade.value = fadeIn * fadeOut;

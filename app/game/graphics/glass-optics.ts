@@ -42,6 +42,7 @@ uniform int uPaneSeamCount;
 #ifdef DESCENT_GLASS
 uniform vec4 uDescentOpening;
 uniform vec2 uDescentNormal;
+uniform vec3 uDescentRimDelta;
 #endif
 
 const float A = ${SECTION.a};
@@ -154,7 +155,8 @@ vec4 descentGlass(vec2 p, float pixel, float outer) {
   float laminate = smoothstep(0.0025, 0.027, pixel);
   float haze = 0.71 + 0.14 * surfaceVariation(p) + 0.15 * clamp(0.5 + p.y / (2.0 * B), 0.0, 1.0);
   vec3 tint = mix(uColor, vec3(0.95, 0.41, 0.34), uHit * 0.42);
-  vec3 color = tint * (haze + edge + vWall * 0.20) + vec3(0.08) * rimGlow.x;
+  float litEdge = edge + vWall * 0.20;
+  vec3 color = tint * (haze + litEdge) + uDescentRimDelta * litEdge + vec3(0.08) * rimGlow.x;
   float film = mix(0.023, 0.136, laminate);
   float body = coverageMask * (mix(0.145, 0.032, laminate) + 0.055 * vWall);
   float alpha = (film + body + coverageMask * 0.092 * edge) * uFade;

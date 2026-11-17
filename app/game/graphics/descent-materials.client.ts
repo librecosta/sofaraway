@@ -1,73 +1,89 @@
 import * as THREE from 'three';
-import { IndustrialLight, IndustrialSurface, IndustrialTrim, industrialSurfacePeriod } from './industrial-geometry';
+import { ControlLamp, controlLampCount } from '../core/descent-lighting';
+import { IndustrialSurface, IndustrialTrim, industrialSurfacePeriod } from './industrial-geometry';
 
-const warningRed = new THREE.Color(0xff4228);
+export interface FacilityLightingUniforms {
+  groups: THREE.Vector4[];
+  spill: THREE.Vector3[];
+  motion: THREE.Vector4;
+  focus: { value: number };
+}
 
-export function facilityLampMaterial(cue: THREE.Vector4, phase: { value: number }, color = 0xffffff) {
+const scoreUniforms = `
+  uniform vec4 controlLamps[${controlLampCount}];
+  uniform vec4 controlMotion; // Color mix, directional movement, warning relay, music beat.
+  uniform int controlFocus;
+  float scoreWeight(int group) {
+    return (controlFocus == -1 || controlFocus == group) ? controlMotion.x : 0.0;
+  }
+`;
+
+export function facilityLampMaterial(score: FacilityLightingUniforms, color = 0xffffff) {
   const material = new THREE.MeshBasicMaterial({
     vertexColors: true, side: THREE.DoubleSide, toneMapped: false, color,
   });
   material.onBeforeCompile = shader => {
-    shader.uniforms.facilityCue = { value: cue };
-    shader.uniforms.facilityPhase = phase;
-    shader.uniforms.warningRed = { value: warningRed };
+    shader.uniforms.controlLamps = { value: score.groups };
+    shader.uniforms.controlMotion = { value: score.motion };
+    shader.uniforms.controlFocus = score.focus;
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `
       #include <common>
       attribute vec2 industrialLight;
-      varying vec2 vIndustrialLight;
-    `).replace('#include <begin_vertex>', `
-      #include <begin_vertex>
-      vIndustrialLight = industrialLight;
-    `);
-    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
-      #include <common>
-      varying vec2 vIndustrialLight;
-      uniform vec4 facilityCue;
-      uniform float facilityPhase;
-      uniform vec3 warningRed;
-    `).replace('#include <color_fragment>', `
-      #include <color_fragment>
-      float station = vIndustrialLight.x;
-      float role = vIndustrialLight.y;
-      if (role > ${IndustrialLight.Alarm - .5}) {
-        // Neighboring bulkheads answer each other. The stable amber level stays visible.
-        float relay = 0.5 + 0.5 * cos(6.2831853 * (station / 18.0 - facilityPhase));
-        float alarm = facilityCue.z * (0.20 + 0.80 * relay);
-        diffuseColor.rgb = mix(diffuseColor.rgb, warningRed, clamp(alarm * 0.82, 0.0, 0.82)) * (0.67 + alarm);
-      } else if (role > ${IndustrialLight.Guide - .5}) {
-        float travel = abs(fract(station / 52.0 - facilityPhase + 0.5) - 0.5);
-        float packet = 1.0 - smoothstep(0.08, 0.39, travel);
-        diffuseColor.rgb *= facilityCue.x + facilityCue.y * packet;
-      } else if (role > ${IndustrialLight.Marker - .5}) {
-        diffuseColor.rgb *= facilityCue.x;
-      } else if (role > ${IndustrialLight.Stator - .5}) {
-        diffuseColor.rgb *= facilityCue.w;
+      ${scoreUniforms}
+    `).replace('#include <color_vertex>', `
+      #include <color_vertex>
+      int group = int(industrialLight.y + 0.5);
+      vec4 cue = controlLamps[group];
+      float gain = cue.w;
+      if (group != ${ControlLamp.Route}) {
+        float station = industrialLight.x;
+        float enabled = float(controlFocus == -1 || controlFocus == group);
+        float travel = controlMotion.y;
+        float beat = controlMotion.w;
+        if (group == ${ControlLamp.Rail} || group == ${ControlLamp.Deck} || group == ${ControlLamp.DeepDeck} ||
+            group == ${ControlLamp.Left} || group == ${ControlLamp.Right}) {
+          float delay = group == ${ControlLamp.DeepDeck} || group == ${ControlLamp.Right} ? 0.27 : 0.0;
+          float wave = cos(6.2831853 * (station / 64.0 - sign(travel) * (beat / 7.0 - delay)));
+          gain += enabled * abs(travel) * wave *
+            (group == ${ControlLamp.Rail} ? 0.21 : 0.11);
+        } else if (group == ${ControlLamp.Alarm}) {
+          float relay = 0.5 + 0.5 * cos(6.2831853 * (station / 18.0 - beat / 4.0));
+          gain += enabled * controlMotion.z * (0.31 * relay * relay - 0.07);
+        }
+        vColor.rgb = mix(vColor.rgb, cue.rgb, 0.73 * scoreWeight(group));
       }
+      vColor.rgb *= max(gain, 0.29);
     `);
   };
   return material;
 }
 
-export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Color) {
+export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Color, score: FacilityLightingUniforms) {
   const material = new THREE.MeshStandardMaterial({
     name: 'facility-structure', vertexColors: true, side: THREE.DoubleSide,
   });
   material.onBeforeCompile = shader => {
     shader.uniforms.facilityFill = { value: fill };
     shader.uniforms.facilitySecurity = { value: security };
+    shader.uniforms.controlSpill = { value: score.spill };
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `
       #include <common>
       attribute vec4 industrialSurface;
+      attribute float industrialSpill;
       varying vec4 vIndustrialSurface;
+      varying vec3 vFixtureTint;
+      uniform vec3 controlSpill[${controlLampCount}];
     `).replace('#include <begin_vertex>', `
       #include <begin_vertex>
       vIndustrialSurface = industrialSurface;
+      vFixtureTint = controlSpill[int(industrialSpill + 0.5)];
     `);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `
       #include <common>
       varying vec4 vIndustrialSurface;
       uniform vec3 facilityFill;
       uniform vec3 facilitySecurity;
+      varying vec3 vFixtureTint;
 
       float filteredRib(float phase, float width, float footprint) {
         float centre = abs(fract(phase + 0.5) - 0.5);
@@ -114,7 +130,7 @@ export function facilityStructureMaterial(fill: THREE.Color, security: THREE.Col
       #include <lights_fragment_end>
       float work = vIndustrialSurface.w * (0.58 + 0.42 * vIndustrialSurface.w);
       reflectedLight.indirectDiffuse += diffuseColor.rgb *
-        (facilityFill * cavity + vec3(0.77, 0.88, 1.0) * work) * (1.0 - 0.38 * metalnessFactor);
+        (facilityFill * cavity + vFixtureTint * work) * (1.0 - 0.38 * metalnessFactor);
       float glancing = 1.0 - clamp(dot(geometryNormal, geometryViewDir), 0.0, 1.0);
       reflectedLight.indirectSpecular += vec3(0.041, 0.054, 0.064) * machinedEdge *
         (0.28 + work) * (0.52 + 0.48 * glancing * glancing);

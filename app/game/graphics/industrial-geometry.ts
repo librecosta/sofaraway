@@ -1,8 +1,8 @@
 import * as THREE from 'three';
+import { ControlLamp } from '../core/descent-lighting';
 
 export const enum IndustrialSurface { Cast, Coated, Machined, Polymer }
 export const enum IndustrialTrim { None = 0, PolishedLip = .25, SecurityRail = .50 }
-export const enum IndustrialLight { Work, Stator, Marker, Guide, Alarm }
 
 const half = THREE.DataUtils.toHalfFloat;
 export const industrialSurfacePeriod = 120;
@@ -17,14 +17,16 @@ export class IndustrialGeometry {
   private readonly normalValues: number[] = [];
   private readonly surfaceValues: number[] = [];
   private readonly lightValues: number[] = [];
-  private light = IndustrialLight.Work;
+  private readonly spillGroups: number[] = [];
+  private readonly spill = { group: ControlLamp.Roof };
+  private light = ControlLamp.Roof;
   private lightStart = 0;
   private lightEnd = 0;
 
-  constructor(private readonly workSpill?: (point: THREE.Vector3, normal: THREE.Vector3) => number,
+  constructor(private readonly workSpill?: (point: THREE.Vector3, normal: THREE.Vector3, target: { group: ControlLamp }) => number,
     private readonly scoredLights = false) {}
 
-  lightAt(light: IndustrialLight, start: number, end = start) {
+  lightAt(light: ControlLamp, start: number, end = start) {
     this.light = light;
     this.lightStart = start;
     this.lightEnd = end;
@@ -45,16 +47,21 @@ export class IndustrialGeometry {
       const u = half(a.distanceTo(b)), v0 = half(start), v1 = half(end);
       // Each face shares a finish and trim code in the same attribute.
       const finish = half(surface + trim);
-      this.surfaceValues.push(
-        0, v0, finish, half(this.workSpill(a, this.normal)),
-        u, v0, finish, half(this.workSpill(b, this.normal)),
-        u, v1, finish, half(this.workSpill(c, this.normal)),
-        0, v1, finish, half(this.workSpill(d, this.normal)),
-      );
+      this.surfaceVertex(a, 0, v0, finish);
+      this.surfaceVertex(b, u, v0, finish);
+      this.surfaceVertex(c, u, v1, finish);
+      this.surfaceVertex(d, 0, v1, finish);
     }
     if (this.scoredLights) this.lightValues.push(this.lightStart, this.light, this.lightEnd, this.light,
       this.lightEnd, this.light, this.lightStart, this.light);
     this.indices.push(index, index + 1, index + 2, index, index + 2, index + 3);
+  }
+
+  private surfaceVertex(p: THREE.Vector3, u: number, v: number, finish: number) {
+    this.spill.group = ControlLamp.Roof;
+    const strength = this.workSpill!(p, this.normal, this.spill);
+    this.surfaceValues.push(u, v, finish, half(strength));
+    this.spillGroups.push(this.spill.group);
   }
 
   beam(a: THREE.Vector3, b: THREE.Vector3, forward: THREE.Vector3, halfWidth: number, halfDepth: number, color: THREE.Color,
@@ -79,7 +86,10 @@ export class IndustrialGeometry {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normalValues, 3));
-    if (this.workSpill) geometry.setAttribute('industrialSurface', new THREE.Float16BufferAttribute(this.surfaceValues, 4));
+    if (this.workSpill) {
+      geometry.setAttribute('industrialSurface', new THREE.Float16BufferAttribute(this.surfaceValues, 4));
+      geometry.setAttribute('industrialSpill', new THREE.Uint8BufferAttribute(this.spillGroups, 1));
+    }
     if (this.scoredLights) geometry.setAttribute('industrialLight', new THREE.Float32BufferAttribute(this.lightValues, 2));
     geometry.setIndex(this.indices);
     return geometry;

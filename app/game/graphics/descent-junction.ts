@@ -6,7 +6,8 @@ import { descentCargo } from '../core/descent-routes';
 import { SECTION } from '../core/section';
 import type { BranchPath } from './branch-path';
 import { collar, conduit, crossBeam, point, section } from './descent-architecture';
-import { IndustrialGeometry, IndustrialLight, IndustrialSurface } from './industrial-geometry';
+import { ControlLamp } from '../core/descent-lighting';
+import { IndustrialGeometry, IndustrialSurface } from './industrial-geometry';
 import type { PathFrame } from './path';
 
 export const descentRouteSwatches = { main: '#a3d8e6', challenge: '#a9a2fa', score: '#ffbc73' } as const;
@@ -51,18 +52,25 @@ export class DescentJunction {
       const separated = station >= path.open && station <= path.merge;
       const lampHeight = separated ? 3.48 : SECTION.b * (h - .15) - .034;
       return { station, base, w, h, separated, lampHeight,
-        workLights: [-1, 1].map(sign => point(base, 0, sign * lampHeight)) };
+        workLights: [-1, 1].map(sign => ({
+          origin: point(base, 0, sign * lampHeight), group: sign < 0 ? ControlLamp.Floor : ControlLamp.Roof,
+        })) };
     });
     const workLights = gantries.flatMap(gantry => gantry.workLights);
     const lampDelta = new THREE.Vector3();
-    const metal = new IndustrialGeometry((p, normal) => {
-      let spill = .11;
-      for (const lamp of workLights) {
-        lampDelta.subVectors(lamp, p);
+    const metal = new IndustrialGeometry((p, normal, target) => {
+      let spill = .11, strongest = 0;
+      for (const { origin, group } of workLights) {
+        lampDelta.subVectors(origin, p);
         const distance = lampDelta.length();
         if (distance >= 17 || distance < .001) continue;
         const falloff = 1 - distance / 17;
-        spill += falloff * falloff * (.19 + .22 * Math.max(0, normal.dot(lampDelta) / distance));
+        const strength = falloff * falloff * (.19 + .22 * Math.max(0, normal.dot(lampDelta) / distance));
+        spill += strength;
+        if (strength > strongest) {
+          strongest = strength;
+          target.group = group;
+        }
       }
       return Math.min(.59, spill);
     });
@@ -84,7 +92,7 @@ export class DescentJunction {
         metal.quad(a.wall[edge], a.wall[next], b.wall[next], b.wall[edge],
           tint.copy(armor).multiplyScalar(edge % 4 === 0 ? .84 : 1), IndustrialSurface.Cast, [a.station, b.station]);
       }
-      lights.lightAt(IndustrialLight.Guide, a.station, b.station);
+      lights.lightAt(ControlLamp.Route, a.station, b.station);
       for (const sign of [-1, 1]) for (const level of [-1, 1]) {
         const x = sign * (SECTION.a + .18), y = level * 1.12;
         const approach = level < 0 && b.station <= path.split;
@@ -115,9 +123,9 @@ export class DescentJunction {
     // The outer ribs carry the guideways and leave each flight envelope open.
     for (const { station, base, w, h, separated, lampHeight } of gantries) {
       collar(metal, base, w - .13, h - .15, w + .07, h + .10, .87, rib, rail);
-      lights.lightAt(IndustrialLight.Work, station);
       for (const y of [-1, 1]) {
         if (separated) crossBeam(metal, base, [-4.45, y * 3.75], [4.45, y * 3.75], .26, .95, rib);
+        lights.lightAt(y < 0 ? ControlLamp.Floor : ControlLamp.Roof, station);
         crossBeam(lights, base, [-2.4, y * lampHeight], [2.4, y * lampHeight], .055, .86, work);
       }
       if (!separated) continue;
@@ -139,7 +147,7 @@ export class DescentJunction {
         const wall = edgeDistance(radial.dot(base.r), radial.dot(base.u), w, h);
         const anchor = base.p.clone().addScaledVector(radial, wall);
         metal.beam(point(frame, x, y), anchor, base.f, .29, .82, rib, IndustrialSurface.Cast);
-        lights.lightAt(IndustrialLight.Marker, station);
+        lights.lightAt(ControlLamp.Route, station);
         crossBeam(lights, frame, [-2.15, -3.09], [2.15, -3.09], .054, .56, tint.set(descentRouteSwatches[layout[side]]));
         crossBeam(metal, frame, [-2.55, -3.35], [2.55, -3.35], .31, .58, rail);
       }
@@ -158,7 +166,7 @@ export class DescentJunction {
     const approach = path.sample(cargoStation - 8, cargoSide);
     const exit = path.sample(cargoStation + 6, cargoSide);
     const amber = tint.set(descentRouteSwatches.score);
-    lights.lightAt(IndustrialLight.Work, cargoStation);
+    lights.lightAt(ControlLamp.Route, cargoStation);
     for (const x of [-2.05, 2.05]) {
       conduit(metal, approach, exit, x, -3.56, .83, .54, rail, IndustrialSurface.Machined);
       conduit(lights, approach, exit, x, -3.28, .15, .04, amber);

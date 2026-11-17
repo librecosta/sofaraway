@@ -12,11 +12,13 @@ import { descentGateKinds, laserBandPitch, laserBeamRadius, laserOpening, matrix
 import { controlEvents, controlTrack, step } from '../../app/game/core/descent-score';
 import { idleInput } from '../../app/game/core/input';
 import { referenceFor } from '../../app/game/core/reference-track';
-import { controlFixtureCue, steadyLights } from '../../app/game/core/rhythmic-lights';
+import { ControlLamp, controlLightingAt, controlLightPhrases, neutralLampGains, newControlLighting }
+  from '../../app/game/core/descent-lighting';
+import { steadyLights } from '../../app/game/core/rhythmic-lights';
 import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
 import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
-import { IndustrialLight, IndustrialSurface, IndustrialTrim } from '../../app/game/graphics/industrial-geometry';
+import { IndustrialSurface, IndustrialTrim } from '../../app/game/graphics/industrial-geometry';
 import { DESCENT_GLASS_THICKNESS, descentGlassPanes } from '../../app/game/graphics/descent-glass';
 import { GateGeometries } from '../../app/game/graphics/gates.client';
 import { descentExamples } from '../../app/game/debug/catalog';
@@ -95,10 +97,14 @@ test('outer room dimensions vary while the laser lanes stay clear of architectur
       const tags = geometry.getAttribute('industrialLight');
       return new Set(Array.from({ length: tags.count }, (_, i) => tags.getY(i)));
     };
-    expect(roles(work.geometry)).toEqual(new Set(zone.name === 'CORE'
-      ? [IndustrialLight.Work, IndustrialLight.Stator] : [IndustrialLight.Work]));
-    expect(roles(security.geometry)).toEqual(new Set([IndustrialLight.Guide,
-      zone.name === 'LOCKDOWN' ? IndustrialLight.Alarm : IndustrialLight.Marker]));
+    const workRoles = [ControlLamp.Roof, ControlLamp.Floor];
+    if (zone.name === 'CORE') workRoles.push(ControlLamp.Stator);
+    if (zone.name === 'THE WELL') workRoles.push(ControlLamp.Deck, ControlLamp.DeepDeck);
+    expect(roles(work.geometry)).toEqual(new Set(workRoles));
+    const securityRoles = [ControlLamp.Rail, ControlLamp.Left, ControlLamp.Right];
+    if (zone.name === 'LOCKDOWN') securityRoles.push(ControlLamp.Alarm);
+    if (zone.name === 'THE WELL') securityRoles.push(ControlLamp.Deck);
+    expect(roles(security.geometry)).toEqual(new Set(securityRoles));
     for (const mesh of [structure, work, security]) mesh.geometry.dispose();
     room.dispose();
   }
@@ -196,26 +202,47 @@ test('DESCENT room air blends through authored boundaries independently of the s
   }
 });
 
-test('the CONTROL lighting score separates travel, stator breath and warning accents', () => {
-  const sample = (beat: number, pulse: number, amount = 1) => {
-    const cue = { marker: 0, flow: 0, alarm: 0, stator: 0, phase: 0 };
-    controlFixtureCue(beat, { ...steadyLights, pulse, amount }, cue);
+test('CONTROL has 24 continuous lighting phrases with independent groups and bounded warning accents', () => {
+  const sample = (beat: number, amount = 1) => {
+    const cue = newControlLighting();
+    controlLightingAt(beat, amount, cue);
     return cue;
   };
-  const order = sample(16, 1), lock = sample(40, 1), flight = sample(116, 1);
-  const well = sample(208, 1), hold = sample(268, 1), lockdown = sample(312, 1), breach = sample(378, 1);
-  expect(lock.marker).toBeGreaterThan(order.marker);
-  expect(flight.flow).toBeGreaterThan(lock.flow * 2);
-  expect(well.marker).toBeLessThan(flight.marker);
-  expect(hold.stator - sample(264, 1).stator).toBeGreaterThan(.45);
-  expect(lockdown.alarm).toBeGreaterThan(flight.alarm * 2);
-  expect(breach.alarm).toBeLessThan(order.alarm);
-  expect(sample(312, 0).alarm).toBeLessThan(lockdown.alarm);
-  expect(sample(312, 1, 0)).toMatchObject({ flow: 0, alarm: 0, stator: 1 });
-  for (const { startBeat } of controlTrack.sections.slice(1)) {
-    const before = sample(startBeat - .0001, .7), after = sample(startBeat + .0001, .7);
-    for (const field of ['marker', 'flow', 'alarm', 'stator'] as const) {
-      expect(Math.abs(after[field] - before[field])).toBeLessThan(.001);
+  expect(controlLightPhrases).toHaveLength(controlTrack.bars / 4);
+  const voices = new Set<number>();
+  const levels = new Set<string>();
+  for (let i = 0; i < controlLightPhrases.length; i++) {
+    const center = sample(i * 16 + 8);
+    expect(center.phrase).toBe(i);
+    levels.add(center.gains.slice(0, 4).toString());
+    if (i) {
+      const before = sample(i * 16 - .0001), after = sample(i * 16 + .0001);
+      expect(after.previous).toBe(before.phrase);
+      for (const [group, value] of after.gains.entries()) expect(value).toBeCloseTo(before.gains[group], 3);
+      expect(after.rim).toBeCloseTo(before.rim, 3);
+      expect(after.travel).toBeCloseTo(before.travel, 3);
+    }
+  }
+  expect(levels.size).toBe(24);
+  for (let beat = 0; beat < controlTrack.beats; beat += .0625) {
+    const cue = sample(beat);
+    cue.accents.forEach((level, voice) => { if (level > .1) voices.add(voice); });
+    expect(cue.gains[ControlLamp.Roof]).toBeGreaterThan(.85);
+    expect(cue.gains[ControlLamp.Floor]).toBeGreaterThan(.85);
+    expect(cue.gains[ControlLamp.Route]).toBeCloseTo(neutralLampGains[ControlLamp.Route]);
+    expect(cue.rim).toBeLessThan(.5);
+  }
+  expect(voices.size).toBe(6);
+  expect(sample(120).travel).toBeGreaterThan(.4);
+  expect(sample(136).travel).toBeLessThan(-.4);
+  expect(Math.abs(sample(264).gains[ControlLamp.Stator] - sample(271).gains[ControlLamp.Stator])).toBeGreaterThan(.24);
+  expect(sample(328).relay).toBeGreaterThan(.4);
+  expect(sample(377).relay).toBe(0);
+  for (const beat of [0, 64, 128, 207, 271, 314, 377]) {
+    const off = sample(beat, 0);
+    expect(off).toMatchObject({ travel: 0, relay: 0, rim: 0, amount: 0 });
+    for (const [group, base] of neutralLampGains.entries()) {
+      expect(off.gains[group]).toBeCloseTo(base, 6);
     }
   }
 });

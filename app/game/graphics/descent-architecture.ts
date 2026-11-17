@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { facilityZones } from '../core/descent-facility';
 import { SECTION, SECTION_OUTLINE } from '../core/section';
-import { IndustrialGeometry, IndustrialLight, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
+import { ControlLamp } from '../core/descent-lighting';
+import { IndustrialGeometry, IndustrialSurface, IndustrialTrim } from './industrial-geometry';
 import type { Path, PathFrame } from './path';
 
 type Zone = ReturnType<typeof facilityZones>[number];
@@ -264,7 +265,7 @@ export function securityTint(zone: Zone, next: Zone | undefined, station: number
 function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: number) {
   const fixtures = new IndustrialGeometry(undefined, true);
   const sources: { station: number; extent: number; origin: THREE.Vector3; toEnd: THREE.Vector3;
-    inverseLength: number; reachSq: number }[] = [];
+    inverseLength: number; reachSq: number; group: ControlLamp; gain: number }[] = [];
   for (const [i, zone] of zones.entries()) {
     const first = bayAtOrAfter(zone, from - workPadding);
     const limit = Math.min(zone.end, to + workPadding);
@@ -274,15 +275,16 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
       const fixture = (a: readonly [number, number], b: readonly [number, number], halfWidth: number,
-        halfDepth: number, reach: number, offset = 0, cue = IndustrialLight.Work) => {
+        halfDepth: number, reach: number, offset = 0, group = a[1] + b[1] >= 0 ? ControlLamp.Roof : ControlLamp.Floor,
+        spillOnly = false) => {
         const origin = point(frame, ...a, offset), end = point(frame, ...b, offset);
-        if (s >= from && s < to) {
-          fixtures.lightAt(cue, s + offset);
+        if (!spillOnly && s >= from && s < to) {
+          fixtures.lightAt(group, s + offset);
           fixtures.beam(origin, end, frame.f, halfWidth, halfDepth, lamp);
         }
         const toEnd = end.sub(origin);
         sources.push({ station: s + offset, extent: reach + 5, origin, toEnd,
-          inverseLength: 1 / toEnd.lengthSq(), reachSq: reach ** 2 });
+          inverseLength: 1 / toEnd.lengthSq(), reachSq: reach ** 2, group, gain: spillOnly ? .28 : 1 });
       };
       if (hasFlightCollar(zone, bay, s)) {
         // Recess the strips into the flat top and bottom faces of the collar throat.
@@ -297,22 +299,35 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       if (zone.name === 'THE WELL') {
         const y = h * .79;
         for (const side of [-1, 1]) {
-          fixture([side * 9.72, -6.4], [side * 9.72, 6.4], .085, 1.80, 14);
-          fixture([side * 13.12, -y * .60], [side * 13.12, y * .60], .061, .66, workReach, 5.6);
+          fixture([side * 9.72, -6.4], [side * 9.72, 6.4], .085, 1.80, 14, 0, ControlLamp.Deck);
+          fixture([side * 13.12, -y * .60], [side * 13.12, y * .60], .061, .66, workReach, 5.6, ControlLamp.DeepDeck);
         }
       }
       if (zone.name === 'CORE' && bay % 2 === 0) {
         for (const side of [-1, 1]) for (const level of [-1, 1]) {
-          fixture([side * 3.3, level * 8.66], [side * 7.24, level * 8.11], .075, 1.10, 15, 0, IndustrialLight.Stator);
+          fixture([side * 3.3, level * 8.66], [side * 7.24, level * 8.11], .075, 1.10, 15, 0, ControlLamp.Stator);
+        }
+      }
+      // These sources sit at the security strips emitted in the other batch.
+      const service = layouts[zone.name];
+      const released = zone.name === 'BREACH' && s > releaseStation(zone);
+      const y = service.serviceY * (released ? .42 : .87) * .64;
+      for (const side of [-1, 1]) {
+        const x = side * (service.serviceX - .54);
+        fixture([x, -y], [x, released ? 0 : y], 0, 0, 2.8, 0, side < 0 ? ControlLamp.Left : ControlLamp.Right, true);
+      }
+      if (zone.name === 'LOCKDOWN') {
+        for (const level of [-1, 1]) {
+          fixture([-2.26, level * 4.13], [2.26, level * 4.13], 0, 0, 3.7, 0, ControlLamp.Alarm, true);
         }
       }
     }
   }
   let nearby: typeof sources = [];
   const towardLight = new THREE.Vector3();
-  const structure = new IndustrialGeometry((vertex, normal) => {
-    let irradiance = 0;
-    for (const { origin, toEnd, inverseLength, reachSq } of nearby) {
+  const structure = new IndustrialGeometry((vertex, normal, target) => {
+    let irradiance = 0, strongest = 0;
+    for (const { origin, toEnd, inverseLength, reachSq, group, gain } of nearby) {
       towardLight.subVectors(origin, vertex);
       const t = THREE.MathUtils.clamp(-towardLight.dot(toEnd) * inverseLength, 0, 1);
       towardLight.addScaledVector(toEnd, t);
@@ -321,7 +336,12 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       // The strips light the double-sided plates, with weaker spill along grazing faces.
       const incidence = Math.abs(normal.dot(towardLight)) / Math.sqrt(Math.max(distSq, .25));
       const falloff = 1 - distSq / reachSq;
-      irradiance += falloff ** 3 * (.16 + .84 * incidence);
+      const strength = gain * falloff ** 3 * (.16 + .84 * incidence);
+      irradiance += strength;
+      if (strength > strongest) {
+        strongest = strength;
+        target.group = group;
+      }
     }
     // Compress overlapping fixtures smoothly so adjacent faces keep their lighting contrast.
     return irradiance / (.64 + irradiance);
@@ -360,7 +380,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const mid = (span[0] + span[1]) / 2;
       lightAt(mid);
       securityTint(zone, nextZone, mid, signal, signalTarget);
-      security.lightAt(IndustrialLight.Guide, ...span);
+      security.lightAt(ControlLamp.Rail, ...span);
       const outside = zone.name === 'BREACH' && mid > roofRelease;
       for (const [k, edge] of walls[j].entries()) {
         const next = (k + 1) % walls[j].length;
@@ -409,7 +429,6 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const frame = path.sample(s);
       lightAt(s);
       securityTint(zone, nextZone, s, signal, signalTarget);
-      security.lightAt(zone.name === 'LOCKDOWN' ? IndustrialLight.Alarm : IndustrialLight.Marker, s);
       const [width, height] = dimensions(s, i, zones);
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
@@ -430,6 +449,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
         const y = service.serviceY * (released ? .42 : .87);
         crossBeam(metal, frame, [side * x, -y], [side * x, released ? .12 : y],
           zone.name === 'LOCKDOWN' ? .52 : .29, depth + .64, steel, 0, IndustrialSurface.Coated);
+        security.lightAt(side < 0 ? ControlLamp.Left : ControlLamp.Right, s);
         crossBeam(security, frame, [side * (x - .21), -y * .64], [side * (x - .21), released ? 0 : y * .64],
           .048, depth + .66, signal);
       }
@@ -459,6 +479,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
             crossBeam(metal, frame, [-10, side * (y + 8.5) / 2], [10, side * (y + 8.5) / 2],
               Math.max(.7, (y - 8.5) / 2), 1.45, steel);
             crossBeam(metal, frame, [side * 10, -8.5], [side * 10, 8.5], .47, 1.78, alloy, 0, IndustrialSurface.Machined);
+            security.lightAt(ControlLamp.Deck, s);
             crossBeam(security, frame, [-6, side * 8.67], [6, side * 8.67], .07, 1.48, signal);
             crossBeam(metal, frame, [side * (x + 13) / 2, -y * .72], [side * (x + 13) / 2, y * .72],
               Math.max(.55, (x - 13) * .50), .62, steel, 5.6);
@@ -487,6 +508,7 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
               serviceCabinet(metal, panelFrame, side, service.serviceX - .38, 2.27, 3.08, equipment, service.serviceY);
             }
           }
+          security.lightAt(ControlLamp.Alarm, s);
           for (const level of [-1, 1]) {
             crossBeam(security, frame, [-2.26, level * 4.13], [2.26, level * 4.13], .060, 1.46, signal);
           }

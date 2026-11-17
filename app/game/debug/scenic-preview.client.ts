@@ -80,7 +80,7 @@ export class ScenicPreview {
     if (this.lost || !this.sim) return;
     this.graphics.draw(this.sim, true, true, { ...lighting, station: this.station });
     const metrics = this.graphics.metrics();
-    const { scenicLights: light, routeLighting } = metrics;
+    const { scenicLights: light, routeLighting, descentLighting } = metrics;
     this.canvas.dataset.ready = 'true';
     this.canvas.dataset.lightBeat = lighting.beat.toFixed(3);
     this.canvas.dataset.zone = light?.zone ?? '';
@@ -88,6 +88,10 @@ export class ScenicPreview {
       ? routeLighting?.[this.sim.route] : undefined;
     this.canvas.dataset.hue = String(tone?.hue ?? light?.hue ?? 0);
     this.canvas.dataset.rim = JSON.stringify(light?.rim);
+    if (descentLighting) {
+      this.canvas.dataset.lightPhrase = String(descentLighting.phrase);
+      this.canvas.dataset.lightAmount = descentLighting.amount.toFixed(3);
+    }
     return metrics;
   }
 

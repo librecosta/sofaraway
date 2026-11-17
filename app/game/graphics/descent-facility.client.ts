@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import type { BranchLayout } from '../core/branches';
 import type { facilityZones } from '../core/descent-facility';
-import { controlFixtureCue } from '../core/rhythmic-lights';
-import type { ControlFixtureCue, DynamicLightEnvelope } from '../core/rhythmic-lights';
+import { ControlLamp, controlLampCount, controlLightingAt, controlLightPhrases, neutralLampGains, newControlLighting }
+  from '../core/descent-lighting';
+import type { ControlLightView } from '../core/descent-lighting';
+import type { DynamicLightEnvelope } from '../core/rhythmic-lights';
 import { buildFacilityArchitecture, securityTint } from './descent-architecture';
 import { DescentJunction } from './descent-junction';
 import { facilityLampMaterial, facilityStructureMaterial } from './descent-materials.client';
@@ -19,6 +21,13 @@ const coreBackdrop = new THREE.Color(0x151924);
 const breachAir = new THREE.Color(0x546a78);
 const breachBackdrop = new THREE.Color(0x758791);
 const endTint = new THREE.Color();
+const fixtureBase = new THREE.Vector3(.77, .88, 1);
+const palettes = controlLightPhrases.map(phrase => ({
+  groups: phrase.colors.map(swatch => new THREE.Color(swatch)), rim: new THREE.Color(phrase.rim),
+}));
+const focusGroup: Record<ControlLightView, number> = {
+  all: -1, glass: -2, roof: ControlLamp.Roof, floor: ControlLamp.Floor, left: ControlLamp.Left, right: ControlLamp.Right,
+};
 
 function roomWeight(station: number, zone: Zone | undefined, edge: number) {
   return zone ? THREE.MathUtils.smoothstep(station, zone.start - edge, zone.start + edge) *
@@ -29,12 +38,18 @@ export class DescentFacility {
   private readonly fill = new THREE.Color();
   private readonly railBounce = new THREE.Color();
   private readonly signalTarget = new THREE.Color();
-  private readonly cue: ControlFixtureCue = { marker: 0, flow: 0, alarm: 0, stator: 1, phase: 0 };
-  private readonly lampGains = new THREE.Vector4(.42, 0, 0, 1);
-  private readonly lampPhase = { value: 0 };
-  private readonly shell = facilityStructureMaterial(this.fill, this.railBounce);
-  private readonly fixtures = facilityLampMaterial(this.lampGains, this.lampPhase, 0xbac1c7);
-  private readonly security = facilityLampMaterial(this.lampGains, this.lampPhase);
+  private readonly cue = newControlLighting();
+  private readonly score = {
+    groups: Array.from({ length: controlLampCount }, (_, i) => new THREE.Vector4(1, 1, 1, neutralLampGains[i])),
+    spill: Array.from({ length: controlLampCount }, () => fixtureBase.clone()),
+    motion: new THREE.Vector4(0, 0, 0, 0),
+    focus: { value: -1 },
+  };
+  private readonly tint = new THREE.Color();
+  readonly gateRim = new THREE.Vector4(1, 1, 1, 0);
+  private readonly shell = facilityStructureMaterial(this.fill, this.railBounce, this.score);
+  private readonly fixtures = facilityLampMaterial(this.score, 0xbac1c7);
+  private readonly security = facilityLampMaterial(this.score);
   private readonly well: Zone | undefined;
   private readonly core: Zone | undefined;
 
@@ -50,7 +65,8 @@ export class DescentFacility {
     return out.setHex(first).lerp(endTint.setHex(last), THREE.MathUtils.smoothstep(station, start, finish));
   }
 
-  light(station: number, beat: number, dynamics: Readonly<DynamicLightEnvelope>, fog: THREE.Color, background: THREE.Color) {
+  light(station: number, beat: number, dynamics: Readonly<DynamicLightEnvelope>, fog: THREE.Color, background: THREE.Color,
+    view: ControlLightView = 'all') {
     const well = roomWeight(station, this.well, 43);
     const core = roomWeight(station, this.core, 43);
     const exit = this.zones[this.zones.length - 1];
@@ -61,14 +77,36 @@ export class DescentFacility {
     this.fill.setRGB(.081 - .024 * well + .016 * core + .095 * outside,
       .094 - .019 * well + .018 * core + .108 * outside,
       .112 - .013 * well + .024 * core + .121 * outside);
-    const cue = this.cue;
-    controlFixtureCue(beat, dynamics, cue);
-    this.lampGains.set(cue.marker, cue.flow, cue.alarm, cue.stator);
-    this.lampPhase.value = cue.phase;
+    const { cue, score, tint } = this;
+    controlLightingAt(beat, dynamics.amount, cue);
+    const from = palettes[cue.previous], to = palettes[cue.phrase], blend = cue.blend;
+    const focus = score.focus.value = focusGroup[view];
+    score.motion.set(cue.amount, cue.travel, cue.relay, beat);
+    for (let i = 0; i < score.groups.length; i++) {
+      tint.copy(from.groups[i]).lerp(to.groups[i], blend);
+      const active = focus === -1 || focus === i;
+      const gain = active ? cue.gains[i] : neutralLampGains[i];
+      score.groups[i].set(tint.r, tint.g, tint.b, gain);
+      const spill = score.spill[i].copy(fixtureBase);
+      const weight = active ? .38 * cue.amount : 0;
+      if (weight) {
+        tint.multiplyScalar(1.2 + .3 * gain);
+        spill.set(tint.r, tint.g, tint.b).lerp(fixtureBase, 1 - weight);
+      }
+    }
+    tint.copy(from.rim).lerp(to.rim, blend);
+    this.gateRim.set(tint.r, tint.g, tint.b, view === 'all' || view === 'glass' ? cue.rim : 0);
     const index = this.zones.findIndex(zone => station < zone.end);
     securityTint(this.zones[index] ?? exit, this.zones[index + 1], station, this.railBounce, this.signalTarget);
-    this.railBounce.multiplyScalar(.005 + cue.marker * .018);
+    const rail = score.groups[ControlLamp.Rail];
+    this.railBounce.lerp(tint.setRGB(rail.x, rail.y, rail.z), focus === -1 ? cue.amount * .42 : 0)
+      .multiplyScalar(.005 + rail.w * .018);
     return .0055 - .00118 * well - .00052 * core - .0010 * outside;
+  }
+
+  get lighting() {
+    const { beat, phrase, amount, travel, relay } = this.cue;
+    return { beat, phrase, amount, travel, relay, rim: this.gateRim.w };
   }
 
   build(from: number, to: number) {

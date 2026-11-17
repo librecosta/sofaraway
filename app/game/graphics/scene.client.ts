@@ -171,7 +171,7 @@ class VolumeScene {
     this.tunnel.update(distance, sim.phase === 'menu', this.junction?.path, sim.branch?.side ?? undefined);
     if (this.facility && this.facilityBackground) {
       const beat = sim.phase === 'menu' ? 0 : lighting?.rhythmBeat ?? lightBeat;
-      this.fog.density = this.facility.light(distance, beat, dynamics, this.fog.color, this.facilityBackground);
+      this.fog.density = this.facility.light(distance, beat, dynamics, this.fog.color, this.facilityBackground, lighting?.descentFocus);
     }
     const junction = this.junction;
     if (this.scenic) {
@@ -284,7 +284,7 @@ class VolumeScene {
       const tone = route && junction instanceof BranchVisual ? junction.tones[route] : undefined;
       const gateTint = this.facility?.gateTint(gate.worldStation, this.gateTint);
       if (!visual.update(sim.time, tone?.hue ?? this.hue, ahead, scale,
-        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint)) continue;
+        'hit' in gate && gate.hit, microContrast, tone?.saturation ?? this.saturation, gateTint, this.facility?.gateRim)) continue;
       if (!route || route === sim.route) {
         if (ahead > 1 && ahead < focus) focus = ahead;
         if (!aimed && ahead > 3 && ahead < 34) aimed = gate;
@@ -325,6 +325,7 @@ class VolumeScene {
   }
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
+  get descentLighting() { return this.facility?.lighting; }
   get continuity() { return this.gameplay.world?.continuous ? this.tunnel.continuity : undefined; }
   get skyDaylight() { return this.exterior?.daylight; }
   get encoreMeshes() {
@@ -652,6 +653,7 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
+      descentLighting: this.volume?.descentLighting,
       continuity: this.volume?.continuity,
       skyDaylight: this.volume?.skyDaylight,
       exterior: this.volume?.exterior?.info,
