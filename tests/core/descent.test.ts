@@ -220,6 +220,41 @@ test('service assemblies and the BREACH roof cap stay attached to their world st
   }
 });
 
+test('HOLD and BREACH work strips are recessed into their collars and stop when the collars do', () => {
+  const path = new Path(200, 10, 'facility');
+  path.straight(200);
+  const zones = facilityZones(volume, 'standard');
+  for (const { section, mounted, bare } of [
+    { section: 'HOLD', mounted: [2, 56], bare: [29, 83] },
+    { section: 'BREACH', mounted: [47, 92], bare: [137, 182] },
+  ]) {
+    const zone = zones.find(zone => zone.section === section)!;
+    const room = new DescentFacility(path, [{ ...zone, start: 0, finish: 200, end: 200 }]);
+    const [metal, fixtures, security] = room.build(0, 200);
+    try {
+      for (const station of [...mounted, ...bare]) {
+        const frame = path.sample(station);
+        for (const side of [-1, 1]) for (const level of [-1, 1]) {
+          const ray = new Raycaster(frame.p.clone().addScaledVector(frame.r, side * 1.45),
+            frame.u.clone().multiplyScalar(level), 0, 4);
+          const hits = ray.intersectObject(fixtures);
+          if (bare.includes(station)) {
+            expect(hits, section + ' at ' + station).toHaveLength(0);
+            continue;
+          }
+          const [contact] = ray.intersectObject(metal);
+          expect(hits).not.toHaveLength(0);
+          expect(contact.distance).toBeGreaterThan(hits[0].distance);
+          expect(contact.distance).toBeLessThan(hits.at(-1)!.distance);
+        }
+      }
+    } finally {
+      for (const mesh of [metal, fixtures, security]) mesh.geometry.dispose();
+      room.dispose();
+    }
+  }
+});
+
 test('CONTROL accents anchor 174 gates with clear chapter and movement roles', () => {
   const chart = chartFor(volume, 'normal');
   const perSection = (name: string) => chart.filter(gate => gate.section === name);

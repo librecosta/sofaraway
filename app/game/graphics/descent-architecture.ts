@@ -16,6 +16,7 @@ const pressureAccent = new THREE.Color(0xd098cc);
 const alarmAccent = new THREE.Color(0xe87358);
 const lockdownAmber = new THREE.Color(0xfdae60);
 const innerScale = 1.17;
+const flightCollarThroat = innerScale - .032;
 const shellStep = 6;
 const workReach = 18;
 const workPadding = workReach + 11;
@@ -237,6 +238,11 @@ function bayAtOrAfter(zone: Zone, station: number) {
 
 function releaseStation(zone: Zone) { return zone.start + (zone.finish - zone.start) * .51; }
 
+function hasFlightCollar(zone: Zone, bay: number, station: number) {
+  if (zone.name === 'CORE') return bay % 2 === 0;
+  return zone.name !== 'BREACH' || station <= releaseStation(zone);
+}
+
 function securityBase(zone: Zone, out: THREE.Color) {
   if (zone.name === 'LOCKDOWN') return out.copy(lockdownAmber);
   return out.setHex(zone.light).multiplyScalar(zone.name === 'CORE' ? .38 : zone.name === 'BREACH' ? .55 : 1);
@@ -267,7 +273,6 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
       const [width, height] = dimensions(s, i, zones);
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
-      const released = zone.name === 'BREACH' && s > releaseStation(zone);
       const fixture = (a: readonly [number, number], b: readonly [number, number], halfWidth: number,
         halfDepth: number, reach: number, offset = 0) => {
         const origin = point(frame, ...a, offset), end = point(frame, ...b, offset);
@@ -276,8 +281,12 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
         sources.push({ station: s + offset, extent: reach + 5, origin, toEnd,
           inverseLength: 1 / toEnd.lengthSq(), reachSq: reach ** 2 });
       };
-      for (const side of [-1, 1]) for (const level of [-1, 1]) {
-        if (!released || level < 0) fixture([side * .94, level * 3.27], [side * 2.03, level * 3.27], .047, depth + .018, 6.8);
+      if (hasFlightCollar(zone, bay, s)) {
+        // Recess the strips into the flat top and bottom faces of the collar throat.
+        const mountY = SECTION.b * flightCollarThroat - .025;
+        for (const side of [-1, 1]) for (const level of [-1, 1]) {
+          fixture([side * .94, level * mountY], [side * 2.03, level * mountY], .047, depth + .018, 6.8);
+        }
       }
       if (zone.name === 'TRANSIT') {
         for (const level of [-1, 1]) fixture([-w * .52, level * h * .73], [w * .52, level * h * .73], .062, 1.14, 10);
@@ -400,8 +409,8 @@ export function buildFacilityArchitecture(path: Path, zones: readonly Zone[], fr
       const w = width * SECTION.a, h = height * SECTION.b;
       const depth = zone.name === 'LOCKDOWN' ? 1.16 : .48;
       const released = zone.name === 'BREACH' && s > roofRelease;
-      if (!released && (zone.name !== 'CORE' || bay % 2 === 0)) {
-        collar(metal, frame, innerScale - .032, innerScale - .032, innerScale + .075, innerScale + .075, depth, steel, structural);
+      if (hasFlightCollar(zone, bay, s)) {
+        collar(metal, frame, flightCollarThroat, flightCollarThroat, innerScale + .075, innerScale + .075, depth, steel, structural);
       }
       for (const side of [-1, 1]) {
         for (const level of [-1, 1]) {
