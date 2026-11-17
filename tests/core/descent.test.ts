@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { Color, Raycaster } from 'three';
 import type { BufferGeometry } from 'three';
 import { difficulties } from '../../app/game/contracts';
 import { chartFor } from '../../app/game/core/chart';
@@ -40,6 +41,39 @@ test('the closed facility bays and emitter frames mirror across both local axes'
     room.dispose();
   }
   mirrored(laserEmitters(), 'laser emitters');
+});
+
+test('outer room dimensions vary while the laser lanes stay clear of architecture', () => {
+  const path = new Path(120, 10, 'facility');
+  path.straight(120);
+  const frame = path.sample(5);
+  const [widths, heights]: [number[], number[]] = [[], []];
+  for (const zone of facilityZones(volume, 'standard')) {
+    const room = new DescentFacility(path, [{ ...zone, start: 0, finish: 120, end: 120 }]);
+    const [structure, work, security] = room.build(0, 80);
+    structure.geometry.computeBoundingBox();
+    const bounds = structure.geometry.boundingBox!;
+    widths.push(bounds.max.x - bounds.min.x);
+    heights.push(bounds.max.y - bounds.min.y);
+    const lanes = [[0, 0], ...Array.from({ length: 8 }, (_, sector) => lanePoint('laser-matrix', sector, 0))];
+    for (const [x, y] of lanes) {
+      const origin = frame.p.clone().addScaledVector(frame.r, x).addScaledVector(frame.u, y);
+      expect(new Raycaster(origin, frame.f, 0, 71).intersectObjects([structure, work, security]), zone.name).toHaveLength(0);
+    }
+    const steady = work.material.color.clone();
+    room.light(20, 0, new Color(), new Color());
+    const idle = security.material.color.clone();
+    room.light(20, 1, new Color(), new Color());
+    expect(work.material.color).toEqual(steady);
+    expect(security.material.color.r).toBeGreaterThan(idle.r);
+    for (const mesh of [structure, work, security]) mesh.geometry.dispose();
+    room.dispose();
+  }
+  expect(heights[3]).toBeGreaterThan(heights[2] * 2);
+  expect(widths[4]).toBeGreaterThan(widths[3] * 1.20);
+  expect(heights[4]).toBeLessThan(heights[3]);
+  expect(widths[5]).toBeLessThan(widths[4] / 3);
+  expect(widths[6]).toBeGreaterThan(widths[5] * 2);
 });
 
 test('CONTROL accents anchor 174 gates with clear chapter and movement roles', () => {

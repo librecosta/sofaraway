@@ -73,6 +73,37 @@ test('the Debug library renders all 20 laser states and seven facility chapters'
   expect(errors).toEqual([]);
 });
 
+test('live flight through the shaft and stator chamber keeps the view and gates stable', async ({ page }, info) => {
+  await page.goto('http://127.0.0.1:8090/');
+  await page.evaluate(async () => {
+    await window.b0Harness.mount({ volumeId: 'descent', quality: 'high', diagnostics: {
+      fixedTime: null, autoplay: false, god: false, align: true, boost: false,
+      mobileQuality: false, post: true, record: false, debug: true,
+    } });
+    await window.b0Harness.start(true);
+  });
+  const metrics = () => page.evaluate(() => JSON.parse(window.b0Harness.metrics() || '{}') as {
+    phase: string; beat: number; speed: number; hitCount: number; chunks: number; postFailure: string | null;
+  });
+  for (const [label, beat, boost] of [['shaft', 204, true], ['core', 269, false]] as const) {
+    await page.evaluate(async at => {
+      window.b0Harness.advanceAndPause(at);
+      await window.b0Harness.resume(true);
+    }, beat);
+    if (boost) await page.keyboard.down('Shift');
+    await expect.poll(async () => (await metrics()).beat).toBeGreaterThan(beat + 3);
+    const snapshot = await metrics();
+    expect(snapshot).toMatchObject({ phase: 'playing', hitCount: 0, postFailure: null });
+    expect(snapshot.chunks).toBeLessThanOrEqual(5);
+    if (boost) {
+      expect(snapshot.speed).toBeGreaterThan(43);
+      await page.keyboard.up('Shift');
+    }
+    await page.locator('canvas').screenshot({ path: info.outputPath(`live-${label}.png`) });
+  }
+  await page.evaluate(() => window.b0Harness.dispose());
+});
+
 test('DESCENT restores the laser scene at the same station and releases it on switch', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
   const streamed = await page.evaluate(() => window.b0Harness.streamResources('descent'));
