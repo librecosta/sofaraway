@@ -127,7 +127,6 @@ export class Simulation {
   get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
   private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && (!this.branch || !!this.branch.side); }
   get escapeWhite() {
-    if (this.volume.id === 'descent') return 0;
     const ending = this.gameplay.ending;
     const duration = ending?.beats ?? 12;
     const elapsed = this.beat - (this.volume.beats - duration);
@@ -135,11 +134,11 @@ export class Simulation {
     if (this.result?.title === 'TERMINATED' || this.phase === 'menu') return 0;
     if (elapsed < 1e-9) return 0;
     const seconds = duration * this.secondsPerBeat;
-    if (this.result?.title !== 'ESCAPED') return daylightFade(elapsed * this.secondsPerBeat, seconds, this.daylightReleasedAt);
+    if (this.result?.title !== 'ESCAPED') return daylightFade(elapsed * this.secondsPerBeat, seconds, this.daylightReleasedAt, ending.ambient);
     const sinceCue = seconds + this.time - this.escapedAt;
     const releasedAt = this.daylightReleasedAt!;
     const fade = Math.exp(-Math.max(0, sinceCue - daylightPeak(seconds, releasedAt) - .12) * 3.8);
-    return daylightFade(sinceCue, seconds, releasedAt) * fade;
+    return daylightFade(sinceCue, seconds, releasedAt, ending.ambient) * fade;
   }
   get mode() { return this.playMode; }
   get difficulty() { return this.runDifficulty; }
@@ -577,8 +576,8 @@ export class Simulation {
       const duration = this.gameplay.ending.beats * this.secondsPerBeat;
       this.daylightReleasedAt ??= duration;
       this.escapedAt = this.time;
-      // A gate at the song cutoff can leave part of the rise for the visual transition.
-      this.settleAt += daylightPeak(duration, this.daylightReleasedAt) - duration;
+      // DESCENT's audio tail already gives a late rise time to reach its peak.
+      if (this.volume.id !== 'descent') this.settleAt += daylightPeak(duration, this.daylightReleasedAt) - duration;
     }
     this.recoil = title === 'ESCAPED' ? 0 : 0.55;
     this.boosting = false;

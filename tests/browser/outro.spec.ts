@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { OutroInspection, outroView } from '../../app/game/debug/outro-inspection';
 import { volumeById } from '../../app/game/core/volumes';
+import { gateDescription } from '../../app/game/debug/catalog';
 import type {} from '../harness/main';
 
 test('DESCENT End Sequence Studio renders each route through its bonus gates and industrial Afterglow', async ({ page }, info) => {
@@ -27,7 +28,7 @@ test('DESCENT End Sequence Studio renders each route through its bonus gates and
       await jump(label);
       const { station, gate } = inspection.view(preset);
       await expect(canvas).toHaveAttribute('data-station', station.toFixed(6));
-      await expect(studio.getByText(`Encore ${gate!.index + 1} · ${gate!.kind}`, { exact: false })).toBeVisible();
+      await expect(studio.getByText(`Encore ${gate!.index + 1} · ${gateDescription(gate!.kind).label}`, { exact: false })).toBeVisible();
       expect(Number(await canvas.getAttribute('data-encore-meshes'))).toBeGreaterThan(0);
     }
     await jump('Afterglow Entry');
@@ -39,9 +40,26 @@ test('DESCENT End Sequence Studio renders each route through its bonus gates and
     await canvas.screenshot({ path: info.outputPath(`${quality}-${route}-afterglow.png`) });
     await studio.getByLabel('Movement').selectOption('Cruise');
     await jump('Music End');
-    await expect(canvas).toHaveAttribute('data-station', inspection.view('music-end', 'Cruise').station.toFixed(6));
+    const cutoff = inspection.view('music-end', 'Cruise').station;
+    await expect(canvas).toHaveAttribute('data-station', cutoff.toFixed(6));
+    if (difficulty === 'normal') {
+      const white = Number(await canvas.getAttribute('data-escape-white'));
+      expect(white).toBeGreaterThan(.6);
+      expect(white).toBeLessThan(.8);
+      await jump('Escape White Peak');
+      await expect(canvas).toHaveAttribute('data-escape-white', '0.99');
+      expect(Number(await canvas.getAttribute('data-station'))).toBeGreaterThan(cutoff);
+      await jump('Music End');
+    }
     await studio.getByLabel('Movement').selectOption('Boost');
     await expect(canvas).toHaveAttribute('data-station', inspection.view('music-end', 'Boost').station.toFixed(6));
+    await jump('Escape White Start');
+    await expect(canvas).toHaveAttribute('data-beat', '374.000');
+    await expect(canvas).toHaveAttribute('data-escape-white', '0');
+    await jump('Escape White Peak');
+    await expect(canvas).toHaveAttribute('data-beat', '384.000');
+    await expect(canvas).toHaveAttribute('data-escape-white', '0.99');
+    await expect(canvas.locator('..').locator('span')).toHaveCSS('opacity', '0.99');
     await jump('Results Background');
     await expect(canvas).toHaveAttribute('data-phase', 'results');
     await expect(canvas).toHaveAttribute('data-station', inspection.view('results-world', 'Boost').station.toFixed(6));

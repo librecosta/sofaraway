@@ -5,6 +5,7 @@ import type { RouteKind } from '../game/core/branches';
 import { sections as daybreakSections } from '../game/core/daybreak-score';
 import { modeScale } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
+import { gateDescription } from '../game/debug/catalog';
 import { exteriorViews, movements, outroPresets, outroVolume, previewResults, resultPresets } from '../game/debug/outro-inspection';
 import type { ExteriorView, OutroInspection, OutroMovement, OutroPreset } from '../game/debug/outro-inspection';
 import type { OutroPreview } from '../game/debug/outro-preview.client';
@@ -94,7 +95,7 @@ export function EndSequenceStudio() {
   useEffect(() => {
     if (!available || !inspection || flying) return;
     if (roam) viewer.current?.roam(roam.phase, roam.minutes, angle);
-    else viewer.current?.draw(station, beat, movement, angle, preset === 'results-world');
+    else viewer.current?.draw(station, beat, movement, angle, preset || undefined);
   }, [available, inspection, station, beat, movement, angle, flying, preset, roam]);
 
   useEffect(() => {
@@ -240,7 +241,7 @@ export function EndSequenceStudio() {
     </fieldset>}
     <fieldset className={s.curveControls}>
       <legend>Course and ending positions</legend>
-      {outroPresets.filter(([id], i) => i < 12 || daybreak || (descent && !id.startsWith('white-'))).map(([id, label]) => <button type="button" className={s.scan} key={id} aria-pressed={!roam && preset === id}
+      {outroPresets.filter((_, i) => i < 12 || daybreak || descent).map(([id, label]) => <button type="button" className={s.scan} key={id} aria-pressed={!roam && preset === id}
         disabled={!available || (mode === 'sightseeing' && id.startsWith('encore-'))} onClick={() => seek(id)}>
         {(daybreak ? { build: 'LIFT Gates', drop: 'SUNBURST Gates', finale: 'RETURN Gates' }
           : descent ? { build: 'PRESSURE Gates', drop: 'LOCKDOWN Gates', finale: 'BREACH Gates' } : {})[id as 'build' | 'drop' | 'finale'] ?? label}</button>)}
@@ -259,7 +260,7 @@ export function EndSequenceStudio() {
       <output ref={continuity} />
     </fieldset>}
     {mode === 'sightseeing' && <p>Sightseeing continues directly to Afterglow after the transition.</p>}
-    {view && 'gate' in view && view.gate && <p>Encore {view.gate.index + 1} · {view.gate.kind} · Gate station {view.gate.worldStation.toFixed(2)}</p>}
+    {view && 'gate' in view && view.gate && <p>Encore {view.gate.index + 1} · {gateDescription(view.gate.kind).label} · Gate station {view.gate.worldStation.toFixed(2)}</p>}
     <div className={s.surfaceSelect}>
       <label htmlFor="outro-result">Results preview</label>
       <select id="outro-result" value={resultPreset} onChange={e => setResultPreset(e.currentTarget.value as typeof resultPreset)}>

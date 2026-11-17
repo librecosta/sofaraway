@@ -124,6 +124,7 @@ test.each(endingRuns)('DESCENT %s %s clears each route with 60 Hz keys and 150 m
     const targets = aimPoints(gates);
     const spotted = new Map<number, number>();
     let lastCrossing = -Infinity, maxSpeed = 0, afterglowAt = Infinity;
+    let white = 0, firstWhiteAt = Infinity, maxRise = 0;
     let recognized: number | undefined, committed: number | undefined;
     while (sim.phase === 'playing') {
       if (sim.routeGuide) recognized ??= sim.time;
@@ -149,6 +150,10 @@ test.each(endingRuns)('DESCENT %s %s clears each route with 60 Hz keys and 150 m
       sim.step(STEP, { ...idleInput, boosting, axisX: keyboardAxis(x - sim.camera.tx), axisY: keyboardAxis(y - sim.camera.ty) });
       maxSpeed = Math.max(maxSpeed, sim.speed);
       if (sim.outroPhase === 'afterglow') afterglowAt = Math.min(afterglowAt, sim.time);
+      const nextWhite = sim.escapeWhite;
+      if (nextWhite > 0) firstWhiteAt = Math.min(firstWhiteAt, sim.time);
+      maxRise = Math.max(maxRise, nextWhite - white);
+      white = nextWhite;
       if (sim.gatesJudged + (sim.encore?.encountered ?? 0) === index) continue;
       const crossed = index < main.length ? sim.mainGates[index] : plan.gates[index - main.length];
       const label = `${difficulty}/${route}/seed ${seed}/station ${gate.worldStation}`;
@@ -179,6 +184,9 @@ test.each(endingRuns)('DESCENT %s %s clears each route with 60 Hz keys and 150 m
     expect(sim.gatesPassed).toBe(difficulty === 'impossible' ? totals[route] : route === 'score' ? 158 : 161);
     expect(sim.pickup?.status).toBe(route === 'score' ? 'collected' : undefined);
     expect(sim.path.length - sim.trackDistance).toBeGreaterThan(650);
+    expect(firstWhiteAt).toBeGreaterThan(lastCrossing);
+    expect(firstWhiteAt).toBeLessThan(Infinity);
+    expect(maxRise).toBeLessThan(.021);
     const duration = volume.beats * sim.secondsPerBeat;
     const speed = 34 * difficultySettings(volume, difficulty).speedFactor;
     if (motion === 'boost') {
@@ -186,6 +194,8 @@ test.each(endingRuns)('DESCENT %s %s clears each route with 60 Hz keys and 150 m
       expect(sim.encore).toMatchObject({ passed: plan.gates.length, missed: 0, neutralized: 0 });
       expect(sim.result?.encore).toEqual(sim.encore);
       expect(duration - afterglowAt).toBeGreaterThanOrEqual(12 - STEP);
+      expect(firstWhiteAt - afterglowAt).toBeGreaterThan(7);
+      expect(sim.escapeWhite).toBe(1);
       expect(sim.trackDistance).toBeLessThan(plan.afterglowEnd);
       if (seed === 0) console.log('DESCENT ENDING', { difficulty, route, count: plan.gates.length,
         first: plan.gates[0].worldStation, last: plan.gates.at(-1)!.worldStation, entry: plan.afterglowStart,
@@ -270,13 +280,40 @@ test('DESCENT keeps last main hits, Encore pass/miss/recovery and audio-tail set
     while (sim.phase === 'playing') sim.step(STEP, boost);
     expect(sim.result).toMatchObject({ title: 'ESCAPED', encore: { missed: 1, neutralized: 1 }, unreached: 0 });
     expect(sim.beat).toBe(volume.beats);
-    expect(sim.escapeWhite).toBe(0);
+    expect(sim.escapeWhite).toBe(1);
     const finishedAt = sim.time, cutoff = sim.distance;
     while (sim.phase === 'crash') sim.step(STEP, idleInput);
     expect(sim.time - finishedAt).toBeCloseTo(volume.soundtrack!.tail, 6);
     expect(sim.distance).toBeGreaterThan(cutoff);
+    expect(sim.escapeWhite).toBeLessThan(.005);
+    sim.returnToMenu();
     expect(sim.escapeWhite).toBe(0);
   }
+});
+
+test('DESCENT keeps a last-second reward shutter clear and reaches white during the audio tail', () => {
+  const sim = new Simulation(volume, { align: true });
+  sim.start('normal', 0);
+  while (sim.phase === 'playing') {
+    expect(sim.escapeWhite).toBe(0);
+    sim.step(STEP, { ...idleInput, boosting: sim.time < 12.5 });
+  }
+  const last = sim.outroPlan!.gates[2];
+  expect(last.crossedAt).toBeDefined();
+  expect(sim.time - last.crossedAt!).toBeLessThan(STEP);
+  expect(sim.result?.title).toBe('ESCAPED');
+  expect(sim.escapeWhite).toBe(0);
+  const cutoff = sim.time;
+  let peak = 0;
+  while (sim.phase === 'crash') {
+    const previous = sim.escapeWhite;
+    sim.step(STEP, idleInput);
+    expect(sim.escapeWhite - previous).toBeLessThan(.021);
+    peak = Math.max(peak, sim.escapeWhite);
+  }
+  expect(peak).toBe(1);
+  expect(sim.time - cutoff).toBeCloseTo(volume.soundtrack!.tail, 6);
+  expect(sim.escapeWhite).toBeLessThan(.5);
 });
 
 test('DESCENT Sightseeing traverses the industrial Afterglow without reward gates', () => {

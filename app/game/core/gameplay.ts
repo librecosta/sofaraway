@@ -17,7 +17,7 @@ interface GameplaySpec {
   branch?: BranchSpec;
   pickup?: PickupSpec;
   encore?: 'legacy' | EncoreSpec;
-  ending?: { beats: number; protectGates: boolean };
+  ending?: { beats: number; protectGates: boolean; ambient?: number };
   world?: { continuous: boolean; settleResults: boolean; modePath?: boolean };
 }
 
@@ -42,6 +42,7 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
   },
   descent: { gateLoadAhead: 450, branch: descentJunction, pickup: descentCargo,
     encore: { first: 155, minSpacing: 83, maxSpacing: 96, reserve: 12, impossibleSpacing: 1.10 },
+    ending: { beats: 10, protectGates: true, ambient: 0 },
     world: { continuous: false, settleResults: true, modePath: true } },
 };
 
@@ -60,9 +61,9 @@ export function daylightPeak(duration: number, releasedAt: number) {
 }
 
 /** All times are seconds relative to the start of the ending cue. */
-export function daylightFade(elapsed: number, duration: number, releasedAt?: number) {
-  const ambient = protectedDaylight * smoothstep(elapsed / duration);
+export function daylightFade(elapsed: number, duration: number, releasedAt?: number, ambientLevel = protectedDaylight) {
+  const ambient = ambientLevel * smoothstep(elapsed / duration);
   if (releasedAt === undefined) return ambient;
   const rise = daylightPeak(duration, releasedAt) - releasedAt;
-  return ambient + (1 - protectedDaylight) * smoothstep((elapsed - releasedAt) / rise);
+  return ambient + (1 - ambientLevel) * smoothstep((elapsed - releasedAt) / rise);
 }

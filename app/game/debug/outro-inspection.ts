@@ -39,6 +39,8 @@ export type ExteriorView = keyof typeof exteriorViews;
 const chapters = { build: 'BUILD', drop: 'DROP', finale: 'FINALE' } as const;
 const descentChapters = { build: 'PRESSURE', drop: 'LOCKDOWN', finale: 'BREACH' } as const;
 const sideFor = (route: RouteKind, left: RouteKind): RouteSide => route === 'main' ? 'center' : left === route ? 'left' : 'right';
+interface EndingFrame { station: number; time: number; white: number }
+interface DescentFinish { cue: number; cutoff: EndingFrame; peak: EndingFrame; results: EndingFrame }
 
 export function outroView(plan: OutroPlan, preset: OutroPreset) {
   const peek = 22 * modeScale(plan.mode);
@@ -63,7 +65,7 @@ export class OutroInspection {
   private readonly side: RouteSide;
   private readonly main: RunGate[];
   private readonly encore: EncoreGate[];
-  private readonly descentFinishes = new Map<boolean, { cutoff: number; results: number }>();
+  private readonly descentFinishes = new Map<boolean, DescentFinish>();
   readonly min: number;
   readonly max: number;
 
@@ -89,9 +91,10 @@ export class OutroInspection {
     if (preset === 'branch-entry') return { station: path.open - 30 * modeScale(sim.mode), musicBeat: path.openBeat };
     if (preset === 'branch-rejoin') return { station: path.merge - 24 * modeScale(sim.mode), musicBeat: path.mergeBeat };
     if (preset === 'pickup') return { station: sim.pickupStation - 15 * modeScale(sim.mode), musicBeat: sim.gameplay.pickup!.beat };
-    if (volume.id === 'descent' && (preset === 'music-end' || preset === 'results-world')) {
-      const finish = this.descentFinish(movement);
-      return { station: preset === 'music-end' ? finish.cutoff : finish.results, musicBeat: volume.beats };
+    if (volume.id === 'descent') {
+      if (preset === 'white-start') return { station: this.descentFinish(movement).cue, musicBeat: volume.beats - sim.gameplay.ending!.beats };
+      const frame = this.descentFrame(preset, movement);
+      if (frame) return { station: frame.station, musicBeat: volume.beats };
     }
     if (preset === 'white-start' || preset === 'white-peak' || preset === 'results-world') {
       const musicBeat = preset === 'white-start' ? volume.beats - 12 : volume.beats;
@@ -117,7 +120,7 @@ export class OutroInspection {
     const view = outroView(this.plan, preset);
     if (volume.id === 'descent') {
       const boosting = movement !== 'Cruise' || preset.startsWith('encore-');
-      const end = this.descentFinish(boosting ? 'Boost' : 'Cruise').cutoff;
+      const end = this.descentFinish(boosting ? 'Boost' : 'Cruise').cutoff.station;
       const speed = cruiseTarget(Infinity) * modeScale(sim.mode) * difficultySettings(volume, sim.difficulty).speedFactor
         * (boosting ? BOOST_MULTIPLIER : 1);
       return { ...view, musicBeat: clamp(volume.beats - (end - view.station) / (speed * sim.secondsPerBeat), 0, volume.beats) };
@@ -135,13 +138,28 @@ export class OutroInspection {
       const { volume, sim, plan, side } = this;
       const flight = new Simulation(volume, { align: true, branchSide: side }, sim.path, sim.mode, sim.difficulty);
       flight.start(sim.difficulty, plan.seed, undefined, sim.mode);
+      const cueBeat = volume.beats - flight.gameplay.ending!.beats;
+      while (flight.phase === 'playing' && flight.beat < cueBeat) flight.step(STEP, { ...idleInput, boosting });
+      const cue = flight.trackDistance;
       while (flight.phase === 'playing') flight.step(STEP, { ...idleInput, boosting });
-      const cutoff = flight.trackDistance;
-      while (flight.phase === 'crash') flight.step(STEP, idleInput);
-      finish = { cutoff, results: flight.trackDistance };
+      const frame = (): EndingFrame => ({ station: flight.trackDistance, time: flight.time, white: flight.escapeWhite });
+      const cutoff = frame();
+      let peak = cutoff;
+      while (flight.phase === 'crash') {
+        flight.step(STEP, idleInput);
+        if (flight.escapeWhite > peak.white) peak = frame();
+      }
+      finish = { cue, cutoff, peak, results: frame() };
       this.descentFinishes.set(boosting, finish);
     }
     return finish;
+  }
+
+  private descentFrame(preset: OutroPreset | undefined, movement: OutroMovement) {
+    if (preset === 'music-end') return this.descentFinish(movement).cutoff;
+    if (preset === 'white-peak') return this.descentFinish(movement).peak;
+    if (preset === 'results-world') return this.descentFinish(movement).results;
+    return undefined;
   }
 
   stationAfter(station: number, travel: number) {
@@ -149,10 +167,13 @@ export class OutroInspection {
     return Math.min(this.max, path.stationAt(path.arcAt(station, this.side) + travel, this.side));
   }
 
-  state(station: number, musicBeat: number, movement: OutroMovement, results = false): SceneState {
+  state(station: number, musicBeat: number, movement: OutroMovement, preset?: OutroPreset): SceneState {
     const { sim, plan, side } = this;
+    const results = preset === 'results-world';
     const trackDistance = clamp(station, this.min, this.max);
     const beat = clamp(musicBeat, 0, this.volume.beats);
+    const selected = this.volume.id === 'descent' && musicBeat === this.volume.beats ? this.descentFrame(preset, movement) : undefined;
+    const frame = selected?.station === trackDistance ? selected : undefined;
     const junctionPath = sim.junctionPath!;
     const previewingBranch = this.volume.id === 'daybreak' && trackDistance < junctionPath.split;
     const layout = sim.branch!.layout;
@@ -167,8 +188,8 @@ export class OutroInspection {
     const cruise = cruiseTarget(Infinity) * scale * difficultySettings(this.volume, sim.difficulty).speedFactor;
     const speed = cruise * (boosting ? BOOST_MULTIPLIER : 1);
     const ending = sim.gameplay.ending;
-    let escapeWhite: number | undefined;
-    if (ending && !results) {
+    let escapeWhite = results ? undefined : frame?.white;
+    if (ending && !results && escapeWhite === undefined) {
       const elapsed = (musicBeat - (this.volume.beats - ending.beats)) * sim.secondsPerBeat;
       const duration = ending.beats * sim.secondsPerBeat;
       if (elapsed <= 0) escapeWhite = 0;
@@ -186,13 +207,14 @@ export class OutroInspection {
           }
         }
         const releasedAt = last ? Math.max(0, Math.min(elapsed, duration) + (last.routeStation - distance) / previewSpeed) : 0;
-        escapeWhite = daylightFade(elapsed, duration, releasedAt);
+        escapeWhite = daylightFade(elapsed, duration, releasedAt, ending.ambient);
       }
     }
     const pickupVisible = trackDistance >= sim.pickupPreviewStation && trackDistance < sim.pickupStation;
     return { mode: sim.mode, route: previewingBranch ? null : this.route,
       branch: { layout, side: previewingBranch ? null : side }, branchGates: sim.branchGates,
-      junctionPath, phase: results ? 'results' : 'playing', camera: sim.camera, trackDistance, distance, beat, time: beat * sim.secondsPerBeat,
+      junctionPath, phase: results ? 'results' : 'playing', camera: sim.camera, trackDistance, distance, beat,
+      time: frame?.time ?? beat * sim.secondsPerBeat,
       steeringWidth: 0, routeGuide: guide ? layout : null, routeSide: guide ? previewingBranch ? 'center' : side : null,
       previewGates, previewEncore, outroPlan: plan,
       speed, boosting, boostLens: Number(boosting), escapeWhite,

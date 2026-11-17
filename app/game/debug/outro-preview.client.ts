@@ -6,7 +6,7 @@ import type { VolumeDefinition } from '../core/volumes';
 import type { CirrusLayer } from '../graphics/daybreak-cirrus';
 import { Graphics } from '../graphics/scene.client';
 import { exteriorViews, OutroInspection, outroVolume } from './outro-inspection';
-import type { ExteriorView, OutroMovement } from './outro-inspection';
+import type { ExteriorView, OutroMovement, OutroPreset } from './outro-inspection';
 import type { SceneState } from '../graphics/scene.client';
 
 const flags: Diagnostics = { fixedTime: null, autoplay: false, god: false, align: false, boost: false,
@@ -23,7 +23,7 @@ export class OutroPreview {
   private exteriorView: ExteriorView = 'Forward';
   private cirrusLayer: CirrusLayer = 'Composite';
   private inspection?: OutroInspection;
-  private view?: [number, number, OutroMovement, number, boolean?];
+  private view?: [number, number, OutroMovement, number, OutroPreset?];
   private roaming?: ['menu' | 'results', number, number];
   get lastView() { return this.view; }
 
@@ -76,11 +76,11 @@ export class OutroPreview {
     this.redraw();
   }
 
-  draw(station: number, beat: number, movement: OutroMovement, angle: number, results = false) {
+  draw(station: number, beat: number, movement: OutroMovement, angle: number, preset?: OutroPreset) {
     this.roaming = undefined;
-    this.view = [station, beat, movement, angle, results];
+    this.view = [station, beat, movement, angle, preset];
     if (this.lost || !this.inspection) return;
-    this.paint(this.inspection.state(station, beat, movement, results), angle);
+    this.paint(this.inspection.state(station, beat, movement, preset), angle);
   }
 
   roam(phase: 'menu' | 'results', minutes: number, angle: number) {
@@ -101,7 +101,7 @@ export class OutroPreview {
     const metrics = this.graphics.metrics();
     const station = state.trackDistance;
     const stage = inspection.plan.afterglow.find(slice => station >= slice.start && station <= slice.end)?.stage;
-    const white = this.volume.id === 'daybreak' ? (state.escapeWhite ?? 0) * .99 : 0;
+    const white = (state.escapeWhite ?? 0) * .99;
     this.canvas.parentElement?.style.setProperty('--escape-white', String(white));
     Object.assign(this.canvas.dataset, { station: state.trackDistance.toFixed(6), routeArc: state.distance.toFixed(6),
       beat: state.beat.toFixed(3), hue: metrics.scenicLights?.hue, afterglow: metrics.scenicLights?.afterglow ?? stage ?? '',
