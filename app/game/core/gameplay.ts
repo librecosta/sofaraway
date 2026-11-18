@@ -9,7 +9,7 @@ import { clamp } from './collision';
 
 interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number; route?: RouteKind }
 interface EncoreSpec {
-  first: number; minSpacing: number; maxSpacing: number; kinds?: readonly GateKind[]; reserve: number;
+  first?: number; minSpacing?: number; maxSpacing?: number; kinds?: readonly GateKind[]; reserve: number;
   impossibleSpacing?: number;
 }
 interface GameplaySpec {
@@ -22,10 +22,11 @@ interface GameplaySpec {
 }
 
 const window = daybreakJunctionWindow;
+const elsewherePickup = { beat: PICKUP_BEAT, preview: PICKUP_APPEAR_BEAT, x: PICKUP_LOCAL_X, y: PICKUP_LOCAL_Y, radius: PICKUP_RADIUS };
 const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
   elsewhere: {
     branch: elsewhereBranch,
-    pickup: { beat: PICKUP_BEAT, preview: PICKUP_APPEAR_BEAT, x: PICKUP_LOCAL_X, y: PICKUP_LOCAL_Y, radius: PICKUP_RADIUS },
+    pickup: elsewherePickup,
     encore: 'legacy',
   },
   daybreak: {
@@ -44,6 +45,12 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
     encore: { first: 155, minSpacing: 83, maxSpacing: 96, reserve: 12, impossibleSpacing: 1.10 },
     ending: { beats: 10, protectGates: true, ambient: 0 },
     world: { continuous: false, settleResults: true, modePath: true } },
+  orbit: {
+    branch: { ...elsewhereBranch, spacing: 22 },
+    pickup: elsewherePickup,
+    encore: { reserve: 7 },
+    world: { continuous: false, settleResults: true },
+  },
 };
 
 export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }

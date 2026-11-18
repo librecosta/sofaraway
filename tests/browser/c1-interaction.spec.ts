@@ -187,7 +187,7 @@ test('the settings-only dynamic lights switch persists and pulses through silent
   await expect.poll(async () => (await diagnostics(page)).beat).toBeGreaterThan(paused.beat);
 });
 
-test('fixed scenes respond in all three playable volumes while reduced motion leaves the baseline intact', async ({ page }) => {
+test('the authored lighting scenes respond while reduced motion leaves the baseline intact', async ({ page }) => {
   for (const volume of ['elsewhere', 'daybreak', 'descent']) {
     const t = ({ elsewhere: 97.58, daybreak: 109.15, descent: 103.72 })[volume];
     const url = `/?t=${t}&vol=${volume}&q=low&dbg=1&ui=0&align=1`;

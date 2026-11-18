@@ -47,19 +47,23 @@ export class OrbitRocks {
   readonly material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .94, metalness: .04, fog: false });
   private readonly geometries = Array.from({ length: ROCK_SHAPES }, (_, shape) =>
     Array.from({ length: ROCK_LODS }, (_, lod) => orbitRockGeometry(shape, lod)));
+  private readonly release = { value: 0 };
 
   constructor(visibleRange: number) {
     this.material.onBeforeCompile = shader => {
       shader.uniforms.orbitVisibleRange = { value: visibleRange };
+      shader.uniforms.orbitRelease = this.release;
       shader.fragmentShader = `uniform float orbitVisibleRange;\n${orbitSpaceColor}\n${shader.fragmentShader}`
         .replace('#include <opaque_fragment>', /* glsl */`
-          float distanceBlend = smoothstep(orbitVisibleRange * .71, orbitVisibleRange, length(vViewPosition));
+          float range = orbitVisibleRange * (1.0 - .38 * orbitRelease);
+          float distanceBlend = smoothstep(range * .71, range, length(vViewPosition));
           outgoingLight = mix(outgoingLight, orbitSpaceColor(inverseTransformDirection(-vViewPosition, viewMatrix)), distanceBlend);
           #include <opaque_fragment>`);
     };
   }
 
   geometry(shape: number, lod: number) { return this.geometries[shape][lod]; }
+  setRelease(value: number) { this.release.value = value; }
 
   dispose() {
     for (const variants of this.geometries) for (const geometry of variants) geometry.dispose();

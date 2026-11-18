@@ -17,7 +17,7 @@ export interface Section {
   gateSequence?: readonly GateKind[];
 }
 export interface VolumeDefinition {
-  id: Exclude<VolumeId, 'orbit'>;
+  id: VolumeId;
   name: string;
   subtitle: string;
   bpm: number;
@@ -81,21 +81,23 @@ function total(sections: readonly Section[]) {
   return sections.reduce((n, s) => n + s.beats, 0);
 }
 
+const elsewhere: VolumeDefinition = {
+  id: 'elsewhere',
+  name: 'ELSEWHERE',
+  subtitle: 'VOL. I',
+  bpm: 128,
+  sections: SECTIONS_I,
+  beats: total(SECTIONS_I),
+  seed: 20131,
+  topology: 'conduit',
+  obstacle: 'iris',
+  music: 'techno',
+  hue: [0.44, 0.78, 0.92, 0.57, 0.09, 0.66],
+  lives: { easy: 3, normal: 2, hard: 1 },
+};
+
 export const VOLUMES: readonly VolumeDefinition[] = [
-  {
-    id: 'elsewhere',
-    name: 'ELSEWHERE',
-    subtitle: 'VOL. I',
-    bpm: 128,
-    sections: SECTIONS_I,
-    beats: total(SECTIONS_I),
-    seed: 20131,
-    topology: 'conduit',
-    obstacle: 'iris',
-    music: 'techno',
-    hue: [0.44, 0.78, 0.92, 0.57, 0.09, 0.66],
-    lives: { easy: 3, normal: 2, hard: 1 },
-  },
+  elsewhere,
   {
     id: 'daybreak',
     name: 'DAYBREAK',
@@ -125,10 +127,10 @@ export const VOLUMES: readonly VolumeDefinition[] = [
     hue: [0.03, 0.98, 0.09],
     lives: { easy: 3, normal: 2, hard: 1 },
   },
+  { ...elsewhere, id: 'orbit', name: 'ORBIT', subtitle: 'VOL. IV', topology: 'orbit' },
 ];
 
 export function volumeById(id: string | null): VolumeDefinition {
-  if (id === 'orbit') throw new Error('ORBIT is available as a development flight preview.');
   return VOLUMES.find((v) => v.id === (id === 'drift' ? 'daybreak' : id)) || VOLUMES[0];
 }
 

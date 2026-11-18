@@ -5,7 +5,7 @@ import type { DescentGateKind } from '../core/descent-gates';
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
 
-const sceneTimes = { elsewhere: 36, daybreak: 32, descent: 45 };
+const sceneTimes = { elsewhere: 36, daybreak: 32, descent: 45, orbit: 95 };
 
 export const catalog = VOLUMES.map(volume => {
   const chart = chartFor(volume, 'normal');

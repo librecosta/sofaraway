@@ -15,9 +15,8 @@ export default function AudioInspectorPage() {
   const [params, changeParams] = useSearchParams();
   const [hydrated, setHydrated] = useState(false);
   const requested = hydrated ? params.get('vol') : null;
-  const orbit = requested === 'orbit';
-  const volume = volumeById(orbit ? 'daybreak' : requested ?? 'daybreak');
-  const score = useMemo(() => orbit ? null : inspectorScore(volume), [orbit, volume]);
+  const volume = volumeById(requested ?? 'daybreak');
+  const score = useMemo(() => inspectorScore(volume), [volume]);
   const [exportStatus, setExportStatus] = useState('');
   const [exporting, setExporting] = useState(false);
   const lifetime = useRef<AbortController>(null);
@@ -34,7 +33,7 @@ export default function AudioInspectorPage() {
 
   async function download() {
     const signal = lifetime.current?.signal;
-    if (!signal || exporting || !score) return;
+    if (!signal || exporting) return;
     setExporting(true);
     setExportStatus('Rendering ' + (volume.soundtrack?.title ?? volume.name) + '…');
     try {
@@ -46,7 +45,8 @@ export default function AudioInspectorPage() {
       const url = downloadUrl.current = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = volume.music === 'control' ? 'DESCENT-CONTROL.wav' : 'sofaraway-' + volume.id + '.wav';
+      link.download = volume.music === 'control' ? 'DESCENT-CONTROL.wav'
+        : volume.id === 'orbit' ? 'sofaraway-orbit-elsewhere-temp.wav' : 'sofaraway-' + volume.id + '.wav';
       link.click();
       setExportStatus(`Done · ${(blob.size / 1048576).toFixed(1)} MB · ${duration.toFixed(1)} s`);
     } catch (error) {
@@ -62,29 +62,29 @@ export default function AudioInspectorPage() {
         <div>
           <Link to="/debug/" className={s.back}>SoFarAway</Link>
           <span className={s.breadcrumb}> / Audio Inspector</span>
-          <h1>{orbit ? 'ORBIT' : volume.name}</h1>
+          <h1>{volume.name}</h1>
+          {volume.id === 'orbit' && <p>Temporary soundtrack from ELSEWHERE</p>}
         </div>
         <div className={s.metadata}>
-          {score && <>{volume.soundtrack && <span>{volume.soundtrack.title}</span>}
-            <span>{volume.bpm} BPM</span><span>{volume.beats} beats</span><span>{timecode(score.duration)}</span></>}
+          {volume.soundtrack && <span>{volume.soundtrack.title}</span>}
+          <span>{volume.bpm} BPM</span><span>{volume.beats} beats</span><span>{timecode(score.duration)}</span>
           <label className={s.volume}>Volume
-            <select aria-label="Volume" value={orbit ? 'orbit' : volume.id} disabled={!hydrated || exporting} onChange={event => {
+            <select aria-label="Volume" value={volume.id} disabled={!hydrated || exporting} onChange={event => {
               const next = new URLSearchParams(params);
               next.set('vol', event.currentTarget.value);
               setExportStatus('');
               changeParams(next, { preventScrollReset: true });
             }}>
               {VOLUMES.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-              <option value="orbit">ORBIT</option>
             </select>
           </label>
         </div>
       </header>
-      {score ? <><AudioInspector key={volume.id} score={score} />
+      <AudioInspector key={volume.id} score={score} />
       <div className={s.export}>
         <button type="button" disabled={!hydrated || exporting} onClick={() => void download()}>Render to WAV</button>
         <span role="status" id="audio-status">{exportStatus}</span>
-      </div></> : <p>ORBIT has no soundtrack in the ASTRAL BELT development preview. <Link to="/?vol=orbit">Open flight preview</Link>.</p>}
+      </div>
     </div>
   </main>;
 }

@@ -1,19 +1,27 @@
 import { expect, test } from 'vitest';
 import { Vector3 } from 'three';
-import { ORBIT_CELL, ORBIT_CLEARANCE, ORBIT_LENGTH, ORBIT_MAX_RADIUS, OrbitField, orbitPreview } from '../../app/game/core/orbit-field';
+import { ORBIT_CELL, ORBIT_CLEARANCE, ORBIT_MAX_RADIUS, ORBIT_WORLD_SEED, OrbitField } from '../../app/game/core/orbit-field';
+import { routeSides } from '../../app/game/core/branches';
+import { START_DISTANCE } from '../../app/game/core/reference-track';
+import { Simulation } from '../../app/game/core/simulation';
+import { volumeById } from '../../app/game/core/volumes';
 import { orbitRockGeometry, ROCK_LODS, ROCK_SHAPES } from '../../app/game/graphics/orbit-rocks.client';
-import { buildOrbitPath, orbitClearance, orbitLod } from '../../app/game/graphics/orbit-world.client';
-import { parseRecords, recordRun } from '../../app/game/runtime/records.client';
+import { orbitClearance, orbitCourseBelt, orbitLod } from '../../app/game/graphics/orbit-world.client';
+import { parseRecords, recordFor, recordRun } from '../../app/game/runtime/records.client';
 
-const path = buildOrbitPath();
-const clearance = orbitClearance(path);
+const sim = new Simulation(volumeById('orbit'));
+sim.start('normal');
+const path = sim.path;
+const clearance = orbitClearance(path, sim.junctionPath);
+const belt = orbitCourseBelt(path, 'standard');
+const firstZ = Math.floor(path.sample(START_DISTANCE).p.z / ORBIT_CELL);
 const cells = [-2, -1, 0, 1, 2].flatMap(x => [-1, 0, 1].flatMap(y =>
-  Array.from({ length: 18 }, (_, i) => [x, y, -1 - i] as const)));
+  Array.from({ length: 18 }, (_, i) => [x, y, firstZ - i] as const)));
 
 test('cell identities survive generation order, and density adds clusters around the same anchor rocks', () => {
-  const make = (seed: number, dense = true) => new OrbitField(seed, dense ? 'dense' : 'sparse', clearance);
-  const dense = make(orbitPreview.seed);
-  const sparse = make(orbitPreview.seed, false);
+  const make = (seed: number, dense = true) => new OrbitField(seed, dense ? 'dense' : 'sparse', clearance, belt);
+  const dense = make(ORBIT_WORLD_SEED);
+  const sparse = make(ORBIT_WORLD_SEED, false);
   const different = make(90210);
   const forward = cells.flatMap(cell => dense.cell(...cell));
   const backward = [...cells].reverse().flatMap(cell => dense.cell(...cell));
@@ -43,30 +51,50 @@ test('every LOD fits the declared sphere and the dense field clears both the swe
     expect(Math.max(...Array.from({ length: position.count }, (_, i) => point.fromBufferAttribute(position, i).length()))).toBeLessThan(1);
     geometry.dispose();
   }
-  const samples = Array.from({ length: ORBIT_LENGTH / 2 + 1 }, (_, i) => path.sample(i * 2).p);
-  for (const seed of [orbitPreview.seed, 1, 4294967295]) {
-    const field = new OrbitField(seed, 'dense', clearance);
-    for (const cell of cells) for (const rock of field.cell(...cell)) {
+  for (const [mode, difficulty] of [['standard', 'normal'], ['standard', 'impossible'], ['sightseeing', 'normal']] as const) {
+    const run = new Simulation(volumeById('orbit'));
+    run.start(difficulty, 1, 'lumen', mode);
+    const branch = run.junctionPath!;
+    const reach = mode === 'standard' ? 200 : 200 / 3;
+    const safety = orbitClearance(run.path, branch, mode);
+    const field = new OrbitField(ORBIT_WORLD_SEED, 'dense', safety, orbitCourseBelt(run.path, mode));
+    const startCell = Math.floor(run.path.sample(branch.guideStart - reach).p.z / ORBIT_CELL);
+    const endCell = Math.floor(run.path.sample(branch.end + reach).p.z / ORBIT_CELL);
+    const samples = routeSides.flatMap(side => Array.from({ length: Math.ceil((branch.end - branch.guideStart + reach * 2) / 2) },
+      (_, i) => branch.sample(branch.guideStart - reach + i * 2, side).p));
+    const nearby = [-2, -1, 0, 1, 2].flatMap(x => [-1, 0, 1].flatMap(y =>
+      Array.from({ length: startCell - endCell + 1 }, (_, i) => [x, y, startCell - i] as const)));
+    const gateViews = routeSides.flatMap(side => {
+      const route = run.branch!.layout[side];
+      return run.branchGates![route].flatMap(gate => [reach * .45, reach * .95].map(ahead => {
+        const start = branch.sample(gate.worldStation - ahead, side).p;
+        return { start, chord: branch.sample(gate.worldStation, side).p.sub(start) };
+      }));
+    });
+    for (const cell of nearby) for (const rock of field.cell(...cell)) {
       point.fromArray(rock.position);
-      for (let i = 0; i < samples.length; i++) {
-        const start = samples[i];
-        if (Math.abs(start.z - point.z) > 110 + rock.radius) continue;
-        if (point.distanceToSquared(start) < (ORBIT_CLEARANCE + rock.radius) ** 2) throw new Error(`Hull intrusion at ${rock.id}`);
-        if (i + 52 < samples.length && i % 4 === 0) {
-          const end = samples[i + 52];
-          const chord = segment.copy(end).sub(start);
-          const t = Math.max(0, Math.min(1, projected.copy(point).sub(start).dot(chord) / chord.lengthSq()));
-          if (point.distanceToSquared(projected.copy(start).addScaledVector(chord, t)) < (ORBIT_CLEARANCE + 5 + rock.radius) ** 2 - 1e-6) {
-            throw new Error(`View intrusion at ${rock.id}`);
-          }
+      for (const sample of samples) {
+        if (point.distanceToSquared(sample) < (ORBIT_CLEARANCE + rock.radius) ** 2) throw new Error(`Hull intrusion at ${rock.id}`);
+      }
+      for (const { start, chord } of gateViews) {
+        const t = Math.max(0, Math.min(1, projected.copy(point).sub(start).dot(chord) / chord.lengthSq()));
+        if (point.distanceToSquared(projected.copy(start).addScaledVector(chord, t)) < (ORBIT_CLEARANCE + rock.radius) ** 2) {
+          throw new Error(`Gate view intrusion at ${rock.id}`);
         }
       }
     }
   }
 });
 
-const segment = new Vector3();
 const projected = new Vector3();
+
+test('the full orbit course cycles through dense, sparse and open belts', () => {
+  const at = (beat: number) => belt(Math.floor(path.sample(sim.reference.station(beat, 'standard')).p.z / ORBIT_CELL));
+  expect(at(226).density).toBeGreaterThan(at(10).density + .6);
+  expect(at(303).coverage).toBeLessThan(at(226).coverage * .5);
+  expect(at(346).drift).toBeGreaterThan(at(432).drift + 1);
+  expect(belt(Math.floor(path.sample(path.length).p.z / ORBIT_CELL)).density).toBeLessThan(.1);
+});
 
 test('projected size changes LOD with a separate exit threshold on each quality tier', () => {
   for (const quality of ['low', 'auto', 'high'] as const) {
@@ -82,8 +110,12 @@ test('saving a playable volume retains retired ORBIT Standard and Sightseeing re
   const standard = { normal: { best: 30, last: { score: 25, outcome: 'ESCAPED' } } };
   const sightseeing = { last: { score: 11, outcome: 'ESCAPED' } };
   const records = parseRecords(JSON.stringify({ version: 1, standard: { orbit: standard }, sightseeing: { orbit: sightseeing } }));
-  recordRun(records, 'daybreak', 'normal', 'standard', { score: 80, outcome: 'ESCAPED' });
+  expect(recordFor(records, 'orbit', 'normal', 'standard')).toEqual({ best: null, last: null });
+  recordRun(records, 'orbit', 'impossible', 'standard', { score: 80, encoreBonus: 20, outcome: 'ESCAPED' });
+  recordRun(records, 'orbit', 'normal', 'sightseeing', { score: 120, outcome: 'ESCAPED' });
   const saved = parseRecords(JSON.stringify(records));
   expect(saved.standard.orbit).toEqual(standard);
   expect(saved.sightseeing.orbit).toEqual(sightseeing);
+  expect(recordFor(saved, 'orbit', 'impossible', 'standard').best).toBe(100);
+  expect(recordFor(saved, 'orbit', 'normal', 'sightseeing')).toMatchObject({ best: null, last: { score: 120 } });
 });

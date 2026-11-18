@@ -19,7 +19,6 @@ const routeGates = { main: 10, challenge: 11, score: 5 };
 
 test('DESCENT Impossible keeps Hard opening choreography on the faster reference and adds CONTROL accents', () => {
   expect(difficultiesFor('descent')).toEqual([...difficulties, 'impossible']);
-  expect(difficultiesFor('orbit')).toEqual(difficulties);
   expect(difficultySettings(volume, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
   const hard = chartFor(volume, 'hard');
   const impossible = chartFor(volume, 'impossible');

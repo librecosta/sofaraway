@@ -94,12 +94,16 @@ export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed 
   if (volume.music === 'breakbeat') return daybreakChart(difficulty);
   if (volume.music === 'control') return descentChart(difficulty);
   const base = buildChart(volume, seed);
-  if (difficulty === 'impossible') return impossibleChart(base);
-  if (difficulty !== 'easy') return base;
+  const authored = difficulty === 'impossible' ? impossibleChart(base) : base;
+  // Clear the approach and the first few beats after the three routes merge.
+  const course = volume.id === 'orbit' ? authored.filter(({ beat }) =>
+    (beat < 310 || beat >= 320) && (beat < 352 || beat >= 356)) : authored;
+  if (difficulty === 'impossible') return course;
+  if (difficulty !== 'easy') return course;
 
   const out: ChartGate[] = [];
   let last = -99;
-  for (const g of base) {
+  for (const g of course) {
     if (g.beat - last >= 2) {
       out.push(g);
       last = g.beat;

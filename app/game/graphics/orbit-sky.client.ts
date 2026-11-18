@@ -10,12 +10,13 @@ void main() {
 }`;
 
 export const orbitSpaceColor = /* glsl */`
+uniform float orbitRelease;
 vec3 orbitSpaceColor(vec3 ray) {
   float band = exp(-7.0 * pow(dot(ray, normalize(vec3(-.42, .83, .23))), 2.0));
   float key = smoothstep(-.33, .90, dot(ray, normalize(vec3(-.63, .39, -.65))));
   vec3 space = vec3(.009, .014, .023) + band * vec3(.009, .018, .032);
   space += band * key * vec3(.022, .008, .004);
-  return space;
+  return space + orbitRelease * (vec3(.007, .014, .023) + band * vec3(.009, .017, .024));
 }`;
 
 const skyFragment = /* glsl */`
@@ -51,6 +52,7 @@ export class OrbitSky {
   readonly group = new THREE.Group();
   private readonly dome = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.ShaderMaterial({
     vertexShader: skyVertex, fragmentShader: skyFragment, side: THREE.BackSide, depthWrite: false, toneMapped: false,
+    uniforms: { orbitRelease: { value: 0 } },
   }));
   private readonly stars: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
 
@@ -91,6 +93,7 @@ export class OrbitSky {
   }
 
   resize(dpr: number) { this.stars.material.uniforms.pixelRatio.value = dpr; }
+  setRelease(value: number) { this.dome.material.uniforms.orbitRelease.value = value; }
 
   dispose() {
     this.group.remove(this.dome, this.stars);

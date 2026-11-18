@@ -1,11 +1,9 @@
 import { expect, test } from 'vitest';
-import { difficulties } from '../../app/game/contracts';
 import { ROUTE_GATE_MULTIPLIERS, routeSides } from '../../app/game/core/branches';
 import { difficultySettings } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { lanePoint } from '../../app/game/core/collision';
 import { curveCurvature } from '../../app/game/core/corridor-composition';
-import { difficultiesFor } from '../../app/game/core/difficulty';
 import { idleInput } from '../../app/game/core/input';
 import { LUMEN_POINTS } from '../../app/game/core/pickups';
 import { Simulation } from '../../app/game/core/simulation';
@@ -46,8 +44,6 @@ test('Impossible preserves every Hard gate and reaches the authored density with
   expect(again.pickup).toEqual(hard.pickup);
   expect(LUMEN_POINTS.impossible).toBe(10000);
   expect(difficultySettings(elsewhere, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
-  expect(difficultiesFor('orbit')).toEqual(difficulties);
-  expect(() => volumeById('orbit')).toThrow(/flight preview/);
   const tour = new Simulation(elsewhere);
   tour.start('impossible', 0, undefined, 'sightseeing');
   expect([tour.difficulty, tour.speed, tour.lives, tour.outroPlan?.gates.length]).toEqual(['normal', 8, 5, 0]);

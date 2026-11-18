@@ -124,9 +124,22 @@ export class Simulation {
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
   get mainGates(): readonly RunGate[] { return this.chart; }
   get gateLoadAhead() { return this.gameplay.gateLoadAhead ?? GATE_LOAD_AHEAD * modeScale(this.mode); }
-  get outroPhase() { return outroPhase(this.outroPlan, this.trackDistance, this.mainComplete); }
+  get outroPhase() {
+    const phase = outroPhase(this.outroPlan, this.trackDistance, this.mainComplete);
+    if (this.volume.id === 'orbit' && (phase === 'transition' || phase === 'encore')) {
+      const next = this.outroPlan!.gates[this.encoreCursor];
+      // Skip the unused Encore space once even full Boost cannot reach the next gate.
+      if (next && next.routeStation > this.distance + this.remainingBoostTravel + STATION_EPSILON) return 'afterglow';
+    }
+    return phase;
+  }
   private get mainComplete() { return this.lives > 0 && this.judged === this.chart.length && (!this.branch || !!this.branch.side); }
+  private get remainingBoostTravel() {
+    const speedCap = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(this.mode) * this.speedFactor;
+    return (this.volume.beats - this.beat) * this.secondsPerBeat * speedCap;
+  }
   get escapeWhite() {
+    if (this.volume.id === 'orbit') return 0;
     const ending = this.gameplay.ending;
     const duration = ending?.beats ?? 12;
     const elapsed = this.beat - (this.volume.beats - duration);
@@ -231,6 +244,8 @@ export class Simulation {
     this.referenceProgress = 0;
     if (sightseeing) {
       if (branch?.sightseeingPattern !== 'preserve-main') this.chart = sightseeingChart(this.chart, this.volume.sections);
+      // At tour speed the wide ORBIT side arcs consume part of the final phrase.
+      if (this.volume.id === 'orbit') this.chart = this.chart.filter(gate => gate.beat < this.volume.beats - 6);
       if (this.branchGates) {
         const { main, challenge, score } = this.branchGates;
         this.branchGates = {
@@ -444,10 +459,8 @@ export class Simulation {
     const start = this.volume.beats - ending.beats;
     if (this.beat - start < 1e-9) return;
     const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
-    const speedCap = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(this.mode) * this.speedFactor;
-    const remainingTravel = (this.volume.beats - this.beat) * this.secondsPerBeat * speedCap;
     // Once no gate can be reached even with Boost, the final rise can run to completion.
-    if (ending.protectGates && next && next.routeStation <= this.distance + remainingTravel + STATION_EPSILON) return;
+    if (ending.protectGates && next && next.routeStation <= this.distance + this.remainingBoostTravel + STATION_EPSILON) return;
     this.daylightReleasedAt = previousBeat - start < 1e-9 ? 0 : (this.beat - start) * this.secondsPerBeat;
   }
 

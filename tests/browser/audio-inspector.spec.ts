@@ -259,7 +259,12 @@ test('responsive layouts, high-DPI canvas, direct refresh and master-only volume
   await page.getByRole('combobox', { name: 'Volume' }).selectOption('orbit');
   await page.reload();
   await expect(page.getByRole('heading', { name: 'ORBIT' })).toBeVisible();
-  await expect(page.getByText(/ORBIT has no soundtrack/)).toBeVisible();
-  await expect(canvas).toHaveCount(0);
+  await expect(page.getByText('Temporary soundtrack from ELSEWHERE')).toBeVisible();
+  await expect(page.getByText('128 BPM', { exact: true })).toBeVisible();
+  await expect(page.getByText('448 beats', { exact: true })).toBeVisible();
+  await expect(canvas).toHaveCount(1);
+  await page.getByRole('button', { name: 'Play all' }).click();
+  await expect(page.getByText('Playing', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await context.close();
 });

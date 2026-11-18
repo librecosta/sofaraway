@@ -70,7 +70,7 @@ const fasterReferences = new WeakMap<VolumeDefinition, ReferenceTrack>();
 export function referenceFor(volume: VolumeDefinition, difficulty: Difficulty = 'normal') {
   // The later courses pair physical chapter landmarks with their authored cues.
   // ELSEWHERE retains the original Impossible stations and Encore timing.
-  const faster = difficulty === 'impossible' && (volume.id === 'daybreak' || volume.id === 'descent');
+  const faster = difficulty === 'impossible' && volume.id !== 'elsewhere';
   const cache = faster ? fasterReferences : references;
   let track = cache.get(volume);
   if (!track) {

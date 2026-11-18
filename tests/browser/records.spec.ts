@@ -20,7 +20,10 @@ test('local records follow the selected volume, difficulty and mode at narrow si
         hard: { best: 222000, last: { score: 222000, outcome: 'ESCAPED' } },
         impossible: { best: 333000, last: { score: 321000, outcome: 'ESCAPED' } } },
       descent: { normal: { best: 119039, last: { score: 119039, outcome: 'ESCAPED' } } },
-      drift: { normal: { best: 21000, last: { score: 1200, outcome: 'TERMINATED' } } } },
+      drift: { normal: { best: 21000, last: { score: 1200, outcome: 'TERMINATED' } } },
+      orbit: { normal: { best: 654000, last: { score: 650000, outcome: 'ESCAPED' } } },
+      'orbit-astral-playable-v1': { impossible: { best: 355000,
+        last: { score: 345000, outcome: 'ESCAPED', encoreBonus: 9000 } } } },
       sightseeing: { elsewhere: { last: { score: 930, outcome: 'ESCAPED' } } } }));
   }, key);
   await page.setViewportSize({ width: 320, height: 568 });
@@ -77,9 +80,15 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await next.click();
   await next.click();
   await page.getByRole('button', { name: 'next volume' }).click();
-  await expect(page.getByRole('heading', { name: 'ASTRAL BELT' })).toBeVisible();
-  await expect(page.locator('#diff')).toHaveCount(0);
-  await expect(record).toHaveCount(0);
+  await expect(page.locator('#vol-name')).toContainText('ORBIT');
+  await expect(page.locator('#diff [data-choice]')).toHaveCount(4);
+  await expect(record).toContainText(/BEST SCORE\s*355,000/);
+  await expect(record).toContainText(/LAST RUN\s*354,000/);
+  await previous.click();
+  await previous.click();
+  await expect(difficulty).toHaveText('NORMAL');
+  await expect(record).toContainText(/BEST SCORE\s*—/);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard.orbit.normal.best, key)).toBe(654000);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard['descent-laser-security'].normal.best, key)).toBe(76834);
   for (const volume of ['daybreak', 'descent']) {
     await page.goto(`/?vol=${volume}&diff=impossible&t=2&dbg=1&q=low`);

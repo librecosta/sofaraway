@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import type { VolumeId } from '../game/contracts';
-import { VOLUMES as playableVolumes } from '../game/core/volumes';
-import { orbitPreview } from '../game/core/orbit-field';
+import { VOLUMES } from '../game/core/volumes';
 import { classes as c } from '../styles/classes';
 
-const VOLUMES = [...playableVolumes, orbitPreview];
 const count = VOLUMES.length;
 const stepPixels = 56;
 const mod = (n: number) => ((n % count) + count) % count;

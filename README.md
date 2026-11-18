@@ -15,14 +15,14 @@ gate has exactly one opening. Find it before you reach the gate. Hold Shift to
 reach the next gate sooner, or choose Sightseeing for one-third forward speed
 and the same soundtrack.
 
-Three rhythm-runner courses and an open-space development flight preview share the same rendering and steering.
+Four rhythm-runner courses share the same runtime, steering and rendering pipeline.
 
 | | World | Glass | Music | Length | Gates (Normal) |
 |---|---|---|---|---|---|
 | **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 141 / 145 / 157 (Main / Challenge / Bonus) |
 | **II · DAYBREAK** | enclosed skyglass cabin | **Crystal / Crystal 45° / Vertical / Horizontal** — radial slices and geometric windows | breakbeat · 120 | 2:24 | 97 |
 | **III · DESCENT** | industrial security facility and vertical well | **Matrix 3×3**, **Slice Gate**, **Diagonal Weave** | CONTROL · 136 | 2:49 | 174 |
-| **IV · ORBIT** | ASTRAL BELT asteroid field · development preview | — | — | 2,500 world units | — |
+| **IV · ORBIT** | ASTRAL BELT asteroid field | **Iris**, **Square**, **Diamond** | temporary ELSEWHERE techno · 128 | 3:30 | 139 / 143 / 155 (Main / Challenge / Bonus) |
 
 The soundtrack sets the palette, the light pulses and the spacing of gates.
 Your flight speed determines when you cross each gate.
@@ -42,7 +42,7 @@ Configure the host to return `404.html` with status 404 for unknown paths.
 See the [verification and hosting guide](docs/verification.md) for the static
 artifact and hosting requirements.
 
-ELSEWHERE Standard also offers Impossible. The menu keeps Best and Last by
+Standard offers Impossible in all four volumes. The menu keeps Best and Last by
 volume and difficulty in this browser, including Encore bonuses in both totals.
 Sightseeing shows Last Visit per volume.
 
@@ -81,8 +81,8 @@ timing, spatial crossings and resource ownership.
 
 Open `/debug/` directly or follow **Debug overview** from **Credits**.
 The page renders the playable courses, their gate types and the floating pickups.
-**ASTRAL BELT** at `/debug/#orbit` or `/?vol=orbit` flies through the new asteroid world.
-Choose Sparse or Dense, or select Flight progression to see the density change along the route.
+**ASTRAL BELT** at `/?vol=orbit` is the full playable fourth course. The world preview at `/debug/#orbit`
+uses the same course path and asteroid generator. Choose Sparse or Dense, or select Flight progression to see density change along the route.
 The preview supports `seed`, `station`, `density`, and `q` query parameters and displays live draw, geometry, chunk and LOD counts.
 **Surface Materials** shows six lit ELSEWHERE samples and their raw channels;
 **Effect Materials** shows the cyan light channel and hologram film.
@@ -95,8 +95,8 @@ Encore, Afterglow and results. Seek by world station or fly a ten-second segment
 **UI State Studio** at `/debug/#ui-states` opens production menus, overlays,
 results and recovery states in six viewport sizes without touching records or settings.
 **Audio Inspector** at `/debug/audio/` displays DAYBREAK's seven waveforms on
-one timeline, with track cues, solo, mute and gain. All three playable volumes support
-master playback and WAV export. ASTRAL BELT is silent pending the new ORBIT score.
+one timeline, with track cues, solo, mute and gain. All four volumes support
+master playback and WAV export. ORBIT temporarily uses the ELSEWHERE soundtrack.
 
 ### In-game debug parameters
 

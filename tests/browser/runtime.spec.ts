@@ -183,7 +183,7 @@ test('a long frame drains without a modal and neutralizes an unobservable crossi
 
 test('repeated switches and runs keep resource counts bounded', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
-  const order = ['daybreak', 'descent', 'elsewhere'] as const;
+  const order = ['daybreak', 'descent', 'orbit', 'elsewhere'] as const;
   const samples = await page.evaluate(async ids => {
     const test = window.b0Harness;
     const samples: Metrics[] = [];

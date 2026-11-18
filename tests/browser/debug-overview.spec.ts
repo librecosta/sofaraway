@@ -121,7 +121,7 @@ test('the unified overview renders lit materials, effects and the existing model
     return { id: canvas.dataset.preview, painted: colors.size > 1 };
   }));
   expect(samples).toEqual([
-    'shield', 'resonance', 'lumen', 'elsewhere', 'daybreak', 'descent',
+    'shield', 'resonance', 'lumen', 'elsewhere', 'daybreak', 'descent', 'orbit',
     'daybreak-cabin-ahead', 'daybreak-cabin-side', 'daybreak-cabin-roof',
     'iris', 'square', 'diamond', ...daybreakGateKinds, 'laser-matrix', 'laser-slice', 'laser-weave',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',

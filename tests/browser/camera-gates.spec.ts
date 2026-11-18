@@ -29,7 +29,7 @@ test('the lens is steady on the beat and glass stays aligned during speed change
     expect(sample.peak.idle, context).toBeLessThan(1e-5);
     expect(sample.peak.press, context).toBeLessThan(1e-5);
     expect(sample.peak.release, context).toBeLessThan(1e-5);
-    if (sample.volume !== 'elsewhere' && sample.volume !== 'daybreak') expect(sample.minContrast, context).toBeNull();
+    if (sample.volume === 'descent') expect(sample.minContrast, context).toBeNull();
     else if (sample.mode === 'sightseeing') expect(sample.minContrast, context).toBe(1);
     else {
       expect(sample.minContrast, context).toBeGreaterThanOrEqual(0.8);

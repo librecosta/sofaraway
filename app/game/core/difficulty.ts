@@ -6,8 +6,8 @@ export const IMPOSSIBLE_SCORE_MULTIPLIER = 3.4;
 export const IMPOSSIBLE_LIVES = 1;
 const impossibleDifficulties = [...difficulties, 'impossible'] as const;
 
-export function difficultiesFor(volume: VolumeId): readonly Difficulty[] {
-  return volume === 'elsewhere' || volume === 'daybreak' || volume === 'descent' ? impossibleDifficulties : difficulties;
+export function difficultiesFor(_volume: VolumeId): readonly Difficulty[] {
+  return impossibleDifficulties;
 }
 
 export function supportsDifficulty(volume: VolumeId, value: unknown): value is Difficulty {

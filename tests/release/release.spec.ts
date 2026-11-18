@@ -122,12 +122,12 @@ test('hydration loads the game on demand and keeps volume history working', asyn
   }
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page).toHaveURL(/vol=orbit/);
-  await expect(page.getByRole('heading', { name: 'ASTRAL BELT' })).toBeVisible();
+  await expect(name).toContainText('ORBIT');
   await page.goBack();
   await expect(name).toContainText('DESCENT');
   await page.goForward();
-  await expect(page.getByRole('heading', { name: 'ASTRAL BELT' })).toBeVisible();
-  await page.getByRole('link', { name: 'Game menu' }).click();
+  await expect(name).toContainText('ORBIT');
+  await page.getByRole('button', { name: 'next volume' }).click();
   await expect(name).toContainText('ELSEWHERE');
   await page.reload();
   await expect(page.locator(start)).toBeEnabled();

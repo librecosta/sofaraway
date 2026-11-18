@@ -1,9 +1,12 @@
 import * as THREE from 'three';
-import { ORBIT_CELL, ORBIT_LENGTH, OrbitClearance, OrbitField, orbitCellKey } from '../core/orbit-field';
-import type { OrbitDensity, OrbitRock } from '../core/orbit-field';
-import { fitCurve } from '../core/corridor-composition';
-import type { QualityTier } from '../contracts';
-import { Path } from './path';
+import { ORBIT_CELL, OrbitClearance, OrbitField, orbitCellKey } from '../core/orbit-field';
+import type { OrbitBelt, OrbitDensity, OrbitRock } from '../core/orbit-field';
+import type { PlayMode, QualityTier } from '../contracts';
+import { gameplayFor } from '../core/gameplay';
+import { modeScale, referenceFor } from '../core/reference-track';
+import { volumeById } from '../core/volumes';
+import { BranchPath, pathFrame } from './branch-path';
+import type { Path } from './path';
 import { OrbitRocks, ROCK_LODS, ROCK_SHAPES } from './orbit-rocks.client';
 import { OrbitSky } from './orbit-sky.client';
 
@@ -13,17 +16,66 @@ const CELL_RADIUS = Math.sqrt(3) * ORBIT_CELL / 2;
 const lodLimits = { low: [66, 22], auto: [49, 15], high: [36, 11] } as const;
 const fragmentLimits = { low: .34, auto: .70, high: 1 } as const;
 
-export function buildOrbitPath() {
-  return new Path(150, 46, 'orbit', true).author([
-    { type: 'straight', s0: 0, s1: 540 },
-    { type: 's-curve', s0: 540, s1: 1560, ...fitCurve(1020, 122) },
-    { type: 's-curve', s0: 1560, s1: 2260, ...fitCurve(700, -71) },
-    { type: 'straight', s0: 2260, s1: ORBIT_LENGTH },
-  ]);
+export function orbitClearance(path: Path, branch?: BranchPath, mode: PlayMode = 'standard') {
+  const frame = pathFrame();
+  const main = (station: number) => path.sample(station, frame).p.toArray();
+  const lookAhead = branch ? 200 * modeScale(mode) : 104;
+  const clearance = new OrbitClearance(path.length, main, lookAhead);
+  if (branch) {
+    // The approach includes the full steering envelope and the sightlines into both side routes.
+    const from = branch.guideStart - lookAhead;
+    const to = branch.end + lookAhead;
+    const left = (station: number) => branch.sample(station, 'left', frame).p.toArray();
+    const right = (station: number) => branch.sample(station, 'right', frame).p.toArray();
+    clearance.protect(from, to, left, lookAhead, 6);
+    clearance.protect(from, to, right, lookAhead, 6);
+    for (let station = branch.split; station < branch.end; station += 8) {
+      clearance.protectSpan(left(station), right(station));
+    }
+  }
+  return clearance;
 }
 
-export function orbitClearance(path: Path) {
-  return new OrbitClearance(path.length, station => path.sample(station).p.toArray());
+const outerBelt = { density: .10, coverage: .60, tilt: .40, drift: -.44, width: 1.9 };
+const maelstrom = { density: 1, coverage: 1.24, tilt: -.56, drift: .10, width: 1.10 };
+const belts: Readonly<Record<string, OrbitBelt>> = {
+  INTRO: outerBelt,
+  A: { density: .34, coverage: .86, tilt: .42, drift: -.38, width: 1.65 },
+  B: { density: .82, coverage: 1.14, tilt: .72, drift: -.15, width: 1.85 },
+  BUILD: maelstrom,
+  DROP: maelstrom,
+  BREAK: { density: .09, coverage: .46, tilt: -.25, drift: -1.32, width: 2.15 },
+  A2: { density: .52, coverage: .88, tilt: .32, drift: .68, width: 1.54 },
+  FINALE: { density: .30, coverage: .72, tilt: .31, drift: -1.30, width: 2.25 },
+};
+const beyond = { density: .05, coverage: .37, tilt: .27, drift: -1.6, width: 2.65 };
+
+export function orbitCourseBelt(path: Path, mode: PlayMode) {
+  const model = volumeById('orbit');
+  const reference = path.reference ?? referenceFor(model);
+  const frame = pathFrame();
+  let beat = 0;
+  const zones = [...model.sections.map(section => {
+    const depth = -path.sample(reference.station(beat, mode), frame).p.z;
+    beat += section.beats;
+    return { depth, belt: belts[section.name] };
+  }), { depth: -path.sample(reference.station(model.beats, mode) + 280, frame).p.z, belt: beyond }];
+  const cells = new Map<number, OrbitBelt>();
+  return (z: number) => {
+    const cached = cells.get(z);
+    if (cached) return cached;
+    const depth = -(z + .5) * ORBIT_CELL;
+    let index = zones.length - 1;
+    while (index > 0 && zones[index].depth > depth) index--;
+    const belt = zones[index]?.belt ?? outerBelt;
+    const previous = zones[index - 1]?.belt ?? outerBelt;
+    const t = THREE.MathUtils.smoothstep(depth, zones[index]?.depth ?? 0, (zones[index]?.depth ?? 0) + 230);
+    const lerp = THREE.MathUtils.lerp;
+    const mixed: OrbitBelt = { density: lerp(previous.density, belt.density, t), coverage: lerp(previous.coverage, belt.coverage, t),
+      tilt: lerp(previous.tilt, belt.tilt, t), drift: lerp(previous.drift, belt.drift, t), width: lerp(previous.width, belt.width, t) };
+    cells.set(z, mixed);
+    return mixed;
+  };
 }
 
 export function orbitLod(pixels: number, previous: number, quality: QualityTier) {
@@ -56,8 +108,9 @@ export class OrbitWorld {
   private readonly levels = [0, 0, 0];
   private visibleChunks = 0;
 
-  constructor(path: Path, seed: number, density: OrbitDensity) {
-    this.field = new OrbitField(seed, density, orbitClearance(path));
+  constructor(path: Path, seed: number, density: OrbitDensity, mode: PlayMode = 'standard') {
+    const branch = path.reference && new BranchPath(path, path.reference, mode, gameplayFor('orbit').branch!);
+    this.field = new OrbitField(seed, density, orbitClearance(path, branch, mode), orbitCourseBelt(path, mode));
     this.sky = new OrbitSky(seed);
     const key = new THREE.DirectionalLight(0xffe2c3, 3.55);
     key.position.set(-.8, .73, -.48);
@@ -66,8 +119,10 @@ export class OrbitWorld {
     this.group.add(this.sky.group, key, bounce, new THREE.AmbientLight(0x929fb5, .40));
   }
 
-  update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier) {
+  update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0) {
     this.sky.resize(dpr);
+    this.sky.setRelease(release);
+    this.rocks.setRelease(release);
     const position = camera.position;
     if (this.lastStream.distanceToSquared(position) > 18 ** 2) this.stream(position);
     camera.updateMatrixWorld();

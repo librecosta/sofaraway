@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { QualityTier } from '../game/contracts';
 import { steer, steeringDamping } from '../game/core/input';
-import { ORBIT_LENGTH, orbitPreview, orbitViews } from '../game/core/orbit-field';
+import { ORBIT_WORLD_SEED } from '../game/core/orbit-field';
+import { corridorLength } from '../game/core/corridor-composition';
+import { referenceFor, START_DISTANCE } from '../game/core/reference-track';
+import { volumeById } from '../game/core/volumes';
 import type { OrbitDensity } from '../game/core/orbit-field';
+import { buildRunPath } from '../game/graphics/path';
 import type { Graphics } from '../game/graphics/scene.client';
 import s from '../styles/orbit-preview.module.css';
 
@@ -11,28 +15,32 @@ type Metrics = ReturnType<Graphics['metrics']>;
 type Viewer = { redraw(resetView?: boolean): void; reload(): void; quality(): void };
 const qualities = ['low', 'auto', 'high'] as const;
 const densities = ['flight', 'sparse', 'dense'] as const;
-const limitStation = (station: number) => Math.max(0, Math.min(ORBIT_LENGTH, station));
-const limitSeed = (seed: number) => Number.isFinite(seed) ? Math.max(0, Math.min(0xffffffff, Math.trunc(seed))) : orbitPreview.seed;
+const orbit = volumeById('orbit');
+const length = corridorLength(orbit);
+const reference = referenceFor(orbit);
+const views = { Sparse: reference.station(8, 'standard'), Dense: reference.station(226, 'standard') };
+const limitStation = (station: number) => Math.max(START_DISTANCE, Math.min(length, station));
+const limitSeed = (seed: number) => Number.isFinite(seed) ? Math.max(0, Math.min(0xffffffff, Math.trunc(seed))) : ORBIT_WORLD_SEED;
 
-export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean }) {
+export function OrbitFlightPreview() {
   const [params] = useSearchParams();
   const requestedQuality = params.get('q') as QualityTier;
   const requestedDensity = params.get('density') as OrbitDensity;
   const [quality, setQuality] = useState<QualityTier>(qualities.includes(requestedQuality) ? requestedQuality : 'auto');
   const [density, setDensity] = useState<OrbitDensity>(densities.includes(requestedDensity) ? requestedDensity : 'flight');
-  const [seed, setSeed] = useState(limitSeed(Number(params.get('seed') ?? orbitPreview.seed)));
+  const [seed, setSeed] = useState(limitSeed(Number(params.get('seed') ?? ORBIT_WORLD_SEED)));
   const [seedDraft, setSeedDraft] = useState(String(seed));
   const [station, setStation] = useState(limitStation(Number(params.get('station')) || 0));
   const [playing, setPlaying] = useState(false);
   const [metrics, setMetrics] = useState<Metrics>();
   const [status, setStatus] = useState('Loading WebGL preview…');
-  const [opened, setOpened] = useState(!embedded);
+  const [opened, setOpened] = useState(false);
   const [readyToOpen, setReadyToOpen] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<Viewer>(null);
-  const settings = useRef({ seed, density, quality, station, playing, post: params.get('post') !== '0', auto: !params.has('station') });
+  const settings = useRef({ seed, density, quality, station, playing, post: params.get('post') !== '0' });
 
-  useEffect(() => { if (embedded) setReadyToOpen(true); }, [embedded]);
+  useEffect(() => setReadyToOpen(true), []);
 
   useEffect(() => {
     if (!opened || !canvas.current) return;
@@ -43,11 +51,10 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
     let cleanup: (() => void) | undefined;
     void Promise.all([
       import('../game/graphics/scene.client'),
-      import('../game/graphics/orbit-world.client'),
       import('../game/runtime/input.client'),
-    ]).then(([{ Graphics }, { buildOrbitPath }, { InputController }]) => {
+    ]).then(([{ Graphics }, { InputController }]) => {
       if (signal.aborted) return;
-      const path = buildOrbitPath();
+      const path = buildRunPath(orbit);
       const mobile = matchMedia('(pointer: coarse)').matches;
       const graphics = new Graphics(element, controls.quality, mobile, {
         fixedTime: null, autoplay: false, god: false, align: false, boost: false,
@@ -63,7 +70,7 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
       let time = 0;
       let speed = 52;
       let x = 0, y = 0, targetX = 0, targetY = 0;
-      const active = () => !embedded || !!element.closest('#orbit')?.contains(document.activeElement);
+      const active = () => !!element.closest('#orbit')?.contains(document.activeElement);
       const requestDraw = () => {
         if (!lost && !frame) frame = requestAnimationFrame(draw);
       };
@@ -181,14 +188,13 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
       }
       resize();
       setStatus('');
-      if (!embedded && controls.auto && !matchMedia('(prefers-reduced-motion: reduce)').matches) toggle(true);
     }).catch(error => {
       cleanup?.();
       cleanup = undefined;
       if (!signal.aborted) setStatus(error instanceof Error ? error.message : 'Could not start the flight preview.');
     });
     return () => { events.abort(); cleanup?.(); };
-  }, [embedded, opened]);
+  }, [opened]);
 
   function seek(next: number) {
     settings.current.station = limitStation(next);
@@ -197,7 +203,7 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
   }
 
   function toggle() {
-    if (!playing && settings.current.station >= ORBIT_LENGTH) seek(0);
+    if (!playing && settings.current.station >= length) seek(START_DISTANCE);
     settings.current.playing = !playing;
     setPlaying(!playing);
     viewer.current?.redraw();
@@ -222,14 +228,14 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
   function preset(value: 'Sparse' | 'Dense') {
     settings.current.playing = false;
     setPlaying(false);
-    seek(orbitViews[value]);
+    seek(views[value]);
     switchDensity(value === 'Sparse' ? 'sparse' : 'dense');
   }
 
   const body = <>
     <header className={s.header}>
-      <div><p>ORBIT / VOL. IV · DEVELOPMENT PREVIEW</p>{embedded ? <h2>ASTRAL BELT</h2> : <h1>ASTRAL BELT</h1>}</div>
-      {!embedded && <nav aria-label="Preview navigation"><Link to="/">Game menu</Link><Link to="/debug/#orbit">Debug</Link></nav>}
+      <div><p>ORBIT / VOL. IV · WORLD PREVIEW</p><h2>ASTRAL BELT</h2></div>
+      <Link to="/?vol=orbit">Play ORBIT</Link>
     </header>
     {opened ? <>
       <div className={s.view}><canvas ref={canvas} tabIndex={0} aria-label="ASTRAL BELT flight" />
@@ -242,7 +248,7 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
           <button type="button" onClick={() => preset('Dense')}>Dense view</button>
         </div>
         <div className={s.seek}><span>World station</span><output aria-live="off">{station.toFixed(1)}</output>
-          <input aria-label="World station" type="range" min="0" max={ORBIT_LENGTH} step="1" value={Math.round(station)}
+          <input aria-label="World station" type="range" min={START_DISTANCE} max={Math.floor(length)} step="1" value={Math.min(Math.floor(length), Math.round(station))}
             onChange={e => seek(Number(e.currentTarget.value))} />
         </div>
         <div className={s.actions}>
@@ -268,5 +274,5 @@ export function OrbitFlightPreview({ embedded = false }: { embedded?: boolean })
       </div>
     </> : <button type="button" className={s.open} disabled={!readyToOpen} onClick={() => setOpened(true)}>Open flight preview</button>}
   </>;
-  return embedded ? <section id="orbit" className={s.embedded}>{body}</section> : <main className={s.page}>{body}</main>;
+  return <section id="orbit" className={s.embedded}>{body}</section>;
 }

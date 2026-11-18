@@ -395,7 +395,7 @@ export default function DebugOverview() {
         </section>
 
         <DescentFacilityPreview />
-        <OrbitFlightPreview embedded />
+        <OrbitFlightPreview />
 
         <section id="gates" className={s.section}>
           <h2>Gate library</h2>

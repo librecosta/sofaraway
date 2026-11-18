@@ -89,7 +89,7 @@ export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: nu
   const release = spec ? 42 : 120;
   const reserveAt = volume.beats * 60 / volume.bpm - (spec?.reserve ?? 0);
   const cutoff = spec && mode === 'standard'
-    ? reserveStation?.(reserveAt) ?? (volume.id === 'descent'
+    ? reserveStation?.(reserveAt) ?? (volume.id === 'descent' || volume.id === 'orbit'
       ? reference.boostAt(reserveAt, mode, impossible ? IMPOSSIBLE_SPEED_FACTOR : 1) : musicEndStation - 550) : Infinity;
   const first = mainLastStation + (spec?.first ?? ENCORE_FIRST_OFFSET);
   let station = spec ? Math.max(first, reference.station(volume.beats, mode) + 12) : first;

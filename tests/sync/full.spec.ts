@@ -4,8 +4,8 @@ import { onsetLead } from '../../app/game/core/daybreak-score';
 import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [105326, 89395, 120915];
-const gateCounts = [141, 120, 161];
+const normalScores = { elsewhere: 105326, daybreak: 89395, descent: 120915, orbit: undefined };
+const gateCounts = { elsewhere: 141, daybreak: 120, descent: 161, orbit: 139 };
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];
@@ -65,7 +65,7 @@ for (const difficulty of ['normal', 'impossible'] as const) test(`ELSEWHERE ${di
   } finally { await page.keyboard.up('Shift'); }
 });
 
-const fullRuns = [...VOLUMES.map((volume, index) => ({ volume, count: gateCounts[index], score: normalScores[index], boost: false })),
+const fullRuns = [...VOLUMES.map(volume => ({ volume, count: gateCounts[volume.id], score: normalScores[volume.id], boost: false })),
   { volume: VOLUMES[2], count: 189, score: undefined, boost: true }];
 for (const { volume, count, score, boost } of fullRuns) {
   test(`${volume.id} completes the full song on real audio time${boost ? ' under full Impossible Boost' : ''}`, async ({ page, browser }) => {

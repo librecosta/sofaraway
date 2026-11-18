@@ -148,3 +148,16 @@ export function composeDescent(volume: VolumeDefinition, mode: PlayMode, referen
   segments.push({ type: 'straight', s0: from, s1: Math.ceil(corridorLength(volume, mode) / 210) * 210 });
   return segments;
 }
+
+export function composeOrbit(volume: VolumeDefinition, mode: PlayMode, reference = referenceFor(volume)): CorridorSegment[] {
+  const segments: CorridorSegment[] = [];
+  let from = 0;
+  for (const [first, last, ratio] of [[28, 85, .092], [125, 185, -.115], [222, 280, .086], [365, 427, -.096]] as const) {
+    const s0 = reference.station(first, mode), s1 = reference.station(last, mode);
+    segments.push({ type: 'straight', s0: from, s1: s0 },
+      { type: 's-curve', s0, s1, ...fitCurve(s1 - s0, (s1 - s0) * ratio) });
+    from = s1;
+  }
+  segments.push({ type: 'straight', s0: from, s1: corridorLength(volume, mode) });
+  return segments;
+}

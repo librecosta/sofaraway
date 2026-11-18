@@ -1,14 +1,19 @@
 import { SECTION_OUTLINE } from './section';
 
-export const orbitPreview = { id: 'orbit', name: 'ORBIT', subtitle: 'VOL. IV', seed: 77345 } as const;
-export const ORBIT_LENGTH = 2500;
+export const ORBIT_WORLD_SEED = 77345;
 export const ORBIT_CELL = 144;
 export const ORBIT_MAX_RADIUS = 42;
 export const ORBIT_CLEARANCE = Math.max(...SECTION_OUTLINE.map(([x, y]) => Math.hypot(x, y))) + 1.5;
-export const orbitViews = { Sparse: 140, Dense: 1130 } as const;
 
 export type OrbitDensity = 'flight' | 'sparse' | 'dense';
 export type OrbitPoint = readonly [number, number, number];
+export interface OrbitBelt {
+  readonly density: number;
+  readonly coverage: number;
+  readonly tilt: number;
+  readonly drift: number;
+  readonly width: number;
+}
 export interface OrbitRock {
   readonly id: string;
   readonly cell: string;
@@ -41,22 +46,30 @@ interface Capsule { start: OrbitPoint; end: OrbitPoint; radius: number }
 
 function segmentDistance([x, y, z]: OrbitPoint, [ax, ay, az]: OrbitPoint, [bx, by, bz]: OrbitPoint) {
   const dx = bx - ax, dy = by - ay, dz = bz - az;
-  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / (dx * dx + dy * dy + dz * dz)));
+  const lengthSq = dx * dx + dy * dy + dz * dz;
+  const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / lengthSq));
   return Math.hypot(x - ax - t * dx, y - ay - t * dy, z - az - t * dz);
 }
 
 export class OrbitClearance {
   private readonly cells = new Map<string, Capsule[]>();
 
-  constructor(length: number, at: (station: number) => OrbitPoint) {
+  constructor(length: number, at: (station: number) => OrbitPoint, lookAhead = 104) {
+    this.protect(0, length, at, lookAhead);
+  }
+
+  protect(from: number, to: number, at: (station: number) => OrbitPoint, lookAhead: number, padding = 0) {
     const step = 8;
-    for (let station = 0; station < length; station += step) {
+    for (let station = from; station < to; station += step) {
       const start = at(station);
-      // Every point on the arc is within half a step of one chord endpoint.
-      this.insert(start, at(Math.min(length, station + step)), ORBIT_CLEARANCE + step / 2);
-      // Protect the view from the full steering section into a future gate plane.
-      if (station + 104 <= length) this.insert(start, at(station + 104), ORBIT_CLEARANCE + 5);
+      this.insert(start, at(Math.min(to, station + step)), ORBIT_CLEARANCE + step / 2 + padding);
+      const ahead = Math.min(to, station + lookAhead);
+      if (ahead > station) this.insert(start, at(ahead), ORBIT_CLEARANCE + 5 + padding);
     }
+  }
+
+  protectSpan(start: OrbitPoint, end: OrbitPoint, padding = 0) {
+    this.insert(start, end, ORBIT_CLEARANCE + 5 + padding);
   }
 
   private insert(start: OrbitPoint, end: OrbitPoint, radius: number) {
@@ -82,17 +95,18 @@ export class OrbitClearance {
 }
 
 export class OrbitField {
-  constructor(readonly seed: number, readonly density: OrbitDensity, private readonly clearance: OrbitClearance) {}
+  constructor(readonly seed: number, readonly density: OrbitDensity, private readonly clearance: OrbitClearance,
+    private readonly beltAt: (z: number) => OrbitBelt) {}
 
   cell(x: number, y: number, z: number): OrbitRock[] {
     const key = orbitCellKey(x, y, z);
     const layout = orbitRandom(this.seed, x, y, z);
-    const dense = this.density === 'dense' ? 1 : this.density === 'sparse' ? 0
-      : Math.max(0, Math.min(1, (-z * ORBIT_CELL - 285) / 670));
+    const shape = this.beltAt(z);
+    const dense = this.density === 'dense' ? 1 : this.density === 'sparse' ? 0 : shape.density;
     // A broken, inclined belt crosses the route. Independent lobes leave clear sky between clusters.
-    const beltY = x * .43 + Math.sin(z * .38) * .72;
-    const belt = 1 / (1 + (Math.abs(y + .5 - beltY) * 1.54) ** 2);
-    const hasAnchor = layout() < .27 + belt * .47;
+    const beltY = x * shape.tilt + shape.drift + Math.sin(z * .38) * .72;
+    const belt = 1 / (1 + (Math.abs(y + .5 - beltY) * shape.width) ** 2);
+    const hasAnchor = layout() < (.27 + belt * .47) * shape.coverage;
     const hasSecond = layout() < dense * (.11 + .83 * belt);
     const rocks: OrbitRock[] = [];
     for (let cluster = 0; cluster < 2; cluster++) {
@@ -114,7 +128,7 @@ export class OrbitField {
         ];
         const size = index === 0 ? (cluster === 0 ? 8 + random() ** 1.85 * 25 : 4.5 + random() * 13)
           : .85 + random() ** 2.5 * (cluster === 0 ? 11 : 7.2);
-        const shape = Math.floor(random() * 4);
+        const prototype = Math.floor(random() * 4);
         const scale: OrbitPoint = [size * (.85 + random() * .35), size * (.51 + random() * .54), size * (.72 + random() * .48)];
         const radius = Math.max(...scale);
         if (local.some(value => value < radius || value > ORBIT_CELL - radius)) continue;
@@ -122,7 +136,7 @@ export class OrbitField {
         if (!this.clearance.allows(key, position, radius)) continue;
         if (rocks.some(other => Math.hypot(position[0] - other.position[0], position[1] - other.position[1],
           position[2] - other.position[2]) < (radius + other.radius) * 1.10)) continue;
-        rocks.push({ id: `${key}:${id}`, cell: key, position, shape, scale, radius,
+        rocks.push({ id: `${key}:${id}`, cell: key, position, shape: prototype, scale, radius,
           rotation: [random() * tau, random() * tau, random() * tau], material: Math.floor(random() * 3),
           fragment: radius < 3.1, rank: random() });
       }
