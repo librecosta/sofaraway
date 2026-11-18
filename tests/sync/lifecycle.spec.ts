@@ -59,7 +59,7 @@ test('CONTROL pauses, resumes, restores its context and starts a fresh run', asy
 
 test('real activation, pause, visibility, suspend and silent recovery', async ({ page, browser }, info) => {
   const errors = await openSync(page);
-  await mount(page, 'orbit');
+  await mount(page, 'elsewhere');
   await page.locator('#start').click();
   if (!await hasAudio(page)) {
     expect(info.project.name).toBe('webkit');

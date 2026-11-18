@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PlayMode } from '../contracts';
-import { composeDaybreak, composeDescent, composeElsewhere, corridorLength, curveOffset, curveSlope } from '../core/corridor-composition';
+import { composeDaybreak, composeDescent, composeElsewhere, curveOffset, curveSlope } from '../core/corridor-composition';
 import type { CorridorSegment } from '../core/corridor-composition';
 import { referenceFor, type ReferenceTrack } from '../core/reference-track';
 import type { Topology, VolumeDefinition } from '../core/volumes';
@@ -286,6 +286,5 @@ export function buildPath(totalLength: number, straightLen = 150, radius = 46, t
 export function buildRunPath(volume: VolumeDefinition, mode: PlayMode = 'standard', reference = referenceFor(volume)) {
   if (volume.id === 'elsewhere') return new Path(150, 46, volume.topology).author(composeElsewhere(volume, mode));
   if (volume.id === 'daybreak') return new Path(150, 46, volume.topology, true, reference).author(composeDaybreak(volume, mode, reference));
-  if (volume.id === 'descent') return new Path(150, 46, volume.topology, true, reference).author(composeDescent(volume, mode, reference));
-  return buildPath(corridorLength(volume), 150, 46, volume.topology);
+  return new Path(150, 46, volume.topology, true, reference).author(composeDescent(volume, mode, reference));
 }

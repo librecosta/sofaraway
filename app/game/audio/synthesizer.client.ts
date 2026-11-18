@@ -2,7 +2,7 @@ import { DescentSynthesizer } from './descent.client';
 import { DaybreakSynthesizer } from './daybreak.client';
 import { sectionAt } from '../core/volumes';
 import { drumStrengths } from '../core/rhythmic-lights';
-import type { Music, VolumeDefinition } from '../core/volumes';
+import type { VolumeDefinition } from '../core/volumes';
 
 const PROG_TECHNO = [
   [57, 60, 64], [57, 60, 64],
@@ -11,23 +11,7 @@ const PROG_TECHNO = [
   [55, 59, 62], [55, 59, 62],
 ];
 
-/* synthwave opens up: maj7 and add9 shapes, a IV-V-vi-iii lift */
-const PROG_SYNTHWAVE = [
-  [53, 57, 60, 64], [55, 59, 62, 66],
-  [57, 60, 64, 67], [52, 55, 59, 62],
-  [53, 57, 60, 64], [55, 59, 62, 66],
-  [57, 60, 64, 67], [48, 52, 55, 59],
-];
-
-function progression(mood: Music) {
-  return mood === 'synthwave' ? PROG_SYNTHWAVE : PROG_TECHNO;
-}
-
-function roots(mood: Music) {
-  return mood === 'synthwave'
-    ? [41, 43, 45, 36, 41, 43, 45, 40]
-    : [45, 45, 41, 41, 48, 48, 43, 43];
-}
+const BASS_ROOTS = [45, 45, 41, 41, 48, 48, 43, 43];
 
 const BASS_PATTERN = [
   { s: 0,  o: 0,  d: 0.22, v: 1.0 },
@@ -122,14 +106,10 @@ class LegacyScore {
   private readonly revSend: GainNode;
   private readonly drumBus: GainNode;
   private readonly musicBus: GainNode;
-  private readonly progression: number[][];
-  private readonly roots: number[];
 
   constructor(private readonly ctx: BaseAudioContext, private readonly volume: VolumeDefinition,
     output: AudioNode, private readonly buffers: ReturnType<typeof createBuffers>) {
     const c = ctx;
-    this.progression = progression(volume.music);
-    this.roots = roots(volume.music);
     this.runBus = c.createGain();
     this.runBus.connect(output);
 
@@ -155,8 +135,8 @@ class LegacyScore {
   playStep(step: number, t: number) {
     const s = step % 16;
     const bar = Math.floor(step / 16) % 8;
-    const chord = this.progression[bar];
-    const root = this.roots[bar];
+    const chord = PROG_TECHNO[bar];
+    const root = BASS_ROOTS[bar];
     const beat = step / 4;
     const sec = sectionAt(this.volume, beat);
     const energy = sec?.energy ?? 0.15;
@@ -251,13 +231,12 @@ class LegacyScore {
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.75 * vel, t + 0.003);
-    const gate = this.volume.music === 'synthwave';
-    g.gain.exponentialRampToValueAtTime(0.0001, t + (gate ? 0.42 : 0.16));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
     n.connect(hp); hp.connect(g); g.connect(this.drumBus);
     const send = c.createGain();
-    send.gain.value = gate ? 1.6 : 0.7;      // gated-reverb snare
+    send.gain.value = 0.7;
     g.connect(send); send.connect(this.revSend);
-    n.start(t); n.stop(t + (gate ? 0.55 : 0.2));
+    n.start(t); n.stop(t + 0.2);
 
     const o = c.createOscillator();
     o.type = 'triangle';

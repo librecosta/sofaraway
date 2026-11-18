@@ -754,7 +754,7 @@ test('DESCENT restores the glass scene at the same station and releases it on sw
   const switched = await page.evaluate(async () => {
     const test = window.b0Harness;
     test.returnToMenu();
-    await test.select('orbit');
+    await test.select('daybreak');
     await test.start(true);
     const state = test.branchState();
     test.dispose();

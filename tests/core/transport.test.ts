@@ -80,7 +80,7 @@ test.each([[100], [160], [250], [100, 160, 250, 160]])('scheduler delay sequence
 });
 
 test('a step exactly at the current context time stays on its grid', async () => {
-  const volume = VOLUMES[3];
+  const volume = VOLUMES[0];
   Context.initialTime = 4;
   await transport.start(volume, 0);
   const at = 4.06 + 15 / volume.bpm;

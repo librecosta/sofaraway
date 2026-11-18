@@ -55,6 +55,7 @@ export function parseRecords(raw: string | null): RecordsV1 {
   const standard = object(source.standard), sightseeing = object(source.sightseeing);
   const ids: { id: RecordId; volume: VolumeId }[] = [
     ...VOLUMES.map(({ id }) => ({ id, volume: id })),
+    { id: 'orbit', volume: 'orbit' },
     ...daybreakRecordIds.map(id => ({ id, volume: 'daybreak' as const })),
     { id: controlRecordId, volume: 'descent' },
     { id: laserRecordId, volume: 'descent' },

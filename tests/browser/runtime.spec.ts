@@ -10,7 +10,7 @@ test('one renderer survives volume changes and the run can pause, resume, and di
     const original = document.querySelector('canvas')!;
     const gl = original.getContext('webgl2')!;
     const seen = [];
-    for (const id of ['daybreak', 'descent', 'orbit', 'elsewhere'] as const) {
+    for (const id of ['daybreak', 'descent', 'elsewhere'] as const) {
       await test.start(true);
       test.returnToMenu();
       await test.select(id);
@@ -27,7 +27,7 @@ test('one renderer survives volume changes and the run can pause, resume, and di
     return { seen, paused: paused.phase, resumed: resumed.phase, rendererReused, disposed: test.snapshot().phase };
   });
   expect(result).toEqual({
-    seen: ['daybreak', 'descent', 'orbit', 'elsewhere'],
+    seen: ['daybreak', 'descent', 'elsewhere'],
     paused: 'paused', resumed: 'playing', rendererReused: true, disposed: 'disposed',
   });
   await expect(page.locator('canvas')).toHaveCount(0);
@@ -123,7 +123,7 @@ test('DESCENT reaches its CONTROL ending in the shared runtime with the laser ch
 
 test('forward and backward streaming evicts chunk-owned resources', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
-  for (const id of ['elsewhere', 'daybreak', 'descent', 'orbit'] as const) {
+  for (const id of ['elsewhere', 'daybreak', 'descent'] as const) {
     const stream = await page.evaluate(id => window.b0Harness.streamResources(id), id);
     expect(stream.expectedDisposals).toBeGreaterThan(0);
     expect(stream.currentDisposals).toBe(stream.expectedDisposals);
@@ -183,12 +183,13 @@ test('a long frame drains without a modal and neutralizes an unobservable crossi
 
 test('repeated switches and runs keep resource counts bounded', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/');
-  const samples = await page.evaluate(async () => {
+  const order = ['daybreak', 'descent', 'elsewhere'] as const;
+  const samples = await page.evaluate(async ids => {
     const test = window.b0Harness;
     const samples: Metrics[] = [];
     await test.mount({ quality: 'low' });
     for (let lap = 0; lap < 3; lap++) {
-      for (const id of ['daybreak', 'descent', 'orbit', 'elsewhere'] as const) {
+      for (const id of ids) {
         await test.select(id);
         await test.start(true);
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -198,11 +199,11 @@ test('repeated switches and runs keep resource counts bounded', async ({ page })
     }
     test.dispose();
     return samples;
-  });
-  for (let index = 0; index < 4; index++) {
+  }, order);
+  for (let index = 0; index < order.length; index++) {
     const first = samples[index];
     expect(first.phase).toBe('playing');
-    for (const later of [samples[index + 4], samples[index + 8]]) {
+    for (const later of [samples[index + order.length], samples[index + order.length * 2]]) {
       expect(later.chunks).toBeLessThanOrEqual(6);
       expect(later.geometries).toBeLessThanOrEqual(first.geometries + 2);
       expect(later.textures).toBeLessThanOrEqual(first.textures + 1);

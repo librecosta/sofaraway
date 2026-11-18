@@ -25,7 +25,7 @@ test('material lab renders lit specimens or clearly exposes raw channels', async
   expect(errors).toEqual([]);
 });
 
-test('prerender, four volumes, a live run and restart', async ({ browser, page, request, hasTouch }, info) => {
+test('prerender, playable volume switching, a live run and restart', async ({ browser, page, request, hasTouch }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {
@@ -57,8 +57,8 @@ test('prerender, four volumes, a live run and restart', async ({ browser, page, 
   expect(errors).toEqual([]);
   if (!playable) return;
   const canvas = await page.locator('#gl').elementHandle();
-  for (const name of ['DAYBREAK', 'DESCENT', 'ORBIT', 'ELSEWHERE']) {
-    await page.getByRole('button', { name: 'next volume' }).click();
+  for (const [name, direction] of [['DAYBREAK', 'next'], ['DESCENT', 'next'], ['DAYBREAK', 'previous'], ['ELSEWHERE', 'previous']]) {
+    await page.getByRole('button', { name: direction + ' volume' }).click();
     await expect(page.locator('#vol-name')).toContainText(name);
     await expect(startButton(page)).toBeEnabled();
   }
@@ -108,7 +108,7 @@ test('prerender, four volumes, a live run and restart', async ({ browser, page, 
   await expect(page.locator('#hud-gates')).toHaveText('0/141');
   expect(await canvas!.evaluate((el: HTMLCanvasElement) => el.getContext('webgl2')!.getError())).toBe(0);
   expect(errors).toEqual([]);
-  record(info, initial.dof ? 'PASS' : 'DEGRADED', 'Four volumes, live input, pause, resume, exit and restart',
+  record(info, initial.dof ? 'PASS' : 'DEGRADED', 'Three playable volumes, live input, pause, resume, exit and restart',
     { canvas: initial.canvas, targets: initial.targets, dof: initial.dof });
 });
 

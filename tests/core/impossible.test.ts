@@ -46,11 +46,8 @@ test('Impossible preserves every Hard gate and reaches the authored density with
   expect(again.pickup).toEqual(hard.pickup);
   expect(LUMEN_POINTS.impossible).toBe(10000);
   expect(difficultySettings(elsewhere, 'impossible')).toMatchObject({ lives: 1, mult: 3.4, speedFactor: 1.15 });
-  const orbit = new Simulation(volumeById('orbit'));
-  orbit.start('impossible');
   expect(difficultiesFor('orbit')).toEqual(difficulties);
-  expect(orbit.difficulty).toBe('normal');
-  expect(orbit.speed).toBe(24);
+  expect(() => volumeById('orbit')).toThrow(/flight preview/);
   const tour = new Simulation(elsewhere);
   tour.start('impossible', 0, undefined, 'sightseeing');
   expect([tour.difficulty, tour.speed, tour.lives, tour.outroPlan?.gates.length]).toEqual(['normal', 8, 5, 0]);

@@ -38,7 +38,7 @@ test('DAYBREAK exterior chapter timing follows the soundtrack with cruise, Boost
     expect(look.exterior.sun[1]).toBeCloseTo(.1483, 4);
     expect(look.exterior.seaLevel).toBe(-22);
   }
-  for (const id of ['elsewhere', 'descent', 'orbit']) {
+  for (const id of ['elsewhere', 'descent']) {
     await page.goto(`/?vol=${id}&t=4&q=low&align=1&dbg=1`);
     await expect(diagnostics).toContainText(`"renderedVolume":"${id}"`);
     await expect(diagnostics).not.toContainText('"exterior":');

@@ -34,7 +34,6 @@ test('every sightseeing volume completes in the results UI with the selected rou
     { volume: VOLUMES[0], side: 'left', gates: 53, route: 'BONUS' },
     { volume: VOLUMES[1], side: 'center', gates: 39, route: 'MAIN' },
     { volume: VOLUMES[2], side: 'center', gates: 54 },
-    { volume: VOLUMES[3], side: 'center', gates: 31 },
   ];
   for (const { volume, side, gates, route } of scenarios) {
     const seconds = volume.beats * 60 / volume.bpm + 0.8;

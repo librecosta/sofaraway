@@ -17,8 +17,6 @@ const profiles: { volume: VolumeId; quality: QualityTier; width: number; height:
   { volume: 'elsewhere', quality: 'low', width: 960, height: 540, dpr: 1 },
   { volume: 'elsewhere', quality: 'high', width: 1920, height: 1080, dpr: 1 },
   { volume: 'descent', quality: 'high', width: 960, height: 540, dpr: 1 },
-  { volume: 'orbit', quality: 'low', width: 960, height: 540, dpr: 1 },
-  { volume: 'orbit', quality: 'high', width: 960, height: 540, dpr: 1 },
   { volume: 'daybreak', quality: 'auto', width: 390, height: 664, dpr: 2, mobile: true },
   { volume: 'daybreak', quality: 'auto', width: 390, height: 664, dpr: 3, mobile: true },
 ];
@@ -180,7 +178,7 @@ test('ending remains legible through the light cue and leaves the other volumes 
     await studio.getByRole('button', { name: 'Afterglow Peak' }).click();
     await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
     await canvas.screenshot({ path: info.outputPath('sightseeing.png') });
-    if (haveReference) for (const id of ['daybreak', 'descent', 'orbit']) {
+    if (haveReference) for (const id of ['daybreak', 'descent']) {
       const shots: Buffer[] = [];
       for (const build of [reference, candidate]) {
         await page.goto(`${build.client}/?vol=${id}&t=83&q=high&align=1&ui=0&dbg=1`);
@@ -324,7 +322,7 @@ test('benchmark WebKit mobile compositor at DPR 2 and 3', async () => {
   } finally { await browser.close(); }
 });
 
-test('fixed-time visual comparison across four volumes @glass', async ({ browser }, info) => {
+test('fixed-time visual comparison across the playable volumes @glass', async ({ browser }, info) => {
   if (!haveReference) { log('visual', { status: 'REFERENCE_NOT_CONFIGURED' }); return; }
   const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
   try {
@@ -371,7 +369,7 @@ test('ELSEWHERE material views and unaffected volumes @m0', async ({ browser }, 
       ['elsewhere', 'tunnel', '36', 'high', 'standard'],
       ['elsewhere', 'floor', '45', 'low', 'sightseeing'],
       ['elsewhere', 'junction', '156.328125', 'high', 'standard'],
-      ...(['daybreak', 'descent', 'orbit'] as const).map(id => [id, id, '83', 'high', 'standard']),
+      ...(['daybreak', 'descent'] as const).map(id => [id, id, '83', 'high', 'standard']),
     ];
     for (const [id, name, time, quality, mode] of cases) {
       const images: Buffer[] = [];
@@ -501,7 +499,7 @@ test('fixed chapter frames preserve a low key, legible ELSEWHERE and other-volum
       }
       return ['elsewhere', name, time, quality, boost, mode, side] as const;
     }),
-    ...(['daybreak', 'descent', 'orbit'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
+    ...(['daybreak', 'descent'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
     for (const [id, name, time, quality, boost, mode, side] of all) {
       const captured: Buffer[] = [];
       const brightness: { shadow: number; middle: number; glare: number; mean: number; total: number }[] = [];
@@ -630,7 +628,7 @@ test('repeated volume prewarming releases every compiled shader handle', async (
   });
   await openHarness(page);
   const result = await page.evaluate(async ids => {
-    await window.stability.mount('orbit', 'low');
+    await window.stability.mount('daybreak', 'low');
     for (let repeat = 0; repeat < 2; repeat++) {
       for (const id of ids) await window.stability.select(id);
     }

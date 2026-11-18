@@ -5,10 +5,10 @@ import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 
-const expectedCounts = [[140, 141, 141], [120, 120, 120], [161, 161, 161], [91, 91, 91]];
+const expectedCounts = [[140, 141, 141], [120, 120, 120], [161, 161, 161]];
 // ELSEWHERE and DESCENT default to Main.
 const expectedScores = [[66201, 105326, 156826], [56470, 89395, 133295],
-  [76290, 120915, 180415], [41444, 65069, 96569]];
+  [76290, 120915, 180415]];
 
 for (const [index, volume] of VOLUMES.entries()) {
   test(`${volume.id} completes all difficulties with collision enabled`, async ({ page }) => {
@@ -135,7 +135,7 @@ test('distant gates stay sharp while foreground depth of field remains active', 
   expect(regular.wall.equals(sharp.wall)).toBe(false);
 });
 
-test('the last ORBIT gate fades into view before reaching full brightness', async ({ page }) => {
+test('the last ELSEWHERE gate fades into view before reaching full brightness', async ({ page }) => {
   await page.addInitScript(() => {
     const gl = WebGL2RenderingContext.prototype;
     const { getUniformLocation, uniform1f } = gl;
@@ -156,21 +156,21 @@ test('the last ORBIT gate fades into view before reaching full brightness', asyn
   });
 
   const renderAt = async (ahead: number, boost = false): Promise<number[]> => {
-    const sim = new Simulation(VOLUMES[3], { align: true });
+    const sim = new Simulation(VOLUMES[0], { align: true });
     sim.start('normal');
-    const station = sim.reference.station(316, 'standard');
+    const station = sim.mainGates.at(-1)!.worldStation;
     let ticks = 0;
     while (station - sim.distance > ahead) {
       sim.step(STEP, { ...idleInput, boosting: boost });
       ticks++;
     }
-    await page.goto(`/?vol=orbit&t=${ticks * STEP}&q=low&align=1&god=0&dbg=1&boost=${Number(boost)}`);
+    await page.goto(`/?vol=elsewhere&t=${ticks * STEP}&q=low&align=1&god=0&dbg=1&boost=${Number(boost)}`);
     await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
     const samples = await page.locator('html').getAttribute('data-gate-fades');
     return JSON.parse(samples ?? '[]');
   };
 
-  // The last gate is at beat 316. Earlier gates in each capture are fully lit.
+  // Earlier gates in each capture are fully lit.
   const early = Math.min(...await renderAt(187));
   const midway = Math.min(...await renderAt(165));
   const nearlyLit = Math.min(...await renderAt(144));

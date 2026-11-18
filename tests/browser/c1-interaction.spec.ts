@@ -31,10 +31,12 @@ test('the volume wheel settles after rapid input, cycles, drags, and keeps one r
   await expect(start(page)).toBeEnabled();
 
   await wheel.hover();
-  await page.mouse.wheel(0, 190);
-  await expect(volume(page)).toContainText('ORBIT');
+  await page.mouse.wheel(0, 95);
+  await expect(volume(page)).toContainText('DESCENT');
   await expect(start(page)).toBeEnabled();
-  await wheel.press('ArrowDown');
+  await wheel.press('ArrowUp');
+  await expect(volume(page)).toContainText('DAYBREAK');
+  await wheel.press('ArrowUp');
   await expect(volume(page)).toContainText('ELSEWHERE');
   await expect(start(page)).toBeEnabled();
   await wheel.press('ArrowDown');
@@ -185,9 +187,9 @@ test('the settings-only dynamic lights switch persists and pulses through silent
   await expect.poll(async () => (await diagnostics(page)).beat).toBeGreaterThan(paused.beat);
 });
 
-test('fixed scenes respond in all four volumes while reduced motion leaves the baseline intact', async ({ page }) => {
-  for (const volume of ['elsewhere', 'daybreak', 'descent', 'orbit']) {
-    const t = ({ elsewhere: 97.58, daybreak: 109.15, descent: 103.72, orbit: 100.08 })[volume];
+test('fixed scenes respond in all three playable volumes while reduced motion leaves the baseline intact', async ({ page }) => {
+  for (const volume of ['elsewhere', 'daybreak', 'descent']) {
+    const t = ({ elsewhere: 97.58, daybreak: 109.15, descent: 103.72 })[volume];
     const url = `/?t=${t}&vol=${volume}&q=low&dbg=1&ui=0&align=1`;
     await page.goto(url);
     await expect.poll(async () => (await diagnostics(page)).rhythmGain).toBe(1);

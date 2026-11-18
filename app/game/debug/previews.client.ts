@@ -8,7 +8,7 @@ import { isDescentGate } from '../core/descent-gates';
 import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
-import { makeEnvMap, makeSky } from '../graphics/environment.client';
+import { makeEnvMap } from '../graphics/environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from '../graphics/gates.client';
 import { PickupVisual } from '../graphics/pickup.client';
 import { Graphics } from '../graphics/scene.client';
@@ -54,12 +54,6 @@ export function renderRawSurfaces(root: HTMLElement, materials: MaterialLibrary)
     canvas.getContext('2d')?.putImageData(image, 0, 0);
     paint(root, id, canvas, 'raw');
   }
-}
-
-export function renderEnvironment(root: HTMLElement) {
-  const sky = makeSky(volumeById('orbit'));
-  if (!sky) return;
-  try { paint(root, 'stars', sky.image); } finally { sky.dispose(); }
 }
 
 export function renderWorlds(root: HTMLElement) {

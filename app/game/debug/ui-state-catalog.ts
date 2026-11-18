@@ -59,7 +59,6 @@ export const uiStates: readonly UIState[] = [
   menu('impossible', 'ELSEWHERE Impossible', { difficulty: 'impossible', localRecord: escaped }),
   menu('daybreak', 'DAYBREAK Standard', { volumeId: 'daybreak' }),
   menu('descent', 'DESCENT Standard', { volumeId: 'descent' }),
-  menu('orbit', 'ORBIT Standard', { volumeId: 'orbit' }),
   menu('sightseeing', 'Sightseeing', { mode: 'sightseeing', localRecord: { best: null, last: { score: 8421, outcome: 'ESCAPED' } } }),
   menu('no-records', 'No Best / Last', { localRecord: empty }),
   menu('record-success', 'Best / Last · Escaped', { localRecord: escaped }),

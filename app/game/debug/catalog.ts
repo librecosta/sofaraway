@@ -5,7 +5,7 @@ import type { DescentGateKind } from '../core/descent-gates';
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
 
-const sceneTimes = { elsewhere: 36, daybreak: 32, descent: 45, orbit: 38 };
+const sceneTimes = { elsewhere: 36, daybreak: 32, descent: 45 };
 
 export const catalog = VOLUMES.map(volume => {
   const chart = chartFor(volume, 'normal');
@@ -21,7 +21,6 @@ const gateNotes = {
   iris: 'One open wedge around a solid hub.',
   square: 'Fixed square opening at the centre.',
   diamond: 'Fixed diamond opening at the centre.',
-  aperture: 'A round opening offset from the centre.',
 };
 
 const descentDescriptions = {

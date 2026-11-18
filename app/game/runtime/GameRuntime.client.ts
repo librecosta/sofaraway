@@ -261,7 +261,7 @@ export class Runtime implements GameRuntime {
   }
 
   async selectVolume(id: VolumeId) {
-    if (!this.canConfigure() || this.contextLost || this.cached || id === this.snapshot.volumeId) return;
+    if (id === 'orbit' || !this.canConfigure() || this.contextLost || this.cached || id === this.snapshot.volumeId) return;
     const begin = performance.now();
     if (this.snapshot.phase === 'results') this.returnToMenu();
     const { mode } = this.snapshot;

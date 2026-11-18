@@ -8,7 +8,6 @@ export const WALL = { w: SECTION.a * 2 + 0.20, h: SECTION.b * 2 + 0.20 };
 export const HUB_R = 1.02;
 export const SQUARE_HALF = 1.35;
 export const DIAMOND_EXTENT = 1.91;
-export const HOLE_R = 0.95;
 export const RANGE_X = SECTION.a - 0.32;
 export const RANGE_Y = SECTION.b - 0.32;
 export type Axis = 0 | 1;
@@ -55,10 +54,6 @@ export function canPass(obstacle: GateKind, open: number, axis: Axis, x: number,
       return Math.abs(x) < SQUARE_HALF && Math.abs(y) < SQUARE_HALF;
     case 'diamond':
       return Math.abs(x) + Math.abs(y) < DIAMOND_EXTENT;
-    case 'aperture': {
-      const [cx, cy] = lanePoint(obstacle, open, axis);
-      return Math.hypot(x - cx, y - cy) < HOLE_R;
-    }
     case 'iris': {
       if (Math.hypot(x, y) < HUB_R) return false;
       const turn = Math.PI * 2;

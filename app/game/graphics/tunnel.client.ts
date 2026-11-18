@@ -262,7 +262,6 @@ export class Tunnel {
       station >= (this.outroAtlas[0]?.start ?? Infinity) ? this.outroAtlas : this.atlas, station)) : undefined;
     for (let i = 0; i < rings.length; i++) this.path.sample(rings[i], ringFrames[i] ??= frame());
 
-    const ghost = this.topology === 'orbit';   // light frame only, no hull
     const shell = { pos: [] as number[], nor: [] as number[], uv: [] as number[], idx: [] as number[] };
     const shellGroups = [shell.idx, [] as number[], [] as number[]];
     const rib = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
@@ -315,7 +314,7 @@ export class Tunnel {
     }
 
     /* ---- shell: quad strips between consecutive rings ---- */
-    for (let k = 0; !ghost && k < rings.length - 1; k++) {
+    for (let k = 0; k < rings.length - 1; k++) {
       const sA = rings[k], sB = rings[k + 1];
       const A = ringFrames[k], B = ringFrames[k + 1];
       // absolute V, so the plating is continuous across chunk seams
@@ -450,7 +449,7 @@ export class Tunnel {
     }
 
     /* ---- corner gussets: a triangular bracket welded into every vertex ---- */
-    if (!ghost) {
+    {
       const W = 0.13;    // how far in from the corner
       const H = 0.085;   // half-width across the corner
       for (let k = 0; k < rings.length - 1; k++) {

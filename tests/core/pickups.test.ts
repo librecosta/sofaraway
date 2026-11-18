@@ -75,7 +75,7 @@ test('seeded pickup selection covers all kinds and does not change the authored 
     }
   }
   expect(new Set(firstGates).size).toBe(1);
-  for (const other of VOLUMES.filter(other => other.id === 'descent' || other.id === 'orbit')) {
+  for (const other of VOLUMES.filter(other => other.id === 'descent')) {
     const run = new Simulation(other, { align: true });
     run.start('normal', seedFor('lumen'));
     advance(run, other.beats);

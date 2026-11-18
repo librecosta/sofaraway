@@ -115,17 +115,19 @@ test('hydration loads the game on demand and keeps volume history working', asyn
   await expect(page.locator(start)).toBeEnabled();
   await expect(name).toContainText('ELSEWHERE');
 
-  for (const volume of ['daybreak', 'descent', 'orbit']) {
+  for (const volume of ['daybreak', 'descent']) {
     await page.goto('/?vol=' + volume + '&q=low');
     await expect(page.locator(start)).toBeEnabled();
     await expect(name).toContainText(volume.toUpperCase());
   }
   await page.getByRole('button', { name: 'next volume' }).click();
-  await expect(page).toHaveURL(/vol=elsewhere/);
-  await expect(name).toContainText('ELSEWHERE');
+  await expect(page).toHaveURL(/vol=orbit/);
+  await expect(page.getByRole('heading', { name: 'ASTRAL BELT' })).toBeVisible();
   await page.goBack();
-  await expect(name).toContainText('ORBIT');
+  await expect(name).toContainText('DESCENT');
   await page.goForward();
+  await expect(page.getByRole('heading', { name: 'ASTRAL BELT' })).toBeVisible();
+  await page.getByRole('link', { name: 'Game menu' }).click();
   await expect(name).toContainText('ELSEWHERE');
   await page.reload();
   await expect(page.locator(start)).toBeEnabled();
@@ -155,7 +157,7 @@ test('a failed runtime download can be retried from the fallback', async ({ page
     attempts++;
     return available ? route.continue() : route.abort();
   });
-  await page.goto('/?vol=orbit&q=low');
+  await page.goto('/?vol=descent&q=low');
   const fallback = page.getByRole('dialog', { name: 'GAME UNAVAILABLE' });
   await expect(fallback).toBeVisible();
   const failedAttempts = attempts;
@@ -163,7 +165,7 @@ test('a failed runtime download can be retried from the fallback', async ({ page
   available = true;
   await fallback.getByRole('button', { name: 'TRY AGAIN' }).click();
   await expect(page.locator(start)).toBeEnabled();
-  await expect(page.locator('#vol-name')).toContainText('ORBIT');
+  await expect(page.locator('#vol-name')).toContainText('DESCENT');
   expect(attempts).toBeGreaterThan(failedAttempts);
 });
 

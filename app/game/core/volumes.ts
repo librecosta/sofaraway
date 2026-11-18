@@ -5,9 +5,9 @@ import type { DaybreakGateKind } from './daybreak-gates';
 import { controlTrack } from './descent-score';
 import type { DescentGateKind } from './descent-gates';
 
-export type GateKind = 'iris' | 'square' | 'diamond' | 'aperture' | DaybreakGateKind | DescentGateKind;
+export type GateKind = 'iris' | 'square' | 'diamond' | DaybreakGateKind | DescentGateKind;
 export type Topology = 'conduit' | 'canal' | 'facility' | 'orbit';
-export type Music = 'techno' | 'breakbeat' | 'control' | 'synthwave';
+export type Music = 'techno' | 'breakbeat' | 'control';
 export interface Section {
   name: string;
   beats: number;
@@ -17,7 +17,7 @@ export interface Section {
   gateSequence?: readonly GateKind[];
 }
 export interface VolumeDefinition {
-  id: VolumeId;
+  id: Exclude<VolumeId, 'orbit'>;
   name: string;
   subtitle: string;
   bpm: number;
@@ -77,14 +77,6 @@ const descentEnergy = {
 const SECTIONS_III: readonly Section[] = controlTrack.sections.map(({ name, startBeat, endBeat }) =>
   ({ name, beats: endBeat - startBeat, energy: descentEnergy[name] }));
 
-const SECTIONS_IV = [
-  { name: 'LAUNCH', beats: 16, gap: 999,  pattern: 'sweep',    energy: 0.15 },
-  { name: 'ORBIT',  beats: 80, gap: 4.0,  pattern: 'sweep',    energy: 0.45 },
-  { name: 'WIDE',   beats: 80, gap: 3.5,  pattern: 'opposite', energy: 0.60 },
-  { name: 'FLARE',  beats: 80, gap: 2.5,  pattern: 'leap',     energy: 0.85 },
-  { name: 'HOME',   beats: 64, gap: 4.0,  pattern: 'step',     energy: 0.50 },
-];
-
 function total(sections: readonly Section[]) {
   return sections.reduce((n, s) => n + s.beats, 0);
 }
@@ -133,23 +125,10 @@ export const VOLUMES: readonly VolumeDefinition[] = [
     hue: [0.03, 0.98, 0.09],
     lives: { easy: 3, normal: 2, hard: 1 },
   },
-  {
-    id: 'orbit',
-    name: 'ORBIT',
-    subtitle: 'VOL. IV',
-    bpm: 100,
-    sections: SECTIONS_IV,
-    beats: total(SECTIONS_IV),
-    seed: 77345,
-    topology: 'orbit',          // no corridor at all: free-standing rings in the void
-    obstacle: 'aperture',       // one off-centre round hole in a full pane
-    music: 'synthwave',
-    hue: [0.62, 0.70, 0.55],
-    lives: { easy: 3, normal: 2, hard: 1 },
-  },
 ];
 
 export function volumeById(id: string | null): VolumeDefinition {
+  if (id === 'orbit') throw new Error('ORBIT is available as a development flight preview.');
   return VOLUMES.find((v) => v.id === (id === 'drift' ? 'daybreak' : id)) || VOLUMES[0];
 }
 

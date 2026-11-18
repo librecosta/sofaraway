@@ -251,13 +251,15 @@ test('responsive layouts, high-DPI canvas, direct refresh and master-only volume
     await page.screenshot({ path: file });
     await info.attach(`${width}×${height} at DPR 2`, { path: file, contentType: 'image/png' });
   }
-  for (const volume of ['elsewhere', 'descent', 'orbit']) {
+  for (const volume of ['elsewhere', 'descent']) {
     await page.getByRole('combobox', { name: 'Volume' }).selectOption(volume);
     await expect(page.getByRole('heading', { name: volume.toUpperCase() })).toBeVisible();
     await expect(page.getByRole('slider', { name: / cue$/ })).toHaveCount(1);
   }
+  await page.getByRole('combobox', { name: 'Volume' }).selectOption('orbit');
   await page.reload();
   await expect(page.getByRole('heading', { name: 'ORBIT' })).toBeVisible();
-  await expect(canvas).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/ORBIT has no soundtrack/)).toBeVisible();
+  await expect(canvas).toHaveCount(0);
   await context.close();
 });

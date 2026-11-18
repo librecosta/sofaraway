@@ -13,7 +13,6 @@ const baselines = [
   [143, 144, 144, '8eec49a9d209522f2a4ef00e78973486e46a677315eb0eb0a0f63a2b05265eda', 'a9a1d88caf0fdaea8b23f5d82f6f003fb4164e03b27a5008a56a28955ff40461', 'c8d761bb72e16f4cf5b7d222208c339a25fc24ba70c6376afb6d14def874dd2b'],
   null,
   null,
-  [91, 91, 91, '1656fd948fb18dba9a0778ed474ea10e317cd2b76cdfe10ba51a853651cf9d6f', '58a13f3067bc9e72240aa74833148b8444c413209ab60aacea47a4fb132d3067', 'dbc73ec5d41739182d095c75e269e542e7bf45711cdc58fc72f0f09c9a71f4c5'],
 ] as const;
 
 describe.each(VOLUMES.flatMap((volume, index) => {
@@ -47,8 +46,6 @@ describe.each(VOLUMES.flatMap((volume, index) => {
 test('point collision respects the gate opening boundaries', () => {
   expect(canPass('iris', 0, 0, 1, 0)).toBe(false);
   expect(canPass('iris', 0, 0, 1.02, 0)).toBe(true);
-  expect(canPass('aperture', 0, 0, 1.05, 0)).toBe(false);
-  expect(canPass('aperture', 0, 0, 2.15, 0.94)).toBe(true);
   expect(canPass('daybreak-horizontal', 0, 0, 1.5, 0)).toBe(true);
   expect(canPass('daybreak-vertical', 0, 0, 1.5, 0)).toBe(false);
   expect(canPass('daybreak-vertical', 0, 0, ...lanePoint('daybreak-vertical', 0, 0))).toBe(true);
@@ -74,7 +71,7 @@ test('a hard run can terminate once, settle, and restart cleanly', () => {
 
 test('fixed steps yield the same result at 20, 60, 120, and 144 Hz', () => {
   function run(hz: number) {
-    const sim = new Simulation(VOLUMES[3], { align: true });
+    const sim = new Simulation(VOLUMES[2], { align: true });
     const clock = new FixedStepClock();
     sim.start('hard');
     for (let frame = 1; frame <= hz * 100; frame++) {

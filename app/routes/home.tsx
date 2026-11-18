@@ -1,7 +1,7 @@
 import { GameViewport } from '../components/GameViewport';
 
 const title = 'SoFaraway — a rhythm runner';
-const description = 'Thread the gates, ride the beat. Four procedural worlds with synthesized music, by LibreCosta.';
+const description = 'Thread the gates, ride the beat. Four procedural worlds, including the ASTRAL BELT flight preview, by LibreCosta.';
 const canonical = 'https://sofaraway.librecosta.com/';
 
 export const meta = () => [

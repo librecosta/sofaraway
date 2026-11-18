@@ -18,12 +18,14 @@ import { DescentFacility } from './descent-facility.client';
 import { descentRouteSwatches } from '../core/descent-routes';
 import type { DescentJunction } from './descent-junction';
 import type { CirrusLayer } from './daybreak-cirrus';
-import { makeDaybreakEnvMap, makeEnvMap, makeSky } from './environment.client';
+import { makeDaybreakEnvMap, makeEnvMap } from './environment.client';
 import { GateGeometries, GateVisual, THICKNESS } from './gates.client';
 import { glassMicroContrast } from './glass-optics';
 import { MaterialLibrary } from './materials/library.client';
+import type { OrbitDensity } from '../core/orbit-field';
+import { OrbitWorld } from './orbit-world.client';
 import { buildRunPath } from './path';
-import type { Path } from './path';
+import type { Path, PathFrame } from './path';
 import { PickupVisual } from './pickup.client';
 import { PostFX } from './post.client';
 import { readCapabilities, selectProfile } from './quality';
@@ -37,6 +39,7 @@ const frame = () => ({
 });
 const BASE_FOV = 76;
 type SceneGate = RunGate | EncoreGate;
+interface OrbitView { station: number; x: number; y: number; time: number }
 export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance' | 'beat' | 'time' | 'phase' |
   'mode' | 'route' | 'branch' | 'branchGates' | 'junctionPath' | 'steeringWidth' | 'routeGuide' | 'routeSide' |
   'previewGates' | 'previewEncore' | 'outroPlan' | 'speed' | 'boostLens' | 'boosting' | 'hitTime' |
@@ -49,7 +52,8 @@ class ShaderFailure extends Error {}
 class VolumeScene {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
-  readonly tunnel: Tunnel;
+  readonly tunnel?: Tunnel;
+  readonly orbit?: OrbitWorld;
   readonly hologram?: RouteHologram;
   readonly scenic?: CorridorLights;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
@@ -58,7 +62,6 @@ class VolumeScene {
   private readonly gateGeometries = new GateGeometries();
   private readonly visuals = new Map<SceneGate, GateVisual>();
   private outro?: OutroPlan;
-  private sky?: THREE.CanvasTexture | null;
   readonly exterior?: DaybreakExterior;
   private readonly facility?: DescentFacility;
   private readonly facilityBackground?: THREE.Color;
@@ -69,7 +72,7 @@ class VolumeScene {
   private readonly backwards = new THREE.Vector3();
   private readonly gateTarget = new THREE.Vector3();
   private readonly basis = new THREE.Matrix4();
-  private hue: number;
+  private hue = 0;
   private saturation = 1;
   private phase?: Simulation['phase'];
   private pickup?: PickupVisual;
@@ -78,8 +81,16 @@ class VolumeScene {
   private readonly surfaceLibrary?: MaterialLibrary;
   private readonly gameplay;
 
-  constructor(private readonly volume: VolumeDefinition, textures: ReturnType<typeof buildTextures> | MaterialLibrary | undefined,
-    environmentFor: (sun?: THREE.Vector3) => THREE.Texture | null, readonly path: Path, mode: PlayMode) {
+  constructor(private readonly volume: VolumeDefinition | null, textures: ReturnType<typeof buildTextures> | MaterialLibrary | undefined,
+    environmentFor: (sun?: THREE.Vector3) => THREE.Texture | null, readonly path: Path, mode: PlayMode,
+    orbit?: { seed: number; density: OrbitDensity }) {
+    if (orbit) {
+      this.camera.far = 680;
+      this.camera.updateProjectionMatrix();
+      this.orbit = new OrbitWorld(path, orbit.seed, orbit.density);
+      this.scene.add(this.orbit.group);
+    }
+    if (!volume) return;
     this.hue = volume.hue[0];
     this.gameplay = gameplayFor(volume.id);
     if (this.gameplay.world?.continuous) {
@@ -102,7 +113,7 @@ class VolumeScene {
         this.scene.add(this.exterior.mesh);
         this.tunnel.setSunDirection(this.exterior.sun);
         this.fog.density = .00245;
-      } else this.scene.background = this.facilityBackground ?? (this.sky = makeSky(volume));
+      } else if (this.facilityBackground) this.scene.background = this.facilityBackground;
       this.scene.environment = environmentFor(this.exterior?.sun);
       if (this.exterior) this.scene.environmentIntensity = .90;
       if (this.facility) this.scene.environmentIntensity = .66;
@@ -128,6 +139,10 @@ class VolumeScene {
   }
 
   prepare(renderer: THREE.WebGLRenderer) {
+    if (!this.volume || !this.tunnel) {
+      renderer.compile(this.scene, this.camera);
+      return;
+    }
     const gate = new GateVisual(this.gateGeometries, this.volume.obstacle, 0, 0);
     const sample = this.tunnel.surfaceMaterials;
     const plane = sample && new THREE.PlaneGeometry(1, 1);
@@ -136,7 +151,7 @@ class VolumeScene {
     for (const preview of previews) this.scene.add(preview);
     try {
       this.tunnel.surfaces?.upload(renderer);
-      if (this.gameplay.branch && !this.facility && !this.disposeJunctionPrograms) {
+      if (this.gameplay?.branch && !this.facility && !this.disposeJunctionPrograms) {
         this.disposeJunctionPrograms = prepareJunctionPrograms(renderer, this.scene, this.camera);
       } else {
         renderer.compile(this.scene, this.camera);
@@ -155,7 +170,21 @@ class VolumeScene {
 
   private preparedGate?: GateVisual;
 
+  updateOrbit(view: OrbitView, height: number, dpr: number, quality: QualityTier) {
+    this.moveCamera(this.path.sample(view.station, this.cameraFrame), view.x, view.y);
+    this.setFov(BASE_FOV);
+    this.orbit?.update(this.camera, height, dpr, quality);
+  }
+
+  private moveCamera(cameraFrame: PathFrame, x: number, y: number, width = 0) {
+    const [cx, cy] = playerViewOffset(x, y, width);
+    this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
+    this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
+    this.camera.quaternion.setFromRotationMatrix(this.basis);
+  }
+
   update(sim: SceneState, deterministic: boolean, lighting?: LightingPreview) {
+    if (!this.volume || !this.tunnel) return { focus: null, locked: false };
     const { x, y, roll } = sim.camera;
     const distance = lighting?.station ?? sim.trackDistance;
     const dynamics = lighting?.dynamics ?? steadyLights;
@@ -198,11 +227,8 @@ class VolumeScene {
       ? junction.path.sample(distance, sim.branch.side, this.cameraFrame)
       : this.path.sample(distance, this.cameraFrame);
     const width = sim.steeringWidth;
-    const [cx, cy] = playerViewOffset(x, y, width);
-    this.camera.position.copy(cameraFrame.p).addScaledVector(cameraFrame.r, cx).addScaledVector(cameraFrame.u, cy);
+    this.moveCamera(cameraFrame, x, y, width);
     if (lighting?.cameraLift) this.camera.position.y += lighting.cameraLift;
-    this.basis.makeBasis(cameraFrame.r, cameraFrame.u, this.backwards.copy(cameraFrame.f).negate());
-    this.camera.quaternion.setFromRotationMatrix(this.basis);
     this.camera.rotateZ(roll);
     if (lighting?.yaw) this.camera.rotateY(lighting.yaw);
     if (lighting?.pitch) this.camera.rotateX(lighting.pitch);
@@ -310,11 +336,12 @@ class VolumeScene {
   }
 
   private updateJunction(sim: SceneState) {
+    if (!this.tunnel) return;
     const path = sim.junctionPath;
     const layout = sim.branch?.layout;
     const past = path && sim.trackDistance > path.end + 95;
     const visible = path && sim.trackDistance >= (this.facility ? path.start - this.camera.far : path.guideStart - 100);
-    if (path && layout && (this.gameplay.world?.continuous || (!past && visible))) {
+    if (path && layout && (this.gameplay?.world?.continuous || (!past && visible))) {
       if (this.junction?.path === path && this.junction.layout === layout) return;
       this.junction?.dispose();
       this.junction = this.facility?.junction(path, layout) ??
@@ -330,7 +357,7 @@ class VolumeScene {
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
   get descentLighting() { return this.facility?.lighting; }
-  get continuity() { return this.gameplay.world?.continuous ? this.tunnel.continuity : undefined; }
+  get continuity() { return this.gameplay?.world?.continuous ? this.tunnel?.continuity : undefined; }
   get skyDaylight() { return this.exterior?.daylight; }
   get encoreMeshes() {
     let count = 0;
@@ -341,7 +368,7 @@ class VolumeScene {
   get junctionLightLevel() { return this.junction instanceof BranchVisual ? this.junction.lightLevel : undefined; }
 
   private updatePickup(sim: SceneState) {
-    const spec = this.gameplay.pickup;
+    const spec = this.gameplay?.pickup;
     if (!spec || sim.phase !== 'playing' || !sim.pickupVisible || !sim.pickup) {
       this.pickup?.dispose();
       this.pickup = undefined;
@@ -374,7 +401,7 @@ class VolumeScene {
     this.scenic?.dispose();
     this.surfaceLibrary?.dispose();
     this.exterior?.dispose();
-    this.sky?.dispose();
+    this.orbit?.dispose();
     this.scene.clear();
   }
 }
@@ -437,6 +464,7 @@ export class Graphics {
   get path() { return this.corridor; }
 
   load(definition: VolumeDefinition, existingPath?: Path, mode: PlayMode = 'standard') {
+    const leavingOrbit = !!this.volume?.orbit;
     this.volume?.dispose();
     this.volume = undefined;
     if (definition.id !== 'daybreak') this.releaseDaylightEnvironment();
@@ -449,6 +477,23 @@ export class Graphics {
     });
     this.updateExteriorDetail();
     this.sizeCamera();
+    if (leavingOrbit) this.configure(this.quality, this.mobile);
+  }
+
+  loadOrbit(path: Path, seed: number, density: OrbitDensity) {
+    const enteringOrbit = !this.volume?.orbit;
+    this.volume?.dispose();
+    this.volume = undefined;
+    this.corridor = path;
+    this.volume = this.withCoreShaders(() => new VolumeScene(null, undefined, () => null, path, 'standard', { seed, density }));
+    this.sizeCamera();
+    if (enteringOrbit) this.configure(this.quality, this.mobile);
+  }
+
+  restoreOrbit(path: Path, seed: number, density: OrbitDensity, quality: QualityTier) {
+    this.capabilities = this.readDeviceCapabilities();
+    this.quality = quality;
+    this.loadOrbit(path, seed, density);
   }
 
   private environmentFor(sun?: THREE.Vector3) {
@@ -526,6 +571,8 @@ export class Graphics {
       this.postFailure = 'No complete color framebuffer is available.';
       return;
     }
+    const orbit = !!this.volume?.orbit;
+    if (orbit) profile = { ...profile, dof: false };
     const candidates = [profile];
     if (profile.samples) candidates.push({ ...profile, samples: 0 });
     if (profile.halfFloat && this.capabilities.rgba8) {
@@ -544,6 +591,7 @@ export class Graphics {
           post.dofMat.uniforms.uAperture.value = dof[0];
           if (dof[1] !== undefined) post.dofMat.uniforms.uMaxBlur.value = dof[1];
         }
+        if (orbit) post.setAstralLook();
         this.post = post;
         return;
       } finally {
@@ -570,7 +618,6 @@ export class Graphics {
 
   private readDeviceCapabilities() {
     const capabilities = readCapabilities(this.gl);
-    // ORBIT's procedural sky uses a 1024px-wide texture.
     if (capabilities.maxTextureSize < 1024 || capabilities.maxSize < 2) {
       throw new UnsupportedGraphics('WebGL2 limits are too low for the procedural scene.');
     }
@@ -628,12 +675,23 @@ export class Graphics {
   draw(sim: SceneState, deterministic: boolean, updateScene = true, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return false;
     if (updateScene) this.update(sim, deterministic, lighting);
-    const { scene, camera } = this.volume;
+    this.render(this.volume, sim.time, sim.phase === 'playing');
+    this.volume.hologram?.render(this.renderer, sim.routeGuide, sim.routeSide, !!sim.route, sim.time);
+    return this.locked;
+  }
+
+  drawOrbit(view: OrbitView) {
+    if (!this.volume?.orbit || this.gl.isContextLost()) return;
+    this.volume.updateOrbit(view, this.height * this.effectiveDpr, this.effectiveDpr, this.quality);
+    this.render(this.volume, view.time, false);
+  }
+
+  private render({ scene, camera }: VolumeScene, time: number, playing: boolean) {
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
     if (this.post) {
       try {
-        this.post.render(scene, camera, sim.time, sim.phase === 'playing');
+        this.post.render(scene, camera, time, playing);
       } catch (error) {
         if (!(error instanceof ShaderFailure)) throw error;
         this.clearPost(error.message);
@@ -645,8 +703,6 @@ export class Graphics {
       this.renderer.setRenderTarget(null);
       this.withCoreShaders(() => this.renderer.render(scene, camera));
     }
-    this.volume.hologram?.render(this.renderer, sim.routeGuide, sim.routeSide, !!sim.route, sim.time);
-    return this.locked;
   }
 
   metrics() {
@@ -655,7 +711,8 @@ export class Graphics {
     return {
       calls: render.calls, triangles: render.triangles,
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
-      chunks: this.volume?.tunnel.chunks.length ?? 0, dpr: this.effectiveDpr,
+      chunks: this.volume?.tunnel?.chunks.length ?? 0, dpr: this.effectiveDpr,
+      orbit: this.volume?.orbit?.metrics(),
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       descentLighting: this.volume?.descentLighting,
       continuity: this.volume?.continuity,
@@ -665,7 +722,7 @@ export class Graphics {
       routeLighting: this.volume?.routeLighting,
       junctionLightLevel: this.volume?.junctionLightLevel,
       routeHologram: this.volume?.hologram?.visibleLabels,
-      scenicLights: this.volume?.scenic ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,
+      scenicLights: this.volume?.scenic && this.volume.tunnel ? { physical: this.volume.tunnel.physicalLights, point: this.volume.tunnel.pointLights,
         active: this.volume.tunnel.activePhysicalLights,
         fixtures: this.volume.scenic.count, groups: this.volume.scenic.groups,
         batches: this.volume.scenic.batches, reduced: this.volume.scenic.reduced,

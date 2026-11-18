@@ -1,0 +1,30 @@
+.page, .embedded {
+  color: #dbe6f2;
+  background: #090f18;
+  position: relative;
+  font-family: var(--font-mono, monospace);
+}
+:global(body):has(.page) { margin: 0; background: #090f18; }
+.page { min-height: 100dvh; display: grid; grid-template-rows: auto minmax(280px, 1fr) auto; }
+.embedded { margin-block: 2rem; scroll-margin-top: 2rem; border: 1px solid #293a4e; }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem clamp(1rem, 4vw, 3rem); }
+.header :is(h1, h2) { font-size: clamp(1.35rem, 3vw, 2.35rem); letter-spacing: .18em; margin: .26em 0 0; }
+.header p, .controls p { margin: 0; color: #a0b7cf; font-size: .75rem; }
+.header nav { display: flex; gap: 1rem; flex-wrap: wrap; }
+.header a { color: #c4e3f9; text-underline-offset: .24em; }
+.view { min-height: 0; position: relative; display: grid; background: #070c15; }
+.view canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; outline-offset: -4px; }
+.embedded .view { height: clamp(280px, 55vw, 560px); }
+.status { position: absolute; inset: 1rem auto auto 1rem; padding: .55rem .7rem; background: #121e2c; }
+.controls { border-top: 1px solid #26364a; display: flex; flex-wrap: wrap; align-items: center; gap: .7rem 1.4rem; padding: .75rem clamp(1rem, 4vw, 3rem); font-size: .81rem; }
+.actions { display: flex; gap: .48rem; flex-wrap: wrap; align-items: center; }
+.actions label { color: #b1c6df; white-space: nowrap; }
+.controls button, .controls select, .controls input[type='number'], .open { font: inherit; color: #deebf7; padding: .36rem .48rem; border: 1px solid #40566d; border-radius: 2px; background: #132235; }
+.controls button:not(:disabled), .open { cursor: pointer; }
+.controls button:hover:not(:disabled), .open:hover { background: #1d354b; }
+.controls input[type='number'] { width: 9.3ch; }
+.seek { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; color: #b1c6df; }
+.seek input { width: clamp(90px, 14vw, 250px); accent-color: #99cae8; }
+.seek output { min-width: 6ch; color: #edf4ff; }
+.metrics { display: block; flex-basis: 100%; color: #b3d0e9; font-variant-numeric: tabular-nums; }
+.open { margin: .25rem 1rem 1rem; }

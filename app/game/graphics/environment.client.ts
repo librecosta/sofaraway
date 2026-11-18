@@ -1,6 +1,4 @@
 import * as THREE from 'three';
-import type { VolumeDefinition } from '../core/volumes';
-import { mulberry } from './textures.client';
 
 /* a cheap equirect environment so the metal hull has something to reflect */
 export function makeEnvMap(r: THREE.WebGLRenderer) {
@@ -71,27 +69,4 @@ function prefilterEnvironment(renderer: THREE.WebGLRenderer, texture: THREE.Text
     pmrem.dispose();
     texture.dispose();
   }
-}
-export function makeSky(volume: VolumeDefinition) {
-  /* an open-topped corridor needs a sky behind it, not the clear colour */
-  if (volume.topology === 'orbit') {
-    // a sparse starfield, drawn once into an equirect strip
-    const c = document.createElement('canvas');
-    c.width = 1024; c.height = 512;
-    const g = c.getContext('2d')!;
-    g.fillStyle = '#03060b';
-    g.fillRect(0, 0, 1024, 512);
-    const random = mulberry(volume.seed);
-    for (let i = 0; i < 320; i++) {
-      const x = random() * 1024, y = random() * 512;
-      const r = random() ** 2 * 0.9 + 0.18;
-      g.fillStyle = `rgba(${180 + random() * 75 | 0},${200 + random() * 55 | 0},255,${0.25 + random() * 0.7})`;
-      g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill();
-    }
-    const stars = new THREE.CanvasTexture(c);
-    stars.mapping = THREE.EquirectangularReflectionMapping;
-    return stars;
-  }
-
-  return null;
 }

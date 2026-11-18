@@ -10,6 +10,7 @@ import { CreditsPanel } from './CreditsPanel';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { GameHUD } from './GameHUD';
 import { MainMenu } from './MainMenu';
+import { OrbitFlightPreview } from './OrbitFlightPreview';
 import { ResultsScreen } from './ResultsScreen';
 import { SettingsPanel } from './SettingsPanel';
 import { ShareToast, useShareToast } from './MenuUtilities';
@@ -30,11 +31,18 @@ function useMenuSnapshot(runtime: GameRuntime | null) {
 }
 
 export function GameViewport() {
+  const [search] = useSearchParams();
+  const { search: query } = useLocation();
+  const orbit = useSyncExternalStore(noSubscribe, () => search.get('vol') === 'orbit', () => false);
+  return orbit ? <OrbitFlightPreview key={query} /> : <RunnerViewport />;
+}
+
+function RunnerViewport() {
   const [search, setSearch] = useSearchParams();
   const { pathname, hash } = useLocation();
   const navigate = useNavigate();
   const rawVolume = search.get('vol');
-  const requested = volumeById(rawVolume).id;
+  const requested = volumeById(rawVolume === 'orbit' ? null : rawVolume).id;
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [mount, setMount] = useState(0);
   const [panel, setPanel] = useState<'settings' | 'credits' | null>(null);
@@ -108,6 +116,7 @@ export function GameViewport() {
     canvas.setAttribute('aria-label', 'SoFaraway game viewport');
     element.append(canvas);
     const params = new URLSearchParams(location.search);
+    if (params.get('vol') === 'orbit') return () => canvas.remove();
     setHideUi(params.get('ui') === '0');
     if (params.get('panel') === '1') setPanel('settings');
     const options = readOptions(params);
@@ -159,6 +168,7 @@ export function GameViewport() {
     const id = volumeTarget.current;
     if (id && id !== snapshot.volumeId) {
       chooseVolume(id);
+      if (id === 'orbit') return;
       void runtime.selectVolume(id);
     }
     void runtime.start();

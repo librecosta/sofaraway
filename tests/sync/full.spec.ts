@@ -4,8 +4,8 @@ import { onsetLead } from '../../app/game/core/daybreak-score';
 import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = [105326, 89395, 120915, 65069];
-const gateCounts = [141, 120, 161, 91];
+const normalScores = [105326, 89395, 120915];
+const gateCounts = [141, 120, 161];
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];

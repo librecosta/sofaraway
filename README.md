@@ -15,15 +15,14 @@ gate has exactly one opening. Find it before you reach the gate. Hold Shift to
 reach the next gate sooner, or choose Sightseeing for one-third forward speed
 and the same soundtrack.
 
-Four volumes. Each is a different corridor, a different kind of glass, and a
-different arrangement — but the same engine underneath.
+Three rhythm-runner courses and an open-space development flight preview share the same rendering and steering.
 
 | | World | Glass | Music | Length | Gates (Normal) |
 |---|---|---|---|---|---|
 | **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 141 / 145 / 157 (Main / Challenge / Bonus) |
 | **II · DAYBREAK** | enclosed skyglass cabin | **Crystal / Crystal 45° / Vertical / Horizontal** — radial slices and geometric windows | breakbeat · 120 | 2:24 | 97 |
 | **III · DESCENT** | industrial security facility and vertical well | **Matrix 3×3**, **Slice Gate**, **Diagonal Weave** | CONTROL · 136 | 2:49 | 174 |
-| **IV · ORBIT** | light only, stars behind | **aperture** — one round hole in a full pane | synthwave · 100 | 3:12 | 91 |
+| **IV · ORBIT** | ASTRAL BELT asteroid field · development preview | — | — | 2,500 world units | — |
 
 The soundtrack sets the palette, the light pulses and the spacing of gates.
 Your flight speed determines when you cross each gate.
@@ -81,7 +80,10 @@ timing, spatial crossings and resource ownership.
 ## Debug overview
 
 Open `/debug/` directly or follow **Debug overview** from **Credits**.
-The page renders all four worlds, every gate type and the floating pickups.
+The page renders the playable courses, their gate types and the floating pickups.
+**ASTRAL BELT** at `/debug/#orbit` or `/?vol=orbit` flies through the new asteroid world.
+Choose Sparse or Dense, or select Flight progression to see the density change along the route.
+The preview supports `seed`, `station`, `density`, and `q` query parameters and displays live draw, geometry, chunk and LOD counts.
 **Surface Materials** shows six lit ELSEWHERE samples and their raw channels;
 **Effect Materials** shows the cyan light channel and hologram film.
 **Lighting & Scenic Composition** previews six installed corridors in Standard
@@ -93,8 +95,8 @@ Encore, Afterglow and results. Seek by world station or fly a ten-second segment
 **UI State Studio** at `/debug/#ui-states` opens production menus, overlays,
 results and recovery states in six viewport sizes without touching records or settings.
 **Audio Inspector** at `/debug/audio/` displays DAYBREAK's seven waveforms on
-one timeline, with track cues, solo, mute and gain. All four volumes support
-master playback and WAV export. Use `/debug/audio/?vol=orbit` to preselect ORBIT.
+one timeline, with track cues, solo, mute and gain. All three playable volumes support
+master playback and WAV export. ASTRAL BELT is silent pending the new ORBIT score.
 
 ### In-game debug parameters
 

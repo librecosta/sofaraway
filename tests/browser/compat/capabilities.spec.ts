@@ -139,7 +139,7 @@ test('actual gate shader pixels agree with collision on this engine', async ({ p
     record(info, 'BLOCKED', 'No WebGL2 for GPU pixel readback');
     return;
   }
-  for (const id of ['elsewhere', 'daybreak', 'descent', 'orbit'] as const) {
+  for (const id of ['elsewhere', 'daybreak', 'descent'] as const) {
     const result = await page.evaluate(id => window.b0Harness.shaderMismatches(id), id);
     expect(result, id).toEqual({ mismatches: [], glError: 0 });
   }
@@ -150,7 +150,7 @@ test('actual gate shader pixels agree with collision on this engine', async ({ p
     expect(readings[0].fast.range).toBeLessThan(readings[0].full.range);
     expect(readings.at(-1)!.fast.range).toBeLessThanOrEqual(2);
   }
-  record(info, 'PASS', 'Gate openings match collision in all four volumes. Optical glass retains the rim and filters fine lines.');
+  record(info, 'PASS', 'Gate openings match collision in all three playable volumes. Optical glass retains the rim and filters fine lines.');
 });
 
 for (const scope of ['core', 'post'] as const) {

@@ -77,16 +77,15 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await next.click();
   await next.click();
   await page.getByRole('button', { name: 'next volume' }).click();
-  await expect(page.locator('#vol-name')).toContainText('ORBIT');
-  await expect(page.locator('#diff [data-choice=impossible]')).toHaveCount(0);
-  await expect(difficulty).toHaveText('NORMAL');
-  await expect(record).toContainText(/BEST SCORE\s*—/);
+  await expect(page.getByRole('heading', { name: 'ASTRAL BELT' })).toBeVisible();
+  await expect(page.locator('#diff')).toHaveCount(0);
+  await expect(record).toHaveCount(0);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard['descent-laser-security'].normal.best, key)).toBe(76834);
-  for (const volume of ['daybreak', 'descent', 'orbit']) {
+  for (const volume of ['daybreak', 'descent']) {
     await page.goto(`/?vol=${volume}&diff=impossible&t=2&dbg=1&q=low`);
     const diagnostics = page.locator('#errbox');
     await expect(diagnostics).toContainText('"speed":');
-    expect(JSON.parse((await diagnostics.textContent())!).speed).toBeCloseTo(volume === 'orbit' ? 24 : 27.6);
+    expect(JSON.parse((await diagnostics.textContent())!).speed).toBeCloseTo(27.6);
   }
   expect(await page.evaluate(() => localStorage.getItem('sofaraway.best'))).toBe('999999');
 });

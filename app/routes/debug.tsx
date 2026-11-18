@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { BeatInspection } from '../components/BeatInspection';
 import { DescentFacilityPreview } from '../components/DescentFacilityPreview';
+import { OrbitFlightPreview } from '../components/OrbitFlightPreview';
 import { EndSequenceStudio } from '../components/EndSequenceStudio';
 import { UIStateStudio } from '../components/UIStateStudio';
 import type { VolumeId } from '../game/contracts';
@@ -276,7 +277,7 @@ export default function DebugOverview() {
     let viewer: ModelPreviews | undefined;
     let releaseMaterials: (() => void) | undefined;
     void Promise.all([import('../game/debug/previews.client'), import('../game/graphics/materials/library.client')]).then(([
-      { ModelPreviews, renderRawSurfaces, renderRawChannel, renderEnvironment, renderWorlds }, { MaterialLibrary },
+      { ModelPreviews, renderRawSurfaces, renderRawChannel, renderWorlds }, { MaterialLibrary },
     ]) => {
       if (stale) return;
       const materials = new MaterialLibrary(true);
@@ -301,7 +302,6 @@ export default function DebugOverview() {
         renderRawSurfaces(container, materials);
         setMaterialStatus('Lit previews unavailable. These cards show base color; raw channels are still available.');
       }
-      renderEnvironment(container);
       timer = window.setTimeout(() => {
         try { renderWorlds(container); setWorldStatus(''); } catch {
           setWorldStatus('The scene previews could not render on this device.');
@@ -327,7 +327,7 @@ export default function DebugOverview() {
       <header className={s.header}>
         <a href="/" className={s.brand}>SoFaraway</a>
         <nav aria-label="Debug sections">
-          <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#daybreak-cabin">Skyglass</a><a href="#descent">DESCENT</a><a href="#gates">Gates</a>
+          <a href="#pickups">Pickups</a><a href="#volumes">Volumes</a><a href="#daybreak-cabin">Skyglass</a><a href="#descent">DESCENT</a><a href="#orbit">ORBIT</a><a href="#gates">Gates</a>
           <a href="#materials">Materials</a><a href="#effects">Effects</a><a href="#lighting">Lighting</a><a href="#s-curve">S-Curve</a>
           <a href="#outro">Ending</a><a href="#ui-states">UI States</a><a href="#environment">Environment</a><a href="#audio">Audio</a>
         </nav>
@@ -395,6 +395,7 @@ export default function DebugOverview() {
         </section>
 
         <DescentFacilityPreview />
+        <OrbitFlightPreview embedded />
 
         <section id="gates" className={s.section}>
           <h2>Gate library</h2>
@@ -503,13 +504,7 @@ export default function DebugOverview() {
 
         <section id="environment" className={s.section}>
           <h2>Environment</h2>
-          <p><a href="#outro">Inspect DAYBREAK's sky and cloud sea</a> in the live End Sequence Studio.</p>
-          <div className={s.swatches}>
-            <figure className={s.card}>
-              <Preview id="stars" label="Starfield" width={320} height={320} />
-              <figcaption className={s.caption}><strong>Starfield</strong><p>Equirectangular sky · Orbit</p></figcaption>
-            </figure>
-          </div>
+          <p><a href="#outro">Inspect DAYBREAK's sky and cloud sea</a> in the live End Sequence Studio or <a href="#orbit">fly through the ASTRAL BELT starfield</a>.</p>
         </section>
 
         <Soundtrack />

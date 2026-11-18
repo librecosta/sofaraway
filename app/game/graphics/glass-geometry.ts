@@ -18,10 +18,6 @@ const SQRT2 = Math.SQRT2;
 const TURN = Math.PI * 2;
 const WEDGE = Math.PI / 8;
 
-export function isOpticalGlass(kind: GateKind): kind is GlassKind {
-  return kind === 'iris' || kind === 'square' || kind === 'diamond' || isDaybreakGate(kind) || isDescentGate(kind);
-}
-
 function hull(inset: number) {
   const { a, b, ch } = SECTION;
   const x = a - inset;

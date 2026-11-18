@@ -363,6 +363,15 @@ export class PostFX {
     u.value += (amount - u.value) * 0.14;
   }
 
+  setAstralLook() {
+    const u = this.compMat.uniforms;
+    u.uVignette.value = .35;
+    u.uGrain.value = .007;
+    u.uScan.value = 0;
+    u.uCA.value = .0007;
+    u.uExposure.value = 1.13;
+  }
+
   _pass(mat: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null) {
     this.quad.material = mat;
     this.renderer.setRenderTarget(target);

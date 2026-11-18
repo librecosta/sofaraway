@@ -15,12 +15,12 @@ test('prerenders the page and hydrates one client canvas', async ({ request, pag
 });
 
 test('the old audio address leads to the unified WAV exporter', async ({ page }) => {
-  await page.goto('/tools/render-audio.html?vol=orbit&secs=2');
-  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=orbit&secs=2$/);
-  await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('orbit');
+  await page.goto('/tools/render-audio.html?vol=elsewhere&secs=2');
+  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=elsewhere&secs=2$/);
+  await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('elsewhere');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Render to WAV' }).click();
-  expect((await download).suggestedFilename()).toBe('sofaraway-orbit.wav');
+  expect((await download).suggestedFilename()).toBe('sofaraway-elsewhere.wav');
   await expect(page.locator('#audio-status')).toHaveText(/Done.*4\.0 s/);
 });
 
