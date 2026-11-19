@@ -5,7 +5,7 @@ import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
 const normalScores = { elsewhere: 105326, daybreak: 89395, descent: 120915, orbit: undefined };
-const gateCounts = { elsewhere: 141, daybreak: 120, descent: 161, orbit: 139 };
+const gateCounts = { elsewhere: 141, daybreak: 120, descent: 161, orbit: 81 };
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
   const volume = VOLUMES[1];

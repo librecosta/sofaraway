@@ -25,10 +25,10 @@ for (const volume of ['descent', 'daybreak'] as const) test(`${volume} dynamic s
   report('dynamic-lights', { volume, measured });
 });
 
-test('CONTROL pauses, resumes, restores its context and starts a fresh run', async ({ page }, info) => {
+for (const volume of ['descent', 'orbit'] as const) test(`${volume === 'orbit' ? 'STARWAKE' : 'CONTROL'} pauses, resumes, restores its context and starts a fresh run`, async ({ page }, info) => {
   test.skip(info.project.name !== 'chromium', 'Uses the Chromium audio device state.');
   const errors = await openSync(page);
-  await mount(page, 'descent');
+  await mount(page, volume);
   await page.locator('#start').click();
   await phase(page, 'playing');
   await expect.poll(async () => (await state(page)).elapsed).toBeGreaterThan(.35);

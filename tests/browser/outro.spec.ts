@@ -4,6 +4,33 @@ import { volumeById } from '../../app/game/core/volumes';
 import { gateDescription } from '../../app/game/debug/catalog';
 import type {} from '../harness/main';
 
+test('ORBIT ending studio uses STARWAKE apertures and open-space ending for every route', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/debug/#outro');
+  const studio = page.locator('#outro');
+  await studio.getByLabel('World', { exact: true }).selectOption('orbit');
+  await studio.getByRole('button', { name: 'Open live ending' }).click();
+  const canvas = studio.getByRole('img', { name: 'Live ORBIT ending' });
+  for (const [quality, difficulty, route] of [['low', 'normal', 'main'], ['auto', 'hard', 'challenge'], ['high', 'impossible', 'score']] as const) {
+    await studio.getByLabel('Route', { exact: true }).selectOption(route);
+    await studio.getByLabel('Chart difficulty').selectOption(difficulty);
+    await studio.getByLabel('Preview quality').selectOption(quality);
+    const inspection = new OutroInspection('standard', 0, route, undefined, difficulty, volumeById('orbit'));
+    for (const [label, preset] of [['RINGBREAK Gates', 'build'], ['MAELSTROM Gates', 'drop'], ['APHELION Gates', 'finale'],
+      ['Branch Preview', 'branch-preview'], ['Main Last Gate', 'main-last'], ['Encore First Gate', 'encore-first'],
+      ['Encore Final Gate', 'encore-final'], ['Afterglow Peak', 'afterglow-peak'], ['Music End', 'music-end']] as const) {
+      await studio.getByRole('button', { name: label, exact: true }).click();
+      await expect(canvas).toHaveAttribute('data-station', inspection.view(preset).station.toFixed(6));
+    }
+    await canvas.screenshot({ path: info.outputPath(`starwake-ending-${quality}.png`) });
+  }
+  await studio.getByRole('combobox', { name: 'Play mode', exact: true }).selectOption('sightseeing');
+  await studio.getByRole('button', { name: 'Afterglow Entry', exact: true }).click();
+  await expect(canvas).toHaveAttribute('data-encore-meshes', '0');
+  expect(errors).toEqual([]);
+});
+
 test('DESCENT End Sequence Studio renders each route through its bonus gates and industrial Afterglow', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

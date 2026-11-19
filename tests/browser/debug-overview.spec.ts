@@ -105,7 +105,7 @@ test('the unified overview renders lit materials, effects and the existing model
   await page.getByRole('link', { name: 'Debug overview' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(27);
+  await expect(previews).toHaveCount(31);
   await expect(page.getByRole('link', { name: "Inspect DAYBREAK's sky and cloud sea" })).toHaveAttribute('href', '#outro');
   await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
   for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Environment', 'Soundtrack']) {
@@ -124,6 +124,7 @@ test('the unified overview renders lit materials, effects and the existing model
     'shield', 'resonance', 'lumen', 'elsewhere', 'daybreak', 'descent', 'orbit',
     'daybreak-cabin-ahead', 'daybreak-cabin-side', 'daybreak-cabin-roof',
     'iris', 'square', 'diamond', ...daybreakGateKinds, 'laser-matrix', 'laser-slice', 'laser-weave',
+    'orbit-single', 'orbit-dual', 'orbit-triple',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
     'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
   ].map(id => ({ id, painted: true })));

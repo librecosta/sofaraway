@@ -19,7 +19,7 @@ const fragmentLimits = { low: .34, auto: .70, high: 1 } as const;
 export function orbitClearance(path: Path, branch?: BranchPath, mode: PlayMode = 'standard') {
   const frame = pathFrame();
   const main = (station: number) => path.sample(station, frame).p.toArray();
-  const lookAhead = branch ? 200 * modeScale(mode) : 104;
+  const lookAhead = branch ? 450 * modeScale(mode) : 250;
   const clearance = new OrbitClearance(path.length, main, lookAhead);
   if (branch) {
     // The approach includes the full steering envelope and the sightlines into both side routes.
@@ -39,14 +39,13 @@ export function orbitClearance(path: Path, branch?: BranchPath, mode: PlayMode =
 const outerBelt = { density: .10, coverage: .60, tilt: .40, drift: -.44, width: 1.9 };
 const maelstrom = { density: 1, coverage: 1.24, tilt: -.56, drift: .10, width: 1.10 };
 const belts: Readonly<Record<string, OrbitBelt>> = {
-  INTRO: outerBelt,
-  A: { density: .34, coverage: .86, tilt: .42, drift: -.38, width: 1.65 },
-  B: { density: .82, coverage: 1.14, tilt: .72, drift: -.15, width: 1.85 },
-  BUILD: maelstrom,
-  DROP: maelstrom,
-  BREAK: { density: .09, coverage: .46, tilt: -.25, drift: -1.32, width: 2.15 },
-  A2: { density: .52, coverage: .88, tilt: .32, drift: .68, width: 1.54 },
-  FINALE: { density: .30, coverage: .72, tilt: .31, drift: -1.30, width: 2.25 },
+  'OUTER BELT': outerBelt,
+  DRIFT: { density: .34, coverage: .86, tilt: .42, drift: -.38, width: 1.65 },
+  RINGBREAK: { density: .82, coverage: 1.14, tilt: .72, drift: -.15, width: 1.85 },
+  MAELSTROM: maelstrom,
+  ECLIPSE: { density: .09, coverage: .46, tilt: -.25, drift: -1.32, width: 2.15 },
+  AURORA: { density: .52, coverage: .88, tilt: .32, drift: .68, width: 1.54 },
+  APHELION: { density: .30, coverage: .72, tilt: .31, drift: -1.30, width: 2.25 },
 };
 const beyond = { density: .05, coverage: .37, tilt: .27, drift: -1.6, width: 2.65 };
 

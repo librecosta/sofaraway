@@ -2,14 +2,13 @@ import * as THREE from 'three';
 import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
 import type { Axis } from '../core/collision';
 import { daybreakProfile, isCabinEdge, isDaybreakGate } from '../core/daybreak-gates';
-import type { DaybreakGateKind } from '../core/daybreak-gates';
 import { isDescentGate } from '../core/descent-gates';
-import type { DescentGateKind } from '../core/descent-gates';
+import { apertureContour, isOrbitGate, orbitPreset } from '../core/orbit-gates';
 import type { GateKind } from '../core/volumes';
 import { DESCENT_GLASS_THICKNESS, descentGlassPanes } from './descent-glass';
 
 export type ClassicGlassKind = Extract<GateKind, 'iris' | 'square' | 'diamond'>;
-export type GlassKind = ClassicGlassKind | DaybreakGateKind | DescentGateKind;
+export type GlassKind = GateKind;
 export const GLASS_THICKNESS = 0.38;
 const BEVEL_WIDTH = 0.035;
 const BEVEL_DEPTH = 0.055;
@@ -125,7 +124,11 @@ export function buildGlassGeometry(kind: GlassKind, open: number, axis: Axis = 0
       offset += loop.length;
     }
   };
-  if (isDescentGate(kind)) {
+  if (isOrbitGate(kind)) {
+    const contours = (inset: number) => [hull(inset), ...orbitPreset(kind, open).holes.map(hole =>
+      apertureContour(hole, inset).map(([x, y]) => new THREE.Vector2(x, y)))];
+    appendPane(contours(BEVEL_WIDTH), contours(0));
+  } else if (isDescentGate(kind)) {
     for (const pane of descentGlassPanes(kind, open, axis)) {
       const throat = pane.map(([x, y]) => new THREE.Vector2(x, y));
       appendPane([insetPane(throat).reverse()], [[...throat].reverse()]);
@@ -144,5 +147,6 @@ export function buildGlassGeometry(kind: GlassKind, open: number, axis: Axis = 0
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('aWall', new THREE.Float32BufferAttribute(walls, 1));
   geometry.setIndex(indices);
+  if (isOrbitGate(kind)) geometry.computeVertexNormals();
   return geometry;
 }

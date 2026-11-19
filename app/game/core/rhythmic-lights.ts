@@ -1,6 +1,7 @@
 import { ease } from './lighting-score';
 import { drums as daybreakDrums } from './daybreak-score';
 import { controlEvents, controlSteps, step as descentStep } from './descent-score';
+import { starwakeEvents, starwakeSteps, step as orbitStep } from './orbit-score';
 import { sectionAt } from './volumes';
 import type { VolumeDefinition } from './volumes';
 
@@ -14,6 +15,12 @@ const controlDrums = controlSteps.map(indices => indices.flatMap(index => {
   return [];
 }));
 
+const orbitDrums = starwakeSteps.map(indices => indices.flatMap(index => {
+  const event = starwakeEvents[index];
+  return event.voice === 'kick' || event.voice === 'snare' ? [{ time: event.at,
+    kind: event.fill ? 'fill' as const : event.voice, velocity: event.velocity }] : [];
+}));
+
 export function drumStrengths(volume: VolumeDefinition, step: number, energy: number) {
   if (volume.music === 'breakbeat') {
     const hits = daybreakDrums[Math.floor(step / 16)]?.filter(hit => hit.at === step % 16) ?? [];
@@ -23,6 +30,12 @@ export function drumStrengths(volume: VolumeDefinition, step: number, energy: nu
   }
   if (volume.music === 'control') {
     const hits = controlDrums[step] ?? [];
+    return { kick: hits.find(hit => hit.kind === 'kick')?.velocity ?? 0,
+      snare: hits.find(hit => hit.kind === 'snare')?.velocity ?? 0,
+      fill: hits.find(hit => hit.kind === 'fill')?.velocity ?? 0 };
+  }
+  if (volume.music === 'starwake') {
+    const hits = orbitDrums[step] ?? [];
     return { kick: hits.find(hit => hit.kind === 'kick')?.velocity ?? 0,
       snare: hits.find(hit => hit.kind === 'snare')?.velocity ?? 0,
       fill: hits.find(hit => hit.kind === 'fill')?.velocity ?? 0 };
@@ -86,6 +99,9 @@ const controlOnsets = controlDrums.map((hits, step) => hits.map(({ time, kind, v
     : kind === 'snare' ? .68 * velocity : .38 * velocity,
 })));
 
+const orbitOnsets = orbitDrums.map(hits => hits.map(({ time, kind, velocity }) =>
+  ({ time, kind, weight: velocity * (kind === 'kick' ? 1 : kind === 'snare' ? .68 : .38) })));
+
 function authoredPulse(time: number, interval: number, onsets: readonly (readonly { time: number; weight: number }[])[]) {
   let pulse = 0;
   for (let bucket = Math.max(0, Math.floor((time - .5) / interval)); bucket <= Math.floor((time + ATTACK) / interval); bucket++) {
@@ -105,7 +121,7 @@ export function drumOnsets(volume: VolumeDefinition): readonly DrumOnset[] {
   let result = onsets.get(volume);
   if (!result) {
     const stepSeconds = musicStepSeconds(volume.bpm);
-    result = volume.music === 'control' ? controlOnsets.flat() :
+    result = volume.music === 'starwake' ? orbitOnsets.flat() : volume.music === 'control' ? controlOnsets.flat() :
       volume.music === 'breakbeat' ? daybreakOnsets.flat().sort((a, b) => a.time - b.time)
       : drumScore(volume).flatMap((drums, step) =>
         (['kick', 'snare', 'fill'] as const).filter(kind => drums[kind]).map(kind => ({ time: step * stepSeconds, kind })));
@@ -116,6 +132,7 @@ export function drumOnsets(volume: VolumeDefinition): readonly DrumOnset[] {
 
 export function drumPulse(volume: VolumeDefinition, time: number) {
   if (volume.music === 'breakbeat') return authoredPulse(time, 2, daybreakOnsets);
+  if (volume.music === 'starwake') return authoredPulse(time, orbitStep, orbitOnsets);
   if (volume.music === 'control') return authoredPulse(time, descentStep, controlOnsets);
   const stepSeconds = musicStepSeconds(volume.bpm);
   const score = drumScore(volume);

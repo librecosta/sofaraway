@@ -17,6 +17,7 @@ import { isDescentGate } from '../game/core/descent-gates';
 import type { GateKind } from '../game/core/volumes';
 import { referenceFor } from '../game/core/reference-track';
 import { volumeById } from '../game/core/volumes';
+import { isOrbitGate, orbitPresets } from '../game/core/orbit-gates';
 import { cabinViews, catalog, descentExamples, gateDescription, pickupCards } from '../game/debug/catalog';
 import type { ModelPreviews } from '../game/debug/previews.client';
 import { curveExamples, scenicExamples } from '../game/debug/scenic-catalog';
@@ -32,10 +33,10 @@ export const meta = () => [
 
 const initialAngle = -20;
 
-function Preview({ id, label, width = 432, height = 270, open }: {
-  id: string; label: string; width?: number; height?: number; open?: number;
+function Preview({ id, label, width = 432, height = 270, open, angle }: {
+  id: string; label: string; width?: number; height?: number; open?: number; angle?: number;
 }) {
-  return <canvas data-preview={id} data-open={open} className={s.preview} role="img" aria-label={label}
+  return <canvas data-preview={id} data-open={open} data-angle={angle} className={s.preview} role="img" aria-label={label}
     width={width} height={height}>{label}</canvas>;
 }
 
@@ -46,7 +47,7 @@ function Soundtrack() {
     <h2>Soundtrack</h2>
     <p>Inspect the soundtrack, audition individual DAYBREAK instruments or export the official mix as WAV.</p>
     <Link to={'/debug/audio/' + (query ? '?' + query : '')}>Open Audio Inspector</Link>
-    <p><Link to="/debug/audio/?vol=descent">DESCENT — CONTROL</Link></p>
+    <p><Link to="/debug/audio/?vol=descent">DESCENT — CONTROL</Link> · <Link to="/debug/audio/?vol=orbit">ORBIT — STARWAKE</Link></p>
   </section>;
 }
 
@@ -257,8 +258,10 @@ export default function DebugOverview() {
   const models = useRef<ModelPreviews>(null);
   const [angle, setAngle] = useState(initialAngle);
   const [gateAngle, setGateAngle] = useState(0);
+  const [orbitAngle, setOrbitAngle] = useState(0);
+  const [orbitClose, setOrbitClose] = useState(false);
   const [gateOpenings, setGateOpenings] = useState<Partial<Record<GateKind, number>>>({});
-  useEffect(() => { models.current?.drawGates(gateAngle, true); }, [gateAngle, gateOpenings]);
+  useEffect(() => { models.current?.drawGates(gateAngle, true, orbitClose); }, [gateAngle, orbitAngle, gateOpenings, orbitClose]);
   const [modelStatus, setModelStatus] = useState('Loading the 3D previews…');
   const [worldStatus, setWorldStatus] = useState('Rendering the four worlds…');
   const [materialStatus, setMaterialStatus] = useState('');
@@ -404,22 +407,28 @@ export default function DebugOverview() {
             {catalog.map(({ volume, gates }) => (
               <div key={volume.id} id={`gates-${volume.id}`} className={gates.length > 1 ? s.gateGroupWide : s.gateGroup}>
                 <h3>{volume.subtitle} / {volume.name}</h3>
-                {volume.id === 'daybreak' && <div className={s.angle}>
-                  <label htmlFor="debug-gate-angle">DAYBREAK specimen angle</label>
-                  <input id="debug-gate-angle" type="range" min="-45" max="45" value={gateAngle} disabled={!modelReady}
-                    onChange={event => setGateAngle(event.currentTarget.valueAsNumber)} />
-                  <output htmlFor="debug-gate-angle">{gateAngle}°</output>
+                {(volume.id === 'daybreak' || volume.id === 'orbit') && <div className={s.angle}>
+                  <label htmlFor={`debug-gate-angle-${volume.id}`}>{volume.name} specimen angle</label>
+                  <input id={`debug-gate-angle-${volume.id}`} type="range" min={volume.id === 'orbit' ? -80 : -45} max={volume.id === 'orbit' ? 80 : 45} value={volume.id === 'orbit' ? orbitAngle : gateAngle} disabled={!modelReady}
+                    onChange={event => (volume.id === 'orbit' ? setOrbitAngle : setGateAngle)(event.currentTarget.valueAsNumber)} />
+                  <output htmlFor={`debug-gate-angle-${volume.id}`}>{volume.id === 'orbit' ? orbitAngle : gateAngle}°</output>
                 </div>}
+                {volume.id === 'orbit' && <label className={s.surfaceSelect}>ORBIT specimen framing <select
+                  aria-label="ORBIT specimen framing" value={orbitClose ? 'close' : 'full'} disabled={!modelReady}
+                  onChange={event => setOrbitClose(event.currentTarget.value === 'close')}>
+                  <option value="full">Full gate</option><option value="close">Close surface and throat</option>
+                </select></label>}
                 <div className={gates.length > 1 ? s.trio : s.gateSingle}>
                   {gates.map(kind => {
                     const { label, note } = gateDescription(kind);
                     const glass = isDaybreakGate(kind);
                     const openings = glass ? daybreakGates[kind].openings
-                      : isDescentGate(kind) ? descentExamples[kind].map(example => example.label) : undefined;
+                      : isDescentGate(kind) ? descentExamples[kind].map(example => example.label)
+                      : isOrbitGate(kind) ? orbitPresets[kind].map(preset => preset.label) : undefined;
                     const open = openings ? gateOpenings[kind] ?? (kind === 'daybreak-crystal' ? -1 : 0) : undefined;
                     return (
                       <figure key={kind} className={s.card}>
-                        <Preview id={kind} label={`${label} gate`} open={open} />
+                        <Preview id={kind} label={`${label} gate`} open={open} angle={isOrbitGate(kind) ? orbitAngle : undefined} />
                         <figcaption className={s.caption}>
                           <strong className={s.gateName}>{label}</strong><p>{note}</p>
                           {openings && openings.length > 1 && <label className={s.surfaceSelect}>{label} opening <select
@@ -431,6 +440,8 @@ export default function DebugOverview() {
                             {glass && <option value={-1}>Complete layout</option>}
                             {openings.map((name, index) => <option key={name} value={index}>{index + 1} · {name}</option>)}
                           </select></label>}
+                          {isOrbitGate(kind) && <p>{orbitPresets[kind][open ?? 0].holes.length} physical, traversable openings.
+                            {' '}Glass thickness 0.38; the bevel expands toward the faces, leaving the collision throat unchanged.</p>}
                         </figcaption>
                       </figure>
                     );

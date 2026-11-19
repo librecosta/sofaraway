@@ -1,14 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { difficulties } from '../../app/game/contracts';
+import type { Difficulty } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 
-const expectedCounts = [[140, 141, 141], [120, 120, 120], [161, 161, 161], [138, 139, 139, 182]];
+const expectedCounts = [[140, 141, 141], [120, 120, 120], [161, 161, 161]];
 // ELSEWHERE, DESCENT and ORBIT default to Main.
 const expectedScores = [[66201, 105326, 156826], [56470, 89395, 133295],
-  [76290, 120915, 180415], [65201, 103726, 154426, 291250]];
+  [76290, 120915, 180415]];
 
 for (const [index, volume] of VOLUMES.entries()) {
   test(`${volume.id} completes all difficulties with collision enabled`, async ({ page }) => {
@@ -18,20 +19,23 @@ for (const [index, volume] of VOLUMES.entries()) {
     // DAYBREAK can finish the white rise during the visual settle when a gate stays in reach.
     const settle = volume.id === 'daybreak' ? 2 : Math.max(.8, (volume.soundtrack?.tail ?? 0) + STEP);
     const time = volume.beats * 60 / volume.bpm + settle;
-    const candidates = volume.id === 'orbit' ? [...difficulties, 'impossible'] : difficulties;
+    const candidates: readonly Difficulty[] = volume.id === 'orbit' ? [...difficulties, 'impossible'] : difficulties;
     for (const [i, difficulty] of candidates.entries()) {
       await page.goto(`/?vol=${volume.id}&diff=${difficulty}&q=low&t=${time}&align=1&god=0&dbg=1`);
-      const count = expectedCounts[index][i];
+      const reference = volume.id === 'orbit' ? new Simulation(volume, { align: true }) : undefined;
+      reference?.start(difficulty);
+      if (reference) while (reference.phase !== 'results') reference.step(STEP, idleInput);
+      const count = reference?.gatesTotal ?? expectedCounts[index][i];
       await expect(page.locator('#over')).toBeVisible();
       await expect(page.locator('#over-title')).toHaveText('ESCAPED');
       await expect(page.locator('#over-rank')).toHaveText('S');
       await expect(page.locator('#over-gates')).toHaveText(`${count}/${count}`);
       await expect(page.locator('#over-combo')).toHaveText(String(count));
       await expect(page.locator('#over-acc')).toHaveText('100%');
-      await expect(page.locator('#over-score')).toHaveText(String(expectedScores[index][i]));
+      await expect(page.locator('#over-score')).toHaveText(String(reference ? Math.floor(reference.score) : expectedScores[index][i]));
       const debug = await page.locator('#errbox').evaluate(el => JSON.parse(el.textContent!));
       expect(debug.hitCount).toBe(0);
-      const pickup = volume.id === 'elsewhere' || volume.id === 'orbit' ? 'missed' : volume.id === 'daybreak' ? 'collected' : null;
+      const pickup = volume.id === 'elsewhere' ? 'missed' : volume.id === 'daybreak' ? 'collected' : null;
       expect(debug.pickup).toEqual(pickup ? { kind: expect.any(String), status: pickup } : null);
     }
     expect(errors).toEqual([]);

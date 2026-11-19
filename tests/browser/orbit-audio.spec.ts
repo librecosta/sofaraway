@@ -9,30 +9,37 @@ test('STARWAKE production scheduling matches its continuous voice graph and disp
     const { OrbitVoices } = await load('/app/game/audio/orbit-voices.client.ts');
     const { starwakeTrack, starwakeEvents, beatSeconds, seed, step } = await load('/app/game/core/orbit-score.ts');
     const { encodeStarwakeWav, renderStarwake } = await load('/app/game/audio/orbit-export.client.ts');
+    const { Synthesizer } = await load('/app/game/audio/synthesizer.client.ts');
+    const { volumeById } = await load('/app/game/core/volumes.ts');
+    const { inspectorSource } = await load('/app/game/debug/audio/source.client.ts');
+    const { inspectorScore, defaultMix } = await load('/app/game/debug/audio/track-adapter.ts');
     const rate = 44100, start = 120, end = 127.5;
-    const render = async (direct: boolean) => {
+    const render = async (mode: 'direct' | 'runtime' | 'inspector') => {
       const ctx = new OfflineAudioContext(2, (end - start + starwakeTrack.tail) * rate, rate);
+      const direct = mode === 'direct';
       const synth = direct
         ? new OrbitVoices(ctx, ctx.destination, 'B', starwakeEvents, { ...starwakeTrack, beatSeconds, seed }, starwakeMaster)
-        : new OrbitSynthesizer(ctx, ctx.destination);
+        : mode === 'runtime' ? new Synthesizer(ctx, volumeById('orbit'), ctx.destination)
+        : inspectorSource(ctx, inspectorScore(volumeById('orbit')), ctx.destination, defaultMix(), null, 'master');
       if (direct) {
         for (const event of starwakeEvents) if (event.voice === 'kick' && event.at >= start && event.at < end) synth.duckAt(event.at - start);
         synth.schedule(-start, start - 1e-9, end); synth.finish(end - start - 180);
       }
       else {
-        for (let i = start / step; i < end / step; i++) synth.scheduleStep(i, -start, start - 1e-9, end);
+        for (let i = start / step; i < end / step; i++) synth.playStep(i, i * step - start, start - 1e-9);
         synth.finishAt(end - start);
       }
       const audio = await ctx.startRendering();
       synth.dispose();
       return audio;
     };
-    const direct = await render(true), scheduled = await render(false);
+    const direct = await render('direct'), scheduled = await render('runtime'), inspector = await render('inspector');
     let power = 0, peak = 0, signal = 0;
     for (let channel = 0; channel < 2; channel++) {
       const a = direct.getChannelData(channel), b = scheduled.getChannelData(channel);
       for (let i = 0; i < a.length; i++) {
         const delta = a[i] - b[i];
+        if (Math.abs(b[i] - inspector.getChannelData(channel)[i]) > .001) throw new Error('Inspector master differs');
         peak = Math.max(peak, Math.abs(delta)); power += delta * delta; signal += a[i] * a[i];
       }
     }

@@ -1,3 +1,4 @@
+import { OrbitSynthesizer } from './orbit.client';
 import { DescentSynthesizer } from './descent.client';
 import { DaybreakSynthesizer } from './daybreak.client';
 import { sectionAt } from '../core/volumes';
@@ -81,12 +82,13 @@ export function createBuffers(ctx: BaseAudioContext, random = Math.random) {
 }
 
 export class Synthesizer {
-  private readonly score: LegacyScore | DaybreakSynthesizer | DescentSynthesizer;
+  private readonly score: LegacyScore | DaybreakSynthesizer | DescentSynthesizer | OrbitSynthesizer;
 
   constructor(private readonly ctx: BaseAudioContext, volume: VolumeDefinition,
     output: AudioNode, buffers?: ReturnType<typeof createBuffers>) {
     this.score = volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, output)
       : volume.music === 'control' ? new DescentSynthesizer(ctx, output)
+      : volume.music === 'starwake' ? new OrbitSynthesizer(ctx, output)
       : new LegacyScore(ctx, volume, output, buffers ?? createBuffers(ctx));
   }
 
@@ -95,7 +97,7 @@ export class Synthesizer {
   playStep(step: number, at: number, after?: number) { this.score.playStep(step, at, after); }
 
   finishAt(end: number) {
-    if (this.score instanceof DescentSynthesizer) this.score.finishAt(end);
+    if (this.score instanceof DescentSynthesizer || this.score instanceof OrbitSynthesizer) this.score.finishAt(end);
   }
 
   dispose() { this.score.dispose(); }

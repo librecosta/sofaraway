@@ -12,6 +12,7 @@ import type { Difficulty } from '../contracts';
 import type { Axis } from './collision';
 import { daybreakChart } from './daybreak-chart';
 import { descentChart } from './descent-chart';
+import { orbitChart } from './orbit-chart';
 import { IMPOSSIBLE_LIVES, IMPOSSIBLE_SCORE_MULTIPLIER, IMPOSSIBLE_SPEED_FACTOR, resolveDifficulty } from './difficulty';
 import { impossibleChart } from './impossible-chart';
 import type { GateKind, VolumeDefinition } from './volumes';
@@ -69,6 +70,7 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
 
   if (volume.music === 'breakbeat') return daybreakChart();
   if (volume.music === 'control') return descentChart();
+  if (volume.music === 'starwake') return orbitChart();
 
   for (const sec of volume.sections) {
     const end = beat + sec.beats;
@@ -93,11 +95,10 @@ export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed 
   difficulty = resolveDifficulty(volume.id, difficulty);
   if (volume.music === 'breakbeat') return daybreakChart(difficulty);
   if (volume.music === 'control') return descentChart(difficulty);
+  if (volume.music === 'starwake') return orbitChart(difficulty);
   const base = buildChart(volume, seed);
   const authored = difficulty === 'impossible' ? impossibleChart(base) : base;
-  // Clear the approach and the first few beats after the three routes merge.
-  const course = volume.id === 'orbit' ? authored.filter(({ beat }) =>
-    (beat < 310 || beat >= 320) && (beat < 352 || beat >= 356)) : authored;
+  const course = authored;
   if (difficulty === 'impossible') return course;
   if (difficulty !== 'easy') return course;
 

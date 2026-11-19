@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
+import { starwakeEvents } from '../../app/game/core/orbit-score';
 import { openSync, report } from './support';
 
 // Voice calls include the absolute step, instrument, and arguments from the C0-B score.
@@ -7,7 +8,7 @@ const scoreDigests = [
   'd6c5c906813db9ed1c3ec07297baab4ecf63ad21cb1cf636300e03c157855f51',
   null,
   null,
-  '9f94f49a78430b679a2d6a5ac0a573661104bb13cad60a53750287a7a55cc77b',
+  null,
 ];
 
 for (const [index, volume] of VOLUMES.entries()) {
@@ -24,6 +25,12 @@ for (const [index, volume] of VOLUMES.entries()) {
       expect(hold.counts._signal).toBe(9);
       expect(hold.counts._kick).toBeLessThan(8);
       expect(lockdown.counts._kick).toBeGreaterThan(hold.counts._kick);
+      expect(data.levels.at(-1)?.tail?.rms).toBeGreaterThan(.001);
+    } else if (volume.music === 'starwake') {
+      expect(data.events).toBe(starwakeEvents.length);
+      for (const section of data.sectionVoices) for (const voice of ['kick', 'snare', 'pad', 'pluck', 'lead'] as const) {
+        expect(section.counts[`_${voice}`]).toBe(starwakeEvents.filter(event => event.section === section.section && event.voice === voice).length);
+      }
       expect(data.levels.at(-1)?.tail?.rms).toBeGreaterThan(.001);
     } else expect(data.digest).toBe(scoreDigests[index]);
     expect(data.levels.map(level => level.section)).toEqual([...volume.sections.map(section => section.name), 'tail']);

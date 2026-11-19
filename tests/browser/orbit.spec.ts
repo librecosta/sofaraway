@@ -57,7 +57,7 @@ test('the public ORBIT run recovers WebGL, judges a Hard collision and retries o
   await expect(page.locator('#over')).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#over-title')).toHaveText('TERMINATED', { timeout: 15_000 });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard.orbit.normal.best)).toBe(91);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard['orbit-astral-playable-v1'].hard.last.outcome)).toBe('TERMINATED');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard['orbit-starwake-aperture-v1'].hard.last.outcome)).toBe('TERMINATED');
   await page.locator('[data-act=restart]').click();
   await expect(page.locator('#hud-lives i')).toHaveCount(1);
   await page.keyboard.press('Escape');
@@ -97,9 +97,77 @@ test('Debug renders deterministic rock coverage across density changes, chunk ev
   expect(await glError(page)).toBe(0);
 });
 
-for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, 'left', false], [1, 'center', false]] as const) {
+test('the gate library renders all aperture presets and exposes their thick sidewalls', async ({ page }, run) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/debug/#gates-orbit');
+  const group = page.locator('#gates-orbit');
+  for (const [label, kind, count] of [['Single Aperture', 'orbit-single', 12], ['Dual Aperture', 'orbit-dual', 6],
+    ['Triple Aperture', 'orbit-triple', 6]] as const) {
+    const select = group.getByRole('combobox', { name: `${label} opening` });
+    await expect(select).toBeEnabled();
+    await expect(select.locator('option')).toHaveCount(count);
+    for (let i = 0; i < count; i++) {
+      await select.selectOption(String(i));
+      await expect(group.locator(`canvas[data-preview=${kind}]`)).toHaveAttribute('data-rendered-opening', String(i));
+    }
+    await select.selectOption(kind === 'orbit-single' ? '10' : '0');
+  }
+  await group.screenshot({ path: run.outputPath('apertures-front.png') });
+  await group.getByRole('slider', { name: 'ORBIT specimen angle' }).evaluate((el: HTMLInputElement) => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '65');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await group.getByRole('combobox', { name: 'ORBIT specimen framing' }).selectOption('close');
+  await group.screenshot({ path: run.outputPath('apertures-throat.png') });
+  expect(errors).toEqual([]);
+});
+
+test('STARWAKE runs for its complete body and tail through real boosted gameplay, Encore and Results', async ({ page }, run) => {
+  test.setTimeout(215_000);
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto('http://127.0.0.1:8090/');
+  await page.evaluate(async () => {
+    await window.b0Harness.mount({ volumeId: 'orbit', quality: 'low', difficulty: 'impossible', runSeed: 0,
+      diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: true,
+        mobileQuality: false, post: true, record: false, debug: true } });
+    await window.b0Harness.start(false);
+  });
+  await page.keyboard.down('Shift');
+  await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().boosting)).toBe(true);
+  expect(await page.evaluate(() => window.b0Harness.audioState())).toMatchObject({ starwake: true, context: 'running' });
+  const moments = [];
+  for (const beat of [16, 64, 112, 192, 240, 272, 336, 380]) {
+    await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().progress), { timeout: 55_000, intervals: [250] }).toBeGreaterThanOrEqual(beat / 384);
+    const moment = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), scene: window.b0Harness.branchState(),
+      audio: window.b0Harness.audioState() }));
+    expect(moment.snapshot.phase).toBe('playing');
+    expect(moment.audio).toMatchObject({ starwake: true, context: 'running' });
+    expect(moment.scene.metrics.chunks).toBe(0);
+    expect(moment.scene.metrics.gateGeometryCache).toBeLessThanOrEqual(24);
+    await page.locator('canvas').screenshot({ path: run.outputPath(`starwake-${beat}.png`) });
+    moments.push(moment);
+  }
+  await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().phase), { timeout: 12_000 }).toBe('results');
+  const finish = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), scene: window.b0Harness.branchState(), audio: window.b0Harness.audioState() }));
+  expect(finish.snapshot.result).toMatchObject({ title: 'ESCAPED', accuracy: 1 });
+  expect(finish.snapshot.encore).toMatchObject({ missed: 0, neutralized: 0 });
+  expect(finish.snapshot.encore!.passed).toBeGreaterThan(20);
+  expect(finish.scene.time).toBeGreaterThanOrEqual(180);
+  expect(finish.audio.tailRemaining).toBeGreaterThan(2.5);
+  await expect.poll(() => page.evaluate(() => window.b0Harness.audioState().active), { timeout: 5000 }).toBe(false);
+  expect(finish.scene.trackDistance + 400).toBeLessThan((await page.evaluate(() => window.b0Harness.corridor()!.length))!);
+  expect(errors).toEqual([]);
+  await run.attach('STARWAKE continuous run', { body: JSON.stringify({ moments, finish }, null, 2), contentType: 'application/json' });
+  await page.evaluate(() => window.b0Harness.dispose());
+});
+
+for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, 'left', false], [1, 'center', false],
+  [1, 'right', true], [0, 'center', false]] as const) {
   const route = branchLayout(seed)[side];
-  test(`live ORBIT enters and merges ${route} on the ${side} with manual steering`, async ({ page }, info) => {
+  test(`live ORBIT enters and merges ${route} on the ${side} with manual steering (seed ${seed})`, async ({ page }, info) => {
     const sim = new Simulation(volumeById('orbit'));
     sim.start('normal', seed);
     const junction = sim.junctionPath!;
@@ -114,7 +182,7 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
         mobileQuality: false, post: true, record: false, debug: true,
       } });
       await runtime.start(true);
-      runtime.advanceAndPause(305, true);
+      runtime.advanceAndPause(100, true);
       await runtime.resume(true);
       return runtime.snapshot().gatesPassed;
     }, seed);
@@ -124,10 +192,11 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
     const aim = (x: number, y: number) => page.mouse.move(width * (1 + x / RANGE_X) / 2, height * (1 - y / RANGE_Y) / 2);
     const gateAim = (gate: typeof lead) => aim(...lanePoint(gate.kind, gate.open, gate.axis));
     const poll = <T>(query: () => Promise<T>) => expect.poll(query, { intervals: [20, 40, 50] });
-    await aim(0, 1);
-    await poll(async () => (await state()).pickup?.status).toBe('collected');
-    await gateAim(lead);
-    await poll(async () => (await snap()).gatesPassed).toBe(initial + 1);
+    let passed = initial;
+    for (const gate of sim.mainGates.filter(gate => gate.beat > 100 && gate.worldStation <= lead.worldStation)) {
+      await gateAim(gate);
+      await poll(async () => (await snap()).gatesPassed).toBe(++passed);
+    }
     if (boost) await page.keyboard.down('Shift');
     await poll(async () => (await state()).metrics.routeHologram?.left).toBe(ROUTE_LABELS[branchLayout(seed).left]);
     const recognition = await state();
@@ -142,18 +211,22 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
     }
     await poll(async () => (await state()).route).toBe(route);
     const committed = await state();
-    expect(committed.trackDistance).toBeGreaterThanOrEqual(junction.split);
+    expect(committed.trackDistance + 1e-8).toBeGreaterThanOrEqual(junction.split);
     expect(committed.time - recognition.time).toBeGreaterThan(1.5);
     for (const [index, gate] of routeGates.entries()) {
       await gateAim(gate);
-      await poll(async () => (await snap()).gatesPassed).toBe(initial + 2 + index);
+      await poll(async () => (await snap()).gatesPassed).toBe(++passed);
       if (!index) await page.locator('canvas').screenshot({ path: info.outputPath('orbit-branch.png') });
+    }
+    if (route === 'score') {
+      await aim(0, 0);
+      await poll(async () => (await state()).pickup?.status).toBe('collected');
     }
     if (boost) await page.keyboard.up('Shift');
     await gateAim(exit);
     await poll(async () => (await state()).lastGate?.beat).toBe(exit.beat);
-    await poll(async () => (await snap()).gatesPassed).toBe(initial + 2 + routeGates.length);
-    expect(await snap()).toMatchObject({ phase: 'playing', lives: 2, gatesPassed: initial + 2 + routeGates.length });
+    await poll(async () => (await snap()).gatesPassed).toBe(++passed);
+    expect(await snap()).toMatchObject({ phase: 'playing', lives: 2, gatesPassed: passed });
     expect(await state()).toMatchObject({ sharedPath: true, metrics: { chunks: 0, junctionMeshes: 0 } });
     await page.evaluate(() => window.b0Harness.dispose());
   });
@@ -216,4 +289,22 @@ test('@perf ORBIT streams dense chunks at Low, Auto and High and releases instan
   }
   console.log(JSON.stringify(summaries));
   await run.attach('ORBIT rendering metrics', { body: JSON.stringify(summaries, null, 2), contentType: 'application/json' });
+});
+
+test('@perf ORBIT aperture gates share cached geometry and one glass program in real streamed flight', async ({ page }, run) => {
+  await page.goto('http://127.0.0.1:8090/?stability');
+  await page.waitForFunction(() => !!window.stability);
+  const samples = [];
+  const station = new Simulation(volumeById('orbit')).reference.station(192, 'standard');
+  for (const quality of ['low', 'auto', 'high'] as const) {
+    const sample = await page.evaluate(({ quality, station }) => window.stability.fixedGlass(192, quality, true, 'standard', 'center', 180, false,
+      { volumeId: 'orbit', fly: true, station }), { quality, station });
+    expect(sample.glError).toBe(0);
+    expect(sample.metrics.chunks).toBe(0);
+    expect(sample.gateKinds.every(kind => kind.startsWith('orbit-'))).toBe(true);
+    expect(sample.metrics.gateGeometryCache).toBeLessThanOrEqual(24);
+    expect(sample.metrics.textures).toBeLessThanOrEqual(6);
+    samples.push({ quality, ...sample });
+  }
+  await run.attach('Aperture GPU and CPU frame measurements', { body: JSON.stringify(samples, null, 2), contentType: 'application/json' });
 });

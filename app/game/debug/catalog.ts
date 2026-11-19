@@ -2,6 +2,7 @@ import { chartFor } from '../core/chart';
 import { daybreakGateKinds, daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
 import { descentDirections, isDescentGate } from '../core/descent-gates';
 import type { DescentGateKind } from '../core/descent-gates';
+import { isOrbitGate, orbitPresets } from '../core/orbit-gates';
 import { VOLUMES } from '../core/volumes';
 import type { GateKind } from '../core/volumes';
 
@@ -45,6 +46,8 @@ export const descentExamples: Record<DescentGateKind, readonly DescentExample[]>
 };
 
 export function gateDescription(kind: GateKind) {
+  if (isOrbitGate(kind)) return { label: kind === 'orbit-single' ? 'Single Aperture' : kind === 'orbit-dual' ? 'Dual Aperture' : 'Triple Aperture',
+    note: `${orbitPresets[kind].length} fixed variants · real circle, square and diamond throats through beveled holographic glass.` };
   if (isDescentGate(kind)) return descentDescriptions[kind];
   if (isDaybreakGate(kind)) {
     const { label } = daybreakGates[kind];

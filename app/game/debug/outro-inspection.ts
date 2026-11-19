@@ -38,6 +38,7 @@ export const exteriorViews = {
 export type ExteriorView = keyof typeof exteriorViews;
 const chapters = { build: 'BUILD', drop: 'DROP', finale: 'FINALE' } as const;
 const descentChapters = { build: 'PRESSURE', drop: 'LOCKDOWN', finale: 'BREACH' } as const;
+const orbitChapters = { build: 'RINGBREAK', drop: 'MAELSTROM', finale: 'APHELION' } as const;
 const sideFor = (route: RouteKind, left: RouteKind): RouteSide => route === 'main' ? 'center' : left === route ? 'left' : 'right';
 interface EndingFrame { station: number; time: number; white: number }
 interface DescentFinish { cue: number; cutoff: EndingFrame; peak: EndingFrame; results: EndingFrame }
@@ -80,7 +81,7 @@ export class OutroInspection {
     this.main = [...this.sim.mainGates.map(gate => ({ ...gate, routeStation: routeStation(gate.worldStation) })),
       ...this.sim.branchGates![route]].sort((a, b) => a.worldStation - b.worldStation);
     this.encore = this.plan.gates.map(gate => ({ ...gate, routeStation: routeStation(gate.worldStation) }));
-    this.min = this.sim.reference.station(volume.id === 'daybreak' ? 0 : volume.id === 'descent' ? 128 : 158, mode);
+    this.min = this.sim.reference.station(volume.id === 'daybreak' || volume.id === 'orbit' ? 0 : volume.id === 'descent' ? 128 : 158, mode);
     this.max = Math.min(this.plan.afterglowEnd, this.sim.path.length - 430);
   }
 
@@ -112,7 +113,7 @@ export class OutroInspection {
     }
     if (preset in chapters) {
       const chapter = volume.id === 'daybreak' ? { build: 'LIFT', drop: 'SUNBURST', finale: 'RETURN' }[preset as keyof typeof chapters]
-        : (volume.id === 'descent' ? descentChapters : chapters)[preset as keyof typeof chapters];
+        : (volume.id === 'descent' ? descentChapters : volume.id === 'orbit' ? orbitChapters : chapters)[preset as keyof typeof chapters];
       const gates = this.main.filter(gate => sectionAt(volume, gate.beat)?.name === chapter);
       const gate = gates.find(gate => gate.inserted) ?? gates[0];
       return { station: gate.worldStation - 22 * modeScale(this.sim.mode), musicBeat: gate.beat };
@@ -125,7 +126,7 @@ export class OutroInspection {
         * (boosting ? BOOST_MULTIPLIER : 1);
       return { ...view, musicBeat: clamp(volume.beats - (end - view.station) / (speed * sim.secondsPerBeat), 0, volume.beats) };
     }
-    if (volume.id !== 'daybreak') return view;
+    if (volume.id !== 'daybreak' && volume.id !== 'orbit') return view;
     const end = path.stationAt(this.plan.musicEndStation, side);
     const speed = cruiseTarget(Infinity) * BOOST_MULTIPLIER * modeScale(sim.mode) * difficultySettings(volume, sim.difficulty).speedFactor;
     return { ...view, musicBeat: clamp(volume.beats - (end - view.station) / (speed * sim.secondsPerBeat), 0, volume.beats) };
@@ -175,9 +176,9 @@ export class OutroInspection {
     const selected = this.volume.id === 'descent' && musicBeat === this.volume.beats ? this.descentFrame(preset, movement) : undefined;
     const frame = selected?.station === trackDistance ? selected : undefined;
     const junctionPath = sim.junctionPath!;
-    const previewingBranch = this.volume.id === 'daybreak' && trackDistance < junctionPath.split;
+    const previewingBranch = (this.volume.id === 'daybreak' || this.volume.id === 'orbit') && trackDistance < junctionPath.split;
     const layout = sim.branch!.layout;
-    const guide = this.volume.id === 'daybreak' && !results && trackDistance >= junctionPath.guideStart && trackDistance < junctionPath.guideEnd;
+    const guide = (this.volume.id === 'daybreak' || this.volume.id === 'orbit') && !results && trackDistance >= junctionPath.guideStart && trackDistance < junctionPath.guideEnd;
     const distance = previewingBranch ? trackDistance : junctionPath.arcAt(trackDistance, side);
     const scale = modeScale(sim.mode);
     const through = distance + sim.gateLoadAhead;

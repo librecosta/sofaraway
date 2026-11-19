@@ -4,10 +4,11 @@ The selected **B — STARWAKE** audition is expanded into the authoritative
 **Melodic Cosmic Electronica** score: **128 BPM, 4/4, 96 bars / 384 beats**,
 a **180-second body** and **four-second release**. GRAVITY remains historical.
 
-The playable ORBIT course still uses ELSEWHERE's temporary **448-beat**
-soundtrack and chart. This task does not activate STARWAKE in gameplay.
-Music, sections, gates, reference stations, branches, Encore and records must
-switch together in the later integration.
+The playable ORBIT course and Audio Inspector use this unchanged master.
+Volume sections derive from `starwakeTrack`; `orbit-chart.ts` selects its
+actual events for the aperture gates. The 384-beat reference, routes, Encore
+and `orbit-starwake-aperture-v1` records switch together. Historical
+`orbit-astral-playable-v1` scores remain preserved and separate.
 
 ## Full arrangement
 

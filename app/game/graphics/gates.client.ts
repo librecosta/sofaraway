@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Axis } from '../core/collision';
 import { daybreakProfile, isDaybreakGate } from '../core/daybreak-gates';
 import { isDescentGate, laserOpening } from '../core/descent-gates';
+import { apertureAnchors, apertureSizes, isOrbitGate, orbitPreset } from '../core/orbit-gates';
 import type { GateKind } from '../core/volumes';
 import { descentGlassVariant } from './descent-glass';
 import { buildGlassGeometry, GLASS_THICKNESS } from './glass-geometry';
@@ -22,9 +23,11 @@ const packEdges = (edges: Edges, count: number) => {
 export class GateGeometries {
   private readonly cache = new Map<string, THREE.BufferGeometry>();
 
+  get size() { return this.cache.size; }
+
   get(kind: GateKind, open: number, axis: Axis = 0) {
     const key = isDescentGate(kind) ? `${kind}:${descentGlassVariant(kind, open, axis)}`
-      : kind === 'iris' || isDaybreakGate(kind) ? `${kind}:${open}` : kind;
+      : kind === 'iris' || isDaybreakGate(kind) || isOrbitGate(kind) ? `${kind}:${open}` : kind;
     let geometry = this.cache.get(key);
     if (!geometry) {
       geometry = buildGlassGeometry(kind, open, axis);
@@ -46,20 +49,28 @@ export class GateVisual {
 
   constructor(geometries: GateGeometries, obstacle: GateKind, open: number, axis: Axis) {
     const descent = isDescentGate(obstacle) ? laserOpening(obstacle, open, axis) : undefined;
-    this.fullSightRange = !!descent;
+    const orbit = isOrbitGate(obstacle) ? orbitPreset(obstacle, open) : undefined;
+    this.fullSightRange = !!descent || !!orbit;
     const polygon = isDaybreakGate(obstacle) ? daybreakProfile(obstacle, open) : undefined;
     const geometry = geometries.get(obstacle, open, axis);
     this.mat = new THREE.ShaderMaterial({
       vertexShader: GLASS_VERT,
       fragmentShader: GLASS_FRAG,
-      ...(descent ? { defines: { DESCENT_GLASS: 1 } } : {}),
+      ...(descent ? { defines: { DESCENT_GLASS: 1 } } : orbit ? { defines: { ORBIT_GLASS: 1 } } : {}),
       uniforms: {
         uOpen: { value: open },
         uColor: { value: new THREE.Color(0xffffff) },
         uTime: { value: 0 },
         uHit: { value: 0 },
         uFade: { value: 1 },
-        uStyle: { value: isDaybreakGate(obstacle) ? 3 : styles[obstacle] },
+        uStyle: { value: isDaybreakGate(obstacle) || orbit ? 3 : styles[obstacle as keyof typeof styles] },
+        ...(orbit ? {
+          uOrbitApertures: { value: Array.from({ length: 3 }, (_, i) => {
+            const hole = orbit.holes[i];
+            return hole ? new THREE.Vector4(...apertureAnchors[hole.anchor], apertureSizes[hole.shape][hole.size],
+              ['circle', 'square', 'diamond'].indexOf(hole.shape)) : new THREE.Vector4();
+          }) }, uOrbitApertureCount: { value: orbit.holes.length },
+        } : {}),
         ...(polygon ? {
           uOpeningEdges: { value: packEdges(polygon.rim, GLASS_RIM_SEGMENTS) },
           uPaneSeams: { value: packEdges(polygon.seams, GLASS_SEAM_SEGMENTS) },

@@ -90,9 +90,9 @@ const projected = new Vector3();
 
 test('the full orbit course cycles through dense, sparse and open belts', () => {
   const at = (beat: number) => belt(Math.floor(path.sample(sim.reference.station(beat, 'standard')).p.z / ORBIT_CELL));
-  expect(at(226).density).toBeGreaterThan(at(10).density + .6);
-  expect(at(303).coverage).toBeLessThan(at(226).coverage * .5);
-  expect(at(346).drift).toBeGreaterThan(at(432).drift + 1);
+  expect(at(212).density).toBeGreaterThan(at(10).density + .6);
+  expect(at(247).coverage).toBeLessThan(at(212).coverage * .5);
+  expect(at(295).drift).toBeGreaterThan(at(377).drift + 1);
   expect(belt(Math.floor(path.sample(path.length).p.z / ORBIT_CELL)).density).toBeLessThan(.1);
 });
 
@@ -109,12 +109,16 @@ test('projected size changes LOD with a separate exit threshold on each quality 
 test('saving a playable volume retains retired ORBIT Standard and Sightseeing records', () => {
   const standard = { normal: { best: 30, last: { score: 25, outcome: 'ESCAPED' } } };
   const sightseeing = { last: { score: 11, outcome: 'ESCAPED' } };
-  const records = parseRecords(JSON.stringify({ version: 1, standard: { orbit: standard }, sightseeing: { orbit: sightseeing } }));
+  const playable = { ...standard, impossible: { best: 900, last: { score: 900, outcome: 'ESCAPED' } } };
+  const records = parseRecords(JSON.stringify({ version: 1, standard: { orbit: standard, 'orbit-astral-playable-v1': playable },
+    sightseeing: { orbit: sightseeing, 'orbit-astral-playable-v1': sightseeing } }));
   expect(recordFor(records, 'orbit', 'normal', 'standard')).toEqual({ best: null, last: null });
   recordRun(records, 'orbit', 'impossible', 'standard', { score: 80, encoreBonus: 20, outcome: 'ESCAPED' });
   recordRun(records, 'orbit', 'normal', 'sightseeing', { score: 120, outcome: 'ESCAPED' });
   const saved = parseRecords(JSON.stringify(records));
   expect(saved.standard.orbit).toEqual(standard);
+  expect(saved.standard['orbit-astral-playable-v1']).toEqual(playable);
+  expect(saved.sightseeing['orbit-astral-playable-v1']).toEqual(sightseeing);
   expect(saved.sightseeing.orbit).toEqual(sightseeing);
   expect(recordFor(saved, 'orbit', 'impossible', 'standard').best).toBe(100);
   expect(recordFor(saved, 'orbit', 'normal', 'sightseeing')).toMatchObject({ best: null, last: { score: 120 } });

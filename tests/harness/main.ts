@@ -12,6 +12,9 @@ import { buildRunPath } from '../../app/game/graphics/path';
 import { buildTextures } from '../../app/game/graphics/textures.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
 import type { Graphics } from '../../app/game/graphics/scene.client';
+import type { AudioTransport } from '../../app/game/audio/transport.client';
+import type { Synthesizer } from '../../app/game/audio/synthesizer.client';
+import { OrbitSynthesizer } from '../../app/game/audio/orbit.client';
 import type { BufferGeometry, Material, Mesh, Scene } from 'three';
 import { sectionSignals, shaderMismatches, stoppedRunSignal } from './signals';
 
@@ -48,6 +51,14 @@ const harness = {
       trackDistance: sim.trackDistance, time: sim.time, speed: sim.speed, routeSide: sim.routeSide,
       lastGate: lastGate && { beat: lastGate.beat, crossedAt: lastGate.crossedAt },
       branch: sim.branch, route: sim.route, pickup: sim.pickup, metrics: graphics.metrics() };
+  },
+  audioState() {
+    const audio: AudioTransport = Reflect.get(runtime!, 'audio');
+    const ctx: AudioContext | undefined = Reflect.get(audio, 'context');
+    const synth: Synthesizer | undefined = Reflect.get(audio, 'synth');
+    return { starwake: synth?.eventSource instanceof OrbitSynthesizer, active: !!synth, time: audio.time,
+      context: ctx?.state, tailRemaining: Math.max(0, (Reflect.get(audio, 'tailUntil') as number) - (ctx?.currentTime ?? 0)),
+      diagnostics: { ...audio.diagnostics } };
   },
   meshResources() {
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');

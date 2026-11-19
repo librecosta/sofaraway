@@ -152,7 +152,7 @@ export function composeDescent(volume: VolumeDefinition, mode: PlayMode, referen
 export function composeOrbit(volume: VolumeDefinition, mode: PlayMode, reference = referenceFor(volume)): CorridorSegment[] {
   const segments: CorridorSegment[] = [];
   let from = 0;
-  for (const [first, last, ratio] of [[28, 85, .092], [125, 185, -.115], [222, 280, .086], [365, 427, -.096]] as const) {
+  for (const [first, last, ratio] of [[40, 88, .075], [168, 216, -.085], [264, 312, .075]] as const) {
     const s0 = reference.station(first, mode), s1 = reference.station(last, mode);
     segments.push({ type: 'straight', s0: from, s1: s0 },
       { type: 's-curve', s0, s1, ...fitCurve(s1 - s0, (s1 - s0) * ratio) });

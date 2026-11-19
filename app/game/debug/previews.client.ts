@@ -9,6 +9,7 @@ import { idleInput } from '../core/input';
 import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
 import { makeEnvMap } from '../graphics/environment.client';
+import { isOrbitGate } from '../core/orbit-gates';
 import { GateGeometries, GateVisual, THICKNESS } from '../graphics/gates.client';
 import { PickupVisual } from '../graphics/pickup.client';
 import { Graphics } from '../graphics/scene.client';
@@ -92,6 +93,7 @@ export class ModelPreviews {
   private environment?: THREE.WebGLRenderTarget;
   private angle = -20;
   private gateAngle = 0;
+  private orbitClose = false;
   private animation = 0;
   private scanning = false;
   private lastScan = 0;
@@ -144,22 +146,25 @@ export class ModelPreviews {
     }
   }
 
-  drawGates(angle = this.gateAngle, adjustableOnly = false) {
+  drawGates(angle = this.gateAngle, adjustableOnly = false, orbitClose = this.orbitClose) {
     this.gateAngle = angle;
+    this.orbitClose = orbitClose;
     if (this.lost) return;
     this.frame(7.15);
     const geometries = new GateGeometries();
     try {
       for (const { volume, gates } of catalog) {
         for (const kind of gates) {
+          this.frame(isOrbitGate(kind) && orbitClose ? 3.3 : 7.15);
           const descent = isDescentGate(kind);
-          if (adjustableOnly && !isDaybreakGate(kind) && !descent) continue;
+          if (adjustableOnly && !isDaybreakGate(kind) && !isOrbitGate(kind) && !descent) continue;
           const specimen = this.root.querySelector<HTMLCanvasElement>(`canvas[data-preview="${kind}"]`);
           const selection = Number(specimen?.dataset.open ?? 0);
           const example = descent ? descentExamples[kind][selection] : undefined;
-          const open = example?.open ?? (isDaybreakGate(kind) ? selection : opening(kind, 1));
+          const open = example?.open ?? (isDaybreakGate(kind) || isOrbitGate(kind) ? selection : opening(kind, 1));
           const gate = new GateVisual(geometries, kind, open, example?.axis ?? 0);
-          if (isDaybreakGate(kind)) gate.meshes[0].rotation.y = THREE.MathUtils.degToRad(angle);
+          if (isDaybreakGate(kind) || isOrbitGate(kind)) gate.meshes[0].rotation.y = THREE.MathUtils.degToRad(
+            isOrbitGate(kind) ? Number(specimen?.dataset.angle ?? 0) : angle);
           if (descent) gate.meshes[0].rotation.set(.08, -.18, 0);
           if (gate.meshes[1]) gate.meshes[1].position.z = -THICKNESS;
           this.scene.add(...gate.meshes);
@@ -169,7 +174,7 @@ export class ModelPreviews {
             gate.update(0, volume.hue[0], 8, 1, false, 1, 1, tint);
             this.renderer.render(this.scene, this.camera);
             paint(this.root, kind, this.renderer.domElement);
-            if (specimen && (descent || isDaybreakGate(kind))) specimen.dataset.renderedOpening = String(selection);
+            if (specimen && (descent || isDaybreakGate(kind) || isOrbitGate(kind))) specimen.dataset.renderedOpening = String(selection);
           } finally {
             this.scene.remove(...gate.meshes);
             gate.dispose();

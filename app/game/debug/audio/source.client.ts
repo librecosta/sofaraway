@@ -23,7 +23,7 @@ export function inspectorSource(ctx: BaseAudioContext, score: InspectorScore, ou
   };
 
   if (score.volume.music !== 'breakbeat') {
-    const authored = score.volume.music === 'control';
+    const authored = score.volume.music === 'control' || score.volume.music === 'starwake';
     const synth = authored ? new Synthesizer(ctx, score.volume, master)
       : new Synthesizer(ctx, score.volume, createMaster(ctx, .8, master), createBuffers(ctx, randomSource(score.volume.seed)));
     applyMaster(settings, audition);

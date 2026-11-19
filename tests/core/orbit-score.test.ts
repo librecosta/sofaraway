@@ -5,14 +5,14 @@ import { volumeById } from '../../app/game/core/volumes';
 
 const between = (start: number, end: number) => starwakeEvents.filter(event => event.bar >= start && event.bar < end);
 
-test('STARWAKE owns a 180-second, 96-bar score without switching the playable 448-beat ORBIT course', () => {
+test('STARWAKE owns a 180-second, 96-bar score and supplies the playable ORBIT course', () => {
   expect([bpm, starwakeTrack.beatsPerBar, starwakeTrack.bars, starwakeTrack.beats,
     starwakeTrack.duration, starwakeTrack.tail]).toEqual([128, 4, 96, 384, 180, 4]);
   expect(starwakeTrack.sections.map(({ name, startBar, endBar, start, end }) => [name, startBar, endBar, start, end]))
     .toEqual([['OUTER BELT', 0, 8, 0, 15], ['DRIFT', 8, 24, 15, 45], ['RINGBREAK', 24, 40, 45, 75],
       ['MAELSTROM', 40, 56, 75, 105], ['ECLIPSE', 56, 64, 105, 120],
       ['AURORA', 64, 80, 120, 150], ['APHELION', 80, 96, 150, 180]]);
-  expect(volumeById('orbit')).toMatchObject({ bpm: 128, beats: 448, music: 'techno' });
+  expect(volumeById('orbit')).toMatchObject({ bpm: 128, beats: 384, music: 'starwake', soundtrack: starwakeTrack });
 });
 
 test('event identity, fractional onsets and section metadata survive regeneration and step indexing', () => {

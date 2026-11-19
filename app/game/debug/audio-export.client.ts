@@ -1,5 +1,6 @@
 import { createBuffers, createMaster, Synthesizer } from '../audio/synthesizer.client';
 import type { VolumeDefinition } from '../core/volumes';
+import { renderStarwake, encodeStarwakeWav } from '../audio/orbit-export.client';
 import { renderDaybreak } from '../audio/daybreak-export.client';
 import { encodeDescentWav, renderDescent } from '../audio/descent-export.client';
 
@@ -47,6 +48,7 @@ export async function exportSoundtrack(volume: VolumeDefinition, seconds?: numbe
     const buffer = await renderDaybreak(duration, signal);
     return { blob: encodeWav(buffer), duration: buffer.duration };
   }
+  if (volume.music === 'starwake') return encodeStarwakeWav(await renderStarwake(signal));
   if (volume.music === 'control') return encodeDescentWav(await renderDescent(undefined, duration, signal));
   const tail = duration < songDuration ? 2 : 4;
   const context = new OfflineAudioContext(2, Math.ceil(sampleRate * (duration + tail)), sampleRate);

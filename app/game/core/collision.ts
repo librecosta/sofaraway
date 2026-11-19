@@ -1,6 +1,7 @@
 import type { GateKind } from './volumes';
 import { daybreakGates, daybreakOpening, daybreakProfile, isDaybreakGate } from './daybreak-gates';
 import { isDescentGate, laserClearance, laserOpening } from './descent-gates';
+import { isOrbitGate, orbitClearanceAt, orbitPresets, orbitTarget } from './orbit-gates';
 import { SECTION } from './section';
 
 export { SECTION } from './section';
@@ -33,11 +34,12 @@ export const playerViewOffset = (x: number, y: number, extraWidth = 0) =>
 
 export function opening(obstacle: GateKind, sector: number) {
   if (obstacle === 'square' || obstacle === 'diamond') return 0;
-  const lanes = isDaybreakGate(obstacle) ? daybreakGates[obstacle].openings.length : 8;
+  const lanes = isOrbitGate(obstacle) ? orbitPresets[obstacle].length : isDaybreakGate(obstacle) ? daybreakGates[obstacle].openings.length : 8;
   return ((sector % lanes) + lanes) % lanes;
 }
 
 export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point {
+  if (isOrbitGate(obstacle)) return orbitTarget(obstacle, index, axis === 1);
   if (isDaybreakGate(obstacle)) return [...daybreakProfile(obstacle, index).target];
   if (isDescentGate(obstacle)) return [...laserOpening(obstacle, index, axis).target];
   if (obstacle === 'square' || obstacle === 'diamond') return [0, 0];
@@ -47,6 +49,7 @@ export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point 
 
 /** The shader clips to the same octagonal section. Inputs are clamped inside it. */
 export function canPass(obstacle: GateKind, open: number, axis: Axis, x: number, y: number) {
+  if (isOrbitGate(obstacle)) return orbitClearanceAt(obstacle, open, x, y) > 0;
   if (isDaybreakGate(obstacle)) return daybreakOpening(obstacle, open, x, y);
   if (isDescentGate(obstacle)) return laserClearance(obstacle, open, axis, x, y) > 0;
   switch (obstacle) {

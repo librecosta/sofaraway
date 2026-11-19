@@ -7,6 +7,7 @@ import { descentGateKinds, isDescentGate, laserBandPitch, laserBeamRadius, laser
   matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
 import { descentExamples } from '../../app/game/debug/catalog';
 import { SECTION, SECTION_OUTLINE } from '../../app/game/core/section';
+import { apertureAnchors, apertureContour, orbitClearanceAt, orbitGateKinds, orbitPresets } from '../../app/game/core/orbit-gates';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateKind } from '../../app/game/core/volumes';
 import type { VolumeId } from '../../app/game/contracts';
@@ -25,11 +26,12 @@ export function shaderMismatches(id: VolumeId) {
     const gate = new GateVisual(geometries, kind, open, axis);
     scene.add(gate.meshes[0]);
     for (const [x, y] of points) {
-      const [a, b, diagonal] = id === 'daybreak' || id === 'descent'
+      const [a, b, diagonal] = id === 'daybreak' || id === 'descent' || id === 'orbit'
         ? [SECTION.a, SECTION.b, SECTION.a + SECTION.b - SECTION.ch] : [3.4, 2.6, 4.85];
       if (Math.abs(x) >= a || Math.abs(y) >= b || Math.abs(x) + Math.abs(y) >= diagonal) continue;
       // A finite pixel footprint blurs the exact analytical edge. Sample both sides outside that footprint.
       if (isDescentGate(kind) && Math.abs(laserClearance(kind, open, axis, x, y)) < .001) continue;
+      if (id === 'orbit' && Math.abs(orbitClearanceAt(kind as typeof orbitGateKinds[number], open, x, y)) < .003) continue;
       camera.position.set(x, y, 3);
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
@@ -41,7 +43,20 @@ export function shaderMismatches(id: VolumeId) {
     scene.remove(gate.meshes[0]);
     gate.dispose();
   }
-  if (id === 'daybreak') {
+  if (id === 'orbit') {
+    for (const kind of orbitGateKinds) for (const [open, preset] of orbitPresets[kind].entries()) {
+      const points: Point[] = [[0, 0]];
+      for (let x = -3.5; x < 3.6; x += .49) for (let y = -2.7; y < 2.8; y += .413) points.push([x, y]);
+      for (const hole of preset.holes) {
+        const [cx, cy] = apertureAnchors[hole.anchor];
+        points.push([cx, cy]);
+        for (const [x, y] of apertureContour(hole)) for (const scale of [.97, 1.03]) {
+          points.push([cx + (x - cx) * scale, cy + (y - cy) * scale]);
+        }
+      }
+      check(kind, open, 0, points);
+    }
+  } else if (id === 'daybreak') {
     const nearShell = SECTION_OUTLINE.flatMap(([x, y], index) => {
       const [qx, qy] = SECTION_OUTLINE[(index + 1) % SECTION_OUTLINE.length];
       return [.15, .5, .85].map((t): Point => [(.998 * (x + (qx - x) * t)), (.998 * (y + (qy - y) * t))]);

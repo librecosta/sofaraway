@@ -1,5 +1,6 @@
 import type { Difficulty, PlayMode } from '../contracts';
 import { lanePoint, opening } from './collision';
+import { orbitGateKinds } from './orbit-gates';
 import { crystalOpenings } from './daybreak-gates';
 import type { Axis } from './collision';
 import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
@@ -106,7 +107,12 @@ export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: nu
     if (station + release > cutoff) break;
     let kind: GateKind, sector: number, axis: Axis = 0;
     if (volume.id === 'descent') ({ kind, sector, axis } = descentEncoreOpening(index, word(0, 1)));
-    else {
+    else if (volume.id === 'orbit') {
+      kind = orbitGateKinds[index % 3];
+      sector = kind === 'orbit-single' ? [0, 3, 2, 4, 1, 7][Math.floor(index / 3) % 6]
+        : kind === 'orbit-dual' ? Math.floor(index / 3) % 3 : Math.floor(index / 3) % 4;
+      axis = 0;
+    } else {
       const slot = index % 3;
       const swap = word(index - slot, 1) % 2;
       kind = kinds?.[index % kinds.length] ?? (slot === 0 ? 'iris' : slot - 1 === swap ? 'square' : 'diamond');

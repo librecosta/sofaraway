@@ -4,10 +4,12 @@ import { daybreakGateKinds } from './daybreak-gates';
 import type { DaybreakGateKind } from './daybreak-gates';
 import { controlTrack } from './descent-score';
 import type { DescentGateKind } from './descent-gates';
+import type { OrbitGateKind } from './orbit-gates';
+import { starwakeTrack } from './orbit-score';
 
-export type GateKind = 'iris' | 'square' | 'diamond' | DaybreakGateKind | DescentGateKind;
+export type GateKind = 'iris' | 'square' | 'diamond' | DaybreakGateKind | DescentGateKind | OrbitGateKind;
 export type Topology = 'conduit' | 'canal' | 'facility' | 'orbit';
-export type Music = 'techno' | 'breakbeat' | 'control';
+export type Music = 'techno' | 'breakbeat' | 'control' | 'starwake';
 export interface Section {
   name: string;
   beats: number;
@@ -127,7 +129,11 @@ export const VOLUMES: readonly VolumeDefinition[] = [
     hue: [0.03, 0.98, 0.09],
     lives: { easy: 3, normal: 2, hard: 1 },
   },
-  { ...elsewhere, id: 'orbit', name: 'ORBIT', subtitle: 'VOL. IV', topology: 'orbit' },
+  { id: 'orbit', name: 'ORBIT', subtitle: 'VOL. IV', topology: 'orbit',
+    bpm: starwakeTrack.bpm, beats: starwakeTrack.beats, music: 'starwake', soundtrack: starwakeTrack,
+    sections: starwakeTrack.sections.map(({ name, startBeat, endBeat }, i) =>
+      ({ name, beats: endBeat - startBeat, energy: [.15, .48, .72, .9, .22, 1, .60][i] })),
+    seed: 77345, obstacle: 'orbit-single', hue: [.55, .64, .72, .58], lives: { easy: 3, normal: 2, hard: 1 } },
 ];
 
 export function volumeById(id: string | null): VolumeDefinition {
@@ -135,7 +141,7 @@ export function volumeById(id: string | null): VolumeDefinition {
 }
 
 export function hasAuthoredAudio(volume: VolumeDefinition) {
-  return volume.music === 'breakbeat' || volume.music === 'control';
+  return volume.music === 'breakbeat' || volume.music === 'control' || volume.music === 'starwake';
 }
 
 export function sectionAt(volume: VolumeDefinition, beat: number) {

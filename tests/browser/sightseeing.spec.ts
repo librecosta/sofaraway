@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { VOLUMES } from '../../app/game/core/volumes';
+import { Simulation } from '../../app/game/core/simulation';
+import { idleInput } from '../../app/game/core/input';
+import { ROUTE_LABELS } from '../../app/game/core/branches';
 import type {} from '../harness/main';
 
 const harness = 'http://127.0.0.1:8090/';
@@ -34,6 +37,12 @@ test('every sightseeing volume completes in the results UI with the selected rou
     { volume: VOLUMES[0], side: 'left', gates: 53, route: 'BONUS' },
     { volume: VOLUMES[1], side: 'center', gates: 39, route: 'MAIN' },
     { volume: VOLUMES[2], side: 'center', gates: 54 },
+    ...(['center', 'left', 'right'] as const).map(side => {
+      const sim = new Simulation(VOLUMES[3], { align: true, branchSide: side });
+      sim.start('normal', undefined, undefined, 'sightseeing');
+      while (sim.phase === 'playing') sim.step(1 / 60, idleInput);
+      return { volume: VOLUMES[3], side, gates: sim.gatesTotal, route: ROUTE_LABELS[sim.route!].toUpperCase() };
+    }),
   ];
   for (const { volume, side, gates, route } of scenarios) {
     const seconds = volume.beats * 60 / volume.bpm + 0.8;

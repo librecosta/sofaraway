@@ -2,6 +2,30 @@ import { expect, test } from '@playwright/test';
 
 const waveformsReadyTimeout = 90_000;
 
+test('STARWAKE Inspector uses the complete official master and seven sections with seek, pause and resume', async ({ page }, run) => {
+  test.setTimeout(360_000);
+  await page.goto('/debug/audio/?vol=orbit');
+  await expect(page.getByRole('heading', { name: 'ORBIT — STARWAKE' })).toBeVisible();
+  await expect(page.getByText('384 beats', { exact: true })).toBeVisible();
+  const sections = page.getByRole('navigation', { name: 'Music sections' });
+  expect(await sections.getByRole('button').allTextContents()).toEqual(
+    ['OUTER BELT', 'DRIFT', 'RINGBREAK', 'MAELSTROM', 'ECLIPSE', 'AURORA', 'APHELION']);
+  await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: 300_000 });
+  await sections.getByRole('button', { name: 'AURORA', exact: true }).click();
+  const position = page.getByLabel('Playback position');
+  await expect(position).toHaveText('02:00.00');
+  await page.getByRole('button', { name: 'Play all' }).click();
+  await expect(position).not.toHaveText('02:00.00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.waitForTimeout(150);
+  const held = await position.textContent();
+  await page.waitForTimeout(150);
+  await expect(position).toHaveText(held!);
+  await page.getByRole('button', { name: 'Play Master' }).click();
+  await expect(position).not.toHaveText(held!);
+  await page.screenshot({ path: run.outputPath('starwake-inspector.png') });
+});
+
 test('CONTROL shares the production master, preserves the release and skips elapsed attacks', async ({ page }) => {
   await page.goto('http://127.0.0.1:8090/?audio-inspector');
   await page.waitForFunction(() => typeof window.inspectControlRouting === 'function');
@@ -258,10 +282,9 @@ test('responsive layouts, high-DPI canvas, direct refresh and master-only volume
   }
   await page.getByRole('combobox', { name: 'Volume' }).selectOption('orbit');
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'ORBIT' })).toBeVisible();
-  await expect(page.getByText('Temporary soundtrack from ELSEWHERE')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'ORBIT — STARWAKE' })).toBeVisible();
   await expect(page.getByText('128 BPM', { exact: true })).toBeVisible();
-  await expect(page.getByText('448 beats', { exact: true })).toBeVisible();
+  await expect(page.getByText('384 beats', { exact: true })).toBeVisible();
   await expect(canvas).toHaveCount(1);
   await page.getByRole('button', { name: 'Play all' }).click();
   await expect(page.getByText('Playing', { exact: true })).toBeVisible();

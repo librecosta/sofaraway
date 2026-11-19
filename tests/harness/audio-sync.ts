@@ -4,6 +4,7 @@ import type { VolumeId } from '../../app/game/contracts';
 import { FixedStepClock } from '../../app/game/core/clock';
 import { rhythmTimeline } from '../../app/game/core/daybreak-score';
 import { controlEvents } from '../../app/game/core/descent-score';
+import { starwakeEvents } from '../../app/game/core/orbit-score';
 import { drumOnsets, drumScore, musicStepSeconds } from '../../app/game/core/rhythmic-lights';
 import type { DynamicLightEnvelope } from '../../app/game/core/rhythmic-lights';
 import type { RunTimeline } from '../../app/game/core/clock';
@@ -35,7 +36,7 @@ function outputTiming(context: AudioContext | undefined, scheduled?: number) {
 }
 
 const legacyVoices = ['_kick', '_snare', '_hat', '_bass', '_pluck', '_pad', '_riser', '_impact', '_duck'] as const;
-const voices = [...legacyVoices, '_signal', '_chord', '_metal', '_sweep'] as const;
+const voices = [...legacyVoices, '_signal', '_chord', '_metal', '_sweep', '_perc', '_lead'] as const;
 
 async function score(id: VolumeId) {
   const volume = volumeById(id);
@@ -79,6 +80,9 @@ async function score(id: VolumeId) {
       const voice = hit.kind === 'kick' ? '_kick' : hit.kind === 'hat' ? '_hat' : '_snare';
       events.push({ step: hit.bar * 16 + hit.at, voice, args: [hit.time, hit.strength, hit.kind] });
     }
+  } else if (volume.music === 'starwake') {
+    for (const event of starwakeEvents) events.push({ step: Math.floor(event.at / stepSeconds + 1e-9),
+      voice: `_${event.voice}`, args: [event] });
   } else if (volume.music === 'control') {
     for (const event of controlEvents) {
       events.push({ step: Math.floor(event.at / stepSeconds + 1e-9),

@@ -1,4 +1,5 @@
 import type { BranchSpec, RouteKind } from './branches';
+import { orbitJunction, orbitCargo } from './orbit-routes';
 import { elsewhereBranch } from './branches';
 import { DAYBREAK_PICKUP_BEAT, daybreakJunctionWindow, daybreakRouteCharts } from './daybreak-chart';
 import { descentCargo, descentJunction } from './descent-routes';
@@ -46,9 +47,8 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
     ending: { beats: 10, protectGates: true, ambient: 0 },
     world: { continuous: false, settleResults: true, modePath: true } },
   orbit: {
-    branch: { ...elsewhereBranch, spacing: 22 },
-    pickup: elsewherePickup,
-    encore: { reserve: 7 },
+    gateLoadAhead: 450, branch: orbitJunction, pickup: orbitCargo,
+    encore: { first: 140, minSpacing: 90, maxSpacing: 103, reserve: 8, impossibleSpacing: 1.1 },
     world: { continuous: false, settleResults: true },
   },
 };

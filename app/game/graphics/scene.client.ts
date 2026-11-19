@@ -61,6 +61,7 @@ class VolumeScene {
   private readonly routeFog = new THREE.Color();
   private readonly daylightFog = new THREE.Color(0xffd8a7);
   private readonly gateGeometries = new GateGeometries();
+  get gateGeometryCache() { return this.gateGeometries.size; }
   private readonly visuals = new Map<SceneGate, GateVisual>();
   private outro?: OutroPlan;
   readonly exterior?: DaybreakExterior;
@@ -292,9 +293,10 @@ class VolumeScene {
 
     const pulse = (1 - lightBeat % 1) ** 4;
     if (this.orbit) {
-      const tone = scoreTone(lightBeat);
-      this.hue = tone.hue;
-      this.saturation = tone.saturation;
+      const phase = Math.max(0, Math.min(this.volume.hue.length - 1, lightBeat / this.volume.beats * (this.volume.hue.length - 1)));
+      const index = Math.floor(phase);
+      this.hue = THREE.MathUtils.lerp(this.volume.hue[index], this.volume.hue[Math.min(index + 1, this.volume.hue.length - 1)], phase - index);
+      this.saturation = .82;
     } else if (this.tunnel && !this.scenic && !this.facility && (sim.phase === 'playing' || sim.phase === 'crash')) {
       const phase = lightBeat / 32;
       const index = Math.floor(phase);
@@ -734,6 +736,7 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel?.chunks.length ?? 0, dpr: this.effectiveDpr,
       orbit: this.volume?.orbit?.metrics(),
+      gateGeometryCache: this.volume?.gateGeometryCache ?? 0,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       descentLighting: this.volume?.descentLighting,
       continuity: this.volume?.continuity,

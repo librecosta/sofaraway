@@ -45,8 +45,9 @@ export default function AudioInspectorPage() {
       const url = downloadUrl.current = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = volume.music === 'control' ? 'DESCENT-CONTROL.wav'
-        : volume.id === 'orbit' ? 'sofaraway-orbit-elsewhere-temp.wav' : 'sofaraway-' + volume.id + '.wav';
+      link.download = volume.music === 'starwake' ? 'ORBIT-STARWAKE-FULL.wav'
+        : volume.music === 'control' ? 'DESCENT-CONTROL.wav'
+        : 'sofaraway-' + volume.id + '.wav';
       link.click();
       setExportStatus(`Done · ${(blob.size / 1048576).toFixed(1)} MB · ${duration.toFixed(1)} s`);
     } catch (error) {
@@ -62,8 +63,8 @@ export default function AudioInspectorPage() {
         <div>
           <Link to="/debug/" className={s.back}>SoFarAway</Link>
           <span className={s.breadcrumb}> / Audio Inspector</span>
-          <h1>{volume.name}</h1>
-          {volume.id === 'orbit' && <p>Temporary soundtrack from ELSEWHERE</p>}
+          <h1>{volume.music === 'starwake' ? volume.soundtrack!.title : volume.name}</h1>
+          {volume.id === 'orbit' && <p>STARWAKE · 96 bars · Original Melodic Cosmic Electronica</p>}
         </div>
         <div className={s.metadata}>
           {volume.soundtrack && <span>{volume.soundtrack.title}</span>}

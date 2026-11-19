@@ -32,7 +32,11 @@ uniform vec3 uColor;
 uniform float uTime;
 uniform float uHit;
 uniform float uFade;
-uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond, 3: DAYBREAK
+uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond, 3: authored polygon / aperture
+#ifdef ORBIT_GLASS
+uniform vec4 uOrbitApertures[3];
+uniform int uOrbitApertureCount;
+#endif
 uniform float uOpen;
 uniform float uMicroContrast;
 uniform vec4 uOpeningEdges[${GLASS_RIM_SEGMENTS}];
@@ -210,6 +214,16 @@ void main() {
     opening = false;
     rim = 100.0;
     seam = 100.0;
+#ifdef ORBIT_GLASS
+    for (int i = 0; i < 3; i++) {
+      if (i >= uOrbitApertureCount) break;
+      vec4 hole = uOrbitApertures[i];
+      vec2 local = abs(p - hole.xy);
+      float edge = hole.w < .5 ? length(local) - hole.z : hole.w < 1.5
+        ? boxSdf(local, hole.z) : (local.x + local.y - hole.z) * INV_SQRT2;
+      rim = min(rim, abs(edge));
+    }
+#else
     for (int i = 0; i < ${GLASS_RIM_SEGMENTS}; i++) {
       if (i >= uOpeningEdgeCount) break;
       vec4 edge = uOpeningEdges[i];
@@ -220,6 +234,7 @@ void main() {
       vec4 edge = uPaneSeams[i];
       seam = min(seam, segmentDistance(p, edge.xy, edge.zw));
     }
+#endif
   }
   // The wall vertices are already clipped by the aperture profile. A
   // coplanar radial wall must survive rounding on the half-open sector edge.
