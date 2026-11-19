@@ -1,91 +1,118 @@
-# ORBIT original soundtrack auditions
+# ORBIT — STARWAKE
 
-Two original **Cosmic Progressive Electronica** arrangements for ASTRAL BELT.
-Both use **128 BPM, 4/4, 48 bars / 192 beats**, with a 90-second musical body
-and a four-second release. These auditions are independent of the playable
-ORBIT course, which continues to use the temporary ELSEWHERE soundtrack.
+The selected **B — STARWAKE** audition is expanded into the authoritative
+**Melodic Cosmic Electronica** score: **128 BPM, 4/4, 96 bars / 384 beats**,
+a **180-second body** and **four-second release**. GRAVITY remains historical.
 
-## Musical directions
+The playable ORBIT course still uses ELSEWHERE's temporary **448-beat**
+soundtrack and chart. This task does not activate STARWAKE in gameplay.
+Music, sections, gates, reference stations, branches, Encore and records must
+switch together in the later integration.
 
-**A — GRAVITY** uses displaced kicks, ghost snares, syncopated low bass and
-filtered harmonic FM plucks. A falling D-minor cell moves through Dm9,
-B-flat major seven and suspended C, with E-flat and A7 adding pressure.
-Short lead answers leave room for the broken rhythm and stereo echoes.
-AURORA stretches the original motif over broader harmony.
-
-**B — STARWAKE** uses a steadier pulse, longer bass articulations and a warm
-triangle/sine melody. Its rising fifth begins over Fadd9, passes through
-D minor and suspended dominants, and returns as a fuller melodic response.
-AURORA opens the harmony before the ending settles on Fadd9. The lead stays
-in a restrained middle register, with filtered delays and a dark stereo room.
+## Full arrangement
 
 | Section | Bars, zero based | Seconds | Development |
 | --- | --- | --- | --- |
-| OUTER BELT | 0–4 | 0–7.5 | Exposed harmonic space and plucks; drums enter gradually. |
-| DRIFT | 4–12 | 7.5–22.5 | Core groove and a partial theme, followed by a cadence. |
-| RINGBREAK | 12–20 | 22.5–37.5 | Full theme and contrasting answer with active bass. |
-| MAELSTROM | 20–28 | 37.5–52.5 | Borrowed harmony, displaced accents and selected fills. |
-| ECLIPSE | 28–32 | 52.5–60 | Bass and backbeat recede; isolated notes sustain the question. |
-| AURORA | 32–40 | 60–75 | Expanded theme, answering phrase and strongest ensemble. |
-| APHELION | 40–48 | 75–90 | Theme recollection, thinning drums and a resolved coda. |
+| OUTER BELT | 0–8 | 0–15 | Exposed Fadd9 space; crystal notes, pulse and a partial theme enter separately. |
+| DRIFT | 8–24 | 15–45 | Four related phrases: invitation, answer, travelling melody and dominant question; bass and arpeggio layouts change. |
+| RINGBREAK | 24–40 | 45–75 | Original rising-fifth theme, its answer and a broader variant; inversions connect the harmony. |
+| MAELSTROM | 40–56 | 75–105 | Displaced kick responses, ghost snares, moving bass and borrowed E-flat / half-diminished harmony. |
+| ECLIPSE | 56–64 | 105–120 | Backbeat withdraws; sustained harmony, isolated melody and low pulses prepare A7. |
+| AURORA | 64–80 | 120–150 | Recognizable theme with longer articulations, rising answer, melodic summit and descending release; plucks leave more space. |
+| APHELION | 80–96 | 150–180 | Eight driving bars, theme recollection, thinning drums and a final Fadd9 coda; room decays after the body. |
 
-## Export
+The 24 authored four-bar phrases develop harmony, groove, bass, arpeggiation
+and motif. They are not two copies of the 48-bar audition. The approved
+triangle/sine lead, restrained FM pluck, warm bass, drum voices, three dark
+stereo delay taps and 2.9-second procedural room retain B's sound identity.
+The full score uses a fixed 0.65 master trim and the original gentle compressor;
+there is no per-section loudness normalization.
 
-Use Node 24 and the repository's installed Playwright Chromium. Select installed
-Chrome with `PLAYWRIGHT_CHANNEL=chrome` when needed.
+## Sources and event contract
+
+- `app/game/core/orbit-score.ts`: `starwakeTrack`, `starwakePhrases`,
+  `starwakeEvents` and `starwakeSteps`; the only full score.
+- `app/game/audio/orbit-voices.client.ts`: shared instruments, mix and effects.
+- `app/game/audio/orbit.client.ts`: `OrbitSynthesizer`, compatible with shared
+  transport step scheduling, fractional attacks, elapsed-event filtering and disposal.
+- `app/game/audio/orbit-export.client.ts`: `renderStarwake()` and
+  `encodeStarwakeWav()`, using that same production synthesizer.
+
+Events expose stable numeric ID and string identity, bar, beat, seconds,
+voice, velocity, section, accent, fill and transition flags. Pitched events
+also carry pitches and durations. Voices are kick, snare, hat, percussion,
+bass, pad/chord, pluck/arpeggio, lead/motif and sweep. Fractional positions are
+retained rather than snapped to the scheduling grid. These are the future
+gate and lighting cue source; no second audio clock is introduced.
+
+All notes, noise and convolution impulses are generated at runtime. Common
+gain/filter/frequency/random primitives come from the existing audio layer.
+No external samples or dependencies are added.
+
+## Export and verification
+
+Use Node 24 and installed Playwright Chromium; set
+`PLAYWRIGHT_CHANNEL=chrome` to use installed Chrome.
 
 ```sh
-node --test tools/music/orbit/score.test.mjs
 node tools/music/orbit/export.mjs --verify
 node tools/music/orbit/verify.mjs
+npm run typecheck && npm test
+node --test tools/music/orbit/score.test.mjs
 ```
 
-The exporter writes these local, ignored files.
+The full exporter writes only `scratch/orbit-m0/exports/ORBIT-STARWAKE-FULL.wav`
+and `starwake-validation.json`. Both are local and ignored. The WAV is
+**44.1 kHz, 16-bit stereo PCM** with deterministic TPDF dither. One continuous
+OfflineAudioContext retains compressor, delay and convolution history;
+there are no rendered blocks or joins. The last 0.4 seconds gently reach zero.
+The browser decodes the delivered WAV, and `--verify` renders it twice,
+allowing at most 32 PCM codes peak and one code RMS of numerical error.
+The PCM scanner checks every sample, section levels, half-second dynamics,
+true-peak headroom, body continuity and the final zero sample.
 
-- `scratch/orbit-m0/exports/ORBIT-M0-A-GRAVITY.wav`
-- `scratch/orbit-m0/exports/ORBIT-M0-B-STARWAKE.wav`
-- `scratch/orbit-m0/exports/audio-validation.json`
+The browser test additionally compares direct voice scheduling with production
+step scheduling, checks stereo WAV decoding, source disposal and abort behavior,
+and rejects clipped/non-finite buffers. Core tests cover section boundaries,
+identity, fractional resume, theme preservation, phrase development and ending.
 
-Each WAV is 44.1 kHz, 16-bit stereo PCM with deterministic TPDF dither.
-The browser decodes the delivered WAV before accepting it. A single continuous
-OfflineAudioContext retains all compressor, delay and convolution history.
-Each master receives a static gain trim toward -20.5 dBFS musical-body RMS,
-with a 0.76 sample-peak ceiling. Musical dynamics remain in the score.
-`--verify` renders both tracks twice and checks PCM differences within
-32 codes peak and one code RMS to accommodate Web Audio summing roundoff.
+The checked Chrome 157 master runs **184 seconds**, including its release.
+Independent BS.1770 integrated measurement (pyloudnorm) is **-19.04 LUFS**;
+full-file RMS is **-20.46 dBFS**, sample peak **-3.57 dBFS**, and estimated
+four-times polyphase true peak **-3.43 dBTP**. It is 0.23 LU above the selected
+B audition. The full PCM contains zero clipped/non-finite samples, with no
+sustained body silence; the final sample is zero. Independent full renders
+differ by **0.3605 PCM codes RMS / 10 codes peak**. The 5.75 dB ECLIPSE-to-AURORA
+contrast comes from the arrangement and individual articulations.
 
-The validation JSON scans the complete PCM, reports section and half-second
-levels, stereo correlation, sample steps and a four-times oversampled,
-32-tap windowed-sinc true-peak estimate. It checks peak headroom, the ECLIPSE
-contrast, body continuity and the final zero sample.
+| Section | RMS dBFS |
+| --- | ---: |
+| OUTER BELT | -24.21 |
+| DRIFT | -20.15 |
+| RINGBREAK | -19.81 |
+| MAELSTROM | -19.86 |
+| ECLIPSE | -24.92 |
+| AURORA | -19.16 |
+| APHELION | -20.39 |
 
-The checked Chrome 157 exports both run 94 seconds, including the release.
-Independent full-file measurements used pyloudnorm's BS.1770 meter and
-SciPy four-times polyphase resampling for the true-peak estimate.
+Exact measurements, the WAV hash and repeat-render results are retained locally
+in `starwake-validation.json` and `starwake-master-analysis.json` beside the WAV.
 
-| Audition | Integrated LUFS | RMS dBFS, including tail | Sample peak dBFS | Estimated dBTP |
-| --- | ---: | ---: | ---: | ---: |
-| GRAVITY | -19.07 | -20.69 | -5.18 | -5.18 |
-| STARWAKE | -19.26 | -20.69 | -2.86 | -2.81 |
+## Historical auditions
 
-The loudness difference is 0.19 LU. Both files decoded to 44.1 kHz stereo,
-contained zero clipped samples and reached zero at the last sample. ECLIPSE
-is 7.03 dB below AURORA in GRAVITY and 6.72 dB below it in STARWAKE.
-Repeat-render error was 0.334 / 0.356 PCM codes RMS and 2 / 10 codes peak.
-Exact export hashes and per-section levels are in the local validation JSON.
+The original 48-bar scores remain in `score.mjs`, unchanged. Their historical
+`voices.mjs` adapter uses the promoted instrument implementation with the
+original profiles, event IDs, timing and mix. `render.mjs` retains the original
+static audition loudness trim. Export them explicitly with:
 
-## Reusable source
+```sh
+node tools/music/orbit/export.mjs --prototypes --verify
+node tools/music/orbit/verify.mjs --prototypes
+```
 
-`score.mjs` owns the authored harmony, motifs and event timeline. Each event
-has stable ID, section, bar, beat, seconds, voice, velocity, accent and fill
-metadata. Pitched events include note or chord pitches and duration. The
-`eventSteps()` index retains fractional onset times for future transport,
-gate and lighting integration.
-
-`voices.mjs` owns `OrbitSynthesizer`, its instruments, room, filtered delay
-taps and score-driven low-frequency ducking. `schedule(anchor, after, before)`
-filters elapsed attacks without changing absolute event identities. The only
-borrowed synthesis functions are shared frequency, random, gain and filter
-primitives. `render.mjs` reuses the existing DAYBREAK PCM encoder. All notes,
-noise and convolution impulses are generated from code. Production integration
-and expansion to 96 bars follow audition selection.
+These write `ORBIT-M0-A-GRAVITY.wav`, `ORBIT-M0-B-STARWAKE.wav` and
+`audio-validation.json` in the same ignored export directory. The existing
+reference auditions are retained for comparison. Both are 94 seconds,
+including a four-second release. Their measured integrated loudness is
+-19.07 LUFS / -19.26 LUFS respectively. Historical score tests remain runnable
+independently of the new full score.

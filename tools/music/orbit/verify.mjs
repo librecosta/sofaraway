@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
 import { duration, sections, tail, versions } from './score.mjs';
+import { starwakeTrack } from '../../../app/game/core/orbit-score.ts';
 
 const db = value => value > 0 ? 20 * Math.log10(value) : -180;
 
@@ -26,7 +28,8 @@ function truePeak(channels) {
 }
 
 /** Scan every delivered PCM sample and retain section and half-second dynamics. */
-export function inspectWav(bytes) {
+export function inspectWav(bytes, track = { duration, tail, sections }) {
+  const { duration, tail, sections } = track;
   assert.equal(bytes.toString('ascii', 0, 4), 'RIFF');
   assert.equal(bytes.toString('ascii', 8, 16), 'WAVEfmt ');
   assert.equal(bytes.readUInt16LE(20), 1);
@@ -93,8 +96,10 @@ export function inspectWav(bytes) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  for (const filename of Object.values(versions)) {
+  const { values } = parseArgs({ options: { prototypes: { type: 'boolean' } } });
+  for (const filename of values.prototypes ? Object.values(versions) : ['ORBIT-STARWAKE-FULL']) {
     const file = new URL('../../../scratch/orbit-m0/exports/' + filename + '.wav', import.meta.url);
-    console.log(JSON.stringify({ file: file.pathname, ...inspectWav(await readFile(file)) }));
+    console.log(JSON.stringify({ file: file.pathname,
+      ...inspectWav(await readFile(file), values.prototypes ? undefined : starwakeTrack) }));
   }
 }
