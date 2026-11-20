@@ -43,6 +43,10 @@ const harness = {
   inspectDaybreakContinuity: async () => (await import('./daybreak-cabin')).inspectDaybreakContinuity(),
   inspectMaterials: async () => (await import('./materials')).inspectMaterials(),
   inspectCameraAndGates: async () => (await import('./camera-gates')).inspectCameraAndGates(),
+  inspectOrbitStability: async (...args: Parameters<typeof import('./orbit').inspectOrbitStability>) =>
+    (await import('./orbit')).inspectOrbitStability(...args),
+  inspectOrbitGuidance: async (...args: Parameters<typeof import('./orbit').inspectOrbitGuidance>) =>
+    (await import('./orbit')).inspectOrbitGuidance(...args),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
@@ -138,6 +142,7 @@ const harness = {
   snapshot: () => runtime?.getSnapshot() ?? initialSnapshot,
   corridor: () => runtime && (Reflect.get(runtime, 'graphics') as Graphics | undefined)?.path,
   mode: (mode: PlayMode) => runtime?.setMode(mode),
+  dynamicLights: (value: boolean) => runtime?.setDynamicLights(value),
   metrics: () => metrics,
   start: (silent?: boolean) => runtime?.start(silent),
   pause: () => runtime?.pause('user'),

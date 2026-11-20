@@ -25,6 +25,8 @@ import { MaterialLibrary } from './materials/library.client';
 import type { OrbitDensity } from '../core/orbit-field';
 import { ORBIT_WORLD_SEED } from '../core/orbit-field';
 import { OrbitWorld } from './orbit-world.client';
+import { OrbitRouteGuides } from './orbit-route-guides.client';
+import { orbitRouteSwatches } from '../core/orbit-routes';
 import { buildRunPath } from './path';
 import type { Path, PathFrame } from './path';
 import { PickupVisual } from './pickup.client';
@@ -55,6 +57,7 @@ class VolumeScene {
   readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
   readonly tunnel?: Tunnel;
   readonly orbit?: OrbitWorld;
+  private orbitGuides?: OrbitRouteGuides;
   readonly hologram?: RouteHologram;
   readonly scenic?: CorridorLights;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
@@ -97,7 +100,7 @@ class VolumeScene {
     this.hue = volume.hue[0];
     this.gameplay = gameplayFor(volume.id);
     if (this.orbit) {
-      if (this.gameplay.branch) this.hologram = new RouteHologram();
+      if (this.gameplay.branch) this.hologram = new RouteHologram(false, orbitRouteSwatches);
       return;
     }
     if (this.gameplay.world?.continuous) {
@@ -183,12 +186,15 @@ class VolumeScene {
     this.orbit?.update(this.camera, height, dpr, quality);
   }
 
-  updateAstralWorld(sim: SceneState, height: number, dpr: number, quality: QualityTier) {
+  updateAstralWorld(sim: SceneState, height: number, dpr: number, quality: QualityTier, lighting?: LightingPreview) {
     if (!this.orbit) return;
     const station = sim.trackDistance;
     const plan = sim.outroPlan;
-    const release = plan ? Math.max(ease((station - plan.afterglowStart) / 250), ease((sim.beat - 438) / 10) * .65) : 0;
+    const release = plan ? Math.max(ease((station - plan.afterglowStart) / 250),
+      ease((sim.beat - (this.volume!.beats - 10)) / 10) * .65) : 0;
     this.orbit.update(this.camera, height, dpr, quality, release);
+    this.orbitGuides?.update(station, sim.time, sim.branch?.side ?? sim.routeSide, !!sim.branch?.side,
+      height * this.camera.aspect, height, lighting?.reducedMotion ? 0 : lighting?.dynamics?.amount ?? 0);
   }
 
   private moveCamera(cameraFrame: PathFrame, x: number, y: number, width = 0) {
@@ -278,7 +284,7 @@ class VolumeScene {
     this.updatePickup(sim);
 
     if (sim.phase === 'playing') {
-      const lensPulse = this.volume.id !== 'daybreak' && sim.mode === 'standard'
+      const lensPulse = this.volume.id !== 'daybreak' && !this.orbit && sim.mode === 'standard'
         ? (0.5 + 0.5 * Math.cos(sim.beat * Math.PI * 2)) ** 2 * 0.65 : 0;
       this.setFov(BASE_FOV + lensPulse + sim.boostLens * 7 + Math.min(sim.speed, 56) * 0.045 + width);
     }
@@ -358,6 +364,15 @@ class VolumeScene {
   }
 
   private updateJunction(sim: SceneState) {
+    if (this.orbit) {
+      const path = sim.junctionPath, layout = sim.branch?.layout;
+      if (path && layout && (this.orbitGuides?.path !== path || this.orbitGuides.layout !== layout)) {
+        this.orbitGuides?.dispose();
+        this.orbitGuides = new OrbitRouteGuides(path, layout);
+        this.scene.add(this.orbitGuides.mesh);
+      }
+      return;
+    }
     if (!this.tunnel) return;
     const path = sim.junctionPath;
     const layout = sim.branch?.layout;
@@ -378,6 +393,7 @@ class VolumeScene {
   }
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
+  get routeTraces() { return this.orbitGuides?.metrics(); }
   get descentLighting() { return this.facility?.lighting; }
   get continuity() { return this.gameplay?.world?.continuous ? this.tunnel?.continuity : undefined; }
   get skyDaylight() { return this.exterior?.daylight; }
@@ -424,6 +440,7 @@ class VolumeScene {
     this.surfaceLibrary?.dispose();
     this.exterior?.dispose();
     this.orbit?.dispose();
+    this.orbitGuides?.dispose();
     this.scene.clear();
   }
 }
@@ -697,7 +714,7 @@ export class Graphics {
   draw(sim: SceneState, deterministic: boolean, updateScene = true, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return false;
     if (updateScene) this.update(sim, deterministic, lighting);
-    this.volume.updateAstralWorld(sim, this.height * this.effectiveDpr, this.effectiveDpr, this.quality);
+    this.volume.updateAstralWorld(sim, this.height * this.effectiveDpr, this.effectiveDpr, this.quality, lighting);
     this.render(this.volume, sim.time, sim.phase === 'playing');
     this.volume.hologram?.render(this.renderer, sim.routeGuide, sim.routeSide, !!sim.route, sim.time);
     return this.locked;
@@ -736,6 +753,8 @@ export class Graphics {
       geometries: memory.geometries, textures: memory.textures, programs: programs?.length ?? 0,
       chunks: this.volume?.tunnel?.chunks.length ?? 0, dpr: this.effectiveDpr,
       orbit: this.volume?.orbit?.metrics(),
+      fov: this.camera?.fov,
+      routeTraces: this.volume?.routeTraces,
       gateGeometryCache: this.volume?.gateGeometryCache ?? 0,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       descentLighting: this.volume?.descentLighting,

@@ -7,6 +7,28 @@ const harnessUrl = 'http://127.0.0.1:8090/';
 const fixed = (beat: number, route = 'center', boost = false) =>
   `/?vol=elsewhere&t=${beat * 60 / 128}&q=low&align=1&god=0&dbg=1&route=${route}&boost=${Number(boost)}`;
 
+test('astral guidance spans recognition, commitment and merge on both seeded layouts and each mode', async ({ page }, run) => {
+  await page.goto(harnessUrl);
+  const results = [];
+  for (const [mode, difficulty, boost] of [['standard', 'normal', false], ['standard', 'impossible', true],
+    ['sightseeing', 'normal', false]] as const) for (const seed of [0, 1]) for (const side of ['left', 'center', 'right'] as const) {
+    const sample = await page.evaluate(({ mode, difficulty, seed, side, boost }) =>
+      window.b0Harness.inspectOrbitGuidance(mode, difficulty, seed, side, boost), { mode, difficulty, seed, side, boost });
+    expect(sample.released).toBe(2);
+    expect(sample.choiceSeconds).toBeGreaterThan(1.5);
+    expect(sample.route).toBe(branchLayout(seed)[side]);
+    expect(sample.samples.map(frame => frame.phase)).toEqual(['approach', 'choice', 'choice', 'branch', 'branch', 'merge', 'exit', 'hidden']);
+    expect(sample.samples.slice(0, -1).every(frame => frame.visible)).toBe(true);
+    expect(sample.samples.at(-1)!.visible).toBe(false);
+    for (const frame of sample.samples) {
+      expect(frame.layout).toEqual(branchLayout(seed));
+      expect(frame.metrics.chunks).toBe(0);
+    }
+    results.push({ mode, difficulty, boost, seed, side, choiceSeconds: sample.choiceSeconds });
+  }
+  await run.attach('Astral guidance route matrix', { body: JSON.stringify(results), contentType: 'application/json' });
+});
+
 test('the live junction has visible labelled mouths, route-local gates and bounded GPU ownership', async ({ page }) => {
   await page.goto(harnessUrl);
   const { samples, resets, disposals, textureDisposals, materialDisposals } = await page.evaluate(() => window.b0Harness.inspectJunction());

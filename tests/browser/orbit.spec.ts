@@ -14,6 +14,49 @@ const station = async (page: Page) => Number(await seek(page).inputValue());
 const metrics = async (page: Page): Promise<Metrics> => JSON.parse((await info(page).getAttribute('data-orbit-metrics'))!);
 const glError = (page: Page) => canvas(page).evaluate((el: HTMLCanvasElement) => el.getContext('webgl2')!.getError());
 
+test('ORBIT fixed landmarks have no beat zoom with or without PostFX; the other volumes retain their lenses', async ({ page }, run) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const results = [];
+  for (const post of [false, true]) for (const motion of ['cruise', 'boost'] as const) {
+    const sample = await page.evaluate(options => window.b0Harness.inspectOrbitStability(options),
+      { quality: 'high' as const, post, motion, beat: 20, frozen: true });
+    const fovs = sample.frames.map(frame => frame.fov);
+    expect(Math.max(...fovs) - Math.min(...fovs)).toBeLessThan(1e-9);
+    expect(new Set(sample.frames.slice(1).map(frame => JSON.stringify(frame.metrics.orbit))).size).toBe(1);
+    expect(sample).toMatchObject({ moved: 0, glError: 0 });
+    expect(sample.landmarks).toBeGreaterThan(0);
+    results.push({ post, motion, fov: fovs[0], landmarks: sample.landmarks });
+  }
+  for (const volume of ['elsewhere', 'daybreak', 'descent'] as const) {
+    const sample = await page.evaluate(volume => window.b0Harness.inspectOrbitStability({ quality: 'low', post: false,
+      motion: 'cruise', beat: 20, frozen: true, frames: 120, volume }), volume);
+    const fovs = sample.frames.map(frame => frame.fov), range = Math.max(...fovs) - Math.min(...fovs);
+    if (volume === 'daybreak') expect(range).toBe(0);
+    else expect(range).toBeGreaterThan(.64);
+  }
+  await run.attach('Stable camera isolation', { body: JSON.stringify(results), contentType: 'application/json' });
+});
+
+test('ORBIT streams stable landmarks through cruise, Boost and mixed input across its belts', async ({ page }, run) => {
+  await page.goto('http://127.0.0.1:8090/');
+  const results = [];
+  for (const [quality, motion, beat] of [['low', 'cruise', 20], ['auto', 'boost', 116], ['high', 'mixed', 192],
+    ['auto', 'cruise', 280], ['high', 'boost', 360]] as const) {
+    const sample = await page.evaluate(options => window.b0Harness.inspectOrbitStability(options), { quality, motion, beat, frames: 240, post: true });
+    expect(sample).toMatchObject({ moved: 0, glError: 0 });
+    const frames = sample.frames;
+    for (let i = 1; i < frames.length; i++) {
+      expect(frames[i].station).toBeGreaterThanOrEqual(frames[i - 1].station);
+      // Boost retains the shared 180 ms eased response; there is no beat term.
+      expect(frames[i].fov).toBeCloseTo(76 + frames[i].boostLens * 7 + Math.min(frames[i].speed, 56) * .045 + frames[i].steeringWidth, 7);
+      expect(Math.abs(frames[i].fov - frames[i - 1].fov)).toBeLessThan(.8);
+      expect(frames[i].metrics.orbit!.chunks).toBeLessThan(700);
+    }
+    results.push({ quality, motion, beat, first: frames[0], last: frames.at(-1) });
+  }
+  await run.attach('Astral continuous flight', { body: JSON.stringify(results), contentType: 'application/json' });
+});
+
 test('the public ORBIT run recovers WebGL, judges a Hard collision and retries on the same canvas', async ({ page }) => {
   await page.addInitScript(() => {
     const key = 'sofaraway.records.v1';
@@ -164,20 +207,22 @@ test('STARWAKE runs for its complete body and tail through real boosted gameplay
   await page.evaluate(() => window.b0Harness.dispose());
 });
 
-for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, 'left', false], [1, 'center', false],
-  [1, 'right', true], [0, 'center', false]] as const) {
+for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard', 'normal'], [0, 'right', false, 'standard', 'normal'],
+  [1, 'left', false, 'standard', 'normal'], [1, 'center', false, 'standard', 'normal'], [1, 'right', true, 'standard', 'normal'],
+  [0, 'center', false, 'standard', 'normal'], [0, 'right', true, 'standard', 'impossible'], [1, 'right', false, 'sightseeing', 'normal']] as const) {
   const route = branchLayout(seed)[side];
-  test(`live ORBIT enters and merges ${route} on the ${side} with manual steering (seed ${seed})`, async ({ page }, info) => {
+  const modeLabel = mode === 'standard' && difficulty === 'normal' ? '' : ` ${mode} ${difficulty}`;
+  test(`live ORBIT enters and merges ${route} on the ${side} with manual steering (seed ${seed})${modeLabel}`, async ({ page }, info) => {
     const sim = new Simulation(volumeById('orbit'));
-    sim.start('normal', seed);
+    sim.start(difficulty, seed, undefined, mode);
     const junction = sim.junctionPath!;
     const lead = sim.mainGates.filter(gate => gate.worldStation < junction.split).at(-1)!;
     const exit = sim.mainGates.find(gate => gate.worldStation >= junction.end)!;
     const routeGates = sim.branchGates![route];
     await page.goto('http://127.0.0.1:8090/');
-    const initial = await page.evaluate(async seed => {
+    const initial = await page.evaluate(async ({ seed, mode, difficulty }) => {
       const runtime = window.b0Harness;
-      await runtime.mount({ volumeId: 'orbit', runSeed: seed, quality: 'low', diagnostics: {
+      await runtime.mount({ volumeId: 'orbit', runSeed: seed, mode, difficulty, quality: 'low', diagnostics: {
         fixedTime: null, autoplay: false, god: false, align: true, boost: false,
         mobileQuality: false, post: true, record: false, debug: true,
       } });
@@ -185,13 +230,15 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
       runtime.advanceAndPause(100, true);
       await runtime.resume(true);
       return runtime.snapshot().gatesPassed;
-    }, seed);
+    }, { seed, mode, difficulty });
     const state = () => page.evaluate(() => window.b0Harness.branchState());
     const snap = () => page.evaluate(() => window.b0Harness.snapshot());
     const { width, height } = page.viewportSize()!;
     const aim = (x: number, y: number) => page.mouse.move(width * (1 + x / RANGE_X) / 2, height * (1 - y / RANGE_Y) / 2);
     const gateAim = (gate: typeof lead) => aim(...lanePoint(gate.kind, gate.open, gate.axis));
-    const poll = <T>(query: () => Promise<T>) => expect.poll(query, { intervals: [20, 40, 50] });
+    const poll = <T>(query: () => Promise<T>) => expect.poll(query, {
+      intervals: [20, 40, 50], timeout: mode === 'sightseeing' ? 16_000 : 8_000,
+    });
     let passed = initial;
     for (const gate of sim.mainGates.filter(gate => gate.beat > 100 && gate.worldStation <= lead.worldStation)) {
       await gateAim(gate);
@@ -201,6 +248,7 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
     await poll(async () => (await state()).metrics.routeHologram?.left).toBe(ROUTE_LABELS[branchLayout(seed).left]);
     const recognition = await state();
     expect(recognition.branch?.side).toBeNull();
+    expect(recognition.metrics.routeTraces).toMatchObject({ visible: true, phase: 'choice', layout: branchLayout(seed) });
     await page.locator('canvas').screenshot({ path: info.outputPath('orbit-approach.png') });
     if (side === 'center') await aim(0, 0);
     else {
@@ -211,6 +259,7 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
     }
     await poll(async () => (await state()).route).toBe(route);
     const committed = await state();
+    expect(committed.metrics.routeTraces).toMatchObject({ visible: true, phase: 'branch', selected: side === 'left' ? 0 : side === 'right' ? 2 : 1 });
     expect(committed.trackDistance + 1e-8).toBeGreaterThanOrEqual(junction.split);
     expect(committed.time - recognition.time).toBeGreaterThan(1.5);
     for (const [index, gate] of routeGates.entries()) {
@@ -226,7 +275,7 @@ for (const [seed, side, boost] of [[0, 'left', true], [0, 'right', false], [1, '
     await gateAim(exit);
     await poll(async () => (await state()).lastGate?.beat).toBe(exit.beat);
     await poll(async () => (await snap()).gatesPassed).toBe(++passed);
-    expect(await snap()).toMatchObject({ phase: 'playing', lives: 2, gatesPassed: passed });
+    expect(await snap()).toMatchObject({ phase: 'playing', lives: mode === 'sightseeing' ? 5 : difficulty === 'impossible' ? 1 : 2, gatesPassed: passed });
     expect(await state()).toMatchObject({ sharedPath: true, metrics: { chunks: 0, junctionMeshes: 0 } });
     await page.evaluate(() => window.b0Harness.dispose());
   });
