@@ -7,6 +7,7 @@ import { volumeById } from '../../app/game/core/volumes';
 import type { Graphics } from '../../app/game/graphics/scene.client';
 
 type Metrics = ReturnType<Graphics['metrics']>;
+test.use({ video: { mode: 'on', size: { width: 960, height: 540 } } });
 const canvas = (page: Page) => page.getByLabel('ASTRAL BELT flight');
 const info = (page: Page) => page.locator('[data-orbit-metrics]');
 const seek = (page: Page) => page.getByRole('slider', { name: /World station/ });
@@ -190,6 +191,7 @@ test('STARWAKE runs for its complete body and tail through real boosted gameplay
     expect(moment.audio).toMatchObject({ starwake: true, context: 'running' });
     expect(moment.scene.metrics.chunks).toBe(0);
     expect(moment.scene.metrics.gateGeometryCache).toBeLessThanOrEqual(24);
+    if (beat >= 336) expect(moment.scene.metrics.orbit!.setpieces.active.some(piece=>piece.id==='planet')).toBe(true);
     await page.locator('canvas').screenshot({ path: run.outputPath(`starwake-${beat}.png`) });
     moments.push(moment);
   }

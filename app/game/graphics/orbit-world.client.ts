@@ -9,6 +9,8 @@ import { BranchPath, pathFrame } from './branch-path';
 import type { Path } from './path';
 import { OrbitRocks, ROCK_LODS, ROCK_SHAPES } from './orbit-rocks.client';
 import { OrbitSky } from './orbit-sky.client';
+import { cosmicPresence, makeOrbitSetpieces } from '../core/orbit-setpieces';
+import { OrbitSetpieces } from './orbit-setpieces.client';
 
 const REACH = 570;
 const KEEP = 660;
@@ -96,6 +98,10 @@ export class OrbitWorld {
   readonly group = new THREE.Group();
   readonly field: OrbitField;
   private readonly sky: OrbitSky;
+  private readonly setpieces: OrbitSetpieces;
+  private readonly key = new THREE.DirectionalLight(0xffe2c3, 3.55);
+  private readonly bounce = new THREE.DirectionalLight(0xb7d8ff, 1.38);
+  private readonly eclipseSun = new THREE.Vector3();
   private readonly rocks = new OrbitRocks(REACH);
   private readonly chunks = new Map<string, Chunk>();
   private readonly center = new THREE.Vector3();
@@ -109,16 +115,22 @@ export class OrbitWorld {
 
   constructor(path: Path, seed: number, density: OrbitDensity, mode: PlayMode = 'standard') {
     const branch = path.reference && new BranchPath(path, path.reference, mode, gameplayFor('orbit').branch!);
-    this.field = new OrbitField(seed, density, orbitClearance(path, branch, mode), orbitCourseBelt(path, mode));
+    const clearance = orbitClearance(path, branch, mode);
+    this.field = new OrbitField(seed, density, clearance, orbitCourseBelt(path, mode));
+    this.setpieces = new OrbitSetpieces(makeOrbitSetpieces(path, mode, seed, clearance), this.rocks);
     this.sky = new OrbitSky(seed);
-    const key = new THREE.DirectionalLight(0xffe2c3, 3.55);
-    key.position.set(-.8, .73, -.48);
-    const bounce = new THREE.DirectionalLight(0xb7d8ff, 1.38);
-    bounce.position.set(.79, -.30, .58);
-    this.group.add(this.sky.group, key, bounce, new THREE.AmbientLight(0x929fb5, .40));
+    const eclipse = this.setpieces.descriptions.find(p=>p.id==='eclipse')!;
+    this.eclipseSun.fromArray(eclipse.bodies[1].position).sub(new THREE.Vector3().fromArray(eclipse.anchor)).normalize();
+    this.key.position.set(-.8, .73, -.48);
+    this.bounce.position.set(.79, -.30, .58);
+    this.group.add(this.sky.group, this.setpieces.group, this.key, this.bounce, new THREE.AmbientLight(0x929fb5, .40));
   }
 
-  update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0) {
+  update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200) {
+    this.setpieces.update(camera, station, height, quality);
+    const eclipse = cosmicPresence(this.setpieces.descriptions[4],station);
+    this.key.position.set(-.8,.73,-.48).normalize().lerp(this.eclipseSun,eclipse);
+    this.bounce.intensity=1.38-.72*eclipse;
     this.sky.resize(dpr);
     this.sky.setRelease(release);
     this.rocks.setRelease(release);
@@ -222,16 +234,18 @@ export class OrbitWorld {
   }
 
   metrics() {
-    let descriptions = 0;
+    let descriptions = 0, objects = 0;
     for (const chunk of this.chunks.values()) descriptions += chunk.rocks.length;
+    this.group.traverse(()=>objects++);
     return { chunks: this.chunks.size, visibleChunks: this.visibleChunks, descriptions,
-      instances: this.instances, lod: [...this.levels] };
+      instances: this.instances, objects, lod: [...this.levels], setpieces: this.setpieces.metrics() };
   }
 
   dispose() {
     for (const chunk of this.chunks.values()) this.free(chunk);
     this.chunks.clear();
     this.sky.dispose();
+    this.setpieces.dispose();
     this.rocks.dispose();
     this.group.clear();
   }

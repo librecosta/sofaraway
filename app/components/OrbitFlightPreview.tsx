@@ -5,6 +5,7 @@ import { steer, steeringDamping } from '../game/core/input';
 import { ORBIT_WORLD_SEED } from '../game/core/orbit-field';
 import { corridorLength } from '../game/core/corridor-composition';
 import { referenceFor, START_DISTANCE } from '../game/core/reference-track';
+import { orbitSceneBeats, orbitSceneNames } from '../game/core/orbit-setpieces';
 import { volumeById } from '../game/core/volumes';
 import type { OrbitDensity } from '../game/core/orbit-field';
 import { buildRunPath } from '../game/graphics/path';
@@ -247,6 +248,10 @@ export function OrbitFlightPreview() {
           <button type="button" onClick={() => preset('Sparse')}>Sparse view</button>
           <button type="button" onClick={() => preset('Dense')}>Dense view</button>
         </div>
+        <div className={s.actions} aria-label="Cosmic setpieces">
+          {orbit.sections.map((section,index)=><button type="button" key={section.name} title={orbitSceneNames[index]}
+            onClick={()=>{settings.current.playing=false;setPlaying(false);switchDensity('flight');seek(reference.station(orbitSceneBeats[index],'standard'));}}>{section.name}</button>)}
+        </div>
         <div className={s.seek}><span>World station</span><output aria-live="off">{station.toFixed(1)}</output>
           <input aria-label="World station" type="range" min={START_DISTANCE} max={Math.floor(length)} step="1" value={Math.min(Math.floor(length), Math.round(station))}
             onChange={e => seek(Number(e.currentTarget.value))} />
@@ -270,6 +275,8 @@ export function OrbitFlightPreview() {
         {metrics?.orbit && <output aria-live="off" className={s.metrics} data-orbit-metrics={JSON.stringify(metrics)}>
           {metrics.calls} draw calls · {metrics.triangles.toLocaleString('en-US')} triangles · {metrics.orbit.instances} instances ·{' '}
           {metrics.orbit.visibleChunks}/{metrics.orbit.chunks} chunks · {metrics.orbit.descriptions} rock descriptions · LOD {metrics.orbit.lod.join(' / ')}
+          {' · '}{metrics.orbit.setpieces.active.map(piece=>piece.id).join(' + ')}
+          {' · '}{metrics.orbit.setpieces.active.reduce((sum,piece)=>sum+piece.instances,0)} setpiece fragments · {metrics.orbit.objects} objects
         </output>}
       </div>
     </> : <button type="button" className={s.open} disabled={!readyToOpen} onClick={() => setOpened(true)}>Open flight preview</button>}

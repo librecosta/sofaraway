@@ -68,11 +68,17 @@ export class OrbitSky {
     const warm = new THREE.Color(0xffd0a8);
     const cool = new THREE.Color(0xb8d5ff);
     const tint = new THREE.Color();
+    const clusters = [new THREE.Vector3(-.42,.32,-1).normalize(), new THREE.Vector3(.70,-.23,-1).normalize(),
+      new THREE.Vector3(.18,.65,.8).normalize(),new THREE.Vector3(-.8,-.3,.4).normalize()];
     for (let i = 0; i < count; i++) {
       const y = i < 2400 ? random() * 2 - 1 : (random() + random() - 1) * .28;
       const angle = random() * Math.PI * 2;
       const r = Math.sqrt(1 - y * y);
       point.set(Math.cos(angle) * r, y, Math.sin(angle) * r).applyQuaternion(band).toArray(points, i * 3);
+      if(i>=3600) {
+        const spread=.018+random()**2*.16;
+        point.copy(clusters[i%clusters.length]).add(new THREE.Vector3((random()-.5)*spread,(random()-.5)*spread,(random()-.5)*spread)).normalize().toArray(points,i*3);
+      }
       const brilliance = random() ** 6;
       sizes[i] = 1.38 + 3.4 * brilliance;
       energy[i] = .078 + .91 * brilliance;

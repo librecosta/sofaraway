@@ -183,7 +183,7 @@ class VolumeScene {
   updateOrbit(view: OrbitView, height: number, dpr: number, quality: QualityTier) {
     this.moveCamera(this.path.sample(view.station, this.cameraFrame), view.x, view.y);
     this.setFov(BASE_FOV);
-    this.orbit?.update(this.camera, height, dpr, quality);
+    this.orbit?.update(this.camera, height, dpr, quality, 0, view.station);
   }
 
   updateAstralWorld(sim: SceneState, height: number, dpr: number, quality: QualityTier, lighting?: LightingPreview) {
@@ -192,7 +192,7 @@ class VolumeScene {
     const plan = sim.outroPlan;
     const release = plan ? Math.max(ease((station - plan.afterglowStart) / 250),
       ease((sim.beat - (this.volume!.beats - 10)) / 10) * .65) : 0;
-    this.orbit.update(this.camera, height, dpr, quality, release);
+    this.orbit.update(this.camera, height, dpr, quality, release, station);
     this.orbitGuides?.update(station, sim.time, sim.branch?.side ?? sim.routeSide, !!sim.branch?.side,
       height * this.camera.aspect, height, lighting?.reducedMotion ? 0 : lighting?.dynamics?.amount ?? 0);
   }

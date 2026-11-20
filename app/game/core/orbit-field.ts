@@ -53,6 +53,7 @@ function segmentDistance([x, y, z]: OrbitPoint, [ax, ay, az]: OrbitPoint, [bx, b
 
 export class OrbitClearance {
   private readonly cells = new Map<string, Capsule[]>();
+  private readonly capsules: Capsule[] = [];
 
   constructor(length: number, at: (station: number) => OrbitPoint, lookAhead = 104) {
     this.protect(0, length, at, lookAhead);
@@ -77,6 +78,7 @@ export class OrbitClearance {
     const bound = (axis: number, upper: boolean) => cellIndex(upper
       ? Math.max(start[axis], end[axis]) + reach : Math.min(start[axis], end[axis]) - reach);
     const capsule = { start, end, radius };
+    this.capsules.push(capsule);
     for (let x = bound(0, false); x <= bound(0, true); x++) {
       for (let y = bound(1, false); y <= bound(1, true); y++) {
         for (let z = bound(2, false); z <= bound(2, true); z++) {
@@ -91,6 +93,12 @@ export class OrbitClearance {
 
   allows(key: string, position: OrbitPoint, radius: number) {
     return !this.cells.get(key)?.some(arc => segmentDistance(position, arc.start, arc.end) < radius + arc.radius);
+  }
+
+  /** Hero bodies can exceed the ordinary field's cell-index radius. */
+  allowsSphere(position: OrbitPoint, radius: number) {
+    if (radius <= ORBIT_MAX_RADIUS) return this.allows(orbitCellKey(...position.map(cellIndex) as [number, number, number]), position, radius);
+    return !this.capsules.some(arc => segmentDistance(position, arc.start, arc.end) < radius + arc.radius);
   }
 }
 

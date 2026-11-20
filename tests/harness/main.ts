@@ -47,6 +47,8 @@ const harness = {
     (await import('./orbit')).inspectOrbitStability(...args),
   inspectOrbitGuidance: async (...args: Parameters<typeof import('./orbit').inspectOrbitGuidance>) =>
     (await import('./orbit')).inspectOrbitGuidance(...args),
+  inspectCosmicCourse: async (...args: Parameters<typeof import('./orbit-cosmos').inspectCosmicCourse>) =>
+    (await import('./orbit-cosmos')).inspectCosmicCourse(...args),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');
