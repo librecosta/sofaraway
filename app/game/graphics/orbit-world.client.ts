@@ -121,6 +121,7 @@ export class OrbitWorld {
   }
 
   update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200) {
+    this.rocks.surface.update(camera,height,quality);
     this.setpieces.update(camera, station, height, quality);
     const eclipse = cosmicPresence(this.setpieces.descriptions[4],station);
     this.key.position.set(-.8,.73,-.48).normalize().lerp(this.eclipseSun,eclipse);

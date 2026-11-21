@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitRockSurface } from './orbit-rock-surface';
 import { orbitRandom } from '../core/orbit-field';
 import { orbitSpaceColor } from './orbit-sky.client';
 
@@ -22,11 +23,17 @@ export function orbitRockGeometry(shape: number, lod: number) {
     const ridge = Math.sin(x * 13 + y * 8 - z * 8 + angles[4]) * Math.sin(z * 12 - y * 9 + angles[5]);
     const radius = .88 + .18 * broad + .075 * folds + .028 * ridge;
     vertex.set(x * a + .10 * y * z, y * b + .12 * x * z, z * c + .14 * x * y);
+    // Distinct fractured faces; the same bounded form is evaluated at each LOD.
+    if(shape===0)vertex.z=Math.min(vertex.z,.54+.21*x-.1*y);
+    else if(shape===1)vertex.y=Math.min(vertex.y,.30+.12*x-.08*z);
+    else if(shape===2)vertex.x=Math.max(vertex.x,-.44+.16*y);
+    else vertex.z-=.19*Math.exp(-((x-.22)**2*13+(y+.1)**2*16))*Math.max(0,z);
     vertex.multiplyScalar(radius).clampLength(0, .996);
     position.setXYZ(i, vertex.x, vertex.y, vertex.z);
     const albedo = .79 + .13 * broad + .065 * folds + .035 * ridge;
     colors.set([albedo, albedo, albedo], i * 3);
   }
+  geometry.setAttribute('rockFamily',new THREE.BufferAttribute(new Float32Array(position.count).fill([0,4,2,3][shape]),1));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
   // Give broad faces weight without hard, regular facets on every near triangle.
@@ -43,6 +50,7 @@ export function orbitRockGeometry(shape: number, lod: number) {
 }
 
 export class OrbitRocks {
+  readonly surface=new OrbitRockSurface();
   readonly colors = [0x62676d, 0x62554b, 0x7b8082].map(color => new THREE.Color(color));
   readonly material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .94, metalness: .04, fog: false });
   private readonly geometries = Array.from({ length: ROCK_SHAPES }, (_, shape) =>
@@ -58,8 +66,12 @@ export class OrbitRocks {
           float range = orbitVisibleRange * (1.0 - .38 * orbitRelease);
           float distanceBlend = smoothstep(range * .71, range, length(vViewPosition));
           outgoingLight = mix(outgoingLight, orbitSpaceColor(inverseTransformDirection(-vViewPosition, viewMatrix)), distanceBlend);
+          // Reach zero contrast before subpixel instance rejection at .85 px.
+          outgoingLight = mix(orbitSpaceColor(inverseTransformDirection(-vViewPosition,viewMatrix)),outgoingLight,smoothstep(.90,2.8,stoneCoverage));
           #include <opaque_fragment>`);
     };
+    this.material.customProgramCacheKey=()=> 'orbit-field-rock-v2';
+    this.surface.apply(this.material);
   }
 
   geometry(shape: number, lod: number) { return this.geometries[shape][lod]; }
@@ -67,6 +79,6 @@ export class OrbitRocks {
 
   dispose() {
     for (const variants of this.geometries) for (const geometry of variants) geometry.dispose();
-    this.material.dispose();
+    this.material.dispose();this.surface.dispose();
   }
 }

@@ -57,6 +57,7 @@ export function orbitHeroGeometry(shape: number, lod: number) {
     const albedo=.67+strata+cut+.055*y;
     colors.set([albedo*.94,albedo*.97,albedo],i*3);
   }
+  geometry.setAttribute('rockFamily',new THREE.BufferAttribute(new Float32Array(p.count).fill(shape),1));
   geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));geometry.computeVertexNormals();geometry.computeBoundingSphere();
   const n=geometry.getAttribute('normal');
   for(let i=0;i<n.count;i++)if(Math.hypot(n.getX(i),n.getY(i),n.getZ(i))<.01) {

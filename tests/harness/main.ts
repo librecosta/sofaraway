@@ -49,6 +49,11 @@ const harness = {
     (await import('./orbit')).inspectOrbitGuidance(...args),
   inspectCosmicCourse: async (...args: Parameters<typeof import('./orbit-cosmos').inspectCosmicCourse>) =>
     (await import('./orbit-cosmos')).inspectCosmicCourse(...args),
+  inspectOrbitSurfaces: async (...args: Parameters<typeof import('./orbit-surfaces').inspectOrbitSurfaces>) =>
+    (await import('./orbit-surfaces')).inspectOrbitSurfaces(...args),
+  inspectNebulaSegments: async () => (await import('./orbit-surfaces')).inspectNebulaSegments(),
+  inspectNebulaFlight: async (...args: Parameters<typeof import('./orbit-surfaces').inspectNebulaFlight>) =>
+    (await import('./orbit-surfaces')).inspectNebulaFlight(...args),
   inspectRockApproach: async (...args: Parameters<typeof import('./orbit-approach').inspectRockApproach>) =>
     (await import('./orbit-approach')).inspectRockApproach(...args),
   branchState() {

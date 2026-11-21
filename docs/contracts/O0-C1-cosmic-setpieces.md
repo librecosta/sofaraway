@@ -99,3 +99,49 @@ two 180-frame samples per scene/tier): High RINGBREAK rises from 69,248 to
 at four. The added geometry and calls have a measured cost; these short samples do not
 establish a timing improvement. High AURORA GPU P95 is 4.70/4.65 ms. Fixed Hero surfaces are
 affordable on this device; lower tiers retain the same compositions.
+
+## C3 geological surfaces and optical filtering
+
+Hero vertex positions, fixed quality-level geometry, landmark descriptions and
+route clearance remain unchanged. One periodic 64³ RGBA gradient field supplies
+seamless object-space geology, shared by heroes, ordinary fragments and celestial
+clouds. CPU texels are immutable and reused; each world owns and disposes its GPU
+volume texture. Mipmaps and explicit pixel-footprint filtering limit distant
+grain. Axis lengths include instance and nonuniform model scale, so a thin slab
+does not stretch its surface detail. No external textures or new light sources
+are needed.
+
+Monoliths carry broken longitudinal seams, lobes have compressed neck regions,
+cliffs have warped strata, scars have radial pit-wall texture, and shards have
+long fissures. Surface-gradient normals, sparse mineral roughness and restrained
+albedo variation provide detail without displacing accepted hero silhouettes.
+Ordinary prototypes add bounded cleavage planes and small impact cuts. Tiny
+fragments lose contrast before the existing subpixel rejection threshold.
+Low retains broad geology; Auto resolves grain; High adds filtered pores.
+
+Gas fibers follow the existing flow fields. Emissivity and dust extinction use
+an integrated homogeneous segment, with a stable small-optical-depth limit.
+Spatial fades change optical path length before integration. Output conversion
+operates on straight color and then restores premultiplied RGB for blending;
+depth testing, back-to-front sorting and separate glass ordering remain intact.
+Planet bands use the same filtered volume with latitude turbulence and polar
+variation. ECLIPSE's corona is softer; celestial sizes and positions do not change.
+
+The implementation draws on [GPU Gems terrain mapping](https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-1-generating-complex-procedural-terrains-using-gpu),
+[periodic gradient noise](https://developer.nvidia.com/gpugems/gpugems2/part-iii-high-quality-rendering/chapter-26-implementing-improved-perlin-noise),
+[pixel-footprint filtering](https://developer.nvidia.com/gpugems/gpugems/part-iv-image-processing/chapter-25-fast-filter-width-estimates-texture-maps),
+[Bennu surface observations](https://science.nasa.gov/missions/osiris-rex/asteroid-bennus-rugged-surface-baffled-nasa-we-finally-know-why/)
+and the [Three.js material blend contract](https://threejs.org/docs/pages/Material.html).
+These are engineering references, not a claim of physically simulated geology
+or volumetric scattering.
+
+Against 955674c on Chrome 157 / AMD Radeon D3D11, 960×540, DPR 1, four
+180-frame samples per version/tier give median AURORA GPU P95 of 2.67→2.86 ms
+(Low), 3.73→3.88 ms (Auto), and 4.23→4.35 ms (High). CPU P95 medians remain
+1.20 / 1.50 / 1.45 ms. At the device's 240 Hz refresh, High frame-interval P95
+changes from 4.30 to 8.25 ms; this is a measured scheduling cost, not a claim of
+zero regression. AURORA calls/triangles/programs stay 141 / 17,036 / 8 on High;
+textures rise from four to five (one 1 MiB base volume plus mipmaps). Tests
+observe three GPU volume allocations and three releases across tier reloads.
+Fixed-seed before/after frames and continuous player-camera clips are kept in
+the ignored `scratch/orbit-c3/` directory, alongside raw interleaved samples.

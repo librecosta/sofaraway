@@ -24,8 +24,19 @@ float gasFbm(vec2 p, float detail) {
   return value;
 }`;
 
+/** Homogeneous emission/absorption segment in linear, premultiplied radiance. */
+export const nebulaIntegration = /* glsl */`
+vec4 nebulaSegment(vec3 emissivity,float gas,float dust,float weight) {
+  float tau=max(0.0,gas+2.15*dust)*clamp(weight,0.0,1.0);
+  float alpha=tau<.001?tau*(1.0-tau*.5):1.0-exp(-tau);
+  float integral=tau<.001?1.0-tau*.5:alpha/max(tau,.000001);
+  return vec4(max(emissivity,vec3(0))*clamp(weight,0.0,1.0)*integral,alpha);
+}
+`;
+
 export const nebulaFragment = /* glsl */`
 ${cosmicNoise}
+${nebulaIntegration}
 uniform float presence, detail, layer, seed;
 varying vec2 vUv;
 float cloudWindow(vec2 p,vec2 c,vec2 scale) { vec2 q=(p-c)*scale;return exp(-dot(q,q)); }
@@ -87,26 +98,29 @@ void main() {
     tint=mix(vec3(.12,.11,.39),vec3(.54,.32,.17),edgeLight);
   }
   float meso=gasFbm(flow*2.8+warp*1.5+seed,detail);
-  float fibers=pow(max(0.0,1.0-abs(gasFbm(flow*5.2+warp*2.0,detail)*2.0-1.0)),5.0);
+  vec2 axial=(layer>.5&&layer<2.5)?flow.yx:flow;
+  float strand=gasFbm(flow*5.2+warp*2.0,detail);
+  float strandWidth=max(.015,fwidth(strand));
+  float resolved=1.0-smoothstep(.07,.24,strandWidth);
+  float longitudinal=gasNoise(axial*vec2(.85,5.4)+vec2(meso*.65,warp.x*.7));
+  float fibers=mix(.25,pow(max(0.0,1.0-abs(strand*2.0-1.0)),5.0),resolved);
+  fibers*=.78+.40*longitudinal;
   float density=macro*(.27+.88*meso)*(.72+.40*fibers);
   float cavern=cloudWindow(q,layer<1.5?vec2(-.45,-.15):vec2(.4,-.1),vec2(1.3,1.9));
-  float dust=macro*smoothstep(.38,.65,gasFbm(q*1.8+21.0,detail))*.70+cavern*macro*.8;
-  float extinction=density*.95+dust*1.65;
-  float transmittance=exp(-extinction);
-  float alpha=(1.0-transmittance)*presence;
-  vec3 emission=tint*density*(.78+.85*fibers)*exp(-dust*1.7);
-  emission+=vec3(.85,.46,.15)*edgeLight*density*.65;
+  float dust=macro*smoothstep(.37,.66,gasFbm(q*1.8+21.0,detail))*.70+cavern*macro*(.62+.35*meso);
+  vec3 emission=tint*density*(1.18+1.35*fibers)*exp(-dust*.65);
+  emission+=vec3(.85,.46,.15)*edgeLight*density*.72;
   // A few resolved stellar nurseries; derivative filtering prevents pinprick shimmer.
   float knot=cloudWindow(q,vec2(-1.48,.58),vec2(14.0,18.0))
     +cloudWindow(q,vec2(.42,.82),vec2(18.0,15.0));
   if(layer>4.5)knot+=cloudWindow(q,vec2(.73,.76),vec2(13.,16.))
     +cloudWindow(q,vec2(.86,.66),vec2(22.,20.))+cloudWindow(q,vec2(.62,.80),vec2(24.,24.));
-  emission+=vec3(.60,.76,.86)*knot*density*.65;
+  emission+=vec3(.60,.76,.86)*knot*density*.95;
   float edge=smoothstep(0.0,.16,vUv.x)*smoothstep(0.0,.16,vUv.y)*smoothstep(0.0,.16,1.0-vUv.x)*smoothstep(0.0,.16,1.0-vUv.y);
-  // Extinction and emitted light are separate. Output premultiplied radiance,
-  // sorted back-to-front in world space, with the shared astronomical depth test.
-  alpha*=edge;
-  gl_FragColor=vec4(emission/max(1.0-transmittance,.001),alpha);
+  // Fade the optical path, not merely alpha after integration. Dust absorbs
+  // background starlight; it is not a black decal on top of additive gas.
+  vec4 segment=nebulaSegment(emission,density*.95,dust,edge*presence);
+  gl_FragColor=vec4(segment.rgb/max(segment.a,.000001),segment.a);
   #include <colorspace_fragment>
   gl_FragColor.rgb*=gl_FragColor.a;
 }`;

@@ -18,7 +18,7 @@ void main() {
   ${astralProjection}
 }`;
 
-function rockMaterial() {
+function rockMaterial(rocks:OrbitRocks) {
   const fade = { value: 1 };
   const material = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8e929b, roughness:.91, metalness:.055,
     transparent:true, depthWrite:true, fog:false });
@@ -29,28 +29,39 @@ function rockMaterial() {
       'diffuseColor.a *= cosmicPresence;\n#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'orbit-cosmic-rock-v1';
+  rocks.surface.apply(material);
   return { material, fade };
 }
 
 const planetFragment = /* glsl */`
 ${cosmicNoise}
 uniform float presence, style, detail;
+uniform highp sampler3D stoneField;
 uniform vec3 sun;
 varying vec2 vUv;
 varying vec3 vLocal, vWorld;
 void main() {
   vec3 normal=normalize(vLocal), eye=normalize(cameraPosition-vWorld);
   float mu=dot(normal,normalize(sun));
-  float surface=gasFbm(vec2(atan(normal.z,normal.x)*3.0,normal.y*8.0),detail);
+  vec4 cloud=texture(stoneField,normal*1.7+vec3(.31,.17,.63));
+  float surface=cloud.r;
   if(style>1.5) {
     float limb=pow(max(.0,dot(normal,eye)),.35);
-    gl_FragColor=vec4(vec3(1.8,1.10,.47)*(.7+.3*surface)*(.55+.45*limb),presence);
+    gl_FragColor=vec4(vec3(1.22,.81,.36)*(.78+.22*surface)*(.52+.48*limb),presence);
   } else {
-    float stripes=sin(normal.y*53.0+surface*6.0)*.5+.5;
+    float jet=normal.y*38.0+cloud.g*6.0+sin(normal.x*5.0+normal.z*4.0)*.65;
+    float stripes=.5+.5*sin(jet)*(1.0-smoothstep(.4,2.0,fwidth(jet)));
+    float pole=smoothstep(.55,.92,abs(normal.y));
+    float storm=exp(-pow((normal.y+.20)*9.0,2.0)-pow((normal.x-.48)*6.0,2.0))*smoothstep(.0,.4,normal.z);
     vec3 color=style<.5 ? mix(vec3(.055,.063,.082),vec3(.16,.17,.19),surface)
       : mix(vec3(.07,.16,.24),vec3(.46,.37,.24),stripes*.7+surface*.3);
-    float lit=smoothstep(-.10,.24,mu);
-    color*=(style<.5?.22:.09)+1.45*lit;
+    if(style>.5) {
+      color=mix(color,vec3(.16,.24,.30),pole*.62);
+      color=mix(color,vec3(.31,.19,.12),storm*.55);
+      color*=.82+.42*cloud.b;
+    }
+    float lit=sqrt(max(0.0,mu))*smoothstep(-.02,.10,mu);
+    color*=(style<.5?.22:.10)+1.40*lit;
     color+=vec3(.027,.043,.067)*pow(1.0-abs(dot(normal,eye)),3.0);
     gl_FragColor=vec4(color,presence);
   }
@@ -63,7 +74,10 @@ void main(){
   float facing=abs(dot(normalize(vLocal),normalize(cameraPosition-vWorld)));
   float rim=style>1.5?exp(-pow((facing-.40)/.26,2.0))*smoothstep(0.0,.17,facing):pow(1.0-facing,3.5);
   vec3 tint=style>1.5?vec3(.85,.46,.13):style<.5?vec3(.34,.50,.73):vec3(.20,.49,.72);
-  gl_FragColor=vec4(tint*rim*(style>1.5?.75:1.15),rim*.60*presence);
+  float angle=atan(vLocal.y,vLocal.x);
+  float corona=.80+.12*sin(angle*7.0+sin(angle*3.0))+.08*sin(angle*17.0);
+  float illumination=style>1.5?corona:.45+.55*max(0.0,dot(normalize(vLocal),normalize(vec3(-.58,.55,.65))));
+  gl_FragColor=vec4(tint*rim*(style>1.5?.56:.92)*illumination,rim*.53*presence);
   #include <colorspace_fragment>
 }`;
 
@@ -85,7 +99,7 @@ export class OrbitSetpieces {
   constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks) {}
 
   private create(piece: OrbitSetpiece) {
-    const surface = rockMaterial();
+    const surface = rockMaterial(this.rocks);
     const item: ActivePiece = { group:new THREE.Group(), materials:[surface.material],fade:surface.fade, heroes:[],celestials:[], batches:new Map(),
       levels:new Int8Array(piece.rocks.length).fill(-1), instances:0,lastPosition:new THREE.Vector3(Infinity,Infinity,Infinity) };
     item.group.name = piece.name;
@@ -97,7 +111,7 @@ export class OrbitSetpieces {
       } else {
         const style = body.type==='moon'?0:body.type==='planet'?1:2;
         const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65);
-        const uniforms = {presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3}};
+        const uniforms = {stoneField:{value:this.rocks.surface.texture},presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3}};
         const material = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:planetFragment,uniforms,
           transparent:true,depthWrite:true});
         const mesh = new THREE.Mesh(this.spheres[0],material);item.celestials.push(mesh);
