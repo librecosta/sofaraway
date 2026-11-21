@@ -1,3 +1,5 @@
+import { orbitHeroGeometry, heroFamilies } from './orbit-geology';
+export { orbitHeroGeometry } from './orbit-geology';
 import * as THREE from 'three';
 import type { QualityTier } from '../contracts';
 import { cosmicPresence } from '../core/orbit-setpieces';
@@ -14,36 +16,6 @@ void main() {
   gl_Position=projectionMatrix*mvPosition;
   ${astralProjection}
 }`;
-
-export function orbitHeroGeometry(shape: number, lod: number) {
-  const geometry = new THREE.SphereGeometry(1, [56, 30, 16][lod], [40, 22, 12][lod]);
-  const p = geometry.getAttribute('position'), colors = new Float32Array(p.count * 3);
-  const vertex = new THREE.Vector3(); let bound = 0;
-  for (let i = 0; i < p.count; i++) {
-    vertex.fromBufferAttribute(p, i);
-    const { x, y, z } = vertex;
-    const broad = Math.sin(x*4.4+y*2.7+shape)*Math.cos(z*3.8-y*3.4);
-    const ridge = Math.abs(Math.sin(y*4.7+z*3.2+shape*.6));
-    const relief = .88 + broad*.14 + ridge*.075 + .025*Math.sin(x*21+y*13+z*9);
-    vertex.multiplyScalar(relief);
-    if (shape === 0) vertex.set(vertex.x*(.70+.21*y)+.23*y*y, vertex.y*1.14, vertex.z*.78+.13*x*y);
-    else if (shape === 1) vertex.set(Math.min(vertex.x,.29+.035*Math.sin(y*14)),vertex.y,vertex.z*.76+.18*y);
-    else vertex.set(Math.max(vertex.x,-.31+.05*Math.cos(z*13)),vertex.y*.84+.17*x*z,vertex.z);
-    bound = Math.max(bound, vertex.length());
-    p.setXYZ(i,vertex.x,vertex.y,vertex.z);
-    const albedo = .67+.17*broad+.09*ridge;
-    colors.set([albedo*.93,albedo*.96,albedo], i*3);
-  }
-  geometry.scale(1/bound,1/bound,1/bound);
-  geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
-  geometry.computeVertexNormals(); geometry.computeBoundingSphere();
-  const normals=geometry.getAttribute('normal');
-  // Sphere seam/pole duplicates not referenced by a face still need a valid normal.
-  for(let i=0;i<normals.count;i++) if(Math.hypot(normals.getX(i),normals.getY(i),normals.getZ(i))<.01) {
-    vertex.fromBufferAttribute(p,i).normalize();normals.setXYZ(i,vertex.x,vertex.y,vertex.z);
-  }
-  return geometry;
-}
 
 function rockMaterial() {
   const fade = { value: 1 };
@@ -103,7 +75,7 @@ type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { va
 export class OrbitSetpieces {
   readonly group = new THREE.Group();
   private readonly active = new Map<string,ActivePiece>();
-  private readonly heroes = Array.from({length:3},(_,shape)=>Array.from({length:3},(_,lod)=>orbitHeroGeometry(shape,lod)));
+  private readonly heroes = Array.from({length:heroFamilies.length},(_,shape)=>Array.from({length:3},(_,lod)=>orbitHeroGeometry(shape,lod)));
   private readonly spheres = [new THREE.SphereGeometry(1,32,20),new THREE.SphereGeometry(1,64,40)];
   private readonly plane = new THREE.PlaneGeometry(1,1);
   private readonly transform = new THREE.Object3D();
@@ -139,14 +111,16 @@ export class OrbitSetpieces {
         }
       }
     }
-    if(piece.id==='nebula') for(let layer=0;layer<3;layer++) {
+    for(const [layer,structure] of piece.nebula.entries()) {
       const material=new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:nebulaFragment,transparent:true,
-        depthWrite:false, uniforms:{presence:item.fade, detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13+layer*7.3}}});
+        depthTest:true, depthWrite:false, premultipliedAlpha:true,
+        uniforms:{presence:item.fade,detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13}}});
       const mesh=new THREE.Mesh(this.plane,material);
       const f=new THREE.Vector3().fromArray(piece.forward),r=new THREE.Vector3().fromArray(piece.right),u=new THREE.Vector3().fromArray(piece.up);
-      mesh.position.fromArray(piece.anchor).addScaledVector(f,3200+layer*1400).addScaledVector(r,[700,-900,1500][layer]).addScaledVector(u,[400,-650,1000][layer]);
+      mesh.name=structure.role;
+      mesh.position.fromArray(piece.anchor).addScaledVector(r,structure.offset[0]).addScaledVector(u,structure.offset[1]).addScaledVector(f,structure.offset[2]);
       mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r,u,f.negate()));
-      mesh.scale.set(10800+layer*1700,6500+layer*700,1); mesh.frustumCulled=false;
+      mesh.rotateZ(structure.angle);mesh.scale.set(...structure.span,1);mesh.frustumCulled=false;
       item.group.add(mesh);item.materials.push(material);
     }
     this.group.add(item.group);this.active.set(piece.id,item);return item;
@@ -207,7 +181,7 @@ export class OrbitSetpieces {
     }
   }
   metrics(){return {station:this.station,active:[...this.active].filter(([,p])=>p.group.visible).map(([id,p])=>({id,presence:p.fade.value,
-    instances:p.instances,objects:p.group.children.length})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length}))};}
+    instances:p.instances,objects:p.group.children.length,heroes:p.heroes.map(h=>heroFamilies[h.body.shape])})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
   private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();for(const material of item.materials)material.dispose();}
   dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const variants of this.heroes)for(const geometry of variants)geometry.dispose();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
 }

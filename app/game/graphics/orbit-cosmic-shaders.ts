@@ -28,28 +28,66 @@ export const nebulaFragment = /* glsl */`
 ${cosmicNoise}
 uniform float presence, detail, layer, seed;
 varying vec2 vUv;
+float cloudWindow(vec2 p,vec2 c,vec2 scale) { vec2 q=(p-c)*scale;return exp(-dot(q,q)); }
 void main() {
-  vec2 p = (vUv-.5)*vec2(7.5,4.5);
-  vec2 warp = vec2(gasFbm(p*.7+seed,detail), gasFbm(p*.7+11.8+seed,detail));
-  vec2 q = p + (warp-.48)*1.9;
-  float spine = q.y + .60*sin(q.x*1.05+layer*.6) + .24*sin(q.x*2.6);
-  float band = exp(-spine*spine*1.65);
-  float cloud = gasFbm(q*2.1+seed,detail);
-  float filaments = pow(max(0.0,1.0-abs(gasFbm(q*5.0+warp*3.0,detail)*2.0-1.0)),5.0);
-  float dust = smoothstep(.43,.69,gasFbm(q*1.9+vec2(17.0,3.0),detail)+.10*sin(q.x*2.0-spine*4.0));
-  float cavity = smoothstep(.1,.42, length((q-vec2(1.1,.1))*vec2(.7,1.2)));
-  float density = band * smoothstep(.18,.72,cloud) * mix(.35,1.0,cavity);
-  float veil = exp(-dust*3.8);
-  vec3 blue = vec3(.025,.10,.32), cyan = vec3(.035,.46,.57), violet = vec3(.30,.055,.47), pink = vec3(.55,.065,.22);
-  vec3 tint = mix(blue,violet,smoothstep(-2.5,1.8,q.x));
-  tint = mix(tint,cyan,smoothstep(.43,.70,warp.x)*.77);
-  tint = mix(tint,pink,smoothstep(.40,.7,warp.y)*.62);
-  float warm = exp(-dot((q-vec2(1.3,.12))*vec2(.78,1.8),(q-vec2(1.3,.12))*vec2(.78,1.8)));
-  vec3 light = tint*(.55+.95*filaments)*veil + vec3(.80,.41,.12)*warm*cloud*.52;
-  light += vec3(.42,.63,.73)*pow(filaments,4.0)*warm*.12;
-  float edge = smoothstep(0.0,.16,vUv.x)*smoothstep(0.0,.16,vUv.y)*smoothstep(0.0,.16,1.0-vUv.x)*smoothstep(0.0,.16,1.0-vUv.y);
-  // Dust has optical density: it extinguishes the star field underneath the emitting gas.
-  float alpha = clamp(density*.84 + band*dust*.56,0.0,.91)*presence*edge;
-  gl_FragColor = vec4(light,alpha);
+  vec2 p=(vUv-.5)*vec2(6.5,4.7);
+  vec2 warp=vec2(gasFbm(p*.72+seed,detail),gasFbm(p*.72+seed+13.7,detail));
+  vec2 q=p+(warp-.47)*.90;
+  float macro=0.0,edgeLight=0.0;
+  vec2 flow=q;
+  vec3 tint=vec3(.07,.18,.50);
+  if(layer<.5) {
+    // A broken, elliptical cloud ridge around a large empty interior.
+    float arc=abs(length((q-vec2(.1,-.60))*vec2(.72,1.05))-1.55);
+    macro=exp(-arc*arc*9.0)*smoothstep(-1.15,-.50,q.y);
+    macro*=1.0-.84*cloudWindow(q,vec2(.65,1.04),vec2(1.8,2.4));
+    flow=vec2(q.x,q.y+.50*sin(q.x));
+    tint=mix(vec3(.045,.20,.48),vec3(.35,.09,.48),smoothstep(-1.5,1.5,q.x));
+    edgeLight=cloudWindow(q,vec2(-1.5,.55),vec2(1.6,2.2));
+  } else if(layer<1.5) {
+    // A tall gas cliff with an illuminated face and an excavated dust cavern.
+    float face=q.x+.15+.42*gasFbm(vec2(q.y*.95,seed+2.0),detail);
+    macro=(1.0-smoothstep(-.32,.65,face))*cloudWindow(q,vec2(-.55,.0),vec2(.58,.39));
+    edgeLight=exp(-face*face*15.0);
+    flow=vec2(q.x*1.8+.35*q.y,q.y*.65);
+    tint=mix(vec3(.025,.18,.31),vec3(.075,.48,.55),edgeLight);
+  } else if(layer<2.5) {
+    // Three leaning pillars, separated by real low-density gaps.
+    float x=q.x-.26*q.y;
+    float columns=min(abs(x+.88),min(abs(x-.1),abs(x-1.05)));
+    float cap=smoothstep(-2.1,-1.1,q.y)*(1.0-smoothstep(.70,1.7,q.y));
+    macro=exp(-columns*columns*14.0)*cap;
+    flow=vec2(x*1.9,q.y*.7);
+    edgeLight=cloudWindow(q,vec2(.40,.80),vec2(.9,2.5));
+    tint=mix(vec3(.19,.045,.35),vec3(.56,.10,.25),smoothstep(-1.1,.8,q.y));
+  } else {
+    // Low-density foreground tributaries cross the ridge instead of cloning it.
+    float a=abs(q.y-.40*q.x-.24*sin(q.x*1.5)+.5);
+    float b=abs(q.y+.55*q.x-.72+.18*sin(q.x*2.0));
+    macro=exp(-a*a*34.0)*.70+exp(-b*b*48.0)*.55;
+    macro*=1.0-.9*cloudWindow(q,vec2(.1,.1),vec2(1.2,1.1));
+    flow=vec2(q.x*.8,q.y*2.1-q.x*.7);
+    tint=mix(vec3(.06,.25,.52),vec3(.42,.07,.43),smoothstep(-1.3,1.4,q.x));
+  }
+  float meso=gasFbm(flow*2.8+warp*1.5+seed,detail);
+  float fibers=pow(max(0.0,1.0-abs(gasFbm(flow*5.2+warp*2.0,detail)*2.0-1.0)),5.0);
+  float density=macro*(.27+.88*meso)*(.72+.40*fibers);
+  float cavern=cloudWindow(q,layer<1.5?vec2(-.45,-.15):vec2(.4,-.1),vec2(1.3,1.9));
+  float dust=macro*smoothstep(.38,.65,gasFbm(q*1.8+21.0,detail))*.70+cavern*macro*.8;
+  float extinction=density*.95+dust*1.65;
+  float transmittance=exp(-extinction);
+  float alpha=(1.0-transmittance)*presence;
+  vec3 emission=tint*density*(.78+.85*fibers)*exp(-dust*1.7);
+  emission+=vec3(.85,.46,.15)*edgeLight*density*.65;
+  // A few resolved stellar nurseries; derivative filtering prevents pinprick shimmer.
+  float knot=cloudWindow(q,vec2(-1.48,.58),vec2(14.0,18.0))
+    +cloudWindow(q,vec2(.42,.82),vec2(18.0,15.0));
+  emission+=vec3(.60,.76,.86)*knot*density*.65;
+  float edge=smoothstep(0.0,.16,vUv.x)*smoothstep(0.0,.16,vUv.y)*smoothstep(0.0,.16,1.0-vUv.x)*smoothstep(0.0,.16,1.0-vUv.y);
+  // Extinction and emitted light are separate. Output premultiplied radiance,
+  // sorted back-to-front in world space, with the shared astronomical depth test.
+  alpha*=edge;
+  gl_FragColor=vec4(emission/max(1.0-transmittance,.001),alpha);
   #include <colorspace_fragment>
+  gl_FragColor.rgb*=gl_FragColor.a;
 }`;

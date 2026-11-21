@@ -16,7 +16,7 @@ precede some anchors so the large silhouettes can be inspected on approach.
 | RINGBREAK | Inclined elliptical debris arcs with three missing sectors, varying width and detached layers |
 | MAELSTROM | Three interleaved debris streams sampled along the curved Path, tapering toward the exit |
 | ECLIPSE | An opaque moon in front of a larger, distant stellar sphere and a soft corona |
-| AURORA | Three separated world-space gas layers with warped cloud bands, filaments, cavities and absorbing dust |
+| AURORA | Four separately composed world-space gas structures with ridges, cliffs, pillars, tributaries and absorbing dust |
 | APHELION | A distant shaded gas giant, cloud bands and atmosphere; it persists through Encore and Results |
 
 `OrbitClearance.allowsSphere()` checks large bodies against the complete capsule
@@ -27,7 +27,7 @@ collision and do not move gates, pickups or route guides.
 
 [`OrbitSetpieces`](../../app/game/graphics/orbit-setpieces.client.ts) owns bounded,
 overlapping spatial windows. It shares the ordinary rock prototypes, batches
-fragments by shape/LOD and applies screen-size LOD with hysteresis. Three separate
+fragments by shape/LOD and applies screen-size LOD with hysteresis. Five separate
 hero shape families have their own LODs. Quality reduces small fragments, body
 tessellation and noise octaves without removing any principal scene. Inactive
 windows release instance buffers and materials; shared templates outlive them.
@@ -48,3 +48,26 @@ clock, random camera motion or new dynamic lights are introduced.
 the production renderer. Metrics include submitted macro fragments, active
 windows, fixed anchors and scene-object counts. Tests cover bounds, determinism,
 modes, quality, GPU rendering, repeated seeks, transitions and context recovery.
+
+## C2 structural enrichment
+
+Five hero families now share a fixed deformation envelope across LODs:
+fractured monolith, twin lobes, displaced cliff strata, impact excavation and
+elongated shard. Broad fault ribs and cleavage planes are geometry; fine mineral
+and crack detail remains future work. Detached fragment fans use the parent
+body's rotation and dimensions. Their actual bounds retain the same route checks.
+
+[`orbit-ring.ts`](../../app/game/core/orbit-ring.ts) replaces hard angular deletions
+with a continuous gap/density field. A broad eccentric belt, two narrow ringlets,
+a displaced sheet and fine debris have different widths, depths, inclinations
+and fracture offsets. Tangential fragment fans leave the torn edges. All layers
+share the existing instanced rock batches and fixed RINGBREAK anchor.
+
+Nebula descriptors separately position a distant arched ridge, gas cliff, leaning
+pillars and foreground tributaries. Each uses a different macro density function
+before filtered meso flow and limited fine detail. Dust optical depth, gas density
+and emission are separate. Premultiplied radiance blends back-to-front through
+the normal world-space transparent sort; layers retain depth testing, disable
+depth writes and use the common astronomical projection. Their physical planes
+are parallel and separated in depth. Glass retains its existing later render order.
+No exposure, bloom, camera, music or gameplay changes are part of C2.

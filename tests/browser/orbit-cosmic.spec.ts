@@ -16,6 +16,10 @@ test('seven production cosmic scenes retain their identity at every quality with
     for(const [i,frame]of sample.frames.entries()) {
       const pieces=frame.metrics.orbit!.setpieces;
       expect(pieces.active.some(p=>p.id===ids[i]&&p.presence>.85)).toBe(true);
+      if(i===0)expect(pieces.active.flatMap(p=>p.heroes)).toContain('Impact Scar');
+      if(i===1)expect(pieces.active.flatMap(p=>p.heroes)).toEqual(expect.arrayContaining(['Twin-Lobe Mass','Stratified Cliff','Elongated Shard']));
+      if(i===2)expect(pieces.landmarks.find(p=>p.id==='ring')!.structures).toHaveLength(6);
+      if(i===5)expect(pieces.landmarks.find(p=>p.id==='nebula')!.nebula).toEqual(['arc','cliff','pillars','tendrils']);
       expect(frame.bright).toBeGreaterThan(200);
       expect(frame.metrics.chunks).toBe(0);
       if(landmarks)expect(pieces.landmarks).toEqual(landmarks);else landmarks=pieces.landmarks;
@@ -42,6 +46,10 @@ test('cosmic preview seeks, flies across scene boundaries and restores every res
     counts.push((await metric()).geometries);
   }
   expect(counts[2]).toBe(counts[1]);
+  for(const label of ['Ring: far','Ring: layers','Ring: fracture']) {
+    await section.getByRole('button',{name:label,exact:true}).click();
+    await expect.poll(async()=>(await metric()).orbit.setpieces.active.some((p:{id:string})=>p.id==='ring')).toBe(true);
+  }
   const slider=section.getByRole('slider',{name:'World station'}),reference=referenceFor(volumeById('orbit'));
   for(const beat of [96,160,224,256,320]) {
     const boundary=reference.station(beat,'standard');

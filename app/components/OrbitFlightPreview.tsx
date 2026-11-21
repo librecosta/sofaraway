@@ -252,6 +252,10 @@ export function OrbitFlightPreview() {
           {orbit.sections.map((section,index)=><button type="button" key={section.name} title={orbitSceneNames[index]}
             onClick={()=>{settings.current.playing=false;setPlaying(false);switchDensity('flight');seek(reference.station(orbitSceneBeats[index],'standard'));}}>{section.name}</button>)}
         </div>
+        <div className={s.actions} aria-label="Ring inspection">
+          {([['Ring: far',104],['Ring: layers',116],['Ring: fracture',126]] as const).map(([name,beat])=>
+            <button type="button" key={name} onClick={()=>{settings.current.playing=false;setPlaying(false);switchDensity('flight');seek(reference.station(beat,'standard'));}}>{name}</button>)}
+        </div>
         <div className={s.seek}><span>World station</span><output aria-live="off">{station.toFixed(1)}</output>
           <input aria-label="World station" type="range" min={START_DISTANCE} max={Math.floor(length)} step="1" value={Math.min(Math.floor(length), Math.round(station))}
             onChange={e => seek(Number(e.currentTarget.value))} />
@@ -276,6 +280,7 @@ export function OrbitFlightPreview() {
           {metrics.calls} draw calls · {metrics.triangles.toLocaleString('en-US')} triangles · {metrics.orbit.instances} instances ·{' '}
           {metrics.orbit.visibleChunks}/{metrics.orbit.chunks} chunks · {metrics.orbit.descriptions} rock descriptions · LOD {metrics.orbit.lod.join(' / ')}
           {' · '}{metrics.orbit.setpieces.active.map(piece=>piece.id).join(' + ')}
+          {' · '}{metrics.orbit.setpieces.active.flatMap(piece=>piece.heroes).join(' / ')}
           {' · '}{metrics.orbit.setpieces.active.reduce((sum,piece)=>sum+piece.instances,0)} setpiece fragments · {metrics.orbit.objects} objects
         </output>}
       </div>

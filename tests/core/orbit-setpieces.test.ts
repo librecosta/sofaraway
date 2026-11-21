@@ -8,10 +8,12 @@ import { buildRunPath } from '../../app/game/graphics/path';
 import { BranchPath } from '../../app/game/graphics/branch-path';
 import { orbitJunction } from '../../app/game/core/orbit-routes';
 import { orbitClearance } from '../../app/game/graphics/orbit-world.client';
+import { heroFamilies } from '../../app/game/graphics/orbit-geology';
+import { ringDensity, ringFragments } from '../../app/game/core/orbit-ring';
 import { orbitHeroGeometry } from '../../app/game/graphics/orbit-setpieces.client';
 
 test('all hero LODs fit the declared unit-sphere bounds with finite surface normals',()=>{
-  for(let shape=0;shape<3;shape++)for(let lod=0;lod<3;lod++) {
+  for(let shape=0;shape<5;shape++)for(let lod=0;lod<3;lod++) {
     const geometry=orbitHeroGeometry(shape,lod),p=geometry.getAttribute('position'),n=geometry.getAttribute('normal');
     for(let i=0;i<p.count;i++) {
       expect(Math.hypot(p.getX(i),p.getY(i),p.getZ(i))).toBeLessThanOrEqual(1.000001);
@@ -51,3 +53,29 @@ for(const mode of ['standard','sightseeing'] as const) for(const difficulty of [
     expect(makeOrbitSetpieces(path,mode,1,clearance)[2].rocks).not.toEqual(a[2].rocks);
   },20000);
 }
+
+test('hero LODs preserve broad silhouettes and each geology family is distinct',()=>{
+  const signatures=[];
+  for(let shape=0;shape<heroFamilies.length;shape++) {
+    const extents=[];
+    for(let lod=0;lod<3;lod++) {
+      const geometry=orbitHeroGeometry(shape,lod);geometry.computeBoundingBox();
+      const box=geometry.boundingBox!;
+      extents.push([...box.min.toArray(),...box.max.toArray()]);geometry.dispose();
+    }
+    for(const extent of extents.slice(1))for(let i=0;i<6;i++)expect(Math.abs(extent[i]-extents[0][i])).toBeLessThan(.06);
+    signatures.push(extents[0]);
+  }
+  expect(new Set(signatures.map(s=>s.map(n=>n.toFixed(2)).join(','))).size).toBe(5);
+});
+
+test('ring density has tapered torn edges, displaced ringlets and deterministic fracture fans',()=>{
+  for(let layer=0;layer<5;layer++)for(let a=0;a<Math.PI*2;a+=.01)
+    expect(Math.abs(ringDensity(a,layer)-ringDensity(a+.001,layer))).toBeLessThan(.025);
+  expect(ringDensity(.46,0)).toBe(0);
+  expect(ringDensity(.46+.20,0)).toBeGreaterThan(0);
+  const sample=()=>{const entries:unknown[]=[];ringFragments(77345,(...v)=>entries.push(v));return entries;};
+  expect(sample()).toEqual(sample());
+  const structures=new Set<string>();ringFragments(77345,(_p,_r,role)=>structures.add(role));
+  expect(structures.size).toBe(6);
+});

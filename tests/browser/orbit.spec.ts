@@ -195,7 +195,9 @@ test('STARWAKE runs for its complete body and tail through real boosted gameplay
     await page.locator('canvas').screenshot({ path: run.outputPath(`starwake-${beat}.png`) });
     moments.push(moment);
   }
-  await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().phase), { timeout: 12_000 }).toBe('results');
+  // Observe the transition promptly: default backoff can consume 1.5s of the
+  // four-second tail before the remaining-tail assertion even samples it.
+  await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().phase), { timeout: 12_000, intervals: [50] }).toBe('results');
   const finish = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), scene: window.b0Harness.branchState(), audio: window.b0Harness.audioState() }));
   expect(finish.snapshot.result).toMatchObject({ title: 'ESCAPED', accuracy: 1 });
   expect(finish.snapshot.encore).toMatchObject({ missed: 0, neutralized: 0 });
