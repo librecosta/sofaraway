@@ -182,7 +182,7 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   await page.mouse.move(bounds.x + bounds.width * .56, bounds.y + 10, { steps: 5 });
   await page.mouse.up();
   const kickTime = Number(await cue.getAttribute('aria-valuenow'));
-  expect(kickTime).toBeCloseTo(80.64, 0);
+  expect(kickTime).toBeCloseTo(81.76, 0);
   await expect(time).toHaveText('00:00.00');
   await page.getByRole('button', { name: 'Play Kick' }).click();
   await expect(page.getByText('Playing · Kick')).toBeVisible();
@@ -245,15 +245,15 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   await playAll.click();
   const stats = await readStats();
   expect(stats).toMatchObject({ created: 1, closed: 0, offlinePeak: 1, offlineActive: 0 });
-  expect(stats.offlineFrames).toBeLessThanOrEqual(14 * 22050 * 13);
+  expect(stats.offlineFrames).toBeLessThanOrEqual(14 * 22050 * 16);
   await page.getByRole('link', { name: 'SoFarAway' }).click();
   await expect(page).toHaveURL(/\/debug\/$/);
   await expect.poll(async () => (await readStats()).closed).toBe(1);
   await info.attach('Playback and resources', { body: JSON.stringify({ ...stats, testElapsedMs: Date.now() - started }), contentType: 'application/json' });
 });
 
-test('responsive layouts, high-DPI canvas, direct refresh and master-only volumes', async ({ browser }, info) => {
-  test.setTimeout(waveformsReadyTimeout + 30_000);
+test('responsive layouts, high-DPI canvas, direct refresh and four multitrack volumes', async ({ browser }, info) => {
+  test.setTimeout(600_000);
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
   await page.goto('http://127.0.0.1:8089/debug/audio/');
@@ -275,19 +275,52 @@ test('responsive layouts, high-DPI canvas, direct refresh and master-only volume
     await page.screenshot({ path: file });
     await info.attach(`${width}×${height} at DPR 2`, { path: file, contentType: 'image/png' });
   }
+  await page.setViewportSize({ width:960,height:760 });
   for (const volume of ['elsewhere', 'descent']) {
     await page.getByRole('combobox', { name: 'Volume' }).selectOption(volume);
     await expect(page.getByRole('heading', { name: volume.toUpperCase() })).toBeVisible();
-    await expect(page.getByRole('slider', { name: / cue$/ })).toHaveCount(1);
+    await expect(page.getByRole('slider', { name: / cue$/ })).toHaveCount(volume === 'elsewhere' ? 8 : 9);
+    await expect(page.getByText('Waveforms ready')).toBeVisible({timeout:180_000});
+    await expect(page.getByRole('img',{name:/waveform/})).toHaveCount(volume === 'elsewhere'?8:9);
+    await page.screenshot({path:info.outputPath(volume+'-stems-960.png')});
   }
   await page.getByRole('combobox', { name: 'Volume' }).selectOption('orbit');
   await page.reload();
   await expect(page.getByRole('heading', { name: 'ORBIT — STARWAKE' })).toBeVisible();
   await expect(page.getByText('128 BPM', { exact: true })).toBeVisible();
   await expect(page.getByText('384 beats', { exact: true })).toBeVisible();
+  await expect(page.getByText('Waveforms ready')).toBeVisible({timeout:300_000});
+  await expect(page.getByRole('img',{name:/waveform/})).toHaveCount(10);
+  await page.screenshot({path:info.outputPath('orbit-stems-960.png')});
   await expect(canvas).toHaveCount(1);
   await page.getByRole('button', { name: 'Play all' }).click();
   await expect(page.getByText('Playing', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
   await context.close();
 });
+
+
+for (const [volume, count] of [['elsewhere',7],['daybreak',6],['descent',8],['orbit',9]] as const) {
+  test(`${volume} real stems preserve the master, isolate effects and respond to mute and gain`, async ({ page }, info) => {
+    test.setTimeout(240_000);
+    await page.goto('http://127.0.0.1:8090/?audio-inspector');
+    await page.waitForFunction(() => typeof window.inspectVolumeStems === 'function');
+    const result = await page.evaluate(id => window.inspectVolumeStems(id), volume);
+    await info.attach('Stem PCM measurements', { body: JSON.stringify(result,null,2), contentType:'application/json' });
+    expect(result.tracks.length).toBe(count + 1);
+    for (const track of result.tracks) expect(track.rms, track.stem).toBeGreaterThan(.00005);
+    expect(new Set(result.tracks.map(track => track.rms.toFixed(5))).size).toBe(count + 1);
+    expect(result.master.rms).toBeLessThan(.00003);
+    expect(result.master.relative).toBeLessThan(.0005);
+    expect(result.reset.rms).toBeLessThan(.00003);
+    expect(result.allMuted.peak).toBe(0);
+    for (const stem of result.isolated) {
+      expect(stem.audible.rms, stem.stem).toBeGreaterThan(.00005);
+      expect(stem.solo.rms, stem.stem).toBeLessThan(.00003);
+      expect(stem.mute.peak, stem.stem).toBe(0);
+      expect(stem.zero.peak, stem.stem).toBe(0);
+      expect(stem.quiet.rms, stem.stem).toBeLessThan(stem.audible.rms * .8);
+      expect(stem.quiet.rms, stem.stem).toBeGreaterThan(stem.audible.rms * .35);
+    }
+  });
+}

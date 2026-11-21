@@ -1,3 +1,4 @@
+import type { StemRouting } from './stem-routing';
 import { beatSeconds, seed, starwakeEvents, starwakeSteps, starwakeTrack, step } from '../core/orbit-score';
 import { OrbitVoices } from './orbit-voices.client';
 
@@ -8,9 +9,9 @@ export class OrbitSynthesizer {
   private readonly voices: OrbitVoices;
   private disposed = false;
 
-  constructor(ctx: BaseAudioContext, destination: AudioNode) {
+  constructor(ctx: BaseAudioContext, destination: AudioNode, route?:StemRouting) {
     this.voices = new OrbitVoices(ctx, destination, 'B', starwakeEvents,
-      { ...starwakeTrack, beatSeconds, seed }, starwakeMaster);
+      { ...starwakeTrack, beatSeconds, seed }, starwakeMaster, route);
   }
 
   playStep(index: number, at: number, after = -Infinity) {

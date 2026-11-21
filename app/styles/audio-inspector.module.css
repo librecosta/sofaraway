@@ -66,7 +66,7 @@ body:has(.page) { margin: 0; background: #091116; }
 .channelTop button { background: transparent; padding: 0; min-height: 25px; min-width: 23px; color: var(--muted); }
 .channelTop .trackPlay { display: grid; place-items: center; min-width: 27px; }
 .channelTop button[aria-pressed="true"] { background: #2a4549; color: #a8f8e7; }
-.trackName { color: var(--track-color); text-transform: uppercase; font: 700 .9rem/1 "Chakra Petch", system-ui, sans-serif; flex: 1; }
+.trackName { color: var(--track-color); text-transform: uppercase; font: 700 .85rem/1 "Chakra Petch", system-ui, sans-serif; flex: 1; min-width: 0; }
 .gain { display: flex; align-items: center; gap: 5px; padding-left: 10px; min-width: 0; color: var(--muted); }
 .gain span { width: 37px; text-align: right; font-size: .72rem; font-variant-numeric: tabular-nums; }
 .gain input { appearance: none; background: #304650; border-radius: 10px; height: 4px; margin: 6px 0; min-width: 0; flex: 1; cursor: pointer; }
@@ -109,11 +109,11 @@ body:has(.page) { margin: 0; background: #091116; }
 @media (max-width: 680px) {
   .page { --channel: 55px; padding: 0; }
   .workspace { padding: 13px 10px; border-radius: 0; }
-  .editor { grid-template-columns: 126px minmax(0, 1fr); }
+  .editor { grid-template-columns: 158px minmax(0, 1fr); }
   .channel { padding-inline: 2px 5px; }
   .controlHeader { padding-inline: 3px; }
   .controlHeader button { padding-inline: 4px; font-size: .69rem; }
-  .trackName { font-size: .79rem; }
+  .trackName { font-size: .7rem; }
   .channelTop { gap: 1px; }
   .channelTop button { min-width: 24px; min-height: 29px; }
   .position { font-size: .77rem; flex-wrap: wrap; }

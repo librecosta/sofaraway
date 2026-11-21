@@ -1,3 +1,4 @@
+import type { AudioStem, StemRouting } from './stem-routing';
 import { filter, gain, noteHz, randomSource } from './daybreak-voices.client';
 import type { DescentEvent } from '../core/descent-score';
 
@@ -48,7 +49,7 @@ function envelope(ctx: BaseAudioContext, bus: AudioNode, time: number, level: nu
 type VoiceEvent<Voice extends DescentEvent['voice']> = Extract<DescentEvent, { voice: Voice }>;
 
 export function descentVoices(ctx: BaseAudioContext, output: AudioNode, version: 'A' | 'B', seed: number, step: number,
-  signalWindow?: readonly number[]) {
+  signalWindow?: readonly number[], route?: StemRouting) {
   const breach = version === 'B';
   const noiseRandom = randomSource(seed);
   const texture = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -56,44 +57,58 @@ export function descentVoices(ctx: BaseAudioContext, output: AudioNode, version:
   for (let i = 0; i < samples.length; i++) samples[i] = 2 * noiseRandom() - 1;
   let random: () => number;
 
+  const destinations = new Map<AudioStem, AudioNode>();
+  const destination = (id: AudioStem) => {
+    if (!route) return output;
+    if (!destinations.has(id)) destinations.set(id, route(id, output));
+    return destinations.get(id)!;
+  };
+  if (route) for (const id of ['kick', 'snare', 'hats', 'bass', 'signal', 'chord', 'metal', 'sweep'] as const) destination(id);
   const drums = gain(ctx, output, 1);
-  const space = gain(ctx, output, 1);
-  const taps = gain(ctx, space, .34);
-  // An asymmetric pair of dark taps gives the short signals some depth.
-  for (const [length, level, direction] of [[step * 1.5, .66, -.63], [step * 3, .36, .63]]) {
-    const destination = gain(ctx, pan(ctx, output, direction), level);
-    const delay = ctx.createDelay(.5);
-    delay.delayTime.value = length;
-    delay.connect(filter(ctx, filter(ctx, destination, 'highpass', 280), 'lowpass', 2200));
-    taps.connect(delay);
+  function tapsFor(target: AudioNode) {
+    const space = gain(ctx, target, 1), taps = gain(ctx, space, .34);
+    // The original shared return is stereo because it combines panned voices.
+    if (route) { taps.channelCount = 2; taps.channelCountMode = 'explicit'; }
+    for (const [length, level, direction] of [[step * 1.5, .66, -.63], [step * 3, .36, .63]]) {
+      const destination = gain(ctx, pan(ctx, target, direction), level), delay = ctx.createDelay(.5);
+      delay.delayTime.value = length;
+      delay.connect(filter(ctx, filter(ctx, destination, 'highpass', 280), 'lowpass', 2200));
+      taps.connect(delay);
+    }
+    return { space, taps };
   }
-  const signalBus = gain(ctx, output, 1);
-  signalBus.connect(gain(ctx, taps, breach ? .62 : .50));
-  const controlSignalBus = signalWindow && gain(ctx, output, 1);
-  if (controlSignalBus) {
-    controlSignalBus.connect(filter(ctx, gain(ctx, taps, .29), 'lowpass', 980, .68));
-  }
-  const metalBus = gain(ctx, output, 1);
-  metalBus.connect(gain(ctx, taps, .42));
-  const chordBus = gain(ctx, output, 1);
-  chordBus.connect(gain(ctx, taps, .27));
+  const shared = tapsFor(output);
+  const signals = route ? tapsFor(destination('signal')) : shared;
+  const metals = route ? tapsFor(destination('metal')) : shared;
+  const chords = route ? tapsFor(destination('chord')) : shared;
+  const space = route ? gain(ctx, destination('sweep'), 1) : shared.space;
+  const signalBus = gain(ctx, destination('signal'), 1);
+  signalBus.connect(gain(ctx, signals.taps, breach ? .62 : .50));
+  const controlSignalBus = signalWindow && gain(ctx, destination('signal'), 1);
+  if (controlSignalBus) controlSignalBus.connect(filter(ctx, gain(ctx, signals.taps, .29), 'lowpass', 980, .68));
+  const metalBus = gain(ctx, destination('metal'), 1);
+  metalBus.connect(gain(ctx, metals.taps, .42));
+  const chordBus = gain(ctx, destination('chord'), 1);
+  chordBus.connect(gain(ctx, chords.taps, .27));
 
   function kick({ at, velocity }: Pick<DescentEvent, 'at' | 'velocity'>) {
-    const hit = envelope(ctx, drums, at, velocity * .71, .0028, breach ? .183 : .166);
+    const drumsBus = route ? destination('kick') : drums;
+    const hit = envelope(ctx, drumsBus, at, velocity * .71, .0028, breach ? .183 : .166);
     const body = tone(ctx, hit.node, 'sine', 145, at, hit.end);
     body.frequency.setValueAtTime(breach ? 154 : 139, at);
     body.frequency.exponentialRampToValueAtTime(67, at + .025);
     body.frequency.exponentialRampToValueAtTime(breach ? 47 : 51, at + .101);
-    const edge = envelope(ctx, filter(ctx, drums, 'bandpass', 1540, .97), at, velocity * .235, .0012, .022);
+    const edge = envelope(ctx, filter(ctx, drumsBus, 'bandpass', 1540, .97), at, velocity * .235, .0012, .022);
     noiseBurst(ctx, texture, edge.node, at, edge.end, random());
-    const snap = envelope(ctx, drums, at, velocity * .075, .0011, .027);
+    const snap = envelope(ctx, drumsBus, at, velocity * .075, .0011, .027);
     const punch = tone(ctx, snap.node, 'triangle', 228, at, snap.end);
     punch.frequency.exponentialRampToValueAtTime(105, at + .023);
   }
 
   function snare({ at, velocity, voice }: VoiceEvent<'kick' | 'snare' | 'ghost'>) {
+    const drumsBus = route ? destination('snare') : drums;
     const ghost = voice === 'ghost';
-    const shell = pan(ctx, drums, ghost ? (random() - .5) * .42 : .025);
+    const shell = pan(ctx, drumsBus, ghost ? (random() - .5) * .42 : .025);
     const body = envelope(ctx, shell, at, velocity * .29, .002, ghost ? .041 : .080);
     const fundamental = tone(ctx, body.node, 'triangle', breach ? 198 : 177, at, body.end);
     fundamental.frequency.exponentialRampToValueAtTime(breach ? 151 : 138, at + .032);
@@ -103,13 +118,14 @@ export function descentVoices(ctx: BaseAudioContext, output: AudioNode, version:
     noiseBurst(ctx, texture, air.node, at, air.end, random());
     if (!ghost) {
       const clapAt = at + .012;
-      const clap = envelope(ctx, filter(ctx, pan(ctx, drums, -.19), 'bandpass', 1950, .70), clapAt, velocity * .41, .002, .071);
+      const clap = envelope(ctx, filter(ctx, pan(ctx, drumsBus, -.19), 'bandpass', 1950, .70), clapAt, velocity * .41, .002, .071);
       noiseBurst(ctx, texture, clap.node, clapAt, clap.end, random());
     }
   }
 
   function hat({ at, velocity, pan: place, open }: VoiceEvent<'hat'>) {
-    const band = filter(ctx, filter(ctx, pan(ctx, drums, place), 'highpass', 5300), 'lowpass', 10400);
+    const drumsBus = route ? destination('hats') : drums;
+    const band = filter(ctx, filter(ctx, pan(ctx, drumsBus, place), 'highpass', 5300), 'lowpass', 10400);
     const air = envelope(ctx, band, at, velocity * (breach ? .40 : .34), .0015, open ? .127 : .061);
     noiseBurst(ctx, texture, air.node, at, air.end, random());
   }
@@ -117,7 +133,7 @@ export function descentVoices(ctx: BaseAudioContext, output: AudioNode, version:
   function bass({ at, velocity, note, length }: VoiceEvent<'bass'>) {
     const sustain = breach ? .67 : .49;
     const decay = Math.min(.078, length - .013);
-    const voice = envelope(ctx, output, at, velocity * (breach ? .37 : .39), .013, decay, sustain,
+    const voice = envelope(ctx, destination('bass'), at, velocity * (breach ? .37 : .39), .013, decay, sustain,
       length - .013 - decay, breach ? .087 : .072);
     const rounded = filter(ctx, voice.node, 'lowpass', breach ? 290 : 480, .80);
     rounded.frequency.setValueAtTime(breach ? 520 : 710, at);

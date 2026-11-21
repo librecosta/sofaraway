@@ -1,3 +1,4 @@
+import type { StemRouting } from './stem-routing';
 import { controlEvents, controlSignalWindow, controlSteps, controlTrack, seed, step } from '../core/descent-score';
 import type { DescentEvent } from '../core/descent-score';
 import { filter, gain } from './daybreak-voices.client';
@@ -23,7 +24,7 @@ export class DescentSynthesizer {
   private readonly play: ReturnType<typeof descentVoices>;
 
   constructor(ctx: BaseAudioContext, output: AudioNode, private readonly arrangement = controlArrangement,
-    start = 0, end = arrangement.duration) {
+    start = 0, end = arrangement.duration, route?: StemRouting) {
     this.trim = arrangement.voiceProfile === 'B' ? .77 : .85;
     this.runBus = gain(ctx, output, this.trim);
     const compression = ctx.createDynamicsCompressor();
@@ -36,7 +37,7 @@ export class DescentSynthesizer {
     const mixer = filter(ctx, compression, 'highpass', 27, .68);
     const window = arrangement.signalWindow;
     const activeWindow = window && window[0] < end && window[1] > start ? window : undefined;
-    this.play = descentVoices(ctx, mixer, arrangement.voiceProfile, seed, step, activeWindow);
+    this.play = descentVoices(ctx, mixer, arrangement.voiceProfile, seed, step, activeWindow, route);
   }
 
   playStep(index: number, at: number, after = -Infinity) {

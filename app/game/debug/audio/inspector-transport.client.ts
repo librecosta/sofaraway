@@ -1,4 +1,4 @@
-import type { DaybreakStem } from '../../core/daybreak-score';
+import type { AudioStem } from '../../audio/stem-routing';
 import { inspectorSource } from './source.client';
 import { defaultMix } from './track-adapter';
 import type { InspectorScore, Mix, TrackId } from './track-adapter';
@@ -20,13 +20,13 @@ export class InspectorTransport {
   private state: PlaybackState = 'Ready';
   private audition: TrackId | null = null;
   private mix = defaultMix();
-  private solo: DaybreakStem | null = null;
+  private solo: AudioStem | null = null;
 
   constructor(private readonly score: InspectorScore, private readonly publish: (state: PlaybackState, track: TrackId | null) => void) {}
 
   get time() {
     const run = this.nowPlaying;
-    return run && this.ctx ? Math.min(this.score.duration, Math.max(this.offset, this.ctx.currentTime - run.anchor)) : this.offset;
+    return run && this.ctx ? Math.min(this.score.length, Math.max(this.offset, this.ctx.currentTime - run.anchor)) : this.offset;
   }
 
   private report(state: PlaybackState) {
@@ -93,7 +93,7 @@ export class InspectorTransport {
   async play(track: TrackId | null = null, start = this.time) {
     const revision = ++this.revision;
     this.detach();
-    this.offset = start >= this.score.duration ? 0 : start;
+    this.offset = start >= this.score.length ? 0 : start;
     this.audition = track;
     this.report('Starting');
     try {
@@ -112,10 +112,10 @@ export class InspectorTransport {
       const startAt = ctx.currentTime + .035;
       const anchor = startAt - this.offset;
       const end = anchor + this.score.duration;
-      const tail = this.score.volume.soundtrack?.tail ?? 0;
+      const tail = this.score.tail;
       const releaseEnd = end + tail;
-      if (tail && 'finishAt' in source) source.finishAt?.(end);
-      const ramp = Math.min(fade, (end - startAt) / 2);
+      if (tail) source.finishAt(Math.max(0, end));
+      const ramp = Math.min(fade, (releaseEnd - startAt) / 2);
       bus.gain.setValueAtTime(0, startAt);
       bus.gain.linearRampToValueAtTime(1, startAt + ramp);
       bus.gain.setValueAtTime(1, releaseEnd - ramp);
@@ -128,10 +128,10 @@ export class InspectorTransport {
       const schedule = () => {
         if (revision !== this.revision || ctx.state !== 'running') return;
         const now = ctx.currentTime;
-        if (now >= end) {
-          if (now >= releaseEnd) this.detach();
+        if (now >= releaseEnd) {
+          this.detach();
           if (this.state !== 'Ended') {
-            this.offset = this.score.duration;
+            this.offset = this.score.length;
             this.audition = null;
             this.report('Ended');
           }
@@ -170,16 +170,19 @@ export class InspectorTransport {
   }
 
   seek(position: number) {
-    position = Math.max(0, Math.min(this.score.duration, position));
-    if ((this.state === 'Starting' || this.state === 'Playing') && position < this.score.duration) {
+    position = Math.max(0, Math.min(this.score.length, position));
+    if ((this.state === 'Starting' || this.state === 'Playing') && position < this.score.length) {
       void this.play(this.audition, position);
     } else {
       this.halt(this.state === 'Playing' || this.state === 'Starting' ? 'Ended' : 'Paused', position);
     }
   }
 
-  updateMix(mix: Mix, solo: DaybreakStem | null) {
+  updateMix(mix: Mix, solo: AudioStem | null) {
+    const changed = this.audition === 'master' && this.score.tracks.some(id => id !== 'master'
+      && (this.mix[id].level !== mix[id].level || this.mix[id].muted !== mix[id].muted));
     this.mix = mix;
+    if (changed || solo !== this.solo) { this.audition = null; this.publish(this.state, null); }
     this.solo = solo;
     this.nowPlaying?.source.update(mix, solo, this.audition, this.ctx?.currentTime);
   }

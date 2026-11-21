@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
-import type { DaybreakStem } from '../../game/core/daybreak-score';
+import type { AudioStem } from '../../game/audio/stem-routing';
 import { InspectorTransport } from '../../game/debug/audio/inspector-transport.client';
 import type { PlaybackState } from '../../game/debug/audio/inspector-transport.client';
 import { defaultMix, trackInfo } from '../../game/debug/audio/track-adapter';
@@ -23,7 +23,7 @@ function Glyph({ name }: { name: 'play' | 'pause' | 'stop' | 'rewind' }) {
 
 export function AudioInspector({ score }: { score: InspectorScore }) {
   const [mix, setMix] = useState(defaultMix);
-  const [solo, setSolo] = useState<DaybreakStem | null>(null);
+  const [solo, setSolo] = useState<AudioStem | null>(null);
   const [state, setState] = useState<PlaybackState>('Ready');
   const [audition, setAudition] = useState<TrackId | null>(null);
   const [selected, setSelected] = useState<TrackId>('master');
@@ -36,6 +36,10 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
   const [waveAttempt, retryWave] = useState(0);
   const [waveError, setWaveError] = useState(false);
   const [ready, setReady] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+  const exportJob = useRef<AbortController>(undefined);
+  const downloadUrl = useRef<string>(undefined);
   const transport = useRef<InspectorTransport>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
   const playhead = useRef<HTMLDivElement>(null);
@@ -52,7 +56,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
     lastPosition.current = time;
     const label = timecode(time, true);
     if (timeOutput.current) timeOutput.current.textContent = label;
-    const relative = time / score.duration * 100;
+    const relative = time / score.length * 100;
     playhead.current?.style.setProperty('--position', relative + '%');
     ruler.current?.setAttribute('aria-valuenow', time.toFixed(2));
     ruler.current?.setAttribute('aria-valuetext', label);
@@ -81,6 +85,8 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
     window.addEventListener('pagehide', leave);
     raf = requestAnimationFrame(frame);
     return () => {
+      exportJob.current?.abort();
+      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', hidden);
       window.removeEventListener('pagehide', leave);
@@ -123,7 +129,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
   function reveal(time: number) {
     const area = viewport.current;
     if (!area || !width) return;
-    const x = width * zoom * time / score.duration;
+    const x = width * zoom * time / score.length;
     if (x < area.scrollLeft || x > area.scrollLeft + width - 6) area.scrollLeft = Math.max(0, x - width * .12);
   }
 
@@ -136,8 +142,8 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
   function changeZoom(value: number) {
     if (value === zoom) return;
     const time = transport.current?.time ?? 0;
-    const offset = width * zoom * time / score.duration - (viewport.current?.scrollLeft ?? 0);
-    nextZoom.current = time / score.duration - (offset >= 0 && offset <= width ? offset : width * .12) / Math.max(1, width * value);
+    const offset = width * zoom * time / score.length - (viewport.current?.scrollLeft ?? 0);
+    nextZoom.current = time / score.length - (offset >= 0 && offset <= width ? offset : width * .12) / Math.max(1, width * value);
     setZoom(value);
   }
 
@@ -147,7 +153,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
     transport.current?.updateMix(next, solo);
   }
 
-  function toggleSolo(track: DaybreakStem) {
+  function toggleSolo(track: AudioStem) {
     const next = solo === track ? null : track;
     setSolo(next);
     transport.current?.updateMix(mix, next);
@@ -171,10 +177,35 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
     void transport.current?.play(track, time);
   }
 
+  async function downloadStem() {
+    if (selected === 'master' || exporting) return;
+    const stem = selected;
+    const abort = new AbortController();
+    exportJob.current = abort;
+    setExporting(true);
+    setExportStatus('Rendering ' + trackInfo[stem].label + '…');
+    try {
+      const { exportStem } = await import('../../game/debug/audio/stem-export.client');
+      abort.signal.throwIfAborted();
+      const result = await exportStem(score, stem, abort.signal,
+        fraction => setExportStatus('Rendering ' + trackInfo[stem].label + ' · ' + Math.round(fraction * 100) + '%'));
+      abort.signal.throwIfAborted();
+      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+      const link = document.createElement('a');
+      link.href = downloadUrl.current = URL.createObjectURL(result.blob);
+      link.download = result.filename;
+      link.click();
+      setExportStatus(`${trackInfo[stem].label} · ${result.duration.toFixed(1)} s · 44.1 kHz stereo / 16-bit`
+        + (result.trim < 1 ? ` · Peak protection ${(20 * Math.log10(result.trim)).toFixed(1)} dB` : ''));
+    } catch (error) {
+      if (!abort.signal.aborted) setExportStatus(error instanceof Error ? error.message : 'Stem render failed.');
+    } finally { if (!abort.signal.aborted) setExporting(false); }
+  }
+
   function move(event: PointerEvent<HTMLElement>) {
     const gesture = drag.current;
     if (!gesture || gesture.pointer !== event.pointerId) return;
-    gesture.time = pickTime(event, score.duration);
+    gesture.time = pickTime(event, score.length);
     if (gesture.track) {
       setCues(previous => ({ ...previous, [gesture.track!]: gesture.time }));
       setCueLabel({ track: gesture.track, time: gesture.time });
@@ -221,7 +252,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
       </div>
       <div className={s.position}>
         <output ref={timeOutput} aria-label="Playback position" aria-live="off">00:00.00</output>
-        <span>/ {timecode(score.duration, true)}</span>
+        <span>/ {timecode(score.length, true)}</span>
         <span className={s.playState} role="status" data-playing={playing || undefined}>
           {state}{activeMix ? ' · ' + trackInfo[activeMix].label : ''}
         </span>
@@ -267,11 +298,11 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
         })}
       </div>
       <div ref={viewport} className={s.viewport} aria-label="Timeline scroll area">
-        <div className={s.timeline} style={{ width: zoom * 100 + '%', '--bar-width': 400 / score.volume.beats + '%' } as CSSProperties}>
+        <div className={s.timeline} style={{ width: zoom * 100 + '%', '--bar-width': score.step * 1600 / score.length + '%' } as CSSProperties}>
           <div ref={ruler} className={s.ruler} role="slider" aria-label="Timeline position" tabIndex={0}
-            aria-valuemin={0} aria-valuemax={score.duration} aria-valuenow={0} aria-valuetext="00:00.00"
+            aria-valuemin={0} aria-valuemax={score.length} aria-valuenow={0} aria-valuetext="00:00.00"
             {...pointerActions(null)} onKeyDown={event => {
-              const next = keyTime(event, transport.current?.time ?? 0, score.duration, event.shiftKey ? score.step * 16 : score.step * 4);
+              const next = keyTime(event, transport.current?.time ?? 0, score.length, event.shiftKey ? score.step * 16 : score.step * 4);
               if (next !== undefined) seek(next);
             }}>
             <TimelineRuler score={score} zoom={zoom} width={width} />
@@ -281,10 +312,10 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
               : mix[id].muted || !mix[id].level || !!solo && id !== 'master' && solo !== id;
             const cue = cues[id];
             return <div key={id} className={s.lane} role="slider" tabIndex={0} aria-label={trackInfo[id].label + ' cue'}
-              aria-valuemin={0} aria-valuemax={score.duration} aria-valuenow={cue ?? 0} aria-valuetext={cue === undefined ? 'Follows playback position' : timecode(cue, true)}
+              aria-valuemin={0} aria-valuemax={score.length} aria-valuenow={cue ?? 0} aria-valuetext={cue === undefined ? 'Follows playback position' : timecode(cue, true)}
               data-selected={selected === id || undefined} data-excluded={excluded || undefined} {...pointerActions(id)}
               onKeyDown={event => {
-                const time = keyTime(event, cue ?? transport.current?.time ?? 0, score.duration, event.shiftKey ? score.step * 16 : score.step * 4);
+                const time = keyTime(event, cue ?? transport.current?.time ?? 0, score.length, event.shiftKey ? score.step * 16 : score.step * 4);
                 if (time === undefined) return;
                 setSelected(id);
                 setCues(previous => ({ ...previous, [id]: time }));
@@ -292,7 +323,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
                 reveal(time);
               }}>
               <TrackWaveform id={id} peaks={peaks?.[id]} width={width * zoom} message={id === 'master' ? waveStatus : null} />
-              {cue !== undefined && <i className={s.cue} aria-hidden="true" style={{ left: cue / score.duration * 100 + '%' }} />}
+              {cue !== undefined && <i className={s.cue} aria-hidden="true" style={{ left: cue / score.length * 100 + '%' }} />}
             </div>;
           })}
           <div className={s.playhead} ref={playhead} data-playhead aria-hidden="true"><i /></div>
@@ -303,7 +334,15 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
     <div className={s.footer}>
       <span>{waveStatus} {waveError && <button type="button" onClick={() => retryWave(value => value + 1)}>Retry waveforms</button>}</span>
       {cueLabel && <span>{trackInfo[cueLabel.track].label} cue <b>{timecode(cueLabel.time, true)}</b></span>}
-      {score.tracks.length === 1 && <span>Master only</span>}
+      <span>Stems include their own effects. Shared master dynamics are applied after mixing.</span>
+    </div>
+    <div className={s.export}>
+      <label>Export stem <select aria-label="Selected stem" value={selected} onChange={event => setSelected(event.currentTarget.value as TrackId)}>
+        <option value="master">Select a stem</option>
+        {score.tracks.filter(id => id !== 'master').map(id => <option key={id} value={id}>{trackInfo[id].label}</option>)}
+      </select></label>
+      <button type="button" disabled={!ready || selected === 'master' || exporting} onClick={() => void downloadStem()}>Export selected stem WAV</button>
+      <span role="status">{exportStatus || 'Unity gain · Full track and effects tail'}</span>
     </div>
   </section>;
 }

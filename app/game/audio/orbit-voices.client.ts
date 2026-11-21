@@ -1,3 +1,4 @@
+import type { AudioStem, StemRouting } from './stem-routing';
 import { filter, gain, noteHz, randomSource } from './daybreak-voices.client';
 import type { OrbitEvent } from '../core/orbit-score';
 
@@ -62,11 +63,14 @@ export class OrbitVoices {
   private readonly noise: AudioBuffer;
   private readonly sources = new Set<AudioScheduledSourceNode>();
   private disposed = false;
+  private readonly impulse: AudioBuffer;
+  private readonly rhythm = new Map<AudioStem, AudioNode>();
+  private readonly wetDucks: GainNode[] = [];
 
   constructor(private readonly ctx: BaseAudioContext, destination: AudioNode,
     private readonly version: 'A' | 'B', private readonly events: readonly OrbitEvent[],
-    private readonly timing: OrbitVoiceTiming, private readonly trim = .78) {
-    const { beatSeconds, seed } = timing;
+    private readonly timing: OrbitVoiceTiming, private readonly trim = .78, private readonly route?: StemRouting) {
+    const { seed } = timing;
     this.output = gain(ctx, destination, trim);
     const compressor = ctx.createDynamicsCompressor();
     compressor.threshold.value = -15;
@@ -77,7 +81,8 @@ export class OrbitVoices {
     compressor.connect(this.output);
     const mix = filter(ctx, compressor, 'highpass', 28, .68);
     this.drums = gain(ctx, mix, 1);
-    this.bassBus = gain(ctx, mix, 1);
+    this.bassBus = gain(ctx, route?.('bass', mix) ?? mix, 1);
+    if (route) for (const id of ['kick', 'snare', 'hats', 'perc'] as const) this.rhythm.set(id, route(id, mix));
     this.music = gain(ctx, mix, 1);
 
     const random = randomSource(seed ^ 0x4e4f4953);
@@ -96,32 +101,44 @@ export class OrbitVoices {
         samples[i] = smooth * Math.exp(-t * 2.65) * Math.min(1, t / .025);
       }
     }
-    const room = ctx.createConvolver();
-    room.buffer = impulse;
-    room.connect(filter(ctx, filter(ctx, this.music, 'highpass', 340), 'lowpass', 4300));
-    this.room = gain(ctx, room, version === 'A' ? .55 : .60);
-    this.delay = ctx.createGain();
-    const taps = [
-      [beatSeconds * .75, .31, -.60], [beatSeconds * 1.5, .19, .61],
-      [beatSeconds * 2.25, .10, -.40],
-    ];
-    for (const [length, level, position] of taps) {
-      const delay = ctx.createDelay(2);
-      delay.delayTime.value = length;
-      const dark = filter(ctx, filter(ctx, pan(ctx, this.music, position), 'highpass', 410), 'lowpass', 3100);
-      delay.connect(gain(ctx, dark, level));
-      this.delay.connect(delay);
-    }
-    this.leadBus = this.spaceBus(mix, .36, version === 'A' ? .50 : .39);
-    this.pluckBus = this.spaceBus(mix, .40, .47);
-    this.padBus = this.spaceBus(mix, .60, 0);
-    this.airBus = this.spaceBus(mix, .48, .12);
+    this.impulse = impulse;
+    const shared = this.effects(this.music, impulse);
+    this.room = shared.room;
+    this.delay = shared.delay;
+    this.leadBus = this.spaceBus(mix, .36, version === 'A' ? .50 : .39, 'lead');
+    this.pluckBus = this.spaceBus(mix, .40, .47, 'pluck');
+    this.padBus = this.spaceBus(mix, .60, 0, 'pad');
+    this.airBus = this.spaceBus(mix, .48, .12, 'sweep');
   }
 
-  private spaceBus(destination: AudioNode, roomSend: number, delaySend: number) {
-    const node = gain(this.ctx, destination, 1);
-    node.connect(gain(this.ctx, this.room, roomSend));
-    if (delaySend) node.connect(gain(this.ctx, this.delay, delaySend));
+  private effects(destination: AudioNode, impulse: AudioBuffer) {
+    const ctx = this.ctx, room = ctx.createConvolver();
+    room.buffer = impulse;
+    room.connect(filter(ctx, filter(ctx, destination, 'highpass', 340), 'lowpass', 4300));
+    const roomInput = gain(ctx, room, this.version === 'A' ? .55 : .60), taps = ctx.createGain();
+    if (this.route) { taps.channelCount = 2; taps.channelCountMode = 'explicit'; }
+    for (const [length, level, position] of [[this.timing.beatSeconds * .75, .31, -.60],
+      [this.timing.beatSeconds * 1.5, .19, .61], [this.timing.beatSeconds * 2.25, .10, -.40]]) {
+      const delay = ctx.createDelay(2);
+      delay.delayTime.value = length;
+      const dark = filter(ctx, filter(ctx, pan(ctx, destination, position), 'highpass', 410), 'lowpass', 3100);
+      delay.connect(gain(ctx, dark, level));
+      taps.connect(delay);
+    }
+    return { room: roomInput, delay: taps };
+  }
+
+  private spaceBus(destination: AudioNode, roomSend: number, delaySend: number, id: AudioStem) {
+    const target = this.route?.(id, destination) ?? destination;
+    let fx = { room: this.room, delay: this.delay };
+    if (this.route) {
+      const wet = gain(this.ctx, target, 1);
+      this.wetDucks.push(wet);
+      fx = this.effects(wet, this.impulse);
+    }
+    const node = gain(this.ctx, target, 1);
+    node.connect(gain(this.ctx, fx.room, roomSend));
+    if (delaySend) node.connect(gain(this.ctx, fx.delay, delaySend));
     return node;
   }
 
@@ -131,7 +148,7 @@ export class OrbitVoices {
   }
 
   duckAt(at: number) {
-    for (const [bus, amount] of [[this.bassBus, .48], [this.music, .73], [this.padBus, .71]] as const) {
+    for (const [bus, amount] of [[this.bassBus, .48], [this.music, .73], ...this.wetDucks.map(bus => [bus, .73] as const), [this.padBus, .71]] as const) {
       bus.gain.setValueAtTime(1, at);
       bus.gain.linearRampToValueAtTime(amount, at + .008);
       bus.gain.exponentialRampToValueAtTime(1, at + .19);
@@ -156,16 +173,16 @@ export class OrbitVoices {
     const bright = this.version === 'B';
     switch (event.voice) {
       case 'kick': {
-        const body = decay(ctx, this.drums, at, velocity * .63, .0035, .24);
+        const body = decay(ctx, (this.rhythm.get('kick') ?? this.drums), at, velocity * .63, .0035, .24);
         const oscillator = this.tone(ctx, body.node, 'sine', 153, at, body.end);
         oscillator.frequency.exponentialRampToValueAtTime(62, at + .034);
         oscillator.frequency.exponentialRampToValueAtTime(bright ? 49 : 46, at + .145);
-        const beater = decay(ctx, filter(ctx, this.drums, 'bandpass', 1180, .7), at, velocity * .09, .0018, .026);
+        const beater = decay(ctx, filter(ctx, (this.rhythm.get('kick') ?? this.drums), 'bandpass', 1180, .7), at, velocity * .09, .0018, .026);
         this.noiseAt(ctx, this.noise, beater.node, at, beater.end, random);
         break;
       }
       case 'snare': {
-        const bus = pan(ctx, this.drums, event.ghost ? -.23 : .06);
+        const bus = pan(ctx, (this.rhythm.get('snare') ?? this.drums), event.ghost ? -.23 : .06);
         const body = decay(ctx, bus, at, velocity * .27, .004, event.ghost ? .06 : .13);
         const shell = this.tone(ctx, body.node, 'sine', bright ? 202 : 185, at, body.end);
         shell.frequency.exponentialRampToValueAtTime(158, at + .055);
@@ -176,14 +193,14 @@ export class OrbitVoices {
         break;
       }
       case 'hat': {
-        const band = filter(ctx, filter(ctx, pan(ctx, this.drums, position), 'highpass', 6200), 'lowpass', 10400, .55);
+        const band = filter(ctx, filter(ctx, pan(ctx, (this.rhythm.get('hats') ?? this.drums), position), 'highpass', 6200), 'lowpass', 10400, .55);
         const hit = decay(ctx, band, at, velocity * .29, .0025, event.open ? .14 : .043);
         this.noiseAt(ctx, this.noise, hit.node, at, hit.end, random);
         break;
       }
       case 'perc': {
         const { note } = event;
-        const hit = decay(ctx, pan(ctx, this.drums, position), at, velocity * .13, .004, .12);
+        const hit = decay(ctx, pan(ctx, (this.rhythm.get('perc') ?? this.drums), position), at, velocity * .13, .004, .12);
         const fundamental = this.tone(ctx, hit.node, 'sine', noteHz(note), at, hit.end);
         fundamental.frequency.exponentialRampToValueAtTime(noteHz(note) * .69, at + .08);
         this.tone(ctx, gain(ctx, hit.node, .16), 'sine', noteHz(note) * 2.1, at, hit.end);

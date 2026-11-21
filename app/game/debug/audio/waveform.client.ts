@@ -1,10 +1,11 @@
 import { inspectorSource } from './source.client';
-import { defaultMix } from './track-adapter';
+import { inspectorOffline } from './offline.client';
+import { defaultMix, inspectorPreroll } from './track-adapter';
 import type { InspectorScore, TrackId } from './track-adapter';
 
 export const peaksPerSecond = 128;
 const blockSeconds = 10;
-const prerollSeconds = 3;
+const cache = new Map<string, Waveforms>();
 
 export interface Peaks { low: Float32Array; high: Float32Array }
 export type Waveforms = Partial<Record<TrackId, Peaks>>;
@@ -33,41 +34,42 @@ export function drawWaveform(canvas: HTMLCanvasElement, peaks: Peaks, width: num
   }
 }
 
-// One sequential job bounds memory even if the user switches volumes repeatedly.
-let pending: Promise<unknown> = Promise.resolve();
 
 export function renderWaveforms(score: InspectorScore, signal: AbortSignal, progress: (fraction: number, preview?: Waveforms) => void) {
-  const job = pending.then(async () => {
-    const bins = Math.ceil(score.duration * peaksPerSecond);
+  return (async () => {
+    signal.throwIfAborted();
+    const key = score.volume.id;
+    const cached = cache.get(key);
+    if (cached) { progress(1); return cached; }
+    const bins = Math.ceil(score.length * peaksPerSecond);
     const result: Waveforms = {};
     for (const id of score.tracks) result[id] = { low: new Float32Array(bins), high: new Float32Array(bins) };
-    for (let first = 0; first < score.duration; first += blockSeconds) {
+    for (let first = 0; first < score.length; first += blockSeconds) {
       signal.throwIfAborted();
-      const end = Math.min(score.duration, first + blockSeconds);
-      await renderBlock(score, result, first, end);
+      const end = Math.min(score.length, first + blockSeconds);
+      await inspectorOffline(signal, () => renderBlock(score, result, first, end));
       signal.throwIfAborted();
       // Display the opening block promptly and refresh the incomplete canvas at
       // a lower cadence than rendering. Only published peaks are copied.
       const preview: Waveforms = {};
-      if (end < score.duration && (first === 0 || end % (blockSeconds * 3) === 0)) {
+      if (end < score.length && (first === 0 || end % (blockSeconds * 3) === 0)) {
         for (const id of score.tracks) {
           const { low, high } = result[id]!;
           preview[id] = { low: low.slice(), high: high.slice() };
         }
       }
-      progress(end / score.duration, preview.master ? preview : undefined);
+      progress(end / score.length, preview.master ? preview : undefined);
       await new Promise(resolve => window.setTimeout(resolve, 0));
     }
+    cache.set(key, result);
     return result;
-  });
-  pending = job.catch(() => {});
-  return job;
+  })();
 }
 
 async function renderBlock(score: InspectorScore, peaks: Waveforms, first: number, end: number) {
   const authoredMaster = score.volume.music === 'control' || score.volume.music === 'starwake';
   const sampleRate = authoredMaster ? 44_100 : 22_050;
-  const start = Math.max(0, first - (score.volume.music === 'starwake' ? 8 : prerollSeconds));
+  const start = Math.max(0, first - inspectorPreroll(score));
   const context = new OfflineAudioContext(2 * score.tracks.length, Math.ceil((end - start) * sampleRate), sampleRate);
   const merger = context.createChannelMerger(2 * score.tracks.length);
   merger.connect(context.destination);
@@ -88,9 +90,10 @@ async function renderBlock(score: InspectorScore, peaks: Waveforms, first: numbe
     const at = i * score.step - start;
     source.playStep(i, authoredMaster ? at : Math.max(0, at), authoredMaster ? start - 1e-8 : undefined);
   }
-  if (score.volume.music === 'starwake') source.finishAt?.(score.duration - start);
-  const block = await context.startRendering();
-  source.dispose();
+  source.finishAt?.(score.duration - start);
+  let block: AudioBuffer;
+  try { block = await context.startRendering(); }
+  finally { source.dispose(); merger.disconnect(); }
   for (const [index, id] of score.tracks.entries()) {
     const left = block.getChannelData(index * 2);
     const right = block.getChannelData(index * 2 + 1);

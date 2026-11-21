@@ -4,7 +4,7 @@ import { renderStarwake, encodeStarwakeWav } from '../audio/orbit-export.client'
 import { renderDaybreak } from '../audio/daybreak-export.client';
 import { encodeDescentWav, renderDescent } from '../audio/descent-export.client';
 
-function encodeWav(buffer: AudioBuffer) {
+export function encodeWav(buffer: AudioBuffer) {
   const { numberOfChannels: channels, length, sampleRate } = buffer;
   const dataBytes = length * channels * 2;
   const bytes = new ArrayBuffer(44 + dataBytes);

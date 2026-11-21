@@ -1,10 +1,12 @@
+import { randomSource } from '../../app/game/audio/daybreak-voices.client';
+import type { AudioStem } from '../../app/game/audio/stem-routing';
 import { DaybreakSynthesizer } from '../../app/game/audio/daybreak.client';
-import { Synthesizer } from '../../app/game/audio/synthesizer.client';
+import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
 import { daybreakStems } from '../../app/game/core/daybreak-score';
 import type { DaybreakStem } from '../../app/game/core/daybreak-score';
 import { controlEvents } from '../../app/game/core/descent-score';
 import { volumeById } from '../../app/game/core/volumes';
-import { defaultMix, inspectorScore } from '../../app/game/debug/audio/track-adapter';
+import { defaultMix, inspectorScore, stemsFor } from '../../app/game/debug/audio/track-adapter';
 import { inspectorSource } from '../../app/game/debug/audio/source.client';
 import type { Mix, TrackId } from '../../app/game/debug/audio/track-adapter';
 
@@ -24,7 +26,7 @@ function compare(a: AudioBuffer, b?: AudioBuffer, factor = 1, start = 0, end = a
       reference += x[i] * x[i];
     }
   }
-  return { peak, rms: Math.sqrt(sum / ((end - start) * rate * 2)), relative: Math.sqrt(sum / reference) };
+  return { peak, rms: Math.sqrt(sum / ((end - start) * rate * 2)), relative: reference ? Math.sqrt(sum / reference) : sum ? Infinity : 0 };
 }
 
 export async function inspectAudioRouting() {
@@ -125,3 +127,61 @@ declare global {
 window.inspectAudioRouting = inspectAudioRouting;
 window.inspectDrumCues = inspectDrumCues;
 window.inspectControlRouting = inspectControlRouting;
+
+
+export async function inspectVolumeStems(id: string) {
+  const score = inspectorScore(volumeById(id));
+  const start = id === 'elsewhere' ? 80 : id === 'daybreak' ? 78 : id === 'descent' ? 124 : 105;
+  const seconds = id === 'orbit' ? 24 : 16;
+  async function render(mix = defaultMix(), solo: AudioStem | null = null, audition: TrackId | null = null,
+    production = false, taps = false, duration = seconds) {
+    const channels = taps ? score.tracks.length * 2 : 2;
+    const ctx = new OfflineAudioContext(channels, Math.round(duration * rate), rate);
+    const merger = taps ? ctx.createChannelMerger(channels) : undefined;
+    merger?.connect(ctx.destination);
+    const output = merger ? ctx.createGain() : ctx.destination;
+    const synth = production ? new Synthesizer(ctx, score.volume,
+      score.volume.music === 'techno' ? createMaster(ctx, .8, output) : output,
+      createBuffers(ctx, randomSource(score.volume.seed)))
+      : inspectorSource(ctx, score, output, mix, solo, audition, merger ? (id, node) => {
+        const stereo = ctx.createGain(); stereo.channelCount = 2; stereo.channelCountMode = 'explicit';
+        const splitter = ctx.createChannelSplitter(2);
+        node.connect(stereo).connect(splitter);
+        const at = score.tracks.indexOf(id) * 2;
+        splitter.connect(merger, 0, at); splitter.connect(merger, 1, at + 1);
+      } : undefined);
+    for (let i = score.volume.music === 'techno' ? Math.ceil(start / score.step) : Math.floor(start / score.step); i < (start + duration) / score.step; i++)
+      synth.playStep(i, Math.max(0, i * score.step - start), start - 1e-8);
+    const audio = await ctx.startRendering(); synth.dispose(); merger?.disconnect(); return audio;
+  }
+  const official = await render(defaultMix(), null, null, true);
+  const routed = await render(defaultMix(), null, null, false, true);
+  const raw = score.tracks.map((stem, index) => {
+    let power = 0, peak = 0, silence = 0;
+    for (let c = 0; c < 2; c++) for (const value of routed.getChannelData(index * 2 + c)) {
+      if (!Number.isFinite(value)) throw new Error('Non-finite sample');
+      power += value * value; peak = Math.max(peak, Math.abs(value)); if (Math.abs(value) < .00001) silence++;
+    }
+    return { stem, peak, rms: Math.sqrt(power / (routed.length * 2)), silence: silence / (routed.length * 2) };
+  });
+  const auditionTargets: AudioStem[] = id === 'elsewhere' ? ['kick','bass','arp'] : id === 'daybreak' ? ['kick','keys','lead']
+    : id === 'descent' ? ['signal','chord','metal'] : ['bass','pluck','lead'];
+  const isolated = [];
+  for (const stem of auditionTargets) {
+    const a = await render(defaultMix(), null, stem, false, false, 8);
+    const b = await render(defaultMix(), stem, null, false, false, 8);
+    const muted = defaultMix(); muted[stem].muted = true;
+    const zero = defaultMix(); zero[stem].level = 0;
+    const quiet = defaultMix(); quiet[stem].level = .5;
+    isolated.push({ stem, audible: compare(a), solo: compare(a,b),
+      mute: compare(await render(muted,null,stem,false,false,8)), zero: compare(await render(zero,null,stem,false,false,8)),
+      quiet: compare(await render(quiet,null,stem,false,false,8)) });
+  }
+  const off = defaultMix(); for (const stem of stemsFor(score.volume)) off[stem].muted = true;
+  return { id, window: [start,start+seconds], tracks: raw, master: compare(official,routed),
+    official: compare(official), isolated, allMuted: compare(await render(off)),
+    reset: compare(official,await render()), tail: score.tail };
+}
+
+declare global { interface Window { inspectVolumeStems: typeof inspectVolumeStems } }
+window.inspectVolumeStems = inspectVolumeStems;

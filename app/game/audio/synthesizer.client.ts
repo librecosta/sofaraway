@@ -1,3 +1,4 @@
+import type { AudioStem, StemRouting } from './stem-routing';
 import { OrbitSynthesizer } from './orbit.client';
 import { DescentSynthesizer } from './descent.client';
 import { DaybreakSynthesizer } from './daybreak.client';
@@ -85,11 +86,11 @@ export class Synthesizer {
   private readonly score: LegacyScore | DaybreakSynthesizer | DescentSynthesizer | OrbitSynthesizer;
 
   constructor(private readonly ctx: BaseAudioContext, volume: VolumeDefinition,
-    output: AudioNode, buffers?: ReturnType<typeof createBuffers>) {
+    output: AudioNode, buffers?: ReturnType<typeof createBuffers>, route?: StemRouting) {
     this.score = volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, output)
-      : volume.music === 'control' ? new DescentSynthesizer(ctx, output)
-      : volume.music === 'starwake' ? new OrbitSynthesizer(ctx, output)
-      : new LegacyScore(ctx, volume, output, buffers ?? createBuffers(ctx));
+      : volume.music === 'control' ? new DescentSynthesizer(ctx, output, undefined, 0, undefined, route)
+      : volume.music === 'starwake' ? new OrbitSynthesizer(ctx, output, route)
+      : new LegacyScore(ctx, volume, output, buffers ?? createBuffers(ctx), route);
   }
 
   get eventSource() { return this.score; }
@@ -108,9 +109,10 @@ class LegacyScore {
   private readonly revSend: GainNode;
   private readonly drumBus: GainNode;
   private readonly musicBus: GainNode;
+  private readonly stemPaths = new Map<AudioStem, { drums: GainNode; music: GainNode; wet: GainNode }>();
 
   constructor(private readonly ctx: BaseAudioContext, private readonly volume: VolumeDefinition,
-    output: AudioNode, private readonly buffers: ReturnType<typeof createBuffers>) {
+    output: AudioNode, private readonly buffers: ReturnType<typeof createBuffers>, route?: StemRouting) {
     const c = ctx;
     this.runBus = c.createGain();
     this.runBus.connect(output);
@@ -130,6 +132,15 @@ class LegacyScore {
     this.musicBus = c.createGain();
     this.musicBus.gain.value = 0.8;
     this.musicBus.connect(this.runBus);
+    if (route) for (const id of ['kick', 'snare', 'hats', 'bass', 'arp', 'pad', 'fx'] as const) {
+      const destination = route(id, this.runBus), drums = c.createGain(), music = c.createGain(), wet = c.createGain();
+      drums.gain.value = .95; music.gain.value = .8; wet.gain.value = .55;
+      drums.connect(destination); music.connect(destination);
+      const room = c.createConvolver();
+      room.buffer = buffers.impulse;
+      wet.connect(room); room.connect(destination);
+      this.stemPaths.set(id, { drums, music, wet });
+    }
   }
 
   dispose() { this.runBus.disconnect(); }
@@ -197,8 +208,13 @@ class LegacyScore {
     if (drums.fill) this._snare(t, drums.fill);
   }
 
+  private ports(id: AudioStem) {
+    return this.stemPaths.get(id) ?? { drums: this.drumBus, music: this.musicBus, wet: this.revSend };
+  }
+
   /* ---------------- voices ---------------- */
   private _kick(t: number, vel: number) {
+    const { drums } = this.ports('kick');
     const c = this.ctx;
     const o = c.createOscillator();
     o.type = 'sine';
@@ -210,7 +226,7 @@ class LegacyScore {
     g.gain.exponentialRampToValueAtTime(vel, t + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
 
-    o.connect(g); g.connect(this.drumBus);
+    o.connect(g); g.connect(drums);
     o.start(t); o.stop(t + 0.34);
 
     const n = c.createBufferSource();
@@ -220,11 +236,12 @@ class LegacyScore {
     const ng = c.createGain();
     ng.gain.setValueAtTime(0.45 * vel, t);
     ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
-    n.connect(bp); bp.connect(ng); ng.connect(this.drumBus);
+    n.connect(bp); bp.connect(ng); ng.connect(drums);
     n.start(t); n.stop(t + 0.05);
   }
 
   private _snare(t: number, vel: number) {
+    const { drums, wet } = this.ports('snare');
     const c = this.ctx;
     const n = c.createBufferSource();
     n.buffer = this.buffers.noise;
@@ -234,10 +251,10 @@ class LegacyScore {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.75 * vel, t + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-    n.connect(hp); hp.connect(g); g.connect(this.drumBus);
+    n.connect(hp); hp.connect(g); g.connect(drums);
     const send = c.createGain();
     send.gain.value = 0.7;
-    g.connect(send); send.connect(this.revSend);
+    g.connect(send); send.connect(wet);
     n.start(t); n.stop(t + 0.2);
 
     const o = c.createOscillator();
@@ -247,11 +264,12 @@ class LegacyScore {
     const og = c.createGain();
     og.gain.setValueAtTime(0.35 * vel, t);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    o.connect(og); og.connect(this.drumBus);
+    o.connect(og); og.connect(drums);
     o.start(t); o.stop(t + 0.12);
   }
 
   private _hat(t: number, vel: number, dec: number) {
+    const { drums } = this.ports('hats');
     const c = this.ctx;
     const n = c.createBufferSource();
     n.buffer = this.buffers.noise;
@@ -261,11 +279,12 @@ class LegacyScore {
     const g = c.createGain();
     g.gain.setValueAtTime(vel, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
-    n.connect(hp); hp.connect(g); g.connect(this.drumBus);
+    n.connect(hp); hp.connect(g); g.connect(drums);
     n.start(t); n.stop(t + dec + 0.02);
   }
 
   private _bass(t: number, midi: number, dur: number, vel: number) {
+    const { music } = this.ports('bass');
     const c = this.ctx;
     const f = midiToFreq(midi);
     const o = c.createOscillator();
@@ -293,14 +312,15 @@ class LegacyScore {
     g2.gain.exponentialRampToValueAtTime(0.22 * vel, t + 0.008);
     g2.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-    o.connect(lp); lp.connect(g); g.connect(this.musicBus);
-    o2.connect(g2); g2.connect(this.musicBus);
+    o.connect(lp); lp.connect(g); g.connect(music);
+    o2.connect(g2); g2.connect(music);
 
     o.start(t); o.stop(t + dur + 0.02);
     o2.start(t); o2.stop(t + dur + 0.02);
   }
 
   private _pluck(t: number, midi: number, dur: number, vel: number) {
+    const { music, wet } = this.ports('arp');
     const c = this.ctx;
     const o = c.createOscillator();
     o.type = 'triangle';
@@ -323,14 +343,15 @@ class LegacyScore {
     g2.gain.exponentialRampToValueAtTime(0.055 * vel, t + 0.004);
     g2.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.7);
 
-    o.connect(hp); hp.connect(g); g.connect(this.musicBus); g.connect(this.revSend);
-    o2.connect(g2); g2.connect(this.musicBus);
+    o.connect(hp); hp.connect(g); g.connect(music); g.connect(wet);
+    o2.connect(g2); g2.connect(music);
 
     o.start(t); o.stop(t + dur + 0.02);
     o2.start(t); o2.stop(t + dur + 0.02);
   }
 
   private _pad(t: number, chord: number[], barDur: number) {
+    const { music, wet } = this.ports('pad');
     const c = this.ctx;
     const dur = barDur * 1.05;
     const g = c.createGain();
@@ -348,8 +369,8 @@ class LegacyScore {
     lp.Q.value = 1.2;
 
     lp.connect(g);
-    g.connect(this.musicBus);
-    g.connect(this.revSend);
+    g.connect(music);
+    g.connect(wet);
 
     for (const m of chord) {
       for (const det of [-7, 0, 7]) {
@@ -364,6 +385,7 @@ class LegacyScore {
   }
 
   private _riser(t: number, dur: number) {
+    const { music, wet } = this.ports('fx');
     const c = this.ctx;
     const n = c.createBufferSource();
     n.buffer = this.buffers.noise;
@@ -377,11 +399,12 @@ class LegacyScore {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(0.13, t + dur * 0.92);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    n.connect(bp); bp.connect(g); g.connect(this.musicBus); g.connect(this.revSend);
+    n.connect(bp); bp.connect(g); g.connect(music); g.connect(wet);
     n.start(t); n.stop(t + dur + 0.05);
   }
 
   private _impact(t: number) {
+    const { drums, wet } = this.ports('fx');
     const c = this.ctx;
     const n = c.createBufferSource();
     n.buffer = this.buffers.noise;
@@ -392,15 +415,17 @@ class LegacyScore {
     const g = c.createGain();
     g.gain.setValueAtTime(0.34, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
-    n.connect(lp); lp.connect(g); g.connect(this.drumBus); g.connect(this.revSend);
+    n.connect(lp); lp.connect(g); g.connect(drums); g.connect(wet);
     n.start(t); n.stop(t + 0.65);
   }
 
   private _duck(t: number) {
-    const g = this.musicBus.gain;
-    g.cancelScheduledValues(t);
-    g.setValueAtTime(0.8, t);
-    g.linearRampToValueAtTime(0.34, t + 0.012);
-    g.linearRampToValueAtTime(0.8, t + 0.20);
+    for (const bus of [this.musicBus, ...[...this.stemPaths.values()].map(path => path.music)]) {
+      const g = bus.gain;
+      g.cancelScheduledValues(t);
+      g.setValueAtTime(0.8, t);
+      g.linearRampToValueAtTime(0.34, t + 0.012);
+      g.linearRampToValueAtTime(0.8, t + 0.20);
+    }
   }
 }

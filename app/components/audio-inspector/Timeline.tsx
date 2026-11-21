@@ -36,14 +36,15 @@ export function TimelineRuler({ score, zoom, width }: { score: InspectorScore; z
   const interval = Math.max(1, Math.ceil(bars * 88 / Math.max(1, width * zoom)));
   return <>
     <div className={s.sectionBands} aria-hidden="true">
-      {score.sections.map(({ name, start, end }) => <div key={name} style={{ width: (end - start) / score.duration * 100 + '%' }}>{name}</div>)}
+      {score.sections.map(({ name, start, end }) => <div key={name} style={{ width: (end - start) / score.length * 100 + '%' }}>{name}</div>)}
+      <div style={{ width: score.tail / score.length * 100 + '%' }}>TAIL</div>
     </div>
     <div className={s.ticks} aria-hidden="true">
       {Array.from({ length: Math.ceil(bars / interval) }, (_, i) => {
         const bar = i * interval;
         const time = bar * barSeconds;
-        if (bar && (1 - time / score.duration) * width * zoom < 75) return null;
-        return <span key={bar} style={{ left: time / score.duration * 100 + '%' }}>
+        if (bar && (1 - time / score.length) * width * zoom < 75) return null;
+        return <span key={bar} style={{ left: time / score.length * 100 + '%' }}>
           <b>{timecode(time)}</b><small>BAR {bar + 1} · BEAT {bar * 4 + 1}</small>
         </span>;
       })}

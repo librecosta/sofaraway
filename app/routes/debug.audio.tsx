@@ -23,13 +23,15 @@ export default function AudioInspectorPage() {
   const downloadUrl = useRef<string>(undefined);
   useEffect(() => {
     setHydrated(true);
+    setExporting(false);
+    setExportStatus('');
     const abort = new AbortController();
     lifetime.current = abort;
     return () => {
       abort.abort();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
     };
-  }, []);
+  }, [volume.id]);
 
   async function download() {
     const signal = lifetime.current?.signal;
@@ -38,8 +40,9 @@ export default function AudioInspectorPage() {
     setExportStatus('Rendering ' + (volume.soundtrack?.title ?? volume.name) + '…');
     try {
       const { exportSoundtrack } = await import('../game/debug/audio-export.client');
+      const { inspectorOffline } = await import('../game/debug/audio/offline.client');
       signal.throwIfAborted();
-      const { blob, duration } = await exportSoundtrack(volume, Number(params.get('secs')), signal);
+      const { blob, duration } = await inspectorOffline(signal, () => exportSoundtrack(volume, Number(params.get('secs')), signal));
       signal.throwIfAborted();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       const url = downloadUrl.current = URL.createObjectURL(blob);
