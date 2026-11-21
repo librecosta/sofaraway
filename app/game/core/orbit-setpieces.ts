@@ -23,7 +23,7 @@ export interface CosmicBody {
 }
 export interface CosmicRock extends OrbitRock { readonly structure: string }
 export interface NebulaStructure {
-  readonly role: 'arc' | 'cliff' | 'pillars' | 'tendrils';
+  readonly role: 'arc' | 'cliff' | 'pillars' | 'tendrils' | 'filaments' | 'nursery';
   readonly offset: OrbitPoint;
   readonly span: readonly [number,number];
   readonly angle: number;
@@ -33,6 +33,8 @@ export const nebulaStructures: readonly NebulaStructure[] = [
   {role:'cliff',offset:[-2300,100,3900],span:[6900,6500],angle:.12},
   {role:'pillars',offset:[3100,-250,4700],span:[6300,6200],angle:-.24},
   {role:'tendrils',offset:[-300,-550,2800],span:[9400,5100],angle:.25},
+  {role:'filaments',offset:[-1650,900,3300],span:[3100,1900],angle:-.38},
+  {role:'nursery',offset:[2100,1350,5100],span:[2800,2300],angle:.18},
 ];
 export interface OrbitSetpiece {
   readonly id: CosmicKind;
@@ -127,6 +129,44 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
       body('star', 1250 * 1.86, 530 * 1.86, 3200 * 1.86, [1705, 1705, 1705]);
     }
     if (id === 'planet') body('planet', -4900, -1450, 9000, [3300, 3300, 3300]);
+    // Separate seeds preserve the established landmarks and companion layout.
+    const detail = orbitRandom(seed, 0x504c4154, index);
+    if(id==='monolith'||id==='fractures') for(const parent of [...bodies]) {
+      const rotation=new Euler(...parent.rotation);
+      for(let i=0;i<3;i++) {
+        const side=parent.shape===1?-1:1;
+        const offset=new Vector3(side*parent.scale[0]*(.64+i*.20),parent.scale[1]*(.42-i*.39),
+          parent.scale[2]*(.42+i*.25)).applyEuler(rotation).add(new Vector3(...parent.position));
+        const scale:OrbitPoint=[(22-i*3)*size,(43-i*6)*size,(11+i*2)*size];
+        const radius=Math.max(...scale);
+        if(!clearance.allowsSphere(offset.toArray(),radius))continue;
+        bodies.push({id:`${id}:plate:${parent.id}:${i}`,type:'hero',position:offset.toArray(),scale,radius,shape:i===1?2:4,
+          rotation:[parent.rotation[0]+.12*i,parent.rotation[1]+.24,parent.rotation[2]+side*.24]});
+      }
+    }
+    if(id==='ring') {
+      // Torn slabs follow the tangent at the three existing fracture mouths.
+      for(const angle of [.62,2.64,4.85]) for(let i=0;i<3;i++) {
+        const r=300+i*18,t=i*24;
+        const position=world(station,(Math.cos(angle)*r-Math.sin(angle)*t)*size,
+          (217+Math.sin(angle)*r*.77+Math.cos(angle)*t*.5)*size,(Math.sin(angle)*110+i*37)*size);
+        const scale:OrbitPoint=[(20+i*7)*size,(39-i*5)*size,9*size],radius=Math.max(...scale);
+        if(clearance.allowsSphere(position,radius))bodies.push({id:`ring:slab:${angle}:${i}`,type:'hero',position,scale,radius,shape:2,
+          rotation:[.45+angle*.15,.35,angle-.5]});
+      }
+    }
+    if(id==='spiral') for(let stream=0;stream<3;stream++)for(let i=0;i<9;i++) {
+      const t=.18+i*.067,angle=t*Math.PI*3.3+stream*2.094,r=(85+stream*18)*size;
+      for(let j=0;j<5;j++)rock(world(stationAt(160+t*64),Math.cos(angle)*r+(detail()-.5)*22*size,
+        Math.sin(angle)*r*.78+(detail()-.5)*17*size,(j-2)*10*size),(3+detail()*9)*size,rocks.length,'stream-knots');
+    }
+    if(id==='eclipse')for(let i=0;i<5;i++)rock(world(station,(-170-i*31)*size,(95-i*47)*size,(-45+i*39)*size),
+      (11+detail()*12)*size,rocks.length,'rim-fragments');
+    if(id==='planet') {
+      body('moon',-1500,1100,7000,[240,240,240]);
+      for(let i=0;i<12;i++)rock(world(station,(detail()-.5)*680*size,(130+detail()*150)*size,(detail()-.5)*500*size),
+        (1+detail()*4)*size,rocks.length,'open-void-shards');
+    }
     const from = stationAt(section.startBeat), to = id === 'planet' ? path.length + 10000 : stationAt(section.endBeat);
     const feather = Math.max(70, (stationAt(section.endBeat) - from) * (id === 'nebula' ? .28 : .18));
     return { id, section: section.name, name: orbitSceneNames[index], seed: seed ^ (index * 991), station,

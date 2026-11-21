@@ -99,11 +99,13 @@ test('the full orbit course cycles through dense, sparse and open belts', () => 
 test('projected size changes LOD with a separate exit threshold on each quality tier', () => {
   for (const quality of ['low', 'auto', 'high'] as const) {
     expect(orbitLod(120, 2, quality)).toBe(0);
-    expect(orbitLod(30, 2, quality)).toBe(1);
-    expect(orbitLod(5, 0, quality)).toBe(2);
+    expect(orbitLod(12, 2, quality)).toBe(1);
+    expect(orbitLod(2, 0, quality)).toBe(2);
   }
-  expect(orbitLod(45, 1, 'auto')).toBe(1);
-  expect(orbitLod(45, 0, 'auto')).toBe(0);
+  expect(orbitLod(19, 1, 'auto')).toBe(1);
+  expect(orbitLod(19, 0, 'auto')).toBe(0);
+  for(const quality of ['low','auto','high'] as const)for(const radius of [6,15,42])
+    for(const pixels of [1,5,30,130,550,1800])expect(orbitLod(pixels,2,quality,radius)).toBe(quality==='low'?1:0);
 });
 
 test('saving a playable volume retains retired ORBIT Standard and Sightseeing records', () => {

@@ -1,3 +1,4 @@
+import { rockDetail } from './orbit-rock-detail';
 import { orbitHeroGeometry, heroFamilies } from './orbit-geology';
 export { orbitHeroGeometry } from './orbit-geology';
 import * as THREE from 'three';
@@ -75,7 +76,7 @@ type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { va
 export class OrbitSetpieces {
   readonly group = new THREE.Group();
   private readonly active = new Map<string,ActivePiece>();
-  private readonly heroes = Array.from({length:heroFamilies.length},(_,shape)=>Array.from({length:3},(_,lod)=>orbitHeroGeometry(shape,lod)));
+  private readonly heroes = Array.from({length:heroFamilies.length},(_,shape)=>Array.from({length:2},(_,lod)=>orbitHeroGeometry(shape,lod)));
   private readonly spheres = [new THREE.SphereGeometry(1,32,20),new THREE.SphereGeometry(1,64,40)];
   private readonly plane = new THREE.PlaneGeometry(1,1);
   private readonly transform = new THREE.Object3D();
@@ -90,9 +91,9 @@ export class OrbitSetpieces {
     item.group.name = piece.name;
     for (const body of piece.bodies) {
       if (body.type==='hero') {
-        const mesh = new THREE.Mesh(this.heroes[body.shape][2],surface.material);
+        const mesh = new THREE.Mesh(this.heroes[body.shape][1],surface.material);
         mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.rotation.set(...body.rotation);
-        mesh.frustumCulled=false; item.heroes.push({mesh,body,lod:2}); item.group.add(mesh);
+        mesh.frustumCulled=false; item.heroes.push({mesh,body,lod:1}); item.group.add(mesh);
       } else {
         const style = body.type==='moon'?0:body.type==='planet'?1:2;
         const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65);
@@ -140,9 +141,8 @@ export class OrbitSetpieces {
       }
       for(const entry of item.heroes) {
         const {mesh,body}=entry;
-        const pixels=projection*body.radius/camera.position.distanceTo(mesh.position);
-        const lod=pixels>550*(entry.lod===0?.84:1)?0:pixels>130*(entry.lod===1?.84:1)?1:2;
-        entry.lod=quality==='low'?Math.max(1,lod):lod;
+        // A visible hero keeps a single surface; quality is an explicit user action.
+        entry.lod=quality==='low'?1:0;
         mesh.geometry=this.heroes[body.shape][entry.lod];
       }
       for(const material of item.materials)if(material instanceof THREE.ShaderMaterial && material.uniforms.detail)
@@ -162,8 +162,7 @@ export class OrbitSetpieces {
     for(let i=0;i<piece.rocks.length;i++) {
       const rock=piece.rocks[i]; if(rock.radius<5 && rock.rank>keep)continue;
       const pixels=projection*rock.radius/Math.max(1,this.point.fromArray(rock.position).distanceTo(camera));
-      const previous=item.levels[i],near=quality==='low'?130:80,middle=quality==='low'?28:17;
-      const lod=pixels>near*(previous===0?.84:1)?0:pixels>middle*(previous===1?.84:1)?1:2;
+      const lod=rockDetail(pixels,item.levels[i],quality,rock.radius);
       item.levels[i]=lod;
       const key=rock.shape*3+lod;
       let batch=item.batches.get(key);
@@ -181,7 +180,7 @@ export class OrbitSetpieces {
     }
   }
   metrics(){return {station:this.station,active:[...this.active].filter(([,p])=>p.group.visible).map(([id,p])=>({id,presence:p.fade.value,
-    instances:p.instances,objects:p.group.children.length,heroes:p.heroes.map(h=>heroFamilies[h.body.shape])})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
+    instances:p.instances,objects:p.group.children.length,heroes:p.heroes.map(h=>heroFamilies[h.body.shape]),heroGeometry:p.heroes.map(h=>({id:h.body.id,lod:h.lod,vertices:h.mesh.geometry.attributes.position.count}))})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
   private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();for(const material of item.materials)material.dispose();}
   dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const variants of this.heroes)for(const geometry of variants)geometry.dispose();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
 }

@@ -49,6 +49,8 @@ const harness = {
     (await import('./orbit')).inspectOrbitGuidance(...args),
   inspectCosmicCourse: async (...args: Parameters<typeof import('./orbit-cosmos').inspectCosmicCourse>) =>
     (await import('./orbit-cosmos')).inspectCosmicCourse(...args),
+  inspectRockApproach: async (...args: Parameters<typeof import('./orbit-approach').inspectRockApproach>) =>
+    (await import('./orbit-approach')).inspectRockApproach(...args),
   branchState() {
     const sim: Simulation = Reflect.get(runtime!, 'simulation');
     const graphics: Graphics = Reflect.get(runtime!, 'graphics');

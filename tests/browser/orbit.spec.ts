@@ -249,10 +249,11 @@ for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard
       await poll(async () => (await snap()).gatesPassed).toBe(++passed);
     }
     if (boost) await page.keyboard.down('Shift');
-    await poll(async () => (await state()).metrics.routeHologram?.left).toBe(ROUTE_LABELS[branchLayout(seed).left]);
+    await poll(async () => (await state()).metrics.entryBeacons?.phase).toBe('choice');
+    await poll(async () => (await state()).metrics.entryBeacons?.labels[0]).toBe(ROUTE_LABELS[branchLayout(seed).left]);
     const recognition = await state();
     expect(recognition.branch?.side).toBeNull();
-    expect(recognition.metrics.routeTraces).toMatchObject({ visible: true, phase: 'choice', layout: branchLayout(seed) });
+    expect(recognition.metrics.entryBeacons).toMatchObject({ visible: true, phase: 'choice', layout: branchLayout(seed) });
     await page.locator('canvas').screenshot({ path: info.outputPath('orbit-approach.png') });
     if (side === 'center') await aim(0, 0);
     else {
@@ -263,7 +264,7 @@ for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard
     }
     await poll(async () => (await state()).route).toBe(route);
     const committed = await state();
-    expect(committed.metrics.routeTraces).toMatchObject({ visible: true, phase: 'branch', selected: side === 'left' ? 0 : side === 'right' ? 2 : 1 });
+    expect(committed.metrics.entryBeacons).toMatchObject({ selected: side === 'left' ? 0 : side === 'right' ? 2 : 1 });
     expect(committed.trackDistance + 1e-8).toBeGreaterThanOrEqual(junction.split);
     expect(committed.time - recognition.time).toBeGreaterThan(1.5);
     for (const [index, gate] of routeGates.entries()) {

@@ -25,8 +25,7 @@ import { MaterialLibrary } from './materials/library.client';
 import type { OrbitDensity } from '../core/orbit-field';
 import { ORBIT_WORLD_SEED } from '../core/orbit-field';
 import { OrbitWorld } from './orbit-world.client';
-import { OrbitRouteGuides } from './orbit-route-guides.client';
-import { orbitRouteSwatches } from '../core/orbit-routes';
+import { OrbitEntryBeacons } from './orbit-entry-beacons.client';
 import { buildRunPath } from './path';
 import type { Path, PathFrame } from './path';
 import { PickupVisual } from './pickup.client';
@@ -57,7 +56,7 @@ class VolumeScene {
   readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 420);
   readonly tunnel?: Tunnel;
   readonly orbit?: OrbitWorld;
-  private orbitGuides?: OrbitRouteGuides;
+  private orbitBeacons?: OrbitEntryBeacons;
   readonly hologram?: RouteHologram;
   readonly scenic?: CorridorLights;
   private readonly fog = new THREE.FogExp2(0, 0.0062);
@@ -100,7 +99,6 @@ class VolumeScene {
     this.hue = volume.hue[0];
     this.gameplay = gameplayFor(volume.id);
     if (this.orbit) {
-      if (this.gameplay.branch) this.hologram = new RouteHologram(false, orbitRouteSwatches);
       return;
     }
     if (this.gameplay.world?.continuous) {
@@ -193,8 +191,7 @@ class VolumeScene {
     const release = plan ? Math.max(ease((station - plan.afterglowStart) / 250),
       ease((sim.beat - (this.volume!.beats - 10)) / 10) * .65) : 0;
     this.orbit.update(this.camera, height, dpr, quality, release, station);
-    this.orbitGuides?.update(station, sim.time, sim.branch?.side ?? sim.routeSide, !!sim.branch?.side,
-      height * this.camera.aspect, height, lighting?.reducedMotion ? 0 : lighting?.dynamics?.amount ?? 0);
+    this.orbitBeacons?.update(station, sim.branch?.side ?? sim.routeSide, !!sim.branch?.side, height);
   }
 
   private moveCamera(cameraFrame: PathFrame, x: number, y: number, width = 0) {
@@ -366,10 +363,10 @@ class VolumeScene {
   private updateJunction(sim: SceneState) {
     if (this.orbit) {
       const path = sim.junctionPath, layout = sim.branch?.layout;
-      if (path && layout && (this.orbitGuides?.path !== path || this.orbitGuides.layout !== layout)) {
-        this.orbitGuides?.dispose();
-        this.orbitGuides = new OrbitRouteGuides(path, layout);
-        this.scene.add(this.orbitGuides.mesh);
+      if (path && layout && (this.orbitBeacons?.path !== path || this.orbitBeacons.layout !== layout)) {
+        this.orbitBeacons?.dispose();
+        this.orbitBeacons = new OrbitEntryBeacons(path, layout);
+        this.scene.add(this.orbitBeacons.group);
       }
       return;
     }
@@ -393,7 +390,7 @@ class VolumeScene {
   }
 
   get junctionMeshes() { return this.junction?.group.children.length ?? 0; }
-  get routeTraces() { return this.orbitGuides?.metrics(); }
+  get entryBeacons() { return this.orbitBeacons?.metrics(); }
   get descentLighting() { return this.facility?.lighting; }
   get continuity() { return this.gameplay?.world?.continuous ? this.tunnel?.continuity : undefined; }
   get skyDaylight() { return this.exterior?.daylight; }
@@ -440,7 +437,7 @@ class VolumeScene {
     this.surfaceLibrary?.dispose();
     this.exterior?.dispose();
     this.orbit?.dispose();
-    this.orbitGuides?.dispose();
+    this.orbitBeacons?.dispose();
     this.scene.clear();
   }
 }
@@ -754,7 +751,7 @@ export class Graphics {
       chunks: this.volume?.tunnel?.chunks.length ?? 0, dpr: this.effectiveDpr,
       orbit: this.volume?.orbit?.metrics(),
       fov: this.camera?.fov,
-      routeTraces: this.volume?.routeTraces,
+      entryBeacons: this.volume?.entryBeacons,
       gateGeometryCache: this.volume?.gateGeometryCache ?? 0,
       junctionMeshes: this.volume?.junctionMeshes ?? 0,
       descentLighting: this.volume?.descentLighting,

@@ -8,7 +8,7 @@ const profiles = [[.96, .88, .86], [1, .56, .88], [.78, 1, .68], [.91, .80, 1]];
 const vertex = new THREE.Vector3();
 
 export function orbitRockGeometry(shape: number, lod: number) {
-  const geometry = new THREE.IcosahedronGeometry(1, [3, 1, 0][lod]);
+  const geometry = new THREE.IcosahedronGeometry(1, [2, 1, 0][lod]);
   const random = orbitRandom(1207, shape);
   const angles = Array.from({ length: 6 }, () => random() * 6.28);
   const position = geometry.getAttribute('position');

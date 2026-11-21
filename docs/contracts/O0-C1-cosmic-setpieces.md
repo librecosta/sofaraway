@@ -71,3 +71,31 @@ the normal world-space transparent sort; layers retain depth testing, disable
 depth writes and use the common astronomical projection. Their physical planes
 are parallel and separated in depth. Glass retains its existing later render order.
 No exposure, bloom, camera, music or gameplay changes are part of C2.
+
+## C2-F1 continuity and secondary structure
+
+Hero meshes now keep one shared surface throughout an approach: high geometry
+on Auto/High, medium on Low. Browser captures isolated whole-face normal and
+ridge changes at the former 130/550 px replacements, with full presence and no
+shader compilation. Only an explicit quality change can replace a hero surface.
+Ordinary and macro fragments with radius at least six units also use a fixed
+quality-level prototype. Smaller fragments retain projected-size LOD and
+hysteresis, now confined to small screen coverage. The near ordinary prototype
+uses a cheaper subdivision to bound the cost; chunk streaming remains intact.
+
+Detached hero plates follow parent cleavage frames without moving existing
+landmarks. Ring fracture mouths have large torn slabs; local clumping modulates
+belt thickness and fragment sizes, with sparse eroded shelves outside the edge.
+Spiral streams gain compact knots, ECLIPSE gains a few silhouette fragments, and
+APHELION gains a small distant satellite. AURORA adds two local, separated gas
+regions: a filament fan and a hollow stellar nursery. They retain premultiplied
+emission/extinction, world sorting, edge falloff and the shared depth mapping.
+Primary anchors, route clearance, score, audio and gate contracts are unchanged.
+
+Same-device C2/F1 comparison (Chrome 157, AMD Radeon D3D11, 960×540, DPR 1,
+two 180-frame samples per scene/tier): High RINGBREAK rises from 69,248 to
+217,935 triangles and 185 to 218 calls; GPU P95 averages 2.48/2.52 ms, CPU P95
+2.25/2.55 ms. Programs stay at 11, geometries drop from 27 to 24, textures stay
+at four. The added geometry and calls have a measured cost; these short samples do not
+establish a timing improvement. High AURORA GPU P95 is 4.70/4.65 ms. Fixed Hero surfaces are
+affordable on this device; lower tiers retain the same compositions.

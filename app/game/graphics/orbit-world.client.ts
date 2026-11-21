@@ -1,3 +1,5 @@
+import { rockDetail } from './orbit-rock-detail';
+export { rockDetail as orbitLod } from './orbit-rock-detail';
 import * as THREE from 'three';
 import { ORBIT_CELL, OrbitClearance, OrbitField, orbitCellKey } from '../core/orbit-field';
 import type { OrbitBelt, OrbitDensity, OrbitRock } from '../core/orbit-field';
@@ -15,7 +17,6 @@ import { OrbitSetpieces } from './orbit-setpieces.client';
 const REACH = 570;
 const KEEP = 660;
 const CELL_RADIUS = Math.sqrt(3) * ORBIT_CELL / 2;
-const lodLimits = { low: [66, 22], auto: [49, 15], high: [36, 11] } as const;
 const fragmentLimits = { low: .34, auto: .70, high: 1 } as const;
 
 export function orbitClearance(path: Path, branch?: BranchPath, mode: PlayMode = 'standard') {
@@ -77,13 +78,6 @@ export function orbitCourseBelt(path: Path, mode: PlayMode) {
     cells.set(z, mixed);
     return mixed;
   };
-}
-
-export function orbitLod(pixels: number, previous: number, quality: QualityTier) {
-  const [near, middle] = lodLimits[quality];
-  if (pixels >= near * (previous === 0 ? .84 : 1)) return 0;
-  if (pixels >= middle * (previous === 1 ? .84 : 1)) return 1;
-  return 2;
 }
 
 type Chunk = {
@@ -188,7 +182,7 @@ export class OrbitWorld {
       const distance = Math.sqrt(this.center.fromArray(rock.position).distanceToSquared(position));
       const pixels = projection * 2 * rock.radius / Math.max(2, distance);
       const next = distance - rock.radius > REACH || (rock.fragment && (rock.rank >= fragmentLimits[quality] || pixels < .85))
-        ? -1 : orbitLod(pixels, chunk.lod[i], quality);
+        ? -1 : rockDetail(pixels, chunk.lod[i], quality, rock.radius);
       changed ||= next !== chunk.lod[i];
       chunk.lod[i] = next;
     }

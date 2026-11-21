@@ -47,6 +47,9 @@ for(const mode of ['standard','sightseeing'] as const) for(const difficulty of [
         expect(Math.abs(value-last)).toBeLessThan(.02);last=value;
       }
     }
+    expect(a[0].bodies.some(b=>b.id.includes(':plate:'))).toBe(true);
+    expect(a[2].bodies.some(b=>b.id.includes(':slab:'))).toBe(true);
+    expect(a[5].nebula.map(n=>n.role)).toEqual(['arc','cliff','pillars','tendrils','filaments','nursery']);
     expect(a.find(p=>p.id==='ring')!.rocks.length).toBeGreaterThan(1200);
     expect(a.find(p=>p.id==='spiral')!.rocks.length).toBeGreaterThan(1500);
     expect(cosmicPresence(a.at(-1)!,reference.boostFinish(mode,difficulty==='impossible'?1.15:1))).toBe(1);
@@ -77,5 +80,5 @@ test('ring density has tapered torn edges, displaced ringlets and deterministic 
   const sample=()=>{const entries:unknown[]=[];ringFragments(77345,(...v)=>entries.push(v));return entries;};
   expect(sample()).toEqual(sample());
   const structures=new Set<string>();ringFragments(77345,(_p,_r,role)=>structures.add(role));
-  expect(structures.size).toBe(6);
+  expect(structures.size).toBe(7);
 });

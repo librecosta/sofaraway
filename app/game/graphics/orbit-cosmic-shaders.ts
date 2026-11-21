@@ -60,7 +60,7 @@ void main() {
     flow=vec2(x*1.9,q.y*.7);
     edgeLight=cloudWindow(q,vec2(.40,.80),vec2(.9,2.5));
     tint=mix(vec3(.19,.045,.35),vec3(.56,.10,.25),smoothstep(-1.1,.8,q.y));
-  } else {
+  } else if(layer<3.5) {
     // Low-density foreground tributaries cross the ridge instead of cloning it.
     float a=abs(q.y-.40*q.x-.24*sin(q.x*1.5)+.5);
     float b=abs(q.y+.55*q.x-.72+.18*sin(q.x*2.0));
@@ -68,6 +68,23 @@ void main() {
     macro*=1.0-.9*cloudWindow(q,vec2(.1,.1),vec2(1.2,1.1));
     flow=vec2(q.x*.8,q.y*2.1-q.x*.7);
     tint=mix(vec3(.06,.25,.52),vec3(.42,.07,.43),smoothstep(-1.3,1.4,q.x));
+  } else if(layer<4.5) {
+    // A small foreground fan: independent threads with dark gaps between them.
+    float bend=.24*sin(q.x*1.2)+.12*q.x;
+    float streams=min(abs(q.y-bend-.62),min(abs(q.y-bend+.1),abs(q.y-bend+.68)));
+    macro=exp(-streams*streams*90.0)*cloudWindow(q,vec2(0),vec2(.45,.7));
+    macro*=1.0-.94*cloudWindow(q,vec2(.6,.3),vec2(2.5,2.0));
+    flow=vec2(q.x*.55,(q.y-bend)*3.7);
+    tint=mix(vec3(.06,.30,.50),vec3(.48,.16,.40),smoothstep(-1.5,1.8,q.x));
+    edgeLight=cloudWindow(q,vec2(-.8,.5),vec2(2.,3.));
+  } else {
+    // A local hollow shell and a warm stellar nursery, not another sky-sized sheet.
+    float shell=abs(length(q*vec2(.9,1.2))-.92);
+    macro=exp(-shell*shell*19.0)*cloudWindow(q,vec2(.2,.1),vec2(.5,.65));
+    macro+=.45*cloudWindow(q,vec2(.75,.75),vec2(2.2,2.4));
+    flow=vec2(q.x+.35*q.y,q.y*1.8);
+    edgeLight=cloudWindow(q,vec2(.75,.75),vec2(2.7,2.7));
+    tint=mix(vec3(.12,.11,.39),vec3(.54,.32,.17),edgeLight);
   }
   float meso=gasFbm(flow*2.8+warp*1.5+seed,detail);
   float fibers=pow(max(0.0,1.0-abs(gasFbm(flow*5.2+warp*2.0,detail)*2.0-1.0)),5.0);
@@ -82,6 +99,8 @@ void main() {
   // A few resolved stellar nurseries; derivative filtering prevents pinprick shimmer.
   float knot=cloudWindow(q,vec2(-1.48,.58),vec2(14.0,18.0))
     +cloudWindow(q,vec2(.42,.82),vec2(18.0,15.0));
+  if(layer>4.5)knot+=cloudWindow(q,vec2(.73,.76),vec2(13.,16.))
+    +cloudWindow(q,vec2(.86,.66),vec2(22.,20.))+cloudWindow(q,vec2(.62,.80),vec2(24.,24.));
   emission+=vec3(.60,.76,.86)*knot*density*.65;
   float edge=smoothstep(0.0,.16,vUv.x)*smoothstep(0.0,.16,vUv.y)*smoothstep(0.0,.16,1.0-vUv.x)*smoothstep(0.0,.16,1.0-vUv.y);
   // Extinction and emitted light are separate. Output premultiplied radiance,

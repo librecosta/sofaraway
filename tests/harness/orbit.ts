@@ -8,7 +8,7 @@ import type { OrbitWorld } from '../../app/game/graphics/orbit-world.client';
 import type { OrbitRock } from '../../app/game/core/orbit-field';
 import type { Difficulty, PlayMode } from '../../app/game/contracts';
 import type { RouteSide } from '../../app/game/core/branches';
-import type { OrbitRouteGuides } from '../../app/game/graphics/orbit-route-guides.client';
+import type { OrbitEntryBeacons } from '../../app/game/graphics/orbit-entry-beacons.client';
 
 /** Production render isolation, with no test switches in the game's camera policy. */
 export async function inspectOrbitStability(options: { quality: QualityTier; post: boolean; motion: 'cruise' | 'boost' | 'mixed';
@@ -56,7 +56,8 @@ export async function inspectOrbitGuidance(mode: PlayMode, difficulty: Difficult
   sim.start(difficulty, seed, undefined, mode);
   graphics.resize(960, 540, 1); graphics.load(sim.volume, sim.path, mode);
   const path = sim.junctionPath!, samples = [];
-  let geometry, released = 0, guideTime = 0, choiceTime = 0;
+  let beaconPixels: number[] = [], recognition = '';
+  let geometry: unknown, released = 0, guideTime = 0, choiceTime = 0;
   try {
     const stations = [path.guideStart - 20, path.guideStart + 2, path.split - 25, path.split + 5,
       path.open + 5, path.merge + 3, path.end + 25, path.end + 100];
@@ -68,17 +69,40 @@ export async function inspectOrbitGuidance(mode: PlayMode, difficulty: Difficult
       }
       graphics.draw(sim, true);
       const scene = Reflect.get(graphics, 'volume');
-      const guides: OrbitRouteGuides = scene.orbitGuides;
+      const guides: OrbitEntryBeacons = scene.orbitBeacons;
       if (!geometry) {
-        geometry = guides.mesh.geometry;
-        geometry.addEventListener('dispose', () => released++);
-        guides.mesh.material.addEventListener('dispose', () => released++);
+        geometry = Reflect.get(guides, 'plane');
+        const resources = new Set<import('three').BufferGeometry | import('three').Material>();
+        guides.group.traverse(object => {
+          const mesh = object as import('three').Mesh;
+          if(mesh.geometry)resources.add(mesh.geometry);
+          if(mesh.material)resources.add(mesh.material as import('three').Material);
+        });
+        for(const resource of resources)resource.addEventListener('dispose', () => released++);
       }
-      if (guides.mesh.geometry !== geometry) throw new Error('Route geometry was rebuilt during a junction');
+      if (Reflect.get(guides, 'plane') !== geometry) throw new Error('Route geometry was rebuilt during a junction');
+      if(station===stations[1]) {
+        recognition=canvas.toDataURL();
+        const lit=new Uint8Array(960*540*4),dark=new Uint8Array(lit.length),gl=graphics.gl;
+        gl.readPixels(0,0,960,540,gl.RGBA,gl.UNSIGNED_BYTE,lit);
+        guides.group.traverse(object=>{const material=(object as import('three').Mesh).material as import('three').Material;if(material)material.visible=false;});
+        graphics.draw(sim,true);gl.readPixels(0,0,960,540,gl.RGBA,gl.UNSIGNED_BYTE,dark);
+        beaconPixels=guides.group.children.filter((_,i)=>i%2===0).map(object=>{
+          const p=object.position.clone().project(graphics.camera!),cx=Math.round((p.x+1)*480),cy=Math.round((p.y+1)*270);
+          let changed=0;
+          for(let y=cy-4;y<=cy+4;y++)for(let x=cx-4;x<=cx+4;x++) {
+            const i=(y*960+x)*4;
+            if(Math.max(Math.abs(lit[i]-dark[i]),Math.abs(lit[i+1]-dark[i+1]),Math.abs(lit[i+2]-dark[i+2]))>3)changed++;
+          }
+          return changed;
+        });
+        guides.group.traverse(object=>{const material=(object as import('three').Mesh).material as import('three').Material;if(material)material.visible=true;});
+        graphics.draw(sim,true);
+      }
       samples.push({ station: sim.trackDistance, route: sim.route, ...guides.metrics(), metrics: graphics.metrics() });
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
     }
     graphics.dispose();
-    return { samples, choiceSeconds: choiceTime - guideTime, released, route: sim.route };
+    return { samples, beaconPixels, recognition, choiceSeconds: choiceTime - guideTime, released, route: sim.route };
   } finally { if (!released) graphics.dispose(); canvas.remove(); }
 }
