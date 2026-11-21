@@ -1,5 +1,48 @@
 # ORBIT — STARWAKE
 
+## M1 candidate audition
+
+M1 is **not the production soundtrack**. `/debug/audio/?vol=orbit` defaults to
+Original. Select **M1 — Melody First**, or add `&arrangement=m1`, to audition the
+candidate at the current section position. Switching arrangement pauses playback
+and resets its mix; press Play to compare. Gameplay, chart accents, timings and
+records continue to use the original score.
+
+`app/game/core/orbit-m1-score.ts` owns M1's 24 phrases. Bass and Pluck events are
+absent. The unchanged rhythm/FX events retain their original IDs and noise seeds.
+The recognizable A–C–F lead theme enters at 2.8125 seconds, develops complete call-and-response
+phrases in DRIFT, returns in RINGBREAK and AURORA, and resolves in the APHELION
+coda. ECLIPSE deliberately retains suspended, separated phrases.
+
+M1 uses the same Triangle/Sine voice and fixed 0.65 master. Its optional voice
+profile extends Lead release from 0.29 to 0.42 seconds. Pad uses close voice
+leading below the lead, a softer attack, restrained low-mid warmth and a quiet,
+sustained sine root inside the Pad stem. It introduces no bass pattern or arp.
+The original voice profile and `renderStarwake()` remain the default and unchanged.
+
+```sh
+PLAYWRIGHT_CHANNEL=chrome node tools/music/orbit/export.mjs --m1 --verify
+```
+
+On PowerShell, set `$env:PLAYWRIGHT_CHANNEL='chrome'` before that command.
+The full, continuously rendered 44.1 kHz, 16-bit stereo WAV and repeat-render
+measurements are written to ignored `scratch/orbit-m1/exports/` as
+`ORBIT-M1-MELODY-FIRST-FULL.wav` and `starwake-validation.json`. Inspector playback,
+waveforms, selected-stem export and the candidate Master export use that same
+arrangement. Candidate Master export never invokes the official export API with
+different events. Approval and a separate gameplay synchronization review are
+required before any production replacement.
+
+The Chrome 157 candidate is 184 seconds, **-20.49 LUFS**, **-22.61 dBFS RMS**,
+with **-3.45 dBFS sample peak** and approximately **-3.45 dBTP** (4x polyphase
+estimate). It is 1.45 LU quieter than Original; master gain is unchanged.
+ECLIPSE-to-AURORA RMS contrast is 5.35 dB. No samples clip or are non-finite,
+and the final stereo sample is zero. Independent full renders differ by
+0.285 PCM codes RMS / 4 codes peak. Local section levels, repeat measurements
+and the BS.1770 loudness comparison remain beside the ignored WAV.
+
+## Approved original
+
 The selected **B — STARWAKE** audition is expanded into the authoritative
 **Melodic Cosmic Electronica** score: **128 BPM, 4/4, 96 bars / 384 beats**,
 a **180-second body** and **four-second release**. GRAVITY remains historical.

@@ -30,3 +30,6 @@ playwright-report/
 
 # Local ORBIT soundtrack auditions
 /scratch/orbit-m0/exports/
+
+# Local melody-first arrangement renders and analysis
+/scratch/orbit-m1/

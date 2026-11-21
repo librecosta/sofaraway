@@ -30,7 +30,9 @@ export function defaultMix(): Mix {
   return Object.fromEntries(Object.keys(trackInfo).map(id => [id, track()])) as Mix;
 }
 
-export function inspectorScore(volume: VolumeDefinition) {
+export type InspectorArrangement = 'original' | 'm1';
+export function inspectorScore(volume: VolumeDefinition, requested: InspectorArrangement = 'original') {
+  const arrangement = volume.id === 'orbit' ? requested : 'original';
   const beatSeconds = 60 / volume.bpm;
   let startBeat = 0;
   const sections = volume.music === 'breakbeat' ? daybreakSections : volume.sections.map(({ name, beats }) => {
@@ -38,30 +40,32 @@ export function inspectorScore(volume: VolumeDefinition) {
     startBeat += beats;
     return { name, start, end: startBeat * beatSeconds };
   });
-  const tracks: readonly TrackId[] = ['master', ...stemsFor(volume)];
+  const tracks: readonly TrackId[] = ['master', ...stemsFor(volume, arrangement)];
   const duration = volume.beats * beatSeconds;
   const tail = volume.soundtrack?.tail ?? (volume.music === 'breakbeat' ? daybreakTail : 4);
-  return { volume, sections, tracks, duration, tail, length: duration + tail, step: beatSeconds / 4 };
+  return { volume, arrangement, key:volume.id + ':' + arrangement, sections, tracks,
+    duration, tail, length: duration + tail, step: beatSeconds / 4 };
 }
 
 export type InspectorScore = ReturnType<typeof inspectorScore>;
 
 /** Ordered by rhythm, bass, harmony, melody and transitions, with score voice identities. */
-export function stemsFor(volume: VolumeDefinition): readonly AudioStem[] {
+export function stemsFor(volume: VolumeDefinition, arrangement: InspectorArrangement = 'original'): readonly AudioStem[] {
   switch (volume.music) {
     case 'breakbeat': return daybreakStems;
     case 'control': return ['kick', 'snare', 'hats', 'bass', 'chord', 'signal', 'metal', 'sweep'];
-    case 'starwake': return ['kick', 'snare', 'hats', 'perc', 'bass', 'pad', 'pluck', 'lead', 'sweep'];
+    case 'starwake': return arrangement === 'm1' ? ['kick','snare','hats','perc','pad','lead','sweep']
+      : ['kick', 'snare', 'hats', 'perc', 'bass', 'pad', 'pluck', 'lead', 'sweep'];
     default: return ['kick', 'snare', 'hats', 'bass', 'pad', 'arp', 'fx'];
   }
 }
-export function stemMetadata(volume: VolumeDefinition) {
+export function stemMetadata(volume: VolumeDefinition, arrangement: InspectorArrangement = 'original') {
   const voices: Partial<Record<AudioStem, readonly string[]>> = {
     snare: volume.music === 'techno' ? ['snare', 'fill'] : volume.music === 'breakbeat' ? ['snare', 'ghost', 'fill']
       : volume.music === 'control' ? ['snare', 'ghost'] : ['snare'],
     hats: ['hat'], arp: ['pluck'], fx: ['riser', 'impact'], keys: ['pad', 'pluck', 'arp'], atmos: ['air'],
   };
-  return stemsFor(volume).map(id => ({ id, volume: volume.id, ...trackInfo[id], voices: voices[id] ?? [id] }));
+  return stemsFor(volume,arrangement).map(id => ({ id, volume: volume.id, ...trackInfo[id], voices: voices[id] ?? [id] }));
 }
 
 // Includes held notes and their effect returns before a chunk's visible range.

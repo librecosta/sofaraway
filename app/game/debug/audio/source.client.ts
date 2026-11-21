@@ -1,6 +1,8 @@
 import { DaybreakSynthesizer, daybreakRoom, daybreakStemSends } from '../../audio/daybreak.client';
 import { gain, randomSource } from '../../audio/daybreak-voices.client';
 import { createBuffers, createMaster, Synthesizer } from '../../audio/synthesizer.client';
+import { OrbitSynthesizer } from '../../audio/orbit.client';
+import { melodyFirstArrangement } from '../../audio/orbit-m1.client';
 import type { AudioStem, StemRouting } from '../../audio/stem-routing';
 import { daybreakStems } from '../../core/daybreak-score';
 import { inspectorGraph } from './graph.client';
@@ -25,9 +27,10 @@ export function inspectorSource(context: BaseAudioContext, score: InspectorScore
     }
     return control;
   };
-  let synth: DaybreakSynthesizer | Synthesizer;
+  let synth: DaybreakSynthesizer | Synthesizer | OrbitSynthesizer;
   try {
-    synth = score.volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, master, (mix, impulse) => {
+    synth = score.arrangement === 'm1' ? new OrbitSynthesizer(ctx,master,route,melodyFirstArrangement)
+      : score.volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, master, (mix, impulse) => {
       return Object.fromEntries(daybreakStems.map(id => {
         const listen = route(id, mix), input = ctx.createGain();
         input.connect(listen);
@@ -40,7 +43,7 @@ export function inspectorSource(context: BaseAudioContext, score: InspectorScore
   tap?.('master', master);
   function update(mix: Mix, isolated: AudioStem | null, track: TrackId | null, at?: number) {
     setGain(master.gain, mix.master.muted ? 0 : mix.master.level, at);
-    for (const id of stemsFor(score.volume)) {
+    for (const id of stemsFor(score.volume, score.arrangement)) {
       // Master audition is the official reference mix; stem audition preserves stored settings.
       const value = track === 'master' ? 1 : track ? (id === track && !mix[id].muted ? mix[id].level : 0)
         : ((isolated && id !== isolated) || mix[id].muted ? 0 : mix[id].level);
@@ -54,7 +57,7 @@ export function inspectorSource(context: BaseAudioContext, score: InspectorScore
       if (score.volume.music !== 'techno' || step * score.step > after)
         graph.schedule(() => synth.playStep(step, at, after));
     },
-    finishAt: (end: number) => { if (synth instanceof Synthesizer) synth.finishAt(end); },
+    finishAt: (end: number) => { if ('finishAt' in synth) synth.finishAt(end); },
     update,
     dispose: () => { synth.dispose(); graph.dispose(); },
   };

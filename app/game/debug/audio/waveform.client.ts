@@ -38,7 +38,7 @@ export function drawWaveform(canvas: HTMLCanvasElement, peaks: Peaks, width: num
 export function renderWaveforms(score: InspectorScore, signal: AbortSignal, progress: (fraction: number, preview?: Waveforms) => void) {
   return (async () => {
     signal.throwIfAborted();
-    const key = score.volume.id;
+    const key = score.key;
     const cached = cache.get(key);
     if (cached) { progress(1); return cached; }
     const bins = Math.ceil(score.length * peaksPerSecond);
@@ -62,6 +62,7 @@ export function renderWaveforms(score: InspectorScore, signal: AbortSignal, prog
       await new Promise(resolve => window.setTimeout(resolve, 0));
     }
     cache.set(key, result);
+    if (cache.size > 5) cache.delete(cache.keys().next().value!);
     return result;
   })();
 }

@@ -8,7 +8,7 @@ import type { InspectorScore } from './track-adapter';
 /** Unity stem audition through the original shared master processing. */
 export async function renderStem(score: InspectorScore, stem: AudioStem, signal?: AbortSignal,
   progress?: (fraction: number) => void) {
-  if (!stemsFor(score.volume).includes(stem)) throw new Error('Stem does not belong to this volume.');
+  if (!stemsFor(score.volume,score.arrangement).includes(stem)) throw new Error('Stem does not belong to this arrangement.');
   signal?.throwIfAborted();
   const rate = 44_100, frames = Math.ceil(score.length * rate);
   // Only the final stereo PCM is retained. Offline graphs are bounded and serialized with waveforms.
@@ -61,7 +61,7 @@ export async function exportStem(score: InspectorScore, stem: AudioStem, signal?
   progress?: (fraction: number) => void) {
   const { buffer, peak, trim } = await renderStem(score, stem, signal, progress);
   signal?.throwIfAborted();
-  const title = score.volume.music === 'starwake' ? 'STARWAKE' : score.volume.music === 'control' ? 'CONTROL'
+  const title = score.volume.music === 'starwake' ? (score.arrangement === 'm1' ? 'STARWAKE-M1' : 'STARWAKE') : score.volume.music === 'control' ? 'CONTROL'
     : score.volume.music === 'breakbeat' ? 'GLASSHOUSE' : 'ELSEWHERE';
   return { blob: encodeWav(buffer), duration: buffer.duration, peak, trim,
     filename: `${score.volume.id.toUpperCase()}-${title}-${stem.toUpperCase()}.wav` };

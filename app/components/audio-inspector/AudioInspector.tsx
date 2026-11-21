@@ -21,7 +21,9 @@ function Glyph({ name }: { name: 'play' | 'pause' | 'stop' | 'rewind' }) {
   </svg>;
 }
 
-export function AudioInspector({ score }: { score: InspectorScore }) {
+export function AudioInspector({ score, initialPosition = 0, onPosition }: {
+  score: InspectorScore; initialPosition?: number; onPosition?: (time:number) => void;
+}) {
   const [mix, setMix] = useState(defaultMix);
   const [solo, setSolo] = useState<AudioStem | null>(null);
   const [state, setState] = useState<PlaybackState>('Ready');
@@ -53,6 +55,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
 
   function show(time: number) {
     if (lastPosition.current === time) return;
+    onPosition?.(time);
     lastPosition.current = time;
     const label = timecode(time, true);
     if (timeOutput.current) timeOutput.current.textContent = label;
@@ -73,6 +76,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
       setAudition(track);
     });
     transport.current = player;
+    if (initialPosition > 0) player.seek(initialPosition);
     setReady(true);
     let raf = 0;
     const frame = () => {
