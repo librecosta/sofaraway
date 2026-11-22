@@ -1,72 +1,32 @@
 # ORBIT — STARWAKE
 
-## M1-F1 candidate audition
+## Final production soundtrack
 
-M1-F1 supersedes the rejected Melody First rewrite. It is **not production**.
-`/debug/audio/?vol=orbit` defaults to Original. Select **M1 — Original Lead /
-No Bass & Pluck**, or add `&arrangement=m1`. Switching arrangement retains the
-section position and pauses playback; press Play to compare.
+The approved M1-F1 from `984175b` is the sole production STARWAKE. Gameplay,
+Inspector, score events and `renderStarwake()` share `orbit-score.ts`. Bass and
+Pluck are absent; all original Lead, Pad and rhythm events plus the five approved
+quiet quotations are unchanged. Voices, effects and master gain (0.65) are frozen.
+Original event IDs remain in the score’s frozen identity table to preserve noise seeds. The
+unmodified pre-M1 composition is archived in `history/original-score.ts` for
+historical research only; nothing in production imports it. The rejected rewrite
+remains in Git history. There is no arrangement selector or candidate export API.
 
-`app/game/core/orbit-m1-score.ts` derives directly from `starwakeEvents`:
-remove Bass and Pluck, preserve every other event object, ID, attribute and
-relative order. All original Lead and Pad events, including ECLIPSE, remain
-intact. Five quiet theme quotations are the entire edit:
-
-| Time (seconds) | MIDI / note | Duration (seconds) | Velocity |
-| --- | --- | --- | --- |
-| 2.81250 | 69 / A4 | 0.56250 | 0.28 |
-| 4.21875 | 72 / C5 | 0.37500 | 0.29 |
-| 5.62500 | 77 / F5 | 1.03125 | 0.30 |
-| 18.75000 | 72 / C5 | 0.65625 | 0.38 |
-| 20.62500 | 69 / A4 | 0.703125 | 0.36 |
-
-These quote original theme pitches and durations, use independent IDs above the
-original range, and have no accent. No harmony or Pad events are added. The
-10.4–12.66-second gap retains the original Pad sustain and release. No other
-melody window is changed. The rejected phrase table and candidate-only Lead/Pad
-voice profile are removed: both arrangements use the exact original attack,
-release, Room, Delay and fixed 0.65 master, with no added root oscillator.
-
-```sh
-PLAYWRIGHT_CHANNEL=chrome node tools/music/orbit/export.mjs --m1 --verify
-```
-
-On PowerShell, set `$env:PLAYWRIGHT_CHANNEL='chrome'` first. The continuously
-rendered 184-second, 44.1 kHz, 16-bit stereo file is
-`scratch/orbit-m1/exports/ORBIT-M1-F1-ORIGINAL-LEAD.wav`. Repeat-render and decoded
-PCM measurements are in `starwake-validation.json` beside it (both ignored).
-Inspector Master, seven actual stems, waveforms and WAV exports share this score
-and the unchanged production voices. The default `renderStarwake()`, gameplay
-score, gate charts, cue beats, timing and records remain Original. The earlier
-M1 WAV is historical and is not used by the Inspector or the export command.
-
-Chrome 157 verification: -20.85 LUFS, -23.11 dBFS RMS, -4.09 dBFS sample peak,
-approximately -4.02 dBTP (4x estimate), no clipped or non-finite samples, and a
-zero final stereo sample. The same 0.65 master is 1.81 LU quieter than Original.
-Independent complete renders differ by 0.258 PCM codes RMS / 3 codes peak.
-
-## Approved original
-
-The selected **B — STARWAKE** audition is expanded into the authoritative
-**Melodic Cosmic Electronica** score: **128 BPM, 4/4, 96 bars / 384 beats**,
-a **180-second body** and **four-second release**. GRAVITY remains historical.
-
-The playable ORBIT course and Audio Inspector use this unchanged master.
-Volume sections derive from `starwakeTrack`; `orbit-chart.ts` selects its
-actual events for the aperture gates. The 384-beat reference, routes, Encore
-and `orbit-starwake-aperture-v1` records switch together. Historical
-`orbit-astral-playable-v1` scores remain preserved and separate.
+Run `PLAYWRIGHT_CHANNEL=chrome node tools/music/orbit/export.mjs --verify` to
+render `scratch/orbit-m0/exports/ORBIT-STARWAKE-FULL.wav` (184 seconds, 44.1 kHz,
+16-bit stereo PCM). The historical A/B auditions still use `--prototypes`.
+Tests freeze the approved final event checksum, all difficulty/route charts and
+`orbitCueBeats`. Branch, Encore, world timing and records remain unchanged.
 
 ## Full arrangement
 
 | Section | Bars, zero based | Seconds | Development |
 | --- | --- | --- | --- |
-| OUTER BELT | 0–8 | 0–15 | Exposed Fadd9 space; crystal notes, pulse and a partial theme enter separately. |
-| DRIFT | 8–24 | 15–45 | Four related phrases: invitation, answer, travelling melody and dominant question; bass and arpeggio layouts change. |
+| OUTER BELT | 0–8 | 0–15 | Exposed Fadd9 space; quiet theme quotations, pulse and a partial theme enter separately. |
+| DRIFT | 8–24 | 15–45 | Four related phrases: invitation, answer, travelling melody and dominant question; Pad supports the unchanged Lead. |
 | RINGBREAK | 24–40 | 45–75 | Original rising-fifth theme, its answer and a broader variant; inversions connect the harmony. |
-| MAELSTROM | 40–56 | 75–105 | Displaced kick responses, ghost snares, moving bass and borrowed E-flat / half-diminished harmony. |
-| ECLIPSE | 56–64 | 105–120 | Backbeat withdraws; sustained harmony, isolated melody and low pulses prepare A7. |
-| AURORA | 64–80 | 120–150 | Recognizable theme with longer articulations, rising answer, melodic summit and descending release; plucks leave more space. |
+| MAELSTROM | 40–56 | 75–105 | Displaced kick responses, ghost snares, drum movement and borrowed E-flat / half-diminished harmony. |
+| ECLIPSE | 56–64 | 105–120 | Backbeat withdraws; sustained harmony, isolated melody and sustained Pad prepare A7. |
+| AURORA | 64–80 | 120–150 | Recognizable theme with longer articulations, rising answer, melodic summit and descending release; the Lead remains exposed. |
 | APHELION | 80–96 | 150–180 | Eight driving bars, theme recollection, thinning drums and a final Fadd9 coda; room decays after the body. |
 
 The 24 authored four-bar phrases develop harmony, groove, bass, arpeggiation
@@ -124,27 +84,12 @@ step scheduling, checks stereo WAV decoding, source disposal and abort behavior,
 and rejects clipped/non-finite buffers. Core tests cover section boundaries,
 identity, fractional resume, theme preservation, phrase development and ending.
 
-The checked Chrome 157 master runs **184 seconds**, including its release.
-Independent BS.1770 integrated measurement (pyloudnorm) is **-19.04 LUFS**;
-full-file RMS is **-20.46 dBFS**, sample peak **-3.57 dBFS**, and estimated
-four-times polyphase true peak **-3.43 dBTP**. It is 0.23 LU above the selected
-B audition. The full PCM contains zero clipped/non-finite samples, with no
-sustained body silence; the final sample is zero. Independent full renders
-differ by **0.3605 PCM codes RMS / 10 codes peak**. The 5.75 dB ECLIPSE-to-AURORA
-contrast comes from the arrangement and individual articulations.
-
-| Section | RMS dBFS |
-| --- | ---: |
-| OUTER BELT | -24.21 |
-| DRIFT | -20.15 |
-| RINGBREAK | -19.81 |
-| MAELSTROM | -19.86 |
-| ECLIPSE | -24.92 |
-| AURORA | -19.16 |
-| APHELION | -20.39 |
-
-Exact measurements, the WAV hash and repeat-render results are retained locally
-in `starwake-validation.json` and `starwake-master-analysis.json` beside the WAV.
+The final Chrome 157 export is **184 seconds**, with **-20.85 LUFS**, **-23.11
+dBFS RMS**, **-4.09 dBFS sample peak** and approximately **-4.02 dBTP** (4x
+estimate). No clipped or non-finite samples occur; the tail reaches zero.
+Independent full renders differ by 0.261 PCM codes RMS / 2 codes peak. The full
+export is compared against the approved F1 WAV within Web Audio rounding error.
+Exact PCM and section measurements remain beside the ignored WAV.
 
 ## Historical auditions
 

@@ -16,10 +16,7 @@ export default function AudioInspectorPage() {
   const [hydrated, setHydrated] = useState(false);
   const requested = hydrated ? params.get('vol') : null;
   const volume = volumeById(requested ?? 'daybreak');
-  const arrangement = hydrated && volume.id === 'orbit' && params.get('arrangement') === 'm1' ? 'm1' : 'original';
-  const score = useMemo(() => inspectorScore(volume,arrangement), [volume,arrangement]);
-  const comparisonPosition = useRef(0);
-  const comparisonVolume = useRef(volume.id);
+  const score = useMemo(() => inspectorScore(volume), [volume]);
   const [exportStatus, setExportStatus] = useState('');
   const [exporting, setExporting] = useState(false);
   const lifetime = useRef<AbortController>(null);
@@ -45,16 +42,13 @@ export default function AudioInspectorPage() {
       const { exportSoundtrack } = await import('../game/debug/audio-export.client');
       const { inspectorOffline } = await import('../game/debug/audio/offline.client');
       signal.throwIfAborted();
-      const { blob, duration } = await inspectorOffline(signal, async () => arrangement === 'm1'
-        ? (await import('../game/audio/orbit-m1-export.client')).exportOrbitM1(signal)
-        : exportSoundtrack(volume, Number(params.get('secs')), signal));
+      const { blob, duration } = await inspectorOffline(signal, () => exportSoundtrack(volume, Number(params.get('secs')), signal));
       signal.throwIfAborted();
       if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
       const url = downloadUrl.current = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = arrangement === 'm1' ? 'ORBIT-M1-F1-ORIGINAL-LEAD.wav'
-        : volume.music === 'starwake' ? 'ORBIT-STARWAKE-FULL.wav'
+      link.download = volume.music === 'starwake' ? 'ORBIT-STARWAKE-FULL.wav'
         : volume.music === 'control' ? 'DESCENT-CONTROL.wav'
         : 'sofaraway-' + volume.id + '.wav';
       link.click();
@@ -73,8 +67,7 @@ export default function AudioInspectorPage() {
           <Link to="/debug/" className={s.back}>SoFarAway</Link>
           <span className={s.breadcrumb}> / Audio Inspector</span>
           <h1>{volume.music === 'starwake' ? volume.soundtrack!.title : volume.name}</h1>
-          {volume.id === 'orbit' && <p>STARWAKE · 96 bars · {arrangement === 'm1'
-            ? 'M1 Original Lead / No Bass & Pluck · Audition candidate; gameplay uses Original' : 'Original Melodic Cosmic Electronica'}</p>}
+          {volume.id === 'orbit' && <p>STARWAKE · 96 bars · Melodic Cosmic Electronica</p>}
         </div>
         <div className={s.metadata}>
           {volume.soundtrack && <span>{volume.soundtrack.title}</span>}
@@ -84,28 +77,16 @@ export default function AudioInspectorPage() {
               const next = new URLSearchParams(params);
               next.set('vol', event.currentTarget.value);
               next.delete('arrangement');
-              comparisonPosition.current = 0;
               setExportStatus('');
               changeParams(next, { preventScrollReset: true });
             }}>
               {VOLUMES.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
-          {volume.id === 'orbit' && <label className={s.volume}>Arrangement
-            <select aria-label="Arrangement" value={arrangement} disabled={!hydrated || exporting} onChange={event => {
-              const next = new URLSearchParams(params);
-              if (event.currentTarget.value === 'm1') next.set('arrangement','m1');
-              else next.delete('arrangement');
-              changeParams(next,{preventScrollReset:true});
-            }}>
-              <option value="original">Original</option><option value="m1">M1 — Original Lead / No Bass & Pluck</option>
-            </select>
-          </label>}
+
         </div>
       </header>
-      <AudioInspector key={score.key} score={score}
-        initialPosition={comparisonVolume.current === volume.id ? comparisonPosition.current : 0}
-        onPosition={time => { comparisonVolume.current=volume.id; comparisonPosition.current=time; }} />
+      <AudioInspector key={score.key} score={score} />
       <div className={s.export}>
         <button type="button" disabled={!hydrated || exporting} onClick={() => void download()}>Render to WAV</button>
         <span role="status" id="audio-status">{exportStatus}</span>

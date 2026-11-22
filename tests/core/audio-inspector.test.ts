@@ -4,7 +4,7 @@ import { defaultMix, inspectorScore, stemMetadata, stemsFor } from '../../app/ga
 
 describe('four-volume Inspector contract', () => {
   it('uses the authoritative duration, sections, tails and real voice identities', () => {
-    const counts = [7, 6, 8, 9];
+    const counts = [7, 6, 8, 7];
     for (const [index, volume] of VOLUMES.entries()) {
       const score = inspectorScore(volume), stems = stemsFor(volume), metadata = stemMetadata(volume);
       expect(stems).toHaveLength(counts[index]);

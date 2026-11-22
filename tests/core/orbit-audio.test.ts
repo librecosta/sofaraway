@@ -10,7 +10,7 @@ vi.mock('../../app/game/audio/orbit-voices.client', () => ({ OrbitVoices: class 
 beforeEach(() => vi.clearAllMocks());
 
 test('shared step scheduling retains fractional attacks and suppresses elapsed events on resume', () => {
-  const event = starwakeEvents.find(event => event.voice === 'bass' && event.beat * 4 % 1 !== 0)!;
+  const event = starwakeEvents.find(event => event.voice === 'hat' && event.beat * 4 % 1 !== 0)!;
   const index = Math.floor(event.beat * 4);
   const synth = new OrbitSynthesizer({} as BaseAudioContext, {} as AudioNode);
   const anchor = 4;

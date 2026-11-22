@@ -165,7 +165,7 @@ export async function inspectVolumeStems(id: string) {
     return { stem, peak, rms: Math.sqrt(power / (routed.length * 2)), silence: silence / (routed.length * 2) };
   });
   const auditionTargets: AudioStem[] = id === 'elsewhere' ? ['kick','bass','arp'] : id === 'daybreak' ? ['kick','keys','lead']
-    : id === 'descent' ? ['signal','chord','metal'] : ['bass','pluck','lead'];
+    : id === 'descent' ? ['signal','chord','metal'] : ['kick','pad','lead'];
   const isolated = [];
   for (const stem of auditionTargets) {
     const a = await render(defaultMix(), null, stem, false, false, 8);

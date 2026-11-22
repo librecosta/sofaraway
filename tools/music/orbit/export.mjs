@@ -9,18 +9,15 @@ import { duration, tail, versions } from './score.mjs';
 import { starwakeTrack } from '../../../app/game/core/orbit-score.ts';
 import { inspectWav } from './verify.mjs';
 
-const { values } = parseArgs({ options: { verify: { type: 'boolean' }, prototypes: { type: 'boolean' }, m1: { type: 'boolean' } } });
-assert.ok(!(values.m1 && values.prototypes), 'Select one audition collection.');
-const tracks = values.m1 ? { 'starwake-m1':'ORBIT-M1-F1-ORIGINAL-LEAD' }
-  : values.prototypes ? versions : { [starwakeTrack.id]: 'ORBIT-STARWAKE-FULL' };
+const { values } = parseArgs({ options: { verify: { type: 'boolean' }, prototypes: { type: 'boolean' } } });
+const tracks = values.prototypes ? versions : { [starwakeTrack.id]: 'ORBIT-STARWAKE-FULL' };
 const seconds = values.prototypes ? duration + tail : starwakeTrack.duration + starwakeTrack.tail;
 const root = new URL('../../../', import.meta.url);
-const output = new URL(values.m1 ? 'scratch/orbit-m1/exports/' : 'scratch/orbit-m0/exports/', root);
+const output = new URL('scratch/orbit-m0/exports/', root);
 const paths = ['tools/music/orbit/score.mjs', 'tools/music/orbit/voices.mjs', 'tools/music/orbit/render.mjs',
   'tools/music/daybreak/voices.mjs', 'app/game/audio/daybreak-voices.client.ts',
   'app/game/core/orbit-score.ts', 'app/game/audio/orbit-voices.client.ts',
-  'app/game/audio/orbit.client.ts', 'app/game/audio/orbit-export.client.ts',
-  'app/game/core/orbit-m1-score.ts', 'app/game/audio/orbit-m1.client.ts', 'app/game/audio/orbit-m1-export.client.ts'];
+  'app/game/audio/orbit.client.ts', 'app/game/audio/orbit-export.client.ts'];
 const sources = new Map(await Promise.all(paths.map(async path => {
   const source = await readFile(new URL(path, root), 'utf8');
   const code = path.endsWith('.ts') ? (await transformWithOxc(source, path, { lang: 'ts' })).code : source;
@@ -49,9 +46,7 @@ try {
     const [download, metrics] = await Promise.all([
       page.waitForEvent('download', { timeout: 1800000 }),
       page.evaluate(async ({ version, filename, verify }) => {
-        const render = version === 'starwake-m1'
-          ? async () => (await import('/app/game/audio/orbit-m1-export.client')).exportOrbitM1()
-          : version === 'starwake'
+        const render = version === 'starwake'
           ? async () => {
             const { renderStarwake, encodeStarwakeWav } = await import('/app/game/audio/orbit-export.client');
             return encodeStarwakeWav(await renderStarwake());

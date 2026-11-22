@@ -19,7 +19,7 @@ test('event identity, fractional onsets and section metadata survive regeneratio
   expect(makeStarwakeScore()).toEqual(starwakeEvents);
   expect(new Set(starwakeEvents.map(event => event.identity)).size).toBe(starwakeEvents.length);
   expect(starwakeSteps).toHaveLength(96 * 16);
-  expect(starwakeSteps.flat().sort((a, b) => a - b)).toEqual(starwakeEvents.map(event => event.id));
+  expect(starwakeSteps.flat().sort((a, b) => a - b)).toEqual(starwakeEvents.map((_, index) => index));
   for (const [i, event] of starwakeEvents.entries()) {
     expect(event.at).toBeCloseTo(event.beat * beatSeconds, 10);
     expect(event.at).toBeGreaterThanOrEqual(starwakeEvents[i - 1]?.at ?? 0);
@@ -38,7 +38,7 @@ test('event identity, fractional onsets and section metadata survive regeneratio
   }
   expect(starwakeEvents.some(event => event.at / step % 1 !== 0)).toBe(true);
   expect(new Set(starwakeEvents.map(event => event.voice))).toEqual(new Set(
-    ['kick', 'snare', 'hat', 'perc', 'bass', 'pad', 'pluck', 'lead', 'sweep']));
+    ['kick', 'snare', 'hat', 'perc', 'pad', 'lead', 'sweep']));
   expect(starwakeEvents.some(event => event.fill && event.transition)).toBe(true);
 });
 
@@ -51,13 +51,13 @@ test('the approved rising-fifth theme returns intact with longer AURORA articula
   }
 });
 
-test('four-bar phrases develop harmony, bass and drums rather than duplicating the audition', () => {
+test('four-bar phrases develop harmony, melody and drums rather than duplicating the audition', () => {
   expect(starwakePhrases).toHaveLength(24);
   expect(starwakePhrases.every(([harmony]) => harmony.split(' ').length === 4)).toBe(true);
   const signature = (start: number, voices: string[]) => JSON.stringify(between(start, start + 4)
     .filter(event => voices.includes(event.voice)).map(({ voice, beat, velocity }) => [voice, beat - start * 4, velocity]));
   for (const [from, to] of [[8, 24], [24, 40], [40, 56], [64, 80]]) {
-    const phrases = Array.from({ length: (to - from) / 4 }, (_, i) => signature(from + i * 4, ['kick', 'snare', 'hat', 'bass']));
+    const phrases = Array.from({ length: (to - from) / 4 }, (_, i) => signature(from + i * 4, ['kick', 'snare', 'hat']));
     expect(new Set(phrases).size).toBe(phrases.length);
   }
   expect(signature(0, ['kick', 'snare', 'lead'])).not.toEqual(signature(48, ['kick', 'snare', 'lead']));

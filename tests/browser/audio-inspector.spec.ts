@@ -290,7 +290,7 @@ test('responsive layouts, high-DPI canvas, direct refresh and four multitrack vo
   await expect(page.getByText('128 BPM', { exact: true })).toBeVisible();
   await expect(page.getByText('384 beats', { exact: true })).toBeVisible();
   await expect(page.getByText('Waveforms ready')).toBeVisible({timeout:300_000});
-  await expect(page.getByRole('img',{name:/waveform/})).toHaveCount(10);
+  await expect(page.getByRole('img',{name:/waveform/})).toHaveCount(8);
   await page.screenshot({path:info.outputPath('orbit-stems-960.png')});
   await expect(canvas).toHaveCount(1);
   await page.getByRole('button', { name: 'Play all' }).click();
@@ -300,7 +300,7 @@ test('responsive layouts, high-DPI canvas, direct refresh and four multitrack vo
 });
 
 
-for (const [volume, count] of [['elsewhere',7],['daybreak',6],['descent',8],['orbit',9]] as const) {
+for (const [volume, count] of [['elsewhere',7],['daybreak',6],['descent',8],['orbit',7]] as const) {
   test(`${volume} real stems preserve the master, isolate effects and respond to mute and gain`, async ({ page }, info) => {
     test.setTimeout(240_000);
     await page.goto('http://127.0.0.1:8090/?audio-inspector');
