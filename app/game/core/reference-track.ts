@@ -20,8 +20,9 @@ export class ReferenceTrack {
   constructor(volume: VolumeDefinition, readonly scale = 1) {
     const secondsPerBeat = 60 / volume.bpm;
     this.duration = volume.beats * secondsPerBeat;
-    const normal = chartFor(volume, 'normal');
-    const branch = gameplayFor(volume.id).branch;
+    const gameplay = gameplayFor(volume.id);
+    const normal = gameplay.referenceChart?.() ?? chartFor(volume, 'normal');
+    const branch = gameplay.branch;
     const inJunction = (beat: number) => branch && beat >= branch.split && beat < branch.rejoin;
     const gates = branch ? [...normal.filter(gate => !inJunction(gate.beat)),
       ...branch.charts(normal.filter(gate => inJunction(gate.beat))).main].sort((a, b) => a.beat - b.beat)

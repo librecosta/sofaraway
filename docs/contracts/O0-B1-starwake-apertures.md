@@ -27,8 +27,22 @@ circumscribed circle facets differ by less than 0.0014 world units.
 [`orbit-chart.ts`](../../app/game/core/orbit-chart.ts) selects actual Kick,
 Snare, Percussion and accented Lead events. The opening and ECLIPSE stay sparse;
 MAELSTROM and AURORA develop denser multi-aperture motion. Impossible retains
-every Hard anchor and adds central resets. These avoid stranding an outer-hole
-choice before the following anchor.
+every Hard anchor, central resets and authored multi-hole phrase responses.
+The C4-A density pass preserves all 2ec9709 gate beats and openings and supplements
+Normal/Hard from 81 to 92 gates (+13.58%), Impossible from 114 to 135 (+18.42%).
+Easy stays at 55. Section counts in score order are:
+
+| Difficulty | OUTER | DRIFT | RINGBREAK | MAELSTROM | ECLIPSE | AURORA | APHELION |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Easy | 2 | 11 | 7 | 13 | 2 | 13 | 7 |
+| Normal / Hard | 3 | 19 | 12 | 22 | 2 | 22 | 12 |
+| Impossible | 3 | 33 | 19 | 29 | 2 | 30 | 19 |
+
+The original 81-gate skeleton remains the motion reference, so added crossings
+do not accelerate cruise or relocate existing gates, branch bounds, setpieces
+or Encore. New rows use existing openings and actual STARWAKE accent beats.
+Fixed-step checks include continuous keyboard pursuit and every incoming
+aperture with 150 ms reaction at maximum Boost.
 
 RINGBREAK uses preview 108, choice 120, route entry 128, merge 148 and rejoin
 156. Ordinary gates are absent from 108–128 and 147–158. Bonus cargo is at 145.
@@ -42,8 +56,9 @@ Sightseeing retains its shared sparse chart and has no reward gates. Impossible
 uses its 1.15× reference for gates, paths, belts, branch clearance and bounds.
 Results use the shared transition; audio continues its four-second release.
 
-New records use `orbit-starwake-aperture-v1`. Both historical `orbit` and
-`orbit-astral-playable-v1` data remain readable and are never overwritten.
+Density-rebalanced runs use `orbit-starwake-density-v2`. Historical `orbit`,
+`orbit-astral-playable-v1` and `orbit-starwake-aperture-v1` Standard, Impossible
+and Sightseeing data remain readable and are never overwritten.
 
 ## Verification surfaces
 

@@ -101,7 +101,7 @@ test('the public ORBIT run recovers WebGL, judges a Hard collision and retries o
   await expect(page.locator('#over')).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#over-title')).toHaveText('TERMINATED', { timeout: 15_000 });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard.orbit.normal.best)).toBe(91);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard['orbit-starwake-aperture-v1'].hard.last.outcome)).toBe('TERMINATED');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard['orbit-starwake-density-v2'].hard.last.outcome)).toBe('TERMINATED');
   await page.locator('[data-act=restart]').click();
   await expect(page.locator('#hud-lives i')).toHaveCount(1);
   await page.keyboard.press('Escape');
@@ -361,4 +361,58 @@ test('@perf ORBIT aperture gates share cached geometry and one glass program in 
     samples.push({ quality, ...sample });
   }
   await run.attach('Aperture GPU and CPU frame measurements', { body: JSON.stringify(samples, null, 2), contentType: 'application/json' });
+});
+
+// Use ORBIT_PERF_HARNESS for a separately built reference worktree on the same device.
+test('@perf ORBIT dense chart windows keep bounded glass resources at every quality', async ({ page }, run) => {
+  test.setTimeout(240_000);
+  const samples = [];
+  await page.goto(process.env.ORBIT_PERF_HARNESS ?? 'http://127.0.0.1:8090/');
+  for (const quality of ['low', 'auto', 'high'] as const) for (const difficulty of ['hard', 'impossible'] as const)
+    for (const beat of [104, 192, 240, 272]) {
+      await page.evaluate(async options => {
+        await window.b0Harness.mount({ volumeId: 'orbit', runSeed: 0, ...options, diagnostics: {
+          fixedTime: null, autoplay: false, align: true, god: false, boost: false,
+          mobileQuality: false, post: true, record: false, debug: true,
+        } });
+        await window.b0Harness.start(true);
+        window.b0Harness.advanceAndPause(options.beat);
+        await window.b0Harness.resume(true);
+      }, { quality, difficulty, beat });
+      await page.keyboard.down('Shift');
+      const sample = await page.evaluate(async () => {
+        const intervals: number[] = [];
+        const begin = performance.now();
+        let last = await new Promise<number>(requestAnimationFrame);
+        while (last - begin < 1800) {
+          const now = await new Promise<number>(requestAnimationFrame);
+          if (now - begin > 500) intervals.push(now - last);
+          last = now;
+        }
+        intervals.sort((a, b) => a - b);
+        const metrics = window.b0Harness.branchState().metrics;
+        const gl = document.querySelector('canvas')!.getContext('webgl2')!;
+        const debug = gl.getExtension('WEBGL_debug_renderer_info');
+        return { metrics, p95: intervals[Math.floor((intervals.length - 1) * .95)], frames: intervals.length,
+          renderer: gl.getParameter(debug?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER),
+          gpuTimerAvailable: !!gl.getExtension('EXT_disjoint_timer_query_webgl2'), glError: gl.getError(),
+          snapshot: window.b0Harness.snapshot() };
+      });
+      await page.keyboard.up('Shift');
+      expect(sample.glError).toBe(0);
+      expect(sample.snapshot.phase).toBe('playing');
+      expect(sample.metrics.gateGeometryCache).toBeLessThanOrEqual(24);
+      expect(sample.metrics.programs).toBeGreaterThan(0);
+      expect(sample.frames).toBeGreaterThan(0);
+      if (quality === 'auto' && difficulty === 'hard') {
+        for (let frame = 0; frame < 3; frame++) {
+          await page.locator('canvas').screenshot({ path: run.outputPath(`density-${beat}-${frame}.png`) });
+          await page.waitForTimeout(160);
+        }
+      }
+      samples.push({ quality, difficulty, beat, ...sample });
+      await page.evaluate(() => window.b0Harness.dispose());
+      await expect(page.locator('canvas')).toHaveCount(0);
+    }
+  await run.attach('ORBIT gate density performance', { body: JSON.stringify(samples, null, 2), contentType: 'application/json' });
 });

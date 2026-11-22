@@ -13,13 +13,14 @@ const approachRecordId = 'descent-junction-approach';
 const encoreRecordId = 'descent-encore';
 const astralRecordId = 'orbit-astral-playable-v1';
 const starwakeRecordId = 'orbit-starwake-aperture-v1';
+const densityRecordId = 'orbit-starwake-density-v2';
 const timedImpossibleIds = { daybreak: 'daybreak-impossible-timing', descent: 'descent-impossible-timing' } as const;
 type RecordId = VolumeId | typeof daybreakRecordIds[number] | typeof controlRecordId | typeof laserRecordId
-  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId | typeof encoreRecordId | typeof astralRecordId | typeof starwakeRecordId
+  | typeof choreographyRecordId | typeof spiralRecordId | typeof approachRecordId | typeof encoreRecordId | typeof astralRecordId | typeof starwakeRecordId | typeof densityRecordId
   | typeof timedImpossibleIds[keyof typeof timedImpossibleIds];
 
 function recordId(volume: VolumeId, difficulty?: Difficulty): RecordId {
-  if (volume === 'orbit') return starwakeRecordId;
+  if (volume === 'orbit') return densityRecordId;
   if (volume === 'descent' && difficulty !== undefined) return encoreRecordId;
   if (difficulty === 'impossible' && volume === 'daybreak') return timedImpossibleIds.daybreak;
   return volume === 'daybreak' ? 'daybreak-choreography' : volume === 'descent' ? approachRecordId : volume;
@@ -60,6 +61,7 @@ export function parseRecords(raw: string | null): RecordsV1 {
     ...VOLUMES.map(({ id }) => ({ id, volume: id })),
     { id: astralRecordId, volume: 'orbit' },
     { id: starwakeRecordId, volume: 'orbit' },
+    { id: densityRecordId, volume: 'orbit' },
     ...daybreakRecordIds.map(id => ({ id, volume: 'daybreak' as const })),
     { id: controlRecordId, volume: 'descent' },
     { id: laserRecordId, volume: 'descent' },
@@ -73,7 +75,7 @@ export function parseRecords(raw: string | null): RecordsV1 {
   for (const { id, volume } of ids) {
     const entries = object(standard[id]);
     const priorImpossible = id === timedImpossibleIds.daybreak || id === timedImpossibleIds.descent;
-    const supported = id === recordId(volume) || id === encoreRecordId || id === astralRecordId ? difficultiesFor(volume)
+    const supported = id === recordId(volume) || id === encoreRecordId || id === astralRecordId || id === starwakeRecordId ? difficultiesFor(volume)
       : priorImpossible ? ['impossible'] as const : difficulties;
     for (const difficulty of supported) {
       const entry = object(entries[difficulty]);

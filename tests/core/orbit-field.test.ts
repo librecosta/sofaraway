@@ -112,12 +112,15 @@ test('saving a playable volume retains retired ORBIT Standard and Sightseeing re
   const standard = { normal: { best: 30, last: { score: 25, outcome: 'ESCAPED' } } };
   const sightseeing = { last: { score: 11, outcome: 'ESCAPED' } };
   const playable = { ...standard, impossible: { best: 900, last: { score: 900, outcome: 'ESCAPED' } } };
-  const records = parseRecords(JSON.stringify({ version: 1, standard: { orbit: standard, 'orbit-astral-playable-v1': playable },
-    sightseeing: { orbit: sightseeing, 'orbit-astral-playable-v1': sightseeing } }));
+  const records = parseRecords(JSON.stringify({ version: 1, standard: { orbit: standard, 'orbit-astral-playable-v1': playable, 'orbit-starwake-aperture-v1': playable },
+    sightseeing: { orbit: sightseeing, 'orbit-astral-playable-v1': sightseeing, 'orbit-starwake-aperture-v1': sightseeing } }));
   expect(recordFor(records, 'orbit', 'normal', 'standard')).toEqual({ best: null, last: null });
   recordRun(records, 'orbit', 'impossible', 'standard', { score: 80, encoreBonus: 20, outcome: 'ESCAPED' });
   recordRun(records, 'orbit', 'normal', 'sightseeing', { score: 120, outcome: 'ESCAPED' });
   const saved = parseRecords(JSON.stringify(records));
+  expect(saved.standard['orbit-starwake-aperture-v1']).toEqual(playable);
+  expect(saved.sightseeing['orbit-starwake-aperture-v1']).toEqual(sightseeing);
+  expect(saved.standard['orbit-starwake-density-v2']?.impossible?.best).toBe(100);
   expect(saved.standard.orbit).toEqual(standard);
   expect(saved.standard['orbit-astral-playable-v1']).toEqual(playable);
   expect(saved.sightseeing['orbit-astral-playable-v1']).toEqual(sightseeing);

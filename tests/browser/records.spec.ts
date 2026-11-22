@@ -25,7 +25,9 @@ test('local records follow the selected volume, difficulty and mode at narrow si
       'orbit-astral-playable-v1': { impossible: { best: 355000,
         last: { score: 345000, outcome: 'ESCAPED', encoreBonus: 9000 } } },
       'orbit-starwake-aperture-v1': { impossible: { best: 455000,
-        last: { score: 445000, outcome: 'ESCAPED', encoreBonus: 9000 } } } },
+        last: { score: 445000, outcome: 'ESCAPED', encoreBonus: 9000 } } },
+      'orbit-starwake-density-v2': { impossible: { best: 555000,
+        last: { score: 545000, outcome: 'ESCAPED', encoreBonus: 9000 } } } },
       sightseeing: { elsewhere: { last: { score: 930, outcome: 'ESCAPED' } } } }));
   }, key);
   await page.setViewportSize({ width: 320, height: 568 });
@@ -84,14 +86,15 @@ test('local records follow the selected volume, difficulty and mode at narrow si
   await page.getByRole('button', { name: 'next volume' }).click();
   await expect(page.locator('#vol-name')).toContainText('ORBIT');
   await expect(page.locator('#diff [data-choice]')).toHaveCount(4);
-  await expect(record).toContainText(/BEST SCORE\s*455,000/);
-  await expect(record).toContainText(/LAST RUN\s*454,000/);
+  await expect(record).toContainText(/BEST SCORE\s*555,000/);
+  await expect(record).toContainText(/LAST RUN\s*554,000/);
   await previous.click();
   await previous.click();
   await expect(difficulty).toHaveText('NORMAL');
   await expect(record).toContainText(/BEST SCORE\s*—/);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard.orbit.normal.best, key)).toBe(654000);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard['orbit-astral-playable-v1'].impossible.best, key)).toBe(355000);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard['orbit-starwake-aperture-v1'].impossible.best, key)).toBe(455000);
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard['descent-laser-security'].normal.best, key)).toBe(76834);
   for (const volume of ['daybreak', 'descent']) {
     await page.goto(`/?vol=${volume}&diff=impossible&t=2&dbg=1&q=low`);
