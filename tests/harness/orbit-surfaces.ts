@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import type { OrbitSetpiece } from '../../app/game/core/orbit-setpieces';
+import type { OrbitRocks } from '../../app/game/graphics/orbit-rocks.client';
 import type { QualityTier } from '../../app/game/contracts';
 import { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
@@ -7,40 +9,69 @@ import { idleInput } from '../../app/game/core/input';
 import { Graphics } from '../../app/game/graphics/scene.client';
 import { nebulaIntegration } from '../../app/game/graphics/orbit-cosmic-shaders';
 
-export async function inspectOrbitSurfaces(quality:QualityTier,view:'flight'|'front'|'oblique'|'side'|'back'|'backlit'|'strong'='flight',neutral=false) {
-  const canvas=document.createElement('canvas');document.body.append(canvas);
-  const graphics=new Graphics(canvas,quality,false,{fixedTime:null,autoplay:false,align:true,god:false,boost:false,
+export async function inspectOrbitSurfaces(quality: QualityTier) {
+  const canvas = document.createElement('canvas');
+  document.body.append(canvas);
+  const graphics = new Graphics(canvas, quality, false, {fixedTime:null,autoplay:false,align:true,god:false,boost:false,
     mobileQuality:false,post:false,record:false,debug:true});
-  const sim=new Simulation(volumeById('orbit'),{align:true,branchSide:'center'});sim.start('normal',0);
-  graphics.resize(960,540,1);const buildAt=performance.now();graphics.load(sim.volume,sim.path,'standard');const buildMs=performance.now()-buildAt;
-  const frames=[];
-  const clay=neutral?new THREE.MeshStandardMaterial({color:0x77736d,roughness:.87,metalness:0}):null;
+  const sim = new Simulation(volumeById('orbit'), {align:true,branchSide:'center'});
+  sim.start('normal', 0);
+  graphics.resize(960, 540, 1);
+  graphics.load(sim.volume, sim.path, 'standard');
+  const frames = [];
   try {
-    for(const [family,beat]of [[0,8],[3,8],[1,42],[2,42],[4,42]]) {
-      while(sim.trackDistance<sim.reference.station(beat,'standard'))sim.step(STEP,idleInput);
-      graphics.draw(sim,true);
-      const volume=Reflect.get(graphics,'volume'),pieces=Reflect.get(volume.orbit,'setpieces');
-      const heroes=[...Reflect.get(pieces,'active').values()].flatMap((p:any)=>p.heroes);
-      const hero=heroes.find(h=>h.body.shape===family&&!h.body.id.includes('plate'));
-      const center=hero.mesh.position.clone(),frame=sim.path.sample(sim.trackDistance);
-      graphics.camera!.position.copy(center).addScaledVector(frame.f,-hero.body.radius*1.7).addScaledVector(frame.r,-hero.body.radius*.10);
-      if(view!=='flight') {
-        const offset=new THREE.Vector3(view==='side'?1.5:view==='oblique'?1.05:view==='backlit'?-1.2:.12,.15,view==='back'?-1.5:view==='side'?.05:view==='backlit'?-.9:1.25)
-          .applyQuaternion(hero.mesh.quaternion).multiplyScalar(hero.body.radius);
-        graphics.camera!.position.copy(center).add(offset);
+    for (const [id, beat] of [['monolith',8],['fractures',42],['ring',140]] as const) {
+      while (sim.trackDistance < sim.reference.station(beat, 'standard')) sim.step(STEP, idleInput);
+      graphics.draw(sim, true);
+      const volume = Reflect.get(graphics, 'volume'), pieces = Reflect.get(volume.orbit, 'setpieces');
+      const description: OrbitSetpiece = pieces.descriptions.find((p: OrbitSetpiece) => p.id === id);
+      const active = Reflect.get(pieces, 'active').get(id);
+      for (const [index, boulder] of description.rocks.entries()) {
+        if (!boulder.structure.endsWith('-boulder')) continue;
+        const lod: number = active.levels[index];
+        const source: THREE.InstancedMesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> = active.batches.get(boulder.shape * 3 + lod);
+        const rocks: OrbitRocks = Reflect.get(pieces, 'rocks');
+        const companion = description.rocks.find(rock => rock.radius < 6 && rock.shape === boulder.shape)!;
+        const scene = new THREE.Scene();
+        volume.orbit.group.traverse((object: THREE.Object3D) => {
+          if (object instanceof THREE.Light) {
+            const light = object.clone();
+            object.getWorldPosition(light.position);
+            scene.add(light);
+          }
+        });
+        const specimens = new THREE.InstancedMesh(source.geometry, source.material, 2);
+        const camera = new THREE.PerspectiveCamera(43, 960 / 540, .1, 680);
+        const orientation = new THREE.Quaternion().setFromEuler(new THREE.Euler(...boulder.rotation));
+        const transform = new THREE.Matrix4();
+        const tint = rocks.colors[boulder.material];
+        // Match projected size and angle. Both instances use the production
+        // batch's exact geometry, PBR material and tint under the same lights.
+        for (const [slot, rock] of [companion, boulder].entries()) {
+          const direction = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), slot === 0 ? .30 : -.30);
+          const center = new THREE.Vector3(0, 0, -rock.radius * 3.25).applyQuaternion(direction);
+          transform.compose(center, direction.multiply(orientation), new THREE.Vector3().fromArray(rock.scale));
+          specimens.setMatrixAt(slot, transform);
+          specimens.setColorAt(slot, tint);
+        }
+        scene.add(specimens);
+        try {
+          graphics.renderer.render(scene, camera);
+          const pixels = new Uint8Array(960 * 540 * 4);
+          graphics.gl.readPixels(0, 0, 960, 540, graphics.gl.RGBA, graphics.gl.UNSIGNED_BYTE, pixels);
+          const visiblePixels = [0, 0];
+          for (let i = 0; i < pixels.length; i += 4) {
+            if (Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) > 24) visiblePixels[Number(i / 4 % 960 >= 480)]++;
+          }
+          frames.push({id:boulder.id,visiblePixels,lod,scale:boulder.scale,png:canvas.toDataURL(),shape:boulder.shape,
+            triangles:source.geometry.getAttribute('position').count / 3,
+            sharesPrototype:source.geometry === rocks.geometry(boulder.shape,lod),
+            sharesMaterial:[...active.batches.values()].every((batch: THREE.InstancedMesh) => batch.material === source.material)});
+        } finally { specimens.dispose(); }
       }
-      graphics.camera!.lookAt(center);graphics.camera!.updateMatrixWorld();
-      const light=view==='strong'?new THREE.DirectionalLight(0xfff1da,2):null;
-      if(light){light.position.copy(graphics.camera!.position).addScaledVector(frame.u,hero.body.radius);light.target.position.copy(center);volume.scene.add(light,light.target);}
-      const material=hero.mesh.material;if(clay)hero.mesh.material=clay;
-      graphics.renderer.render(volume.scene,graphics.camera!);
-      hero.mesh.material=material;
-      frames.push({family,id:hero.body.id,lod:hero.lod,scale:hero.body.scale,view,neutral,vertices:hero.mesh.geometry.getAttribute('position').count,triangles:hero.mesh.geometry.index.count/3,png:canvas.toDataURL(),metrics:graphics.metrics()});
-      if(light){light.removeFromParent();light.target.removeFromParent();light.dispose();}
-      await new Promise<void>(r=>requestAnimationFrame(()=>r()));
     }
-    return {frames,buildMs,glError:graphics.gl.getError(),badPrograms:graphics.renderer.info.programs?.filter(p=>Reflect.get(p,'diagnostics')?.runnable===false).length??0};
-  } finally{clay?.dispose();graphics.dispose();canvas.remove();}
+    return {frames,glError:graphics.gl.getError(),badPrograms:graphics.renderer.info.programs?.filter(p=>Reflect.get(p,'diagnostics')?.runnable===false).length??0};
+  } finally {graphics.dispose();canvas.remove();}
 }
 
 /** Close views of real supporting instances, not a separate debug material. */

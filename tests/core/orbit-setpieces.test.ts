@@ -8,20 +8,7 @@ import { buildRunPath } from '../../app/game/graphics/path';
 import { BranchPath } from '../../app/game/graphics/branch-path';
 import { orbitJunction } from '../../app/game/core/orbit-routes';
 import { orbitClearance } from '../../app/game/graphics/orbit-world.client';
-import { heroFamilies } from '../../app/game/graphics/orbit-geology';
 import { ringDensity, ringFragments } from '../../app/game/core/orbit-ring';
-import { orbitHeroGeometry } from '../../app/game/graphics/orbit-setpieces.client';
-
-test.each([0,1,2,3,4])('hero family %i LODs fit the declared unit-sphere bounds with finite surface normals',shape=>{
-  for(let lod=0;lod<3;lod++) {
-    const geometry=orbitHeroGeometry(shape,lod),p=geometry.getAttribute('position'),n=geometry.getAttribute('normal');
-    for(let i=0;i<p.count;i++) {
-      expect(Math.hypot(p.getX(i),p.getY(i),p.getZ(i))).toBeLessThanOrEqual(1.000001);
-      expect(Math.hypot(n.getX(i),n.getY(i),n.getZ(i))).toBeCloseTo(1,5);
-    }
-    geometry.dispose();
-  }
-});
 
 test('large bodies use their actual radius beyond the ordinary rock cell index', () => {
   const clearance=new OrbitClearance(2000,s=>[0,0,-s]);
@@ -47,8 +34,18 @@ for(const mode of ['standard','sightseeing'] as const) for(const difficulty of [
         expect(Math.abs(value-last)).toBeLessThan(.02);last=value;
       }
     }
-    expect(a[0].bodies.some(b=>b.id.includes(':plate:'))).toBe(true);
-    expect(a[2].bodies.some(b=>b.id.includes(':slab:'))).toBe(true);
+    for (const [index, structure, count] of [[0, 'landmark-boulder', 1], [1, 'landmark-boulder', 2], [2, 'ring-boulder', 3]] as const) {
+      const boulders = a[index].rocks.filter(rock => rock.structure === structure);
+      expect(a[index].bodies).toHaveLength(0);
+      expect(boulders).toHaveLength(count);
+      for (const rock of boulders) {
+        expect(rock.shape).toBeGreaterThanOrEqual(0);
+        expect(rock.shape).toBeLessThan(4);
+        expect(rock.radius).toBe(Math.max(...rock.scale));
+        expect(Math.min(...rock.scale) / rock.radius).toBeGreaterThan(.83);
+        expect(rock.rank).toBe(0);
+      }
+    }
     expect(a[5].nebula.map(n=>n.role)).toEqual(['arc','cliff','pillars','tendrils','filaments','nursery']);
     expect(a.find(p=>p.id==='ring')!.rocks.length).toBeGreaterThan(1200);
     expect(a.find(p=>p.id==='spiral')!.rocks.length).toBeGreaterThan(1500);
@@ -56,21 +53,6 @@ for(const mode of ['standard','sightseeing'] as const) for(const difficulty of [
     expect(makeOrbitSetpieces(path,mode,1,clearance)[2].rocks).not.toEqual(a[2].rocks);
   },20000);
 }
-
-test('hero LODs preserve broad silhouettes and each geology family is distinct',()=>{
-  const signatures=[];
-  for(let shape=0;shape<heroFamilies.length;shape++) {
-    const extents=[];
-    for(let lod=0;lod<3;lod++) {
-      const geometry=orbitHeroGeometry(shape,lod);geometry.computeBoundingBox();
-      const box=geometry.boundingBox!;
-      extents.push([...box.min.toArray(),...box.max.toArray()]);geometry.dispose();
-    }
-    for(const extent of extents.slice(1))for(let i=0;i<6;i++)expect(Math.abs(extent[i]-extents[0][i])).toBeLessThan(.06);
-    signatures.push(extents[0]);
-  }
-  expect(new Set(signatures.map(s=>s.map(n=>n.toFixed(2)).join(','))).size).toBe(5);
-});
 
 test('ring density has tapered torn edges, displaced ringlets and deterministic fracture fans',()=>{
   for(let layer=0;layer<5;layer++)for(let a=0;a<Math.PI*2;a+=.01)

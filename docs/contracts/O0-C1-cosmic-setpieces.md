@@ -1,5 +1,7 @@
 # ORBIT — seven cosmic setpieces
 
+**O0-E2-F1 update.** Outer Belt and Drift landmarks and the larger Ringbreak fragments are ordinary asteroid instances, using the same four deterministic icosahedral prototypes and surface material as nearby debris. The larger scales are bounded by the existing route clearance and retain geometry within a quality tier. This replaces the bespoke hero families, attached plates and giant ring slabs described in the historical notes below. Chapter stations and the ring arcs remain authoritative.
+
 The frozen STARWAKE score, aperture course, route selection, records and ending
 rules remain unchanged. This extends the B2 world and stable camera policy.
 

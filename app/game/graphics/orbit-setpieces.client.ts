@@ -1,10 +1,8 @@
 import { rockDetail } from './orbit-rock-detail';
-import { orbitHeroGeometry, heroFamilies } from './orbit-geology';
-export { orbitHeroGeometry } from './orbit-geology';
 import * as THREE from 'three';
 import type { QualityTier } from '../contracts';
 import { cosmicPresence } from '../core/orbit-setpieces';
-import type { CosmicBody, OrbitSetpiece } from '../core/orbit-setpieces';
+import type { OrbitSetpiece } from '../core/orbit-setpieces';
 import { astralProjection, cosmicNoise, nebulaFragment } from './orbit-cosmic-shaders';
 import type { OrbitRocks } from './orbit-rocks.client';
 import { OrbitSurfaceLights } from './orbit-light-rig';
@@ -84,15 +82,14 @@ void main(){
 
 type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { value:number };
   lights:OrbitSurfaceLights;
-  heroes: { mesh: THREE.Mesh; body: CosmicBody; lod:number }[]; batches: Map<number,THREE.InstancedMesh>;
+  batches: Map<number,THREE.InstancedMesh>;
   celestials: THREE.Mesh[];
-  levels: Int8Array; quality?: QualityTier; instances:number; lastPosition:THREE.Vector3 };
+  boulderIndices: number[]; levels: Int8Array; quality?: QualityTier; instances:number; lastPosition:THREE.Vector3 };
 
 /** Volume-owned macro geometry. Spatial windows overlap; no playback clock drives visibility. */
 export class OrbitSetpieces {
   readonly group = new THREE.Group();
   private readonly active = new Map<string,ActivePiece>();
-  private readonly heroes = Array.from({length:heroFamilies.length},(_,shape)=>Array.from({length:2},(_,lod)=>orbitHeroGeometry(shape,lod)));
   private readonly spheres = [new THREE.SphereGeometry(1,32,20),new THREE.SphereGeometry(1,64,40)];
   private readonly plane = new THREE.PlaneGeometry(1,1);
   private readonly transform = new THREE.Object3D();
@@ -103,33 +100,24 @@ export class OrbitSetpieces {
   private create(piece: OrbitSetpiece) {
     const surface = rockMaterial(this.rocks.surface);
     const lights=new OrbitSurfaceLights(piece,this.sceneScale);lights.apply(surface.material);
-    const item: ActivePiece = { group:new THREE.Group(), materials:[surface.material],fade:surface.fade,lights, heroes:[],celestials:[], batches:new Map(),
+    const item: ActivePiece = { group:new THREE.Group(), materials:[surface.material],fade:surface.fade,lights, celestials:[], batches:new Map(),
+      boulderIndices: piece.rocks.flatMap((rock, index) => rock.structure.endsWith('-boulder') ? [index] : []),
       levels:new Int8Array(piece.rocks.length).fill(-1), instances:0,lastPosition:new THREE.Vector3(Infinity,Infinity,Infinity) };
     item.group.name = piece.name;
-    const heroMaterial=piece.bodies.some(body=>body.type==='hero')?rockMaterial(this.rocks.surface,item.fade).material:null;
-    if(heroMaterial){lights.apply(heroMaterial);item.materials.push(heroMaterial);}
     for (const body of piece.bodies) {
-      if (body.type==='hero') {
-        const mesh = new THREE.Mesh(this.heroes[body.shape][1],heroMaterial!);
-        mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.rotation.set(...body.rotation);
-        mesh.frustumCulled=false; item.heroes.push({mesh,body,lod:1}); item.group.add(mesh);
-      } else {
-        const style = body.type==='moon'?0:body.type==='planet'?1:2;
-        const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65);
-        const uniforms = {stoneField:{value:this.rocks.surface.texture},presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3},celestialGain:{value:1}};
-        const material = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:planetFragment,uniforms,
-          transparent:true,depthWrite:true});
-        const mesh = new THREE.Mesh(this.spheres[0],material);item.celestials.push(mesh);
-        mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.frustumCulled=false;
-        item.group.add(mesh); item.materials.push(material);
-        {
-          const air = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:atmosphereFragment,
-            uniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
-          const shell = new THREE.Mesh(this.spheres[0],air);item.celestials.push(shell);
-          shell.position.copy(mesh.position);shell.scale.copy(mesh.scale).multiplyScalar(body.type==='star'?1.08:1.022);shell.frustumCulled=false;
-          item.group.add(shell);item.materials.push(air);
-        }
-      }
+      const style = body.type==='moon'?0:body.type==='planet'?1:2;
+      const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65);
+      const uniforms = {stoneField:{value:this.rocks.surface.texture},presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3},celestialGain:{value:1}};
+      const material = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:planetFragment,uniforms,
+        transparent:true,depthWrite:true});
+      const mesh = new THREE.Mesh(this.spheres[0],material);item.celestials.push(mesh);
+      mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.frustumCulled=false;
+      item.group.add(mesh); item.materials.push(material);
+      const air = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:atmosphereFragment,
+        uniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
+      const shell = new THREE.Mesh(this.spheres[0],air);item.celestials.push(shell);
+      shell.position.copy(mesh.position);shell.scale.copy(mesh.scale).multiplyScalar(body.type==='star'?1.08:1.022);shell.frustumCulled=false;
+      item.group.add(shell);item.materials.push(air);
     }
     for(const [layer,structure] of piece.nebula.entries()) {
       const material=new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:nebulaFragment,transparent:true,
@@ -159,12 +147,6 @@ export class OrbitSetpieces {
       if(lighting)item.lights.update(lighting);
       if(!item.group.visible && (station>piece.to+piece.feather || station<piece.from-piece.feather)) {
         this.free(item);this.active.delete(piece.id);continue;
-      }
-      for(const entry of item.heroes) {
-        const {mesh,body}=entry;
-        // A visible hero keeps a single surface; quality is an explicit user action.
-        entry.lod=quality==='low'?1:0;
-        mesh.geometry=this.heroes[body.shape][entry.lod];
       }
       for(const material of item.materials)if(material instanceof THREE.ShaderMaterial) {
         if(material.uniforms.detail)material.uniforms.detail.value=quality==='low'?2:quality==='high'?4:3;
@@ -209,7 +191,10 @@ export class OrbitSetpieces {
     }
   }
   metrics(){return {station:this.station,active:[...this.active].filter(([,p])=>p.group.visible).map(([id,p])=>({id,presence:p.fade.value,
-    instances:p.instances,objects:p.group.children.length,heroes:p.heroes.map(h=>heroFamilies[h.body.shape]),heroGeometry:p.heroes.map(h=>({id:h.body.id,lod:h.lod,vertices:h.mesh.geometry.attributes.position.count}))})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
+    instances:p.instances,objects:p.group.children.length,boulders:p.boulderIndices.map(index=>{
+      const rock=this.descriptions.find(piece=>piece.id===id)!.rocks[index];
+      return {id:rock.id,shape:rock.shape,lod:p.levels[index]};
+    })})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
   private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();for(const material of item.materials)material.dispose();}
-  dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const variants of this.heroes)for(const geometry of variants)geometry.dispose();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
+  dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
 }

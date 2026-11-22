@@ -1,4 +1,3 @@
-import { Euler, Vector3 } from 'three';
 import { ringFragments } from './orbit-ring';
 import type { PlayMode } from '../contracts';
 import { orbitRandom } from './orbit-field';
@@ -9,17 +8,16 @@ import type { Path } from '../graphics/path';
 
 export const orbitSceneBeats = [8, 42, 96, 190, 237, 279, 346] as const;
 export const orbitLandmarkBeats = [25, 66, 140, 190, 237, 279, 346] as const;
-export const orbitSceneNames = ['Lonely Monolith', 'Twin Fractures', 'Shattered Ring', 'Spiral Debris Storm',
+export const orbitSceneNames = ['Outer Boulder', 'Twin Asteroids', 'Shattered Ring', 'Spiral Debris Storm',
   'Celestial Occlusion', 'Nebula Veil', 'Into the Open Void'] as const;
 export type CosmicKind = 'monolith' | 'fractures' | 'ring' | 'spiral' | 'eclipse' | 'nebula' | 'planet';
 export interface CosmicBody {
   readonly id: string;
-  readonly type: 'hero' | 'moon' | 'star' | 'planet';
+  readonly type: 'moon' | 'star' | 'planet';
   readonly position: OrbitPoint;
   readonly scale: OrbitPoint;
   readonly rotation: OrbitPoint;
   readonly radius: number;
-  readonly shape: number;
 }
 export interface CosmicRock extends OrbitRock { readonly structure: string }
 export interface NebulaStructure {
@@ -71,17 +69,16 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
     const station = stationAt(focus), frame = path.sample(station);
     const anchor = frame.p.toArray(), rocks: CosmicRock[] = [], bodies: CosmicBody[] = [];
     const random = orbitRandom(seed, 0x534554, index);
-    const body = (type: CosmicBody['type'], x: number, y: number, z: number, scale: OrbitPoint, shape = 0) => {
+    const body = (type: CosmicBody['type'], x: number, y: number, z: number, scale: OrbitPoint) => {
       let position = world(station, x, y, z);
       const radius = Math.max(...scale);
-      // Move a hero outward as a whole, never clip its silhouette against the route.
+      // Preserve legibility of the route when placing large celestial bodies.
       let tries = 0;
       while (!clearance.allowsSphere(position, radius) && tries++ < 24) {
         x *= 1.12; y *= 1.08; position = world(station, x, y, z);
       }
       if (!clearance.allowsSphere(position, radius)) throw new Error(`Unsafe celestial body: ${id}`);
-      bodies.push({ id: `${id}:${bodies.length}`, type, position, scale, radius, shape,
-        rotation: type === 'hero' ? [random() * .35, random() * .45 - .22, random() * .4 - .2] : [0, 0, .18] });
+      bodies.push({ id: `${id}:${bodies.length}`, type, position, scale, radius, rotation: [0, 0, .18] });
       return bodies.at(-1)!;
     };
     const rock = (position: OrbitPoint, radius: number, index: number, structure = 'companions') => {
@@ -90,28 +87,62 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
         rotation: [random() * 6.28, random() * 6.28, random() * 6.28], shape: index % 4,
         structure, material: index % 3, rank: random(), fragment: radius < 3.5 });
     };
-    if (id === 'monolith') body('hero', 195 * size, 18 * size, 45, [80 * size, 155 * size, 67 * size], 0);
+    const boulder = (x: number, y: number, z: number, scale: OrbitPoint, shape: number, material: number, structure: string) => {
+      const position = world(station, x * size, y * size, z);
+      const scaled: OrbitPoint = [scale[0] * size, scale[1] * size, scale[2] * size];
+      const radius = Math.max(...scaled);
+      if (!clearance.allowsSphere(position, radius)) return undefined;
+      const entry: CosmicRock = {
+        id: `${id}:boulder:${rocks.length}`, cell: id, position, scale: scaled, radius, shape, material, structure,
+        rotation: [random() * .65 - .3, random() * .8 - .4, random() * .7 - .35], rank: 0, fragment: false,
+      };
+      rocks.push(entry);
+      return entry;
+    };
+
+    if (id === 'monolith') boulder(195, 18, 45, [110, 94, 99], 0, 2, 'landmark-boulder');
     if (id === 'fractures') {
-      body('hero', -168 * size, 55 * size, -25, [100 * size, 140 * size, 76 * size], 1);
-      body('hero', 164 * size, -28 * size, 40, [105 * size, 118 * size, 90 * size], 2);
+      boulder(-172, 55, 10, [100, 90, 94], 3, 2, 'landmark-boulder');
+      boulder(164, -28, 40, [82, 73, 79], 2, 1, 'landmark-boulder');
     }
-    if (id === 'monolith') body('hero', 273*size,-83*size,100,[48*size,58*size,50*size],3);
-    if (id === 'fractures') body('hero', -245*size,135*size,75,[34*size,82*size,29*size],4);
     if (id === 'monolith' || id === 'fractures') {
-      // Detached shelves and chips follow each parent's cleavage face and rotation.
-      for(const parent of [...bodies]) {
-        const rotation=new Euler(...parent.rotation),local=new Vector3();
-        for(let i=0;i<43;i++) {
-          const t=random(),side=parent.shape===1?-1:1;
-          local.set(side*parent.scale[0]*(.72+t*.94),(random()-.5)*parent.scale[1]*1.2,
-            parent.scale[2]*(.38+t*.9)+(random()-.5)*24*size).applyEuler(rotation);
-          local.add(new Vector3(...parent.position));
-          rock(local.toArray(),(2.2+random()**2*(1-t)*19)*size,rocks.length,'cleavage-fan');
+      for (const parent of [...rocks]) {
+        for (let i = 0; i < 16; i++) {
+          const azimuth = random() * Math.PI * 2;
+          const elevation = random() * 2 - 1;
+          const radius = (2 + random() ** 2 * 13) * size;
+          const offset = parent.radius * (1.18 + random() * .74) + radius;
+          const horizontal = Math.sqrt(1 - elevation * elevation) * offset;
+          const position: OrbitPoint = [
+            parent.position[0] + Math.cos(azimuth) * horizontal,
+            parent.position[1] + elevation * offset,
+            parent.position[2] + Math.sin(azimuth) * horizontal,
+          ];
+          if (rocks.some(other => other.structure === 'landmark-boulder'
+            && Math.hypot(...position.map((value, axis) => value - other.position[axis])) < other.radius + radius)) continue;
+          rock(position, radius, rocks.length);
         }
       }
     }
-    if (id === 'ring') ringFragments(seed,(local,radius,structure)=>
-      rock(world(station,local[0]*size,local[1]*size,local[2]*size),radius*size,rocks.length,structure));
+    if (id === 'ring') {
+      // Keep the existing arcs, with a few larger irregular rocks on fracture shoulders.
+      ringFragments(seed,(local,radius,structure)=>
+        rock(world(station,local[0]*size,local[1]*size,local[2]*size),radius*size,rocks.length,structure));
+      const shoulders = [
+        [.66, 322, 24, 0], [2.73, 351, 33, 3], [5.20, 369, 19, 0],
+      ] as const;
+      const landmarks: CosmicRock[] = [];
+      for (const [angle, offset, radius, shape] of shoulders) {
+        const entry = boulder(Math.cos(angle) * offset, 217 + Math.sin(angle) * offset * .77, Math.sin(angle) * 110 * size,
+          [radius, radius * .88, radius * .94], shape, shape % 3, 'ring-boulder');
+        if (entry) landmarks.push(entry);
+      }
+      for (let i = rocks.length - landmarks.length - 1; i >= 0; i--) {
+        const fragment = rocks[i];
+        if (landmarks.some(parent => Math.hypot(...fragment.position.map((value, axis) => value - parent.position[axis]))
+          < parent.radius + fragment.radius)) rocks.splice(i, 1);
+      }
+    }
     if (id === 'spiral') for (let i = 0; i < 2200; i++) {
       const t = random(), stream = i % 3;
       const s = stationAt(160 + t * 64);
@@ -129,32 +160,8 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
       body('star', 1250 * 1.86, 530 * 1.86, 3200 * 1.86, [1705, 1705, 1705]);
     }
     if (id === 'planet') body('planet', -4900, -1450, 9000, [3300, 3300, 3300]);
-    // Separate seeds preserve the established landmarks and companion layout.
+    // Keep the later scenes on their existing independent detail stream.
     const detail = orbitRandom(seed, 0x504c4154, index);
-    if(id==='monolith'||id==='fractures') for(const parent of [...bodies]) {
-      const rotation=new Euler(...parent.rotation);
-      for(let i=0;i<3;i++) {
-        const side=parent.shape===1?-1:1;
-        const offset=new Vector3(side*parent.scale[0]*(.64+i*.20),parent.scale[1]*(.42-i*.39),
-          parent.scale[2]*(.42+i*.25)).applyEuler(rotation).add(new Vector3(...parent.position));
-        const scale:OrbitPoint=[(22-i*3)*size,(43-i*6)*size,(11+i*2)*size];
-        const radius=Math.max(...scale);
-        if(!clearance.allowsSphere(offset.toArray(),radius))continue;
-        bodies.push({id:`${id}:plate:${parent.id}:${i}`,type:'hero',position:offset.toArray(),scale,radius,shape:i===1?2:4,
-          rotation:[parent.rotation[0]+.12*i,parent.rotation[1]+.24,parent.rotation[2]+side*.24]});
-      }
-    }
-    if(id==='ring') {
-      // Torn slabs follow the tangent at the three existing fracture mouths.
-      for(const angle of [.62,2.64,4.85]) for(let i=0;i<3;i++) {
-        const r=300+i*18,t=i*24;
-        const position=world(station,(Math.cos(angle)*r-Math.sin(angle)*t)*size,
-          (217+Math.sin(angle)*r*.77+Math.cos(angle)*t*.5)*size,(Math.sin(angle)*110+i*37)*size);
-        const scale:OrbitPoint=[(20+i*7)*size,(39-i*5)*size,9*size],radius=Math.max(...scale);
-        if(clearance.allowsSphere(position,radius))bodies.push({id:`ring:slab:${angle}:${i}`,type:'hero',position,scale,radius,shape:2,
-          rotation:[.45+angle*.15,.35,angle-.5]});
-      }
-    }
     if(id==='spiral') for(let stream=0;stream<3;stream++)for(let i=0;i<9;i++) {
       const t=.18+i*.067,angle=t*Math.PI*3.3+stream*2.094,r=(85+stream*18)*size;
       for(let j=0;j<5;j++)rock(world(stationAt(160+t*64),Math.cos(angle)*r+(detail()-.5)*22*size,

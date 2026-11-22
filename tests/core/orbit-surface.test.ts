@@ -1,8 +1,6 @@
 import { expect,test } from 'vitest';
 import * as THREE from 'three';
 import { stoneNoise,stoneVolume,OrbitRockSurface } from '../../app/game/graphics/orbit-rock-surface';
-import { orbitHeroGeometry } from '../../app/game/graphics/orbit-geology';
-import { heroGeology,heroSolids } from '../../app/game/graphics/orbit-geology';
 import { asteroidSurfaceVolume } from '../../app/game/graphics/orbit-surface-field';
 import { asteroidLithologies } from '../../app/game/graphics/orbit-lithology';
 import { orbitRockGeometry } from '../../app/game/graphics/orbit-rocks.client';
@@ -17,25 +15,6 @@ test('baked gradient fields repeat continuously, have bounded values and are det
     const slope=(t:number)=>(stoneNoise(t+.0001,y,z,period,1207)-stoneNoise(t-.0001,y,z,period,1207))/.0002;
     expect(Math.abs(slope(-.0001)-slope(.0001))).toBeLessThan(.001);
   }
-});
-
-test('hero material masks follow the actual finite solid regions',()=>{
-  const signatures=[];
-  for(let family=0;family<5;family++) {
-    const geometry=orbitHeroGeometry(family,1),p=geometry.getAttribute('position'),features=geometry.getAttribute('heroFeatures');
-    const regions=new Set<string>();
-    for(let i=0;i<p.count;i+=7) {
-      const x=p.getX(i),y=p.getY(i),z=p.getZ(i),g=heroGeology(family,x,y,z);
-      regions.add(heroSolids[family].region(x,y,z));
-      for(const value of Object.values(g)){expect(value).toBeGreaterThanOrEqual(0);expect(value).toBeLessThanOrEqual(1);}
-      expect(features.getX(i)).toBeCloseTo(g.fresh,5);
-      expect(features.getY(i)).toBeCloseTo(g.fault,5);
-      expect(features.getZ(i)).toBeCloseTo(g.peel,5);
-    }
-    expect(regions.has('weathered')).toBe(true);expect(regions.size).toBeGreaterThan(1);
-    signatures.push([...regions].sort().join(','));geometry.dispose();
-  }
-  expect(signatures[3]).toContain('floor');expect(signatures[0]).toContain('fault');
 });
 
 test('all scales share deterministic cellular data and release world-owned textures',()=>{
@@ -99,21 +78,6 @@ test('shared PBR hooks retain lighting, use one surface field and filter resolve
   surface.dispose();
 });
 
-test('hero cut faces retain finite attributes, valid triangles and explicit material structure',()=>{
-  for(let shape=0;shape<5;shape++)for(const lod of [0,1]) {
-    const geometry=orbitHeroGeometry(shape,lod),p=geometry.getAttribute('position'),index=geometry.getIndex()!;
-    expect(index).toBeTruthy();
-    for(const name of ['position','normal','heroCoord','heroFeatures','color'])
-      expect([...geometry.getAttribute(name).array].every(Number.isFinite)).toBe(true);
-    const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3();
-    for(let i=0;i<index.count;i+=3){
-      a.fromBufferAttribute(p,index.getX(i));b.fromBufferAttribute(p,index.getX(i+1));c.fromBufferAttribute(p,index.getX(i+2));
-      expect(b.sub(a).cross(c.sub(a)).lengthSq()).toBeGreaterThan(1e-15);
-    }
-    geometry.dispose();
-  }
-});
-
 test('world surfaces share immutable CPU texels, own GPU textures and identify geology families',()=>{
   const a=new OrbitRockSurface(),b=new OrbitRockSurface(),material=new THREE.MeshStandardMaterial();
   expect(a.texture.image.data).toBe(b.texture.image.data);
@@ -121,10 +85,34 @@ test('world surfaces share immutable CPU texels, own GPU textures and identify g
   expect(a.texture.generateMipmaps).toBe(true);expect(a.texture.minFilter).toBe(THREE.LinearMipmapLinearFilter);
   expect(a.texture.wrapR).toBe(THREE.RepeatWrapping);
   a.apply(material);
-  for(let family=0;family<5;family++) {
-    const geometry=orbitHeroGeometry(family,0);
-    expect(new Set(geometry.getAttribute('rockFamily').array)).toEqual(new Set([family]));geometry.dispose();
-  }
   let disposed=0;a.texture.addEventListener('dispose',()=>disposed++);b.texture.addEventListener('dispose',()=>disposed++);
   a.dispose();b.dispose();material.dispose();expect(disposed).toBe(2);
+});
+
+test('shared asteroid prototypes are deterministic, bounded and retain outward facets at every quality', () => {
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), normal = new THREE.Vector3();
+  for (let shape = 0; shape < 4; shape++) for (let lod = 0; lod < 3; lod++) {
+    const geometry = orbitRockGeometry(shape, lod);
+    const repeated = orbitRockGeometry(shape, lod);
+    for (const [name, attribute] of Object.entries(geometry.attributes))
+      expect(repeated.getAttribute(name).array).toEqual(attribute.array);
+    const position = geometry.getAttribute('position');
+    const normals = geometry.getAttribute('normal');
+    for (let i = 0; i < position.count; i += 3) {
+      a.fromBufferAttribute(position, i);
+      b.fromBufferAttribute(position, i + 1);
+      c.fromBufferAttribute(position, i + 2);
+      for (const point of [a, b, c]) expect(point.length()).toBeLessThanOrEqual(1);
+      const face = b.sub(a).cross(c.sub(a));
+      expect(face.lengthSq()).toBeGreaterThan(1e-10);
+      expect(face.dot(a)).toBeGreaterThan(0);
+      for (let corner = 0; corner < 3; corner++) {
+        normal.fromBufferAttribute(normals, i + corner);
+        expect(normal.length()).toBeCloseTo(1, 5);
+        expect(normal.dot(face)).toBeGreaterThan(0);
+      }
+    }
+    repeated.dispose();
+    geometry.dispose();
+  }
 });

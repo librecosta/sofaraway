@@ -17,7 +17,7 @@ test('supporting ring instances use shared geology across shape families and qua
   expect(errors).toEqual([]);
 });
 
-test('all geological families compile at every tier in the real world with nonuniform scale',async({page},run)=>{
+test('landmark boulders use ordinary instanced prototypes and material across all quality tiers',async({page},run)=>{
   const errors:string[]=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.addInitScript(()=>{
     const gl=WebGL2RenderingContext.prototype,bound=new WeakMap<WebGL2RenderingContext,WebGLTexture|null>();
@@ -36,40 +36,19 @@ test('all geological families compile at every tier in the real world with nonun
   for(const quality of ['low','auto','high'] as const) {
     const result=await page.evaluate(q=>window.b0Harness.inspectOrbitSurfaces(q),quality);
     expect(result.glError).toBe(0);expect(result.badPrograms).toBe(0);
-    expect(result.frames.map(f=>f.family)).toEqual([0,3,1,2,4]);
+    expect(result.frames).toHaveLength(6);
     for(const frame of result.frames) {
       expect(frame.lod).toBe(quality==='low'?1:0);
-      expect(Math.max(...frame.scale)/Math.min(...frame.scale)).toBeGreaterThan(1.1);
-      if(quality==='high')await run.attach(`geology-${frame.family}`,{body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
+      expect(Math.min(...frame.visiblePixels)).toBeGreaterThan(500);
+      expect(frame.sharesPrototype).toBe(true);
+      expect(frame.sharesMaterial).toBe(true);
+      expect(frame.triangles).toBe(quality==='low'?80:180);
+      if(quality==='high')await run.attach(`matched-rocks-${frame.id}`,{body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
     }
   }
   expect(errors).toEqual([]);
   // Early scenes upload one common asteroid field; celestial noise stays lazy.
   expect(await page.evaluate(()=>Reflect.get(window,'stoneTextures'))).toEqual({created:3,released:3});
-});
-
-test('five hero families retain real shear faces under front, oblique, backlit and strong illumination',async({page},run)=>{
-  const errors:string[]=[];page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
-  await page.goto('http://127.0.0.1:8090/');
-  for(const view of ['front','oblique','backlit','strong'] as const) {
-    const sample=await page.evaluate(view=>window.b0Harness.inspectOrbitSurfaces('high',view),view);
-    expect(sample.glError).toBe(0);expect(sample.badPrograms).toBe(0);
-    for(const frame of sample.frames)await run.attach(`${view}-${frame.id}`,{
-      body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
-  }
-  expect(errors).toEqual([]);
-});
-
-test('hero solids retain actual faults, overhangs and crater walls without surface textures',async({page},run)=>{
-  await page.goto('http://127.0.0.1:8090/');
-  for(const view of ['front','side','back','oblique'] as const) {
-    const sample=await page.evaluate(view=>window.b0Harness.inspectOrbitSurfaces('high',view,true),view);
-    expect(sample).toMatchObject({glError:0,badPrograms:0});
-    for(const frame of sample.frames) {
-      expect(frame.neutral).toBe(true);expect(frame.triangles).toBeLessThan(12000);
-      await run.attach(`solid-${view}-${frame.id}`,{body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
-    }
-  }
 });
 
 test('production gas optics integrate emission, dust, near-zero density and sorted premultiplied layers',async({page})=>{

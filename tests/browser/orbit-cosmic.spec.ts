@@ -16,9 +16,9 @@ test('seven production cosmic scenes retain their identity at every quality with
     for(const [i,frame]of sample.frames.entries()) {
       const pieces=frame.metrics.orbit!.setpieces;
       expect(pieces.active.some(p=>p.id===ids[i]&&p.presence>.85)).toBe(true);
-      if(i===0)expect(pieces.active.flatMap(p=>p.heroes)).toContain('Impact Scar');
-      if(i===1)expect(pieces.active.flatMap(p=>p.heroes)).toEqual(expect.arrayContaining(['Twin-Lobe Mass','Stratified Cliff','Elongated Shard']));
-      if(i===2)expect(pieces.landmarks.find(p=>p.id==='ring')!.structures).toHaveLength(7);
+      if(i===0)expect(pieces.active.find(p=>p.id==='monolith')!.boulders).toHaveLength(1);
+      if(i===1)expect(pieces.active.find(p=>p.id==='fractures')!.boulders).toHaveLength(2);
+      if(i===2)expect(pieces.landmarks.find(p=>p.id==='ring')!.structures).toHaveLength(8);
       if(i===5)expect(pieces.landmarks.find(p=>p.id==='nebula')!.nebula).toEqual(['arc','cliff','pillars','tendrils','filaments','nursery']);
       expect(frame.bright).toBeGreaterThan(200);
       expect(frame.metrics.chunks).toBe(0);

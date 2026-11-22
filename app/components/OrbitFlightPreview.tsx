@@ -347,7 +347,7 @@ export function OrbitFlightPreview() {
           {metrics.calls} draw calls · {metrics.triangles.toLocaleString('en-US')} triangles · {metrics.orbit.instances} instances ·{' '}
           {metrics.orbit.visibleChunks}/{metrics.orbit.chunks} chunks · {metrics.orbit.descriptions} rock descriptions · LOD {metrics.orbit.lod.join(' / ')}
           {' · '}{metrics.orbit.setpieces.active.map(piece=>piece.id).join(' + ')}
-          {' · '}{metrics.orbit.setpieces.active.flatMap(piece=>piece.heroes).join(' / ')}
+          {' · '}{metrics.orbit.setpieces.active.reduce((count, piece) => count + piece.boulders.length, 0)} boulders
           {' · '}{metrics.orbit.setpieces.active.reduce((sum,piece)=>sum+piece.instances,0)} setpiece fragments · {metrics.orbit.objects} objects
           {' · '}Light {metrics.orbit.lighting.scene} · Key {metrics.orbit.lighting.key.toFixed(2)} / Fill {metrics.orbit.lighting.fill.toFixed(2)}
         </output>}
