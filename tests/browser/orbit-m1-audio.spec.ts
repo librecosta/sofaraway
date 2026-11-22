@@ -1,5 +1,49 @@
 import { expect, test } from '@playwright/test';
 
+test('F1 retains original Lead and Pad PCM outside five local quotations, including unchanged ECLIPSE', async ({page},info) => {
+  test.setTimeout(240_000);
+  await page.route('**/f1-reference', route => route.fulfill({contentType:'text/html',body:'<!doctype html><title>Original voice comparison</title>'}));
+  await page.goto('http://127.0.0.1:8091/f1-reference');
+  const result = await page.evaluate(async () => {
+    const load = (path:string) => import(/* @vite-ignore */path);
+    const {inspectorScore,defaultMix} = await load('/app/game/debug/audio/track-adapter.ts');
+    const {volumeById} = await load('/app/game/core/volumes.ts');
+    const {inspectorSource} = await load('/app/game/debug/audio/source.client.ts');
+    const rate=44100, volume=volumeById('orbit');
+    const render = async (candidate:boolean,start:number,end:number,stem:string|null) => {
+      const score=inspectorScore(volume,candidate?'m1':'original'),mix=defaultMix();
+      mix.bass.muted=mix.pluck.muted=true;
+      const ctx=new OfflineAudioContext(2,Math.round((end-start)*rate),rate);
+      const synth=inspectorSource(ctx,score,ctx.destination,mix,null,stem);
+      for(let i=Math.floor(start/score.step);i<Math.min(1536,Math.ceil(end/score.step));i++)
+        synth.playStep(i,i*score.step-start,start-1e-8);
+      synth.finishAt(180-start);
+      const buffer=await ctx.startRendering();synth.dispose();return buffer;
+    };
+    const compare=(a:AudioBuffer,b:AudioBuffer,start:number,end:number)=>{
+      let square=0,peak=0,reference=0;
+      for(let ch=0;ch<2;ch++)for(let i=Math.round(start*rate);i<Math.round(end*rate);i++){
+        const delta=a.getChannelData(ch)[i]-b.getChannelData(ch)[i];
+        square+=delta*delta;peak=Math.max(peak,Math.abs(delta));reference+=a.getChannelData(ch)[i]**2;
+      }
+      return {rms:Math.sqrt(square/(2*(end-start)*rate)),peak,reference:Math.sqrt(reference/(2*(end-start)*rate))};
+    };
+    const original=await render(false,0,45,'lead'),candidate=await render(true,0,45,'lead');
+    const leadUnchanged=compare(original,candidate,25,45);
+    const additions=[compare(original,candidate,2,8),compare(original,candidate,18.5,22.5)];
+    const pad=compare(await render(false,0,45,'pad'),await render(true,0,45,'pad'),0,45);
+    const masters=[];
+    for(const [start,end] of [[25,45],[45,75],[105,120],[120,150],[150,184]])
+      masters.push({start,end,...compare(await render(false,start,end,null),await render(true,start,end,null),0,end-start)});
+    return {leadUnchanged,additions,pad,masters};
+  });
+  await info.attach('F1 actual PCM against Original without Bass and Pluck',{body:JSON.stringify(result,null,2),contentType:'application/json'});
+  expect(result.leadUnchanged.rms).toBeLessThan(.00003);
+  expect(result.pad.rms).toBeLessThan(.00003);
+  for(const addition of result.additions) expect(addition.rms).toBeGreaterThan(.002);
+  for(const master of result.masters) expect(master.rms).toBeLessThan(.00003);
+});
+
 test('M1 Inspector and continuous candidate synthesis share real lead, pad, rhythm and effects', async ({page},info) => {
   test.setTimeout(180_000);
   await page.route('**/m1-audio-check',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>M1 routing</title>'}));
@@ -7,7 +51,7 @@ test('M1 Inspector and continuous candidate synthesis share real lead, pad, rhyt
   const result=await page.evaluate(async()=>{
     const load=(path:string)=>import(/* @vite-ignore */path);
     const {OrbitSynthesizer}=await load('/app/game/audio/orbit.client.ts');
-    const {melodyFirstArrangement}=await load('/app/game/audio/orbit-m1.client.ts');
+    const {originalLeadArrangement}=await load('/app/game/audio/orbit-m1.client.ts');
     const {inspectorScore,defaultMix}=await load('/app/game/debug/audio/track-adapter.ts');
     const {volumeById}=await load('/app/game/core/volumes.ts');
     const {inspectorSource}=await load('/app/game/debug/audio/source.client.ts');
@@ -23,7 +67,7 @@ test('M1 Inspector and continuous candidate synthesis share real lead, pad, rhyt
         const ctx=new OfflineAudioContext(2,Math.round((end-start)*rate),rate), mix=defaultMix();
         if(stem&&muted)mix[stem].muted=true;
         const synth=inspector?inspectorSource(ctx,score,ctx.destination,mix,null,stem)
-          :new OrbitSynthesizer(ctx,ctx.destination,undefined,melodyFirstArrangement);
+          :new OrbitSynthesizer(ctx,ctx.destination,undefined,originalLeadArrangement);
         for(let i=Math.floor(start/score.step);i<Math.min(1536,Math.ceil(end/score.step));i++)
           synth.playStep(i,i*score.step-start,start-1e-8);
         synth.finishAt(180-start);
@@ -84,7 +128,7 @@ test('Original and M1 compare at the same section, show distinct real waveforms 
   const downloadPromise=page.waitForEvent('download',{timeout:780_000});
   await page.getByRole('button',{name:'Render to WAV',exact:true}).click();
   const download=await downloadPromise;
-  expect(download.suggestedFilename()).toBe('ORBIT-M1-MELODY-FIRST-FULL.wav');
+  expect(download.suggestedFilename()).toBe('ORBIT-M1-F1-ORIGINAL-LEAD.wav');
   await download.saveAs(info.outputPath(download.suggestedFilename()));
   await expect(page.getByText(/Done · .*184.0 s/)).toBeVisible();
   await arrangement.selectOption('original');

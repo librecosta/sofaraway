@@ -1,45 +1,49 @@
 # ORBIT — STARWAKE
 
-## M1 candidate audition
+## M1-F1 candidate audition
 
-M1 is **not the production soundtrack**. `/debug/audio/?vol=orbit` defaults to
-Original. Select **M1 — Melody First**, or add `&arrangement=m1`, to audition the
-candidate at the current section position. Switching arrangement pauses playback
-and resets its mix; press Play to compare. Gameplay, chart accents, timings and
-records continue to use the original score.
+M1-F1 supersedes the rejected Melody First rewrite. It is **not production**.
+`/debug/audio/?vol=orbit` defaults to Original. Select **M1 — Original Lead /
+No Bass & Pluck**, or add `&arrangement=m1`. Switching arrangement retains the
+section position and pauses playback; press Play to compare.
 
-`app/game/core/orbit-m1-score.ts` owns M1's 24 phrases. Bass and Pluck events are
-absent. The unchanged rhythm/FX events retain their original IDs and noise seeds.
-The recognizable A–C–F lead theme enters at 2.8125 seconds, develops complete call-and-response
-phrases in DRIFT, returns in RINGBREAK and AURORA, and resolves in the APHELION
-coda. ECLIPSE deliberately retains suspended, separated phrases.
+`app/game/core/orbit-m1-score.ts` derives directly from `starwakeEvents`:
+remove Bass and Pluck, preserve every other event object, ID, attribute and
+relative order. All original Lead and Pad events, including ECLIPSE, remain
+intact. Five quiet theme quotations are the entire edit:
 
-M1 uses the same Triangle/Sine voice and fixed 0.65 master. Its optional voice
-profile extends Lead release from 0.29 to 0.42 seconds. Pad uses close voice
-leading below the lead, a softer attack, restrained low-mid warmth and a quiet,
-sustained sine root inside the Pad stem. It introduces no bass pattern or arp.
-The original voice profile and `renderStarwake()` remain the default and unchanged.
+| Time (seconds) | MIDI / note | Duration (seconds) | Velocity |
+| --- | --- | --- | --- |
+| 2.81250 | 69 / A4 | 0.56250 | 0.28 |
+| 4.21875 | 72 / C5 | 0.37500 | 0.29 |
+| 5.62500 | 77 / F5 | 1.03125 | 0.30 |
+| 18.75000 | 72 / C5 | 0.65625 | 0.38 |
+| 20.62500 | 69 / A4 | 0.703125 | 0.36 |
+
+These quote original theme pitches and durations, use independent IDs above the
+original range, and have no accent. No harmony or Pad events are added. The
+10.4–12.66-second gap retains the original Pad sustain and release. No other
+melody window is changed. The rejected phrase table and candidate-only Lead/Pad
+voice profile are removed: both arrangements use the exact original attack,
+release, Room, Delay and fixed 0.65 master, with no added root oscillator.
 
 ```sh
 PLAYWRIGHT_CHANNEL=chrome node tools/music/orbit/export.mjs --m1 --verify
 ```
 
-On PowerShell, set `$env:PLAYWRIGHT_CHANNEL='chrome'` before that command.
-The full, continuously rendered 44.1 kHz, 16-bit stereo WAV and repeat-render
-measurements are written to ignored `scratch/orbit-m1/exports/` as
-`ORBIT-M1-MELODY-FIRST-FULL.wav` and `starwake-validation.json`. Inspector playback,
-waveforms, selected-stem export and the candidate Master export use that same
-arrangement. Candidate Master export never invokes the official export API with
-different events. Approval and a separate gameplay synchronization review are
-required before any production replacement.
+On PowerShell, set `$env:PLAYWRIGHT_CHANNEL='chrome'` first. The continuously
+rendered 184-second, 44.1 kHz, 16-bit stereo file is
+`scratch/orbit-m1/exports/ORBIT-M1-F1-ORIGINAL-LEAD.wav`. Repeat-render and decoded
+PCM measurements are in `starwake-validation.json` beside it (both ignored).
+Inspector Master, seven actual stems, waveforms and WAV exports share this score
+and the unchanged production voices. The default `renderStarwake()`, gameplay
+score, gate charts, cue beats, timing and records remain Original. The earlier
+M1 WAV is historical and is not used by the Inspector or the export command.
 
-The Chrome 157 candidate is 184 seconds, **-20.49 LUFS**, **-22.61 dBFS RMS**,
-with **-3.45 dBFS sample peak** and approximately **-3.45 dBTP** (4x polyphase
-estimate). It is 1.45 LU quieter than Original; master gain is unchanged.
-ECLIPSE-to-AURORA RMS contrast is 5.35 dB. No samples clip or are non-finite,
-and the final stereo sample is zero. Independent full renders differ by
-0.285 PCM codes RMS / 4 codes peak. Local section levels, repeat measurements
-and the BS.1770 loudness comparison remain beside the ignored WAV.
+Chrome 157 verification: -20.85 LUFS, -23.11 dBFS RMS, -4.09 dBFS sample peak,
+approximately -4.02 dBTP (4x estimate), no clipped or non-finite samples, and a
+zero final stereo sample. The same 0.65 master is 1.81 LU quieter than Original.
+Independent complete renders differ by 0.258 PCM codes RMS / 3 codes peak.
 
 ## Approved original
 

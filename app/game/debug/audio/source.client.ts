@@ -2,7 +2,7 @@ import { DaybreakSynthesizer, daybreakRoom, daybreakStemSends } from '../../audi
 import { gain, randomSource } from '../../audio/daybreak-voices.client';
 import { createBuffers, createMaster, Synthesizer } from '../../audio/synthesizer.client';
 import { OrbitSynthesizer } from '../../audio/orbit.client';
-import { melodyFirstArrangement } from '../../audio/orbit-m1.client';
+import { originalLeadArrangement } from '../../audio/orbit-m1.client';
 import type { AudioStem, StemRouting } from '../../audio/stem-routing';
 import { daybreakStems } from '../../core/daybreak-score';
 import { inspectorGraph } from './graph.client';
@@ -29,7 +29,7 @@ export function inspectorSource(context: BaseAudioContext, score: InspectorScore
   };
   let synth: DaybreakSynthesizer | Synthesizer | OrbitSynthesizer;
   try {
-    synth = score.arrangement === 'm1' ? new OrbitSynthesizer(ctx,master,route,melodyFirstArrangement)
+    synth = score.arrangement === 'm1' ? new OrbitSynthesizer(ctx,master,route,originalLeadArrangement)
       : score.volume.music === 'breakbeat' ? new DaybreakSynthesizer(ctx, master, (mix, impulse) => {
       return Object.fromEntries(daybreakStems.map(id => {
         const listen = route(id, mix), input = ctx.createGain();

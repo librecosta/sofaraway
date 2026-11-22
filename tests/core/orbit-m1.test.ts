@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from 'vitest';
 import { starwakeEvents, starwakeTheme, starwakeTrack, beatSeconds } from '../../app/game/core/orbit-score';
-import { orbitM1Events, orbitM1Phrases, orbitM1Steps, orbitM1Track, makeOrbitM1Score } from '../../app/game/core/orbit-m1-score';
+import { orbitM1Events, orbitM1Repairs, orbitM1Steps, orbitM1Track, makeOrbitM1Score } from '../../app/game/core/orbit-m1-score';
 import { orbitChart, orbitRouteCharts, orbitCueBeats } from '../../app/game/core/orbit-chart';
 import { originalStarwake } from '../../app/game/audio/orbit.client';
-import { melodyFirstArrangement } from '../../app/game/audio/orbit-m1.client';
+import { originalLeadArrangement } from '../../app/game/audio/orbit-m1.client';
 import { inspectorScore, stemMetadata } from '../../app/game/debug/audio/track-adapter';
 import { volumeById } from '../../app/game/core/volumes';
 import type { Difficulty } from '../../app/game/contracts';
@@ -18,67 +18,68 @@ test('M1 leaves the 9bca263 production score, chart, cues and default arrangemen
   expect(hash(charts)).toBe('e4f411e7a91e3f0d5b8f2f3ec43d32063a6223fc3eb85bf7f580c026057c0877');
   expect(hash(orbitCueBeats)).toBe('0423d862a547e4929544c79ece3ea2b596b2260e2dc7a130f94c633488b6ef1d');
   expect(originalStarwake.events).toBe(starwakeEvents);
-  expect(originalStarwake.melodyFirst).toBeUndefined();
   expect(volumeById('orbit').soundtrack).toBe(starwakeTrack);
   expect(inspectorScore(volumeById('orbit')).arrangement).toBe('original');
 });
 
-test('candidate owns one complete deterministic score without bass or pluck scheduling', () => {
-  expect(orbitM1Track).toMatchObject({bpm:128,bars:96,beats:384,duration:180,tail:4});
-  expect(orbitM1Track.sections).toBe(starwakeTrack.sections);
-  expect(orbitM1Phrases).toHaveLength(24);
+test('F1 preserves every original non-backing event, with all attributes and relative order', () => {
+  const before = JSON.stringify(starwakeEvents);
+  const retained = starwakeEvents.filter(event => event.voice !== 'bass' && event.voice !== 'pluck');
+  const originalIds = new Set(starwakeEvents.map(event => event.id));
+  const actual = orbitM1Events.filter(event => originalIds.has(event.id));
+  expect(actual).toEqual(retained);
+  for (const [index, event] of actual.entries()) expect(event).toBe(retained[index]);
+  for (const voice of ['lead', 'pad'] as const)
+    expect(orbitM1Events.filter(event => event.voice === voice && originalIds.has(event.id)))
+      .toEqual(starwakeEvents.filter(event => event.voice === voice));
+  expect(orbitM1Events.some(event => event.voice === 'bass' || event.voice === 'pluck')).toBe(false);
   expect(makeOrbitM1Score()).toEqual(orbitM1Events);
-  expect(orbitM1Events.some(event => event.voice==='bass'||event.voice==='pluck')).toBe(false);
-  expect(melodyFirstArrangement.events).toBe(orbitM1Events);
-  expect(melodyFirstArrangement.steps).toBe(orbitM1Steps);
-  expect(new Set(orbitM1Events.map(event=>event.id)).size).toBe(orbitM1Events.length);
-  expect(new Set(orbitM1Events.map(event=>event.identity)).size).toBe(orbitM1Events.length);
-  expect(orbitM1Steps.flat().sort((a,b)=>a-b)).toEqual(orbitM1Events.map((_,i)=>i));
-  for (const [index,event] of orbitM1Events.entries()) {
-    expect(event.at).toBeGreaterThanOrEqual(orbitM1Events[index-1]?.at??0);
-    expect(event.at).toBeCloseTo(event.beat*beatSeconds,10);
-    expect(event.bar).toBe(Math.floor(event.beat/4));
-    expect(event.at).toBeLessThan(180);
-    if ('length' in event) { expect(event.length).toBeGreaterThan(0); expect(event.at+event.length).toBeLessThanOrEqual(180); }
-    expect(event.section).toBe(orbitM1Track.sections.find(section=>event.bar<section.endBar)!.name);
-  }
-  const rhythm = (events:typeof starwakeEvents) => events.filter(event=>['kick','snare','hat','perc','sweep'].includes(event.voice));
-  expect(rhythm(orbitM1Events)).toEqual(rhythm(starwakeEvents));
+  expect(JSON.stringify(starwakeEvents)).toBe(before);
+  expect(originalLeadArrangement).toEqual({ events: orbitM1Events, steps: orbitM1Steps });
 });
 
-test('lead previews its theme identity early, connects DRIFT and preserves ECLIPSE breathing room', () => {
-  const lead = orbitM1Events.filter(event=>event.voice==='lead');
-  expect(lead[0].at).toBeGreaterThanOrEqual(2);
-  expect(lead[0].at).toBeLessThanOrEqual(4);
-  expect(lead.slice(0,3).map(event=>event.note)).toEqual([69,72,77]);
-  for (const [index,event] of lead.entries()) {
-    const next=lead[index+1];
-    if (!next || event.at<3 || event.at>=104&&event.at<120) continue;
-    expect(next.at-event.at-event.length,`lead gap at ${event.at}`).toBeLessThan(1.1);
+test('F1 adds exactly five quiet theme quotations only inside the approved gaps', () => {
+  const originalIds = new Set(starwakeEvents.map(event => event.id));
+  const added = orbitM1Events.filter(event => !originalIds.has(event.id));
+  expect(added).toEqual(orbitM1Repairs);
+  expect(added).toHaveLength(5);
+  expect(added.map(event => [event.at, 'note' in event ? event.note : null])).toEqual([
+    [2.8125, 69], [4.21875, 72], [5.625, 77], [18.75, 72], [20.625, 69],
+  ]);
+  for (const event of added) {
+    expect(event.voice).toBe('lead');
+    expect(event.id).toBeGreaterThan(Math.max(...originalIds));
+    expect(event.identity).toMatch(/^starwake-m1-f1:repair:/);
+    expect(event.velocity).toBeLessThan(.4);
+    expect('note' in event && starwakeTheme.some(([, note]) => note === event.note)).toBe(true);
+    const window = [[0, 8.44], [10.4, 12.66], [18.38, 22.5]].find(([a,b]) => event.at >= a && event.at < b)!;
+    expect(window).toBeDefined();
+    if ('length' in event) expect(event.at + event.length).toBeLessThan(window[1]);
   }
-  expect(lead.some(event=>event.at>18.38&&event.at<22.5)).toBe(true);
-  for (const bar of [24,64]) expect(lead.filter(event=>event.bar>=bar&&event.bar<bar+4).map(event=>event.note))
-    .toEqual(starwakeTheme.map(([,note])=>note));
-  const eclipse=lead.filter(event=>event.section==='ECLIPSE');
-  expect(eclipse.reduce((sum,event)=>sum+event.length,0)/15).toBeLessThan(.7);
-  expect(Math.max(...eclipse.slice(1).map((event,i)=>event.at-eclipse[i].at-eclipse[i].length))).toBeGreaterThan(1);
-  expect(lead.filter(event=>event.section==='AURORA').some(event=>event.note===79&&event.length>1)).toBe(true);
-  expect(lead.at(-1)).toMatchObject({bar:95,note:65});
+  // No rewritten ECLIPSE melody, harmony or added sustained root in any section.
+  expect(orbitM1Events.filter(event => event.section === 'ECLIPSE'))
+    .toEqual(starwakeEvents.filter(event => event.section === 'ECLIPSE' && event.voice !== 'bass' && event.voice !== 'pluck'));
+  expect(orbitM1Events.filter(event => event.voice === 'pad')).toEqual(starwakeEvents.filter(event => event.voice === 'pad'));
+  expect(new Set(orbitM1Events.map(event => event.id)).size).toBe(orbitM1Events.length);
+  expect(new Set(orbitM1Events.map(event => event.identity)).size).toBe(orbitM1Events.length);
 });
 
-test('Pad supports harmony with sustained roots below a smoothly connected mid-register', () => {
-  const pad=orbitM1Events.filter(event=>event.voice==='pad');
-  expect(pad).toHaveLength(96);
-  for (const [index,event] of pad.entries()) {
-    expect(event.beat).toBe(index*4);
-    expect(event.notes).toHaveLength(5);
-    expect(event.notes[0]).toBeLessThanOrEqual(45);
-    expect(event.notes.slice(1).every(note=>note>=48&&note<=67)).toBe(true);
-    expect(event.length).toBeGreaterThan(1.7);
-    if (index) expect(Math.max(...event.notes.slice(1).map((pitch,i)=>Math.abs(pitch-pad[index-1].notes[i+1])))).toBeLessThanOrEqual(7);
+test('F1 retains the full timeline, exact scheduler positions and seven real stems', () => {
+  expect(orbitM1Track).toMatchObject({ bpm:128, bars:96, beats:384, duration:180, tail:4 });
+  expect(orbitM1Track.sections).toBe(starwakeTrack.sections);
+  expect(orbitM1Steps.flat().sort((a,b) => a-b)).toEqual(orbitM1Events.map((_,i) => i));
+  for (const [index, event] of orbitM1Events.entries()) {
+    expect(event.at).toBeGreaterThanOrEqual(orbitM1Events[index-1]?.at ?? 0);
+    expect(event.at).toBe(event.beat * beatSeconds);
+    expect(event.bar).toBe(Math.floor(event.beat / 4));
+    expect(orbitM1Steps[Math.floor(event.beat * 4 + 1e-8)]).toContain(index);
+    if ('length' in event) {
+      expect(event.length).toBeGreaterThan(0);
+      expect(event.at + event.length).toBeLessThanOrEqual(180);
+    }
   }
-  const candidate=inspectorScore(volumeById('orbit'),'m1');
+  const candidate = inspectorScore(volumeById('orbit'), 'm1');
   expect(candidate.tracks).toEqual(['master','kick','snare','hats','perc','pad','lead','sweep']);
-  expect(stemMetadata(volumeById('orbit'),'m1').map(track=>track.id)).toEqual(candidate.tracks.slice(1));
-  expect(inspectorScore(volumeById('descent'),'m1').arrangement).toBe('original');
+  expect(stemMetadata(volumeById('orbit'), 'm1').map(track => track.id)).toEqual(candidate.tracks.slice(1));
+  expect(inspectorScore(volumeById('descent'), 'm1').arrangement).toBe('original');
 });

@@ -33,6 +33,9 @@ body:has(.page) { margin: 0; background: #091116; }
 .metadata { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .volume { display: flex; align-items: center; gap: 6px; }
 .volume select { max-width: 115px; }
+.metadata:has(select[aria-label="Arrangement"]) { min-width: 0; max-width: 100%; }
+.volume:has(select[aria-label="Arrangement"]) { width: min(100%, 410px); min-width: 0; }
+.volume select[aria-label="Arrangement"] { max-width: 320px; min-width: 0; flex: 1; }
 .page button, .page select { font: inherit; color: inherit; background: #1a2a34; border: 0; border-radius: 5px; padding: 5px 10px; min-height: 30px; }
 .page button { cursor: pointer; }
 .page button:hover:not(:disabled) { background: #243a47; color: #fff; }

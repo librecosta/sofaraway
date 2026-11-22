@@ -53,7 +53,7 @@ export default function AudioInspectorPage() {
       const url = downloadUrl.current = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = arrangement === 'm1' ? 'ORBIT-M1-MELODY-FIRST-FULL.wav'
+      link.download = arrangement === 'm1' ? 'ORBIT-M1-F1-ORIGINAL-LEAD.wav'
         : volume.music === 'starwake' ? 'ORBIT-STARWAKE-FULL.wav'
         : volume.music === 'control' ? 'DESCENT-CONTROL.wav'
         : 'sofaraway-' + volume.id + '.wav';
@@ -74,7 +74,7 @@ export default function AudioInspectorPage() {
           <span className={s.breadcrumb}> / Audio Inspector</span>
           <h1>{volume.music === 'starwake' ? volume.soundtrack!.title : volume.name}</h1>
           {volume.id === 'orbit' && <p>STARWAKE · 96 bars · {arrangement === 'm1'
-            ? 'M1 Melody First · Audition candidate; gameplay uses Original' : 'Original Melodic Cosmic Electronica'}</p>}
+            ? 'M1 Original Lead / No Bass & Pluck · Audition candidate; gameplay uses Original' : 'Original Melodic Cosmic Electronica'}</p>}
         </div>
         <div className={s.metadata}>
           {volume.soundtrack && <span>{volume.soundtrack.title}</span>}
@@ -98,7 +98,7 @@ export default function AudioInspectorPage() {
               else next.delete('arrangement');
               changeParams(next,{preventScrollReset:true});
             }}>
-              <option value="original">Original</option><option value="m1">M1 — Melody First</option>
+              <option value="original">Original</option><option value="m1">M1 — Original Lead / No Bass & Pluck</option>
             </select>
           </label>}
         </div>

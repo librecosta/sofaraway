@@ -9,7 +9,6 @@ export const starwakeMaster = .65;
 export interface OrbitArrangement {
   events: readonly OrbitEvent[];
   steps: readonly (readonly number[])[];
-  melodyFirst?: boolean;
 }
 export const originalStarwake: OrbitArrangement = { events:starwakeEvents, steps:starwakeSteps };
 
@@ -20,7 +19,7 @@ export class OrbitSynthesizer {
   constructor(ctx: BaseAudioContext, destination: AudioNode, route?: StemRouting,
     private readonly arrangement: OrbitArrangement = originalStarwake) {
     this.voices = new OrbitVoices(ctx, destination, 'B', arrangement.events,
-      { ...starwakeTrack, beatSeconds, seed }, starwakeMaster, route, arrangement.melodyFirst);
+      { ...starwakeTrack, beatSeconds, seed }, starwakeMaster, route);
   }
 
   playStep(index: number, at: number, after = -Infinity) {

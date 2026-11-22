@@ -69,8 +69,7 @@ export class OrbitVoices {
 
   constructor(private readonly ctx: BaseAudioContext, destination: AudioNode,
     private readonly version: 'A' | 'B', private readonly events: readonly OrbitEvent[],
-    private readonly timing: OrbitVoiceTiming, private readonly trim = .78, private readonly route?: StemRouting,
-    private readonly melodyFirst = false) {
+    private readonly timing: OrbitVoiceTiming, private readonly trim = .78, private readonly route?: StemRouting) {
     const { seed } = timing;
     this.output = gain(ctx, destination, trim);
     const compressor = ctx.createDynamicsCompressor();
@@ -82,7 +81,7 @@ export class OrbitVoices {
     compressor.connect(this.output);
     const mix = filter(ctx, compressor, 'highpass', 28, .68);
     this.drums = gain(ctx, mix, 1);
-    this.bassBus = gain(ctx, !melodyFirst && route ? route('bass', mix) : mix, 1);
+    this.bassBus = gain(ctx, route && events.some(event => event.voice === 'bass') ? route('bass', mix) : mix, 1);
     if (route) for (const id of ['kick', 'snare', 'hats', 'perc'] as const) this.rhythm.set(id, route(id, mix));
     this.music = gain(ctx, mix, 1);
 
@@ -130,7 +129,7 @@ export class OrbitVoices {
   }
 
   private spaceBus(destination: AudioNode, roomSend: number, delaySend: number, id: AudioStem) {
-    if (this.melodyFirst && id === 'pluck') return gain(this.ctx, destination, 1);
+    if (!this.events.some(event => event.voice === id)) return gain(this.ctx, destination, 1);
     const target = this.route?.(id, destination) ?? destination;
     let fx = { room: this.room, delay: this.delay };
     if (this.route) {
@@ -236,7 +235,7 @@ export class OrbitVoices {
       }
       case 'lead': {
         const { note, length } = event;
-        const voice = envelope(ctx, pan(ctx, this.leadBus, position), at, length, velocity * (bright ? .30 : .28), .035, .76, this.melodyFirst ? .42 : .29);
+        const voice = envelope(ctx, pan(ctx, this.leadBus, position), at, length, velocity * (bright ? .30 : .28), .035, .76, .29);
         const color = filter(ctx, filter(ctx, voice.node, 'highpass', 180), 'lowpass', bright ? 2400 : 1950, .65);
         const hz = noteHz(note);
         const body = this.tone(ctx, gain(ctx, color, .79), 'triangle', hz, at, voice.end, bright ? -3 : 0);
@@ -252,18 +251,9 @@ export class OrbitVoices {
       }
       case 'pad': {
         const { length } = event;
-        const voice = envelope(ctx, this.padBus, at, length, velocity * .22,
-          this.melodyFirst ? .42 : .27, .72, this.melodyFirst ? .92 : 1.25);
-        const band = filter(ctx, filter(ctx, voice.node, 'highpass', this.melodyFirst ? 155 : 280), 'lowpass', 850 + event.color * 1100, .56);
-        // Candidate-only sustained root belongs to this Pad envelope and stem.
-        // It has no separate rhythm, articulation or bass scheduler.
-        if (this.melodyFirst) {
-          const root = envelope(ctx, this.padBus, at, length, velocity * .07, .65, .72, 1.05);
-          const soft = filter(ctx, filter(ctx, root.node, 'highpass', 45, .6), 'lowpass', 190, .5);
-          this.tone(ctx, soft, 'sine', noteHz(event.notes[0]), at, root.end);
-        }
-        const notes = this.melodyFirst ? event.notes.slice(1) : event.notes;
-        for (const [i, pitch] of notes.entries()) {
+        const voice = envelope(ctx, this.padBus, at, length, velocity * .22, .27, .72, 1.25);
+        const band = filter(ctx, filter(ctx, voice.node, 'highpass', 280), 'lowpass', 850 + event.color * 1100, .56);
+        for (const [i, pitch] of event.notes.entries()) {
           const spread = pan(ctx, band, (i - 1.5) * .43);
           const hz = noteHz(pitch);
           this.tone(ctx, gain(ctx, spread, .48), 'triangle', hz, at, voice.end, i % 2 ? -5 : 5);

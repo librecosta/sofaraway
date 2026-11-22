@@ -11,7 +11,7 @@ import { inspectWav } from './verify.mjs';
 
 const { values } = parseArgs({ options: { verify: { type: 'boolean' }, prototypes: { type: 'boolean' }, m1: { type: 'boolean' } } });
 assert.ok(!(values.m1 && values.prototypes), 'Select one audition collection.');
-const tracks = values.m1 ? { 'starwake-m1':'ORBIT-M1-MELODY-FIRST-FULL' }
+const tracks = values.m1 ? { 'starwake-m1':'ORBIT-M1-F1-ORIGINAL-LEAD' }
   : values.prototypes ? versions : { [starwakeTrack.id]: 'ORBIT-STARWAKE-FULL' };
 const seconds = values.prototypes ? duration + tail : starwakeTrack.duration + starwakeTrack.tail;
 const root = new URL('../../../', import.meta.url);
