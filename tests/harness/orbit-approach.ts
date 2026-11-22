@@ -3,18 +3,18 @@ import { Simulation } from '../../app/game/core/simulation';
 import { idleInput } from '../../app/game/core/input';
 import { STEP } from '../../app/game/core/clock';
 import { volumeById } from '../../app/game/core/volumes';
-import type { QualityTier } from '../../app/game/contracts';
+import type { QualityTier,Difficulty } from '../../app/game/contracts';
 import type { CosmicBody } from '../../app/game/core/orbit-setpieces';
 import type { Mesh,Material } from 'three';
 
 /** Real player camera and production world; reflection stays in the test bundle. */
-export async function inspectRockApproach(quality:QualityTier,boost:boolean,from=0,to=78,height=540) {
+export async function inspectRockApproach(quality:QualityTier,boost:boolean,from=0,to=78,height=540,difficulty:Difficulty='normal') {
   const canvas=document.createElement('canvas');document.body.append(canvas);
   const previous=document.createElement('canvas');previous.width=height*16/9;previous.height=height;
   const context=previous.getContext('2d')!;
   const graphics=new Graphics(canvas,quality,false,{fixedTime:null,autoplay:false,align:true,god:false,boost,
     mobileQuality:false,post:true,record:false,debug:false});
-  const sim=new Simulation(volumeById('orbit'),{align:true,branchSide:'center'});sim.start('normal',0);
+  const sim=new Simulation(volumeById('orbit'),{align:true,branchSide:'center'});sim.start(difficulty,0);
   graphics.resize(height*16/9,height,1);graphics.load(sim.volume,sim.path,'standard');
   const history=new Map<string,string>(),materials=new Map<string,string>(),large=new Map<string,number>(),frames=[],switches=[],images:string[]=[];
   let materialChanges=0;

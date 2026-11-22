@@ -2,7 +2,7 @@ import { expect,test } from 'vitest';
 import * as THREE from 'three';
 import { stoneNoise,stoneVolume,OrbitRockSurface } from '../../app/game/graphics/orbit-rock-surface';
 import { orbitHeroGeometry } from '../../app/game/graphics/orbit-geology';
-import { heroGeology,heroSpall } from '../../app/game/graphics/orbit-geology';
+import { heroGeology,heroSolids } from '../../app/game/graphics/orbit-geology';
 import { asteroidSurfaceVolume } from '../../app/game/graphics/orbit-surface-field';
 import { asteroidLithologies } from '../../app/game/graphics/orbit-lithology';
 import { orbitRockGeometry } from '../../app/game/graphics/orbit-rocks.client';
@@ -19,25 +19,23 @@ test('baked gradient fields repeat continuously, have bounded values and are det
   }
 });
 
-test('hero joints and spalls are finite local structures, with distinct family masks',()=>{
+test('hero material masks follow the actual finite solid regions',()=>{
   const signatures=[];
   for(let family=0;family<5;family++) {
-    let joints=0,peels=0,spalls=0;const signature=[];
-    for(let i=0;i<1200;i++) {
-      const y=1-2*(i+.5)/1200,angle=i*2.399963229728653,r=Math.sqrt(1-y*y),x=r*Math.cos(angle),z=r*Math.sin(angle);
-      const geology=heroGeology(family,x,y,z),spall=heroSpall(family,x,y,z);
-      for(const value of Object.values(geology)) {expect(value).toBeGreaterThanOrEqual(0);expect(value).toBeLessThanOrEqual(1);}
-      expect(spall).toBeGreaterThanOrEqual(0);expect(spall).toBeLessThanOrEqual(.044001);
-      joints+=Number(geology.fault>.15);peels+=Number(geology.peel>.1);spalls+=Number(spall>.005);
-      signature.push(geology.fault.toFixed(3),geology.peel.toFixed(3));
+    const geometry=orbitHeroGeometry(family,1),p=geometry.getAttribute('position'),features=geometry.getAttribute('heroFeatures');
+    const regions=new Set<string>();
+    for(let i=0;i<p.count;i+=7) {
+      const x=p.getX(i),y=p.getY(i),z=p.getZ(i),g=heroGeology(family,x,y,z);
+      regions.add(heroSolids[family].region(x,y,z));
+      for(const value of Object.values(g)){expect(value).toBeGreaterThanOrEqual(0);expect(value).toBeLessThanOrEqual(1);}
+      expect(features.getX(i)).toBeCloseTo(g.fresh,5);
+      expect(features.getY(i)).toBeCloseTo(g.fault,5);
+      expect(features.getZ(i)).toBeCloseTo(g.peel,5);
     }
-    // Large quiet surfaces remain: detail must not become uniform wallpaper.
-    expect(joints).toBeGreaterThan(2);expect(joints).toBeLessThan(180);
-    expect(peels).toBeGreaterThan(5);expect(peels).toBeLessThan(240);
-    expect(spalls).toBeGreaterThan(5);expect(spalls).toBeLessThan(160);
-    signatures.push(signature.join(','));
+    expect(regions.has('weathered')).toBe(true);expect(regions.size).toBeGreaterThan(1);
+    signatures.push([...regions].sort().join(','));geometry.dispose();
   }
-  expect(new Set(signatures).size).toBe(5);
+  expect(signatures[3]).toContain('floor');expect(signatures[0]).toContain('fault');
 });
 
 test('all scales share deterministic cellular data and release world-owned textures',()=>{

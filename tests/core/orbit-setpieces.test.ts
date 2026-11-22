@@ -12,8 +12,8 @@ import { heroFamilies } from '../../app/game/graphics/orbit-geology';
 import { ringDensity, ringFragments } from '../../app/game/core/orbit-ring';
 import { orbitHeroGeometry } from '../../app/game/graphics/orbit-setpieces.client';
 
-test('all hero LODs fit the declared unit-sphere bounds with finite surface normals',()=>{
-  for(let shape=0;shape<5;shape++)for(let lod=0;lod<3;lod++) {
+test.each([0,1,2,3,4])('hero family %i LODs fit the declared unit-sphere bounds with finite surface normals',shape=>{
+  for(let lod=0;lod<3;lod++) {
     const geometry=orbitHeroGeometry(shape,lod),p=geometry.getAttribute('position'),n=geometry.getAttribute('normal');
     for(let i=0;i<p.count;i++) {
       expect(Math.hypot(p.getX(i),p.getY(i),p.getZ(i))).toBeLessThanOrEqual(1.000001);

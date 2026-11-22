@@ -60,6 +60,18 @@ test('five hero families retain real shear faces under front, oblique, backlit a
   expect(errors).toEqual([]);
 });
 
+test('hero solids retain actual faults, overhangs and crater walls without surface textures',async({page},run)=>{
+  await page.goto('http://127.0.0.1:8090/');
+  for(const view of ['front','side','back','oblique'] as const) {
+    const sample=await page.evaluate(view=>window.b0Harness.inspectOrbitSurfaces('high',view,true),view);
+    expect(sample).toMatchObject({glError:0,badPrograms:0});
+    for(const frame of sample.frames) {
+      expect(frame.neutral).toBe(true);expect(frame.triangles).toBeLessThan(12000);
+      await run.attach(`solid-${view}-${frame.id}`,{body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
+    }
+  }
+});
+
 test('production gas optics integrate emission, dust, near-zero density and sorted premultiplied layers',async({page})=>{
   await page.goto('http://127.0.0.1:8090/');
   const result=await page.evaluate(()=>window.b0Harness.inspectNebulaSegments());
