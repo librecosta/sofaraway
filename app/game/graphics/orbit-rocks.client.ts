@@ -56,11 +56,13 @@ export class OrbitRocks {
   private readonly geometries = Array.from({ length: ROCK_SHAPES }, (_, shape) =>
     Array.from({ length: ROCK_LODS }, (_, lod) => orbitRockGeometry(shape, lod)));
   private readonly release = { value: 0 };
+  private readonly mood = { value: 0 };
 
   constructor(visibleRange: number) {
     this.material.onBeforeCompile = shader => {
       shader.uniforms.orbitVisibleRange = { value: visibleRange };
       shader.uniforms.orbitRelease = this.release;
+      shader.uniforms.orbitMood = this.mood;
       shader.fragmentShader = `uniform float orbitVisibleRange;\n${orbitSpaceColor}\n${shader.fragmentShader}`
         .replace('#include <opaque_fragment>', /* glsl */`
           float range = orbitVisibleRange * (1.0 - .38 * orbitRelease);
@@ -76,6 +78,7 @@ export class OrbitRocks {
 
   geometry(shape: number, lod: number) { return this.geometries[shape][lod]; }
   setRelease(value: number) { this.release.value = value; }
+  setLighting(value:number){this.mood.value=value;}
 
   dispose() {
     for (const variants of this.geometries) for (const geometry of variants) geometry.dispose();

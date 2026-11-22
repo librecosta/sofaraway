@@ -13,6 +13,8 @@ import { OrbitRocks, ROCK_LODS, ROCK_SHAPES } from './orbit-rocks.client';
 import { OrbitSky } from './orbit-sky.client';
 import { cosmicPresence, makeOrbitSetpieces } from '../core/orbit-setpieces';
 import { OrbitSetpieces } from './orbit-setpieces.client';
+import { newOrbitLighting, orbitLightingAt, orbitLightScenes } from '../core/orbit-lighting';
+import type { OrbitLightOptions } from '../core/orbit-lighting';
 
 const REACH = 570;
 const KEEP = 660;
@@ -95,6 +97,12 @@ export class OrbitWorld {
   private readonly setpieces: OrbitSetpieces;
   private readonly key = new THREE.DirectionalLight(0xffe2c3, 3.55);
   private readonly bounce = new THREE.DirectionalLight(0xb7d8ff, 1.38);
+  private readonly ambient = new THREE.AmbientLight(0x929fb5, .40);
+  private readonly lighting = newOrbitLighting();
+  private readonly warmKey = new THREE.Color(0xffe2c3);
+  private readonly coolKey = new THREE.Color(0xcbdfff);
+  private readonly coolFill = new THREE.Color(0xb7d8ff);
+  private readonly violetFill = new THREE.Color(0xc5b9ed);
   private readonly eclipseSun = new THREE.Vector3();
   private readonly rocks = new OrbitRocks(REACH);
   private readonly chunks = new Map<string, Chunk>();
@@ -111,21 +119,29 @@ export class OrbitWorld {
     const branch = path.reference && new BranchPath(path, path.reference, mode, gameplayFor('orbit').branch!);
     const clearance = orbitClearance(path, branch, mode);
     this.field = new OrbitField(seed, density, clearance, orbitCourseBelt(path, mode));
-    this.setpieces = new OrbitSetpieces(makeOrbitSetpieces(path, mode, seed, clearance), this.rocks);
+    this.setpieces = new OrbitSetpieces(makeOrbitSetpieces(path, mode, seed, clearance), this.rocks, .6 + .4 * modeScale(mode));
     this.sky = new OrbitSky(seed);
     const eclipse = this.setpieces.descriptions.find(p=>p.id==='eclipse')!;
     this.eclipseSun.fromArray(eclipse.bodies[1].position).sub(new THREE.Vector3().fromArray(eclipse.anchor)).normalize();
     this.key.position.set(-.8, .73, -.48);
     this.bounce.position.set(.79, -.30, .58);
-    this.group.add(this.sky.group, this.setpieces.group, this.key, this.bounce, new THREE.AmbientLight(0x929fb5, .40));
+    this.group.add(this.sky.group, this.setpieces.group, this.key, this.bounce, this.ambient);
   }
 
-  update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200) {
+  update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200,
+    music?: OrbitLightOptions & { beat: number }) {
+    const light = orbitLightingAt(music?.beat ?? 0, music ?? { amount: 0 }, this.lighting);
     this.rocks.surface.update(camera,height,quality);
-    this.setpieces.update(camera, station, height, quality);
+    this.setpieces.update(camera, station, height, quality, light);
     const eclipse = cosmicPresence(this.setpieces.descriptions[4],station);
     this.key.position.set(-.8,.73,-.48).normalize().lerp(this.eclipseSun,eclipse);
-    this.bounce.intensity=1.38-.72*eclipse;
+    this.key.intensity=3.55*light.key;
+    this.key.color.copy(this.coolKey).lerp(this.warmKey,light.warmth);
+    this.bounce.intensity=(1.38-.72*eclipse)*light.fill;
+    this.bounce.color.copy(this.coolFill).lerp(this.violetFill,light.violet);
+    this.ambient.intensity=.40*light.ambient;
+    this.sky.setLighting(light.sky);
+    this.rocks.setLighting(light.sky);
     this.sky.resize(dpr);
     this.sky.setRelease(release);
     this.rocks.setRelease(release);
@@ -233,7 +249,11 @@ export class OrbitWorld {
     for (const chunk of this.chunks.values()) descriptions += chunk.rocks.length;
     this.group.traverse(()=>objects++);
     return { chunks: this.chunks.size, visibleChunks: this.visibleChunks, descriptions,
-      instances: this.instances, objects, lod: [...this.levels], setpieces: this.setpieces.metrics() };
+      instances: this.instances, objects, lod: [...this.levels], setpieces: this.setpieces.metrics(),
+      lighting: { beat: this.lighting.beat, scene: orbitLightScenes[this.lighting.chapter], amount: this.lighting.amount,
+        key: this.key.intensity, fill: this.bounce.intensity, ambient: this.ambient.intensity,
+        envelopes: [...this.lighting.envelopes], nebula: [...this.lighting.nebula],
+        local: [this.lighting.face,this.lighting.ring,this.lighting.storm], motion: this.lighting.motion } };
   }
 
   dispose() {

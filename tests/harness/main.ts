@@ -28,6 +28,8 @@ let canvas: HTMLCanvasElement | undefined;
 let metrics: string | undefined;
 
 const harness = {
+  inspectOrbitLighting: async (...args: Parameters<typeof import('./orbit-lighting').inspectOrbitLighting>) =>
+    (await import('./orbit-lighting')).inspectOrbitLighting(...args),
   sectionSignals,
   shaderMismatches,
   stoppedRunSignal,

@@ -20,10 +20,13 @@ test('ORBIT fixed landmarks have no beat zoom with or without PostFX; the other 
   const results = [];
   for (const post of [false, true]) for (const motion of ['cruise', 'boost'] as const) {
     const sample = await page.evaluate(options => window.b0Harness.inspectOrbitStability(options),
-      { quality: 'high' as const, post, motion, beat: 20, frozen: true });
+      { quality: 'high' as const, post, motion, beat: 20, frozen: true, lights: true });
     const fovs = sample.frames.map(frame => frame.fov);
     expect(Math.max(...fovs) - Math.min(...fovs)).toBeLessThan(1e-9);
-    expect(new Set(sample.frames.slice(1).map(frame => JSON.stringify(frame.metrics.orbit))).size).toBe(1);
+    expect(new Set(sample.frames.slice(1).map(frame => {
+      const { lighting: _lighting, ...spatial } = frame.metrics.orbit!;
+      return JSON.stringify(spatial);
+    })).size).toBe(1);
     expect(sample).toMatchObject({ moved: 0, glError: 0 });
     expect(sample.landmarks).toBeGreaterThan(0);
     results.push({ post, motion, fov: fovs[0], landmarks: sample.landmarks });
@@ -43,7 +46,7 @@ test('ORBIT streams stable landmarks through cruise, Boost and mixed input acros
   const results = [];
   for (const [quality, motion, beat] of [['low', 'cruise', 20], ['auto', 'boost', 116], ['high', 'mixed', 192],
     ['auto', 'cruise', 280], ['high', 'boost', 360]] as const) {
-    const sample = await page.evaluate(options => window.b0Harness.inspectOrbitStability(options), { quality, motion, beat, frames: 240, post: true });
+    const sample = await page.evaluate(options => window.b0Harness.inspectOrbitStability(options), { quality, motion, beat, frames: 240, post: true, lights: true });
     expect(sample).toMatchObject({ moved: 0, glError: 0 });
     const frames = sample.frames;
     for (let i = 1; i < frames.length; i++) {
@@ -178,6 +181,7 @@ test('STARWAKE runs for its complete body and tail through real boosted gameplay
       diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: true,
         mobileQuality: false, post: true, record: false, debug: true } });
     await window.b0Harness.start(false);
+    window.b0Harness.dynamicLights(true);
   });
   await page.keyboard.down('Shift');
   await expect.poll(() => page.evaluate(() => window.b0Harness.snapshot().boosting)).toBe(true);
@@ -189,6 +193,8 @@ test('STARWAKE runs for its complete body and tail through real boosted gameplay
       audio: window.b0Harness.audioState() }));
     expect(moment.snapshot.phase).toBe('playing');
     expect(moment.audio).toMatchObject({ starwake: true, context: 'running' });
+    expect(moment.scene.metrics.orbit!.lighting.amount).toBeGreaterThan(.99);
+    expect(Math.abs(moment.scene.metrics.orbit!.lighting.beat - Number(moment.audio.time)*128/60)).toBeLessThan(.75);
     expect(moment.scene.metrics.chunks).toBe(0);
     expect(moment.scene.metrics.gateGeometryCache).toBeLessThanOrEqual(24);
     if (beat >= 336) expect(moment.scene.metrics.orbit!.setpieces.active.some(piece=>piece.id==='planet')).toBe(true);
@@ -231,6 +237,7 @@ for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard
         mobileQuality: false, post: true, record: false, debug: true,
       } });
       await runtime.start(true);
+      runtime.dynamicLights(true);
       runtime.advanceAndPause(100, true);
       await runtime.resume(true);
       return runtime.snapshot().gatesPassed;

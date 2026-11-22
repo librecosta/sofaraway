@@ -10,13 +10,14 @@ void main() {
 }`;
 
 export const orbitSpaceColor = /* glsl */`
-uniform float orbitRelease;
+uniform float orbitRelease,orbitMood;
 vec3 orbitSpaceColor(vec3 ray) {
   float band = exp(-7.0 * pow(dot(ray, normalize(vec3(-.42, .83, .23))), 2.0));
   float key = smoothstep(-.33, .90, dot(ray, normalize(vec3(-.63, .39, -.65))));
   vec3 space = vec3(.009, .014, .023) + band * vec3(.009, .018, .032);
   space += band * key * vec3(.022, .008, .004);
-  return space + orbitRelease * (vec3(.007, .014, .023) + band * vec3(.009, .017, .024));
+  return space + orbitMood*band*(vec3(.008,.009,.021)+key*vec3(.012,.006,.002))
+    + orbitRelease * (vec3(.007, .014, .023) + band * vec3(.009, .017, .024));
 }`;
 
 const skyFragment = /* glsl */`
@@ -32,12 +33,14 @@ attribute float radius;
 attribute float radiance;
 attribute vec3 tint;
 uniform float pixelRatio;
+uniform float choralGlow;
 varying vec3 emission;
 void main() {
   vec4 clip = projectionMatrix * vec4(mat3(viewMatrix) * position, 1.0);
   gl_Position = clip.xyww;
   gl_PointSize = radius * pixelRatio;
-  emission = tint * radiance;
+  float cluster=pow(max(0.0,dot(normalize(position),normalize(vec3(-.42,.32,-1.0)))),40.0);
+  emission = tint * radiance*(1.0+choralGlow*cluster*.16);
 }`;
 
 const starFragment = /* glsl */`
@@ -52,7 +55,7 @@ export class OrbitSky {
   readonly group = new THREE.Group();
   private readonly dome = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.ShaderMaterial({
     vertexShader: skyVertex, fragmentShader: skyFragment, side: THREE.BackSide, depthWrite: false, toneMapped: false,
-    uniforms: { orbitRelease: { value: 0 } },
+    uniforms: { orbitRelease: { value: 0 },orbitMood:{value:0} },
   }));
   private readonly stars: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>;
 
@@ -90,7 +93,7 @@ export class OrbitSky {
     geometry.setAttribute('radiance', new THREE.BufferAttribute(energy, 1));
     geometry.setAttribute('tint', new THREE.BufferAttribute(colors, 3));
     this.stars = new THREE.Points(geometry, new THREE.ShaderMaterial({ vertexShader: starVertex, fragmentShader: starFragment,
-      uniforms: { pixelRatio: { value: 1 } }, depthWrite: false, toneMapped: false, transparent: true,
+      uniforms: { pixelRatio: { value: 1 },choralGlow:{value:0} }, depthWrite: false, toneMapped: false, transparent: true,
       blending: THREE.AdditiveBlending }));
     this.dome.renderOrder = -2;
     this.stars.renderOrder = -1;
@@ -100,6 +103,7 @@ export class OrbitSky {
 
   resize(dpr: number) { this.stars.material.uniforms.pixelRatio.value = dpr; }
   setRelease(value: number) { this.dome.material.uniforms.orbitRelease.value = value; }
+  setLighting(value:number){this.dome.material.uniforms.orbitMood.value=value;this.stars.material.uniforms.choralGlow.value=value;}
 
   dispose() {
     this.group.remove(this.dome, this.stars);

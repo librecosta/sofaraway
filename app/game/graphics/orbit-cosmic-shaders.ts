@@ -38,6 +38,7 @@ export const nebulaFragment = /* glsl */`
 ${cosmicNoise}
 ${nebulaIntegration}
 uniform float presence, detail, layer, seed;
+uniform float choreoGain,choreoHue,choreoFiber,choreoPhase;
 varying vec2 vUv;
 float cloudWindow(vec2 p,vec2 c,vec2 scale) { vec2 q=(p-c)*scale;return exp(-dot(q,q)); }
 void main() {
@@ -116,6 +117,12 @@ void main() {
   if(layer>4.5)knot+=cloudWindow(q,vec2(.73,.76),vec2(13.,16.))
     +cloudWindow(q,vec2(.86,.66),vec2(22.,20.))+cloudWindow(q,vec2(.62,.80),vec2(24.,24.));
   emission+=vec3(.60,.76,.86)*knot*density*.95;
+  // Modulate emissivity within the existing gas, never optical depth/alpha.
+  // The traveling highlight follows the established flow and is envelope-gated.
+  float response=pow(.5+.5*cos(flow.x*.75+flow.y*.38-choreoPhase-layer*.83),3.0);
+  vec3 responseTint=layer<1.5?vec3(.72,1.12,1.16):layer<4.5?vec3(1.12,.83,1.14):vec3(1.15,1.02,.78);
+  emission*=choreoGain*(1.0+choreoFiber*fibers*response);
+  emission=mix(emission,emission*responseTint,choreoHue*response);
   float edge=smoothstep(0.0,.16,vUv.x)*smoothstep(0.0,.16,vUv.y)*smoothstep(0.0,.16,1.0-vUv.x)*smoothstep(0.0,.16,1.0-vUv.y);
   // Fade the optical path, not merely alpha after integration. Dust absorbs
   // background starlight; it is not a black decal on top of additive gas.

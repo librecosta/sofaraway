@@ -8,6 +8,8 @@ import type { CosmicBody, OrbitSetpiece } from '../core/orbit-setpieces';
 import { astralProjection, cosmicNoise, nebulaFragment } from './orbit-cosmic-shaders';
 import type { OrbitRocks } from './orbit-rocks.client';
 import { OrbitHeroSurface } from './orbit-hero-surface';
+import { OrbitSurfaceLights } from './orbit-light-rig';
+import type { OrbitLighting } from '../core/orbit-lighting';
 
 const projectionVertex = /* glsl */`
 varying vec2 vUv;
@@ -35,7 +37,7 @@ function rockMaterial(surface:OrbitRocks['surface']|OrbitHeroSurface,fade={value
 
 const planetFragment = /* glsl */`
 ${cosmicNoise}
-uniform float presence, style, detail;
+uniform float presence, style, detail, celestialGain;
 uniform highp sampler3D stoneField;
 uniform vec3 sun;
 varying vec2 vUv;
@@ -47,7 +49,7 @@ void main() {
   float surface=cloud.r;
   if(style>1.5) {
     float limb=pow(max(.0,dot(normal,eye)),.35);
-    gl_FragColor=vec4(vec3(1.22,.81,.36)*(.78+.22*surface)*(.52+.48*limb),presence);
+    gl_FragColor=vec4(vec3(1.22,.81,.36)*(.78+.22*surface)*(.52+.48*limb)*(1.0+(celestialGain-1.0)*.12),presence);
   } else {
     float jet=normal.y*38.0+cloud.g*6.0+sin(normal.x*5.0+normal.z*4.0)*.65;
     float stripes=.5+.5*sin(jet)*(1.0-smoothstep(.4,2.0,fwidth(jet)));
@@ -63,12 +65,12 @@ void main() {
     float lit=sqrt(max(0.0,mu))*smoothstep(-.02,.10,mu);
     color*=(style<.5?.22:.10)+1.40*lit;
     color+=vec3(.027,.043,.067)*pow(1.0-abs(dot(normal,eye)),3.0);
-    gl_FragColor=vec4(color,presence);
+    gl_FragColor=vec4(color*(1.0+(celestialGain-1.0)*.20),presence);
   }
   #include <colorspace_fragment>
 }`;
 const atmosphereFragment = /* glsl */`
-uniform float presence, style;
+uniform float presence, style, celestialGain;
 varying vec3 vLocal,vWorld;
 void main(){
   float facing=abs(dot(normalize(vLocal),normalize(cameraPosition-vWorld)));
@@ -77,11 +79,12 @@ void main(){
   float angle=atan(vLocal.y,vLocal.x);
   float corona=.80+.12*sin(angle*7.0+sin(angle*3.0))+.08*sin(angle*17.0);
   float illumination=style>1.5?corona:.45+.55*max(0.0,dot(normalize(vLocal),normalize(vec3(-.58,.55,.65))));
-  gl_FragColor=vec4(tint*rim*(style>1.5?.56:.92)*illumination,rim*.53*presence);
+  gl_FragColor=vec4(tint*rim*(style>1.5?.56:.92)*illumination*celestialGain,rim*.53*presence);
   #include <colorspace_fragment>
 }`;
 
 type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { value:number };
+  lights:OrbitSurfaceLights;
   heroes: { mesh: THREE.Mesh; body: CosmicBody; lod:number }[]; batches: Map<number,THREE.InstancedMesh>;
   celestials: THREE.Mesh[];
   levels: Int8Array; quality?: QualityTier; instances:number; lastPosition:THREE.Vector3 };
@@ -97,15 +100,16 @@ export class OrbitSetpieces {
   private readonly transform = new THREE.Object3D();
   private readonly point = new THREE.Vector3();
   private station = 0;
-  constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks) {}
+  constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks,private readonly sceneScale=1) {}
 
   private create(piece: OrbitSetpiece) {
     const surface = rockMaterial(this.rocks.surface);
-    const item: ActivePiece = { group:new THREE.Group(), materials:[surface.material],fade:surface.fade, heroes:[],celestials:[], batches:new Map(),
+    const lights=new OrbitSurfaceLights(piece,this.sceneScale);lights.apply(surface.material);
+    const item: ActivePiece = { group:new THREE.Group(), materials:[surface.material],fade:surface.fade,lights, heroes:[],celestials:[], batches:new Map(),
       levels:new Int8Array(piece.rocks.length).fill(-1), instances:0,lastPosition:new THREE.Vector3(Infinity,Infinity,Infinity) };
     item.group.name = piece.name;
     const heroMaterial=piece.bodies.some(body=>body.type==='hero')?rockMaterial(this.heroSurface,item.fade).material:null;
-    if(heroMaterial)item.materials.push(heroMaterial);
+    if(heroMaterial){lights.apply(heroMaterial);item.materials.push(heroMaterial);}
     for (const body of piece.bodies) {
       if (body.type==='hero') {
         const mesh = new THREE.Mesh(this.heroes[body.shape][1],heroMaterial!);
@@ -114,7 +118,7 @@ export class OrbitSetpieces {
       } else {
         const style = body.type==='moon'?0:body.type==='planet'?1:2;
         const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65);
-        const uniforms = {stoneField:{value:this.rocks.surface.texture},presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3}};
+        const uniforms = {stoneField:{value:this.rocks.surface.texture},presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3},celestialGain:{value:1}};
         const material = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:planetFragment,uniforms,
           transparent:true,depthWrite:true});
         const mesh = new THREE.Mesh(this.spheres[0],material);item.celestials.push(mesh);
@@ -132,7 +136,8 @@ export class OrbitSetpieces {
     for(const [layer,structure] of piece.nebula.entries()) {
       const material=new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:nebulaFragment,transparent:true,
         depthTest:true, depthWrite:false, premultipliedAlpha:true,
-        uniforms:{presence:item.fade,detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13}}});
+        uniforms:{presence:item.fade,detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13},
+          choreoGain:{value:1},choreoHue:{value:0},choreoFiber:{value:0},choreoPhase:{value:0}}});
       const mesh=new THREE.Mesh(this.plane,material);
       const f=new THREE.Vector3().fromArray(piece.forward),r=new THREE.Vector3().fromArray(piece.right),u=new THREE.Vector3().fromArray(piece.up);
       mesh.name=structure.role;
@@ -144,7 +149,7 @@ export class OrbitSetpieces {
     this.group.add(item.group);this.active.set(piece.id,item);return item;
   }
 
-  update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier) {
+  update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier,lighting?:OrbitLighting) {
     this.station=station;
     this.heroSurface.update(quality);
     const projection=height*camera.projectionMatrix.elements[5];
@@ -154,6 +159,7 @@ export class OrbitSetpieces {
       if(!item && presence>.0005) item=this.create(piece);
       if(!item)continue;
       item.fade.value=presence;item.group.visible=presence>.001;
+      if(lighting)item.lights.update(lighting);
       if(!item.group.visible && (station>piece.to+piece.feather || station<piece.from-piece.feather)) {
         this.free(item);this.active.delete(piece.id);continue;
       }
@@ -163,8 +169,16 @@ export class OrbitSetpieces {
         entry.lod=quality==='low'?1:0;
         mesh.geometry=this.heroes[body.shape][entry.lod];
       }
-      for(const material of item.materials)if(material instanceof THREE.ShaderMaterial && material.uniforms.detail)
-        material.uniforms.detail.value=quality==='low'?2:quality==='high'?4:3;
+      for(const material of item.materials)if(material instanceof THREE.ShaderMaterial) {
+        if(material.uniforms.detail)material.uniforms.detail.value=quality==='low'?2:quality==='high'?4:3;
+        if(lighting&&material.uniforms.choreoGain){
+          const layer=material.uniforms.layer.value;
+          material.uniforms.choreoGain.value=lighting.nebula[layer];material.uniforms.choreoHue.value=lighting.hues[layer];
+          material.uniforms.choreoFiber.value=lighting.fiber*(quality==='low'?.55:1);
+          material.uniforms.choreoPhase.value=lighting.travel*Math.PI*2;
+        }
+        if(lighting&&material.uniforms.celestialGain)material.uniforms.celestialGain.value=piece.id==='planet'?lighting.planet:lighting.corona;
+      }
       for(const mesh of item.celestials)mesh.geometry=this.spheres[quality==='low'?0:1];
       if(piece.rocks.length && (item.quality!==quality || item.lastPosition.distanceToSquared(camera.position)>16)) {
         this.populate(piece,item,camera.position,projection,quality);

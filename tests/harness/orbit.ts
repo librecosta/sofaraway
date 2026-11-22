@@ -12,7 +12,7 @@ import type { OrbitEntryBeacons } from '../../app/game/graphics/orbit-entry-beac
 
 /** Production render isolation, with no test switches in the game's camera policy. */
 export async function inspectOrbitStability(options: { quality: QualityTier; post: boolean; motion: 'cruise' | 'boost' | 'mixed';
-  beat: number; frozen?: boolean; frames?: number; volume?: VolumeId }) {
+  beat: number; frozen?: boolean; frames?: number; volume?: VolumeId; lights?: boolean }) {
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:fixed;inset:0;width:960px;height:540px;z-index:10000';
   document.body.append(canvas);
@@ -32,7 +32,7 @@ export async function inspectOrbitStability(options: { quality: QualityTier; pos
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
       if (options.frozen) { sim.beat += STEP / sim.secondsPerBeat; sim.time += STEP; }
       else sim.step(STEP, { ...idleInput, boosting: options.motion === 'boost' || options.motion === 'mixed' && i % 120 < 60 });
-      graphics.draw(sim, true);
+      graphics.draw(sim, true, true, options.lights ? {beat:sim.beat,orbitAmount:1} : undefined);
       const orbit: OrbitWorld | undefined = Reflect.get(graphics, 'volume')?.orbit;
       const chunks: Map<string, { rocks: OrbitRock[] }> | undefined = orbit && Reflect.get(orbit, 'chunks');
       for (const chunk of chunks?.values() ?? []) for (const rock of chunk.rocks) {

@@ -41,7 +41,8 @@ const frame = () => ({
 });
 const BASE_FOV = 76;
 type SceneGate = RunGate | EncoreGate;
-interface OrbitView { station: number; x: number; y: number; time: number }
+interface OrbitView { station: number; x: number; y: number; time: number;
+  lighting?: import('../core/orbit-lighting').OrbitLightOptions & { beat: number } }
 export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance' | 'beat' | 'time' | 'phase' |
   'mode' | 'route' | 'branch' | 'branchGates' | 'junctionPath' | 'steeringWidth' | 'routeGuide' | 'routeSide' |
   'previewGates' | 'previewEncore' | 'outroPlan' | 'speed' | 'boostLens' | 'boosting' | 'hitTime' |
@@ -181,16 +182,20 @@ class VolumeScene {
   updateOrbit(view: OrbitView, height: number, dpr: number, quality: QualityTier) {
     this.moveCamera(this.path.sample(view.station, this.cameraFrame), view.x, view.y);
     this.setFov(BASE_FOV);
-    this.orbit?.update(this.camera, height, dpr, quality, 0, view.station);
+    this.orbit?.update(this.camera, height, dpr, quality, 0, view.station, view.lighting);
   }
 
   updateAstralWorld(sim: SceneState, height: number, dpr: number, quality: QualityTier, lighting?: LightingPreview) {
     if (!this.orbit) return;
-    const station = sim.trackDistance;
+    const station = lighting?.station ?? sim.trackDistance;
     const plan = sim.outroPlan;
     const release = plan ? Math.max(ease((station - plan.afterglowStart) / 250),
       ease((sim.beat - (this.volume!.beats - 10)) / 10) * .65) : 0;
-    this.orbit.update(this.camera, height, dpr, quality, release, station);
+    this.orbit.update(this.camera, height, dpr, quality, release, station, {
+      beat: lighting?.rhythmBeat ?? lighting?.beat ?? sim.beat,
+      amount: sim.phase === 'menu' ? 0 : lighting?.orbitAmount ?? lighting?.dynamics?.amount ?? 0,
+      reducedMotion: lighting?.reducedMotion,
+    });
     this.orbitBeacons?.update(station, sim.branch?.side ?? sim.routeSide, !!sim.branch?.side, height);
   }
 

@@ -11,6 +11,7 @@ import type { Path } from './path';
 export interface LightingPreview {
   readonly beat: number;
   readonly rhythmBeat?: number;
+  readonly orbitAmount?: number;
   readonly reducedMotion?: boolean;
   readonly descentFocus?: import('../core/descent-lighting').ControlLightView;
   readonly pattern?: LightPattern;

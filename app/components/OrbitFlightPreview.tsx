@@ -6,6 +6,7 @@ import { ORBIT_WORLD_SEED } from '../game/core/orbit-field';
 import { corridorLength } from '../game/core/corridor-composition';
 import { referenceFor, START_DISTANCE } from '../game/core/reference-track';
 import { orbitSceneBeats, orbitSceneNames } from '../game/core/orbit-setpieces';
+import { orbitLightScenes } from '../game/core/orbit-lighting';
 import { volumeById } from '../game/core/volumes';
 import type { OrbitDensity } from '../game/core/orbit-field';
 import { buildRunPath } from '../game/graphics/path';
@@ -13,7 +14,8 @@ import type { Graphics } from '../game/graphics/scene.client';
 import s from '../styles/orbit-preview.module.css';
 
 type Metrics = ReturnType<Graphics['metrics']>;
-type Viewer = { redraw(resetView?: boolean): void; reload(): void; quality(): void };
+type Viewer = { redraw(resetView?: boolean): void; reload(): void; quality(): void;
+  music(play: boolean, beat?: number): void };
 const qualities = ['low', 'auto', 'high'] as const;
 const densities = ['flight', 'sparse', 'dense'] as const;
 const orbit = volumeById('orbit');
@@ -33,13 +35,18 @@ export function OrbitFlightPreview() {
   const [seedDraft, setSeedDraft] = useState(String(seed));
   const [station, setStation] = useState(limitStation(Number(params.get('station')) || 0));
   const [playing, setPlaying] = useState(false);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [musicBeat, setMusicBeat] = useState(Math.max(0,Math.min(384,Number(params.get('beat'))||0)));
+  const [dynamicLights, setDynamicLights] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [metrics, setMetrics] = useState<Metrics>();
   const [status, setStatus] = useState('Loading WebGL preview…');
   const [opened, setOpened] = useState(false);
   const [readyToOpen, setReadyToOpen] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<Viewer>(null);
-  const settings = useRef({ seed, density, quality, station, playing, post: params.get('post') !== '0' });
+  const settings = useRef({ seed, density, quality, station, playing, musicPlaying, musicBeat, dynamicLights,
+    reducedMotion, post: params.get('post') !== '0' });
 
   useEffect(() => setReadyToOpen(true), []);
 
@@ -53,7 +60,8 @@ export function OrbitFlightPreview() {
     void Promise.all([
       import('../game/graphics/scene.client'),
       import('../game/runtime/input.client'),
-    ]).then(([{ Graphics }, { InputController }]) => {
+      import('../game/audio/transport.client'),
+    ]).then(([{ Graphics }, { InputController }, { AudioTransport }]) => {
       if (signal.aborted) return;
       const path = buildRunPath(orbit);
       const mobile = matchMedia('(pointer: coarse)').matches;
@@ -69,6 +77,7 @@ export function OrbitFlightPreview() {
       let last = 0;
       let reportAt = -Infinity;
       let time = 0;
+      let musicRequest = 0;
       let speed = 52;
       let x = 0, y = 0, targetX = 0, targetY = 0;
       const active = () => !!element.closest('#orbit')?.contains(document.activeElement);
@@ -79,6 +88,17 @@ export function OrbitFlightPreview() {
         dirty = true;
         requestDraw();
       };
+      const pauseMusic = () => {
+        musicRequest++;
+        const time = audio.time;
+        if (controls.musicPlaying && typeof time === 'number') controls.musicBeat = Math.min(384,time*orbit.bpm/60);
+        audio.stop(true);
+        controls.musicPlaying = false;
+        setMusicPlaying(false);
+        setMusicBeat(controls.musicBeat);
+        invalidate();
+      };
+      const audio = new AudioTransport(pauseMusic);
       const toggle = (value: boolean) => {
         controls.playing = value;
         setPlaying(value);
@@ -102,6 +122,7 @@ export function OrbitFlightPreview() {
         observer.disconnect();
         input.dispose();
         viewer.current = null;
+        audio.dispose();
         graphics.dispose();
       };
       observer.observe(element);
@@ -109,6 +130,7 @@ export function OrbitFlightPreview() {
       document.addEventListener('visibilitychange', () => {
         last = 0;
         input.clear();
+        if (document.hidden) pauseMusic();
         if (!document.hidden && controls.playing) requestDraw();
       }, { signal });
       element.addEventListener('webglcontextlost', event => {
@@ -117,6 +139,7 @@ export function OrbitFlightPreview() {
         cancelAnimationFrame(frame);
         frame = 0;
         input.clear();
+        pauseMusic();
         toggle(false);
         graphics.releaseSurface();
         setStatus('Graphics paused. Waiting for WebGL recovery…');
@@ -151,14 +174,31 @@ export function OrbitFlightPreview() {
           graphics.configure(controls.quality, mobile);
           resize();
         },
+        music(play, beat) {
+          if (beat !== undefined) {
+            controls.musicBeat = Math.max(0,Math.min(384,beat));
+            setMusicBeat(controls.musicBeat);
+          }
+          if (!play || lost) { if (beat !== undefined) audio.stop(); pauseMusic(); return; }
+          if (controls.musicBeat >= 384) controls.musicBeat = 0;
+          controls.musicPlaying = true;
+          setMusicPlaying(true);
+          const request = ++musicRequest;
+          void audio.start(orbit,controls.musicBeat*60/orbit.bpm).then(ok=>{
+            if (signal.aborted || request !== musicRequest) return;
+            if (!ok) pauseMusic();
+            invalidate();
+          });
+        },
       };
 
       function draw(now: number) {
         frame = 0;
         const flying = controls.playing && !document.hidden;
+        const sounding = controls.musicPlaying && !document.hidden;
         const dt = flying && last ? Math.min(.05, (now - last) / 1000) : 0;
         last = flying ? now : 0;
-        if (!lost && (dirty || flying)) {
+        if (!lost && (dirty || flying || sounding)) {
           try {
             const controlsFrame = input.read();
             const boosting = flying && active() && controlsFrame.boosting;
@@ -172,10 +212,19 @@ export function OrbitFlightPreview() {
               time += dt;
               if (controls.station >= path.length) toggle(false);
             }
-            graphics.drawOrbit({ station: controls.station, x, y, time });
-            if (dirty || !controls.playing || now - reportAt > 230) {
+            if (sounding) {
+              const at = audio.outputTimeAt(now/1000) ?? audio.time;
+              if (typeof at === 'number') controls.musicBeat = Math.min(384,Math.max(0,at*orbit.bpm/60));
+              if (controls.musicBeat >= 384) {
+                controls.musicPlaying = false;setMusicPlaying(false);audio.finish();
+              }
+            }
+            graphics.drawOrbit({ station: controls.station, x, y, time,
+              lighting: { beat: controls.musicBeat, amount: Number(controls.dynamicLights), reducedMotion: controls.reducedMotion } });
+            if (dirty || !(controls.playing || controls.musicPlaying) || now - reportAt > 230) {
               setMetrics(graphics.metrics());
               setStation(controls.station);
+              setMusicBeat(controls.musicBeat);
               reportAt = now;
             }
             dirty = false;
@@ -185,7 +234,7 @@ export function OrbitFlightPreview() {
             return;
           }
         }
-        if (controls.playing && !document.hidden) requestDraw();
+        if ((controls.playing || controls.musicPlaying) && !document.hidden) requestDraw();
       }
       resize();
       setStatus('');
@@ -260,6 +309,24 @@ export function OrbitFlightPreview() {
           <input aria-label="World station" type="range" min={START_DISTANCE} max={Math.floor(length)} step="1" value={Math.min(Math.floor(length), Math.round(station))}
             onChange={e => seek(Number(e.currentTarget.value))} />
         </div>
+        <div className={s.actions} aria-label="STARWAKE lighting cues">
+          {orbit.sections.map((section,index)=><button type="button" key={section.name} title={orbitLightScenes[index]}
+            onClick={()=>viewer.current?.music(false,orbit.sections.slice(0,index).reduce((n,s)=>n+s.beats,0))}>Light: {section.name}</button>)}
+        </div>
+        <div className={s.seek}><span>Music beat</span><output aria-live="off">{musicBeat.toFixed(2)} · {orbitLightScenes[metrics?.orbit ? Math.max(0,orbitLightScenes.indexOf(metrics.orbit.lighting.scene)) : 0]}</output>
+          <input aria-label="Music beat" type="range" min="0" max="384" step="0.125" value={musicBeat}
+            onChange={e=>viewer.current?.music(musicPlaying,Number(e.currentTarget.value))} />
+        </div>
+        <div className={s.actions}>
+          <button type="button" disabled={!!status} onClick={()=>viewer.current?.music(!musicPlaying)}>{musicPlaying?'Pause STARWAKE':'Play STARWAKE'}</button>
+          <label><input type="checkbox" checked={dynamicLights} onChange={e=>{
+            settings.current.dynamicLights=e.currentTarget.checked;setDynamicLights(e.currentTarget.checked);viewer.current?.redraw();
+          }} /> Dynamic lighting</label>
+          <label><input type="checkbox" checked={reducedMotion} onChange={e=>{
+            settings.current.reducedMotion=e.currentTarget.checked;setReducedMotion(e.currentTarget.checked);viewer.current?.redraw();
+          }} /> Reduced motion</label>
+        </div>
+        <p>World position and music are independent. Pause flight to inspect a fixed landmark while STARWAKE plays.</p>
         <div className={s.actions}>
           <label>Density <select value={density} onChange={e => switchDensity(e.currentTarget.value as OrbitDensity)}>
             <option value="flight">Flight progression</option><option value="sparse">Sparse</option><option value="dense">Dense</option>
@@ -282,6 +349,7 @@ export function OrbitFlightPreview() {
           {' · '}{metrics.orbit.setpieces.active.map(piece=>piece.id).join(' + ')}
           {' · '}{metrics.orbit.setpieces.active.flatMap(piece=>piece.heroes).join(' / ')}
           {' · '}{metrics.orbit.setpieces.active.reduce((sum,piece)=>sum+piece.instances,0)} setpiece fragments · {metrics.orbit.objects} objects
+          {' · '}Light {metrics.orbit.lighting.scene} · Key {metrics.orbit.lighting.key.toFixed(2)} / Fill {metrics.orbit.lighting.fill.toFixed(2)}
         </output>}
       </div>
     </> : <button type="button" className={s.open} disabled={!readyToOpen} onClick={() => setOpened(true)}>Open flight preview</button>}
