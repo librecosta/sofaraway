@@ -145,3 +145,34 @@ textures rise from four to five (one 1 MiB base volume plus mipmaps). Tests
 observe three GPU volume allocations and three releases across tier reloads.
 Fixed-seed before/after frames and continuous player-camera clips are kept in
 the ignored `scratch/orbit-c3/` directory, alongside raw interleaved samples.
+
+## C4-B hero surface authenticity
+
+Heroes now use a separate `OrbitHeroSurface`; ordinary debris, celestial clouds
+and their existing volume field are unchanged. The hero path has no sinusoidal
+contour bands. Sparse finite fracture planes, local exfoliation patches and
+shallow spalls are evaluated on the undeformed body. Three unequal cliff shelves
+replace periodic strata. Bounded inward relief, creased face normals and removal
+of collapsed triangles give these structures actual lighting and depth without
+moving landmarks or increasing their safety envelopes. Geometry stays fixed per
+quality tier and is shared by family; no distance-based material variant exists.
+
+A shared, baked 64³ RGBA cellular/grain field supplies UV-free secondary joints
+and micro relief. Physical object-axis lengths compensate nonuniform scaling.
+Mipmaps, pixel-footprint attenuation and bounded derivative normals limit distant
+shimmer. Fresh faces are slightly lighter and less rough; weathered patches are
+rougher, with restrained gray/brown variation and very sparse mineral response.
+Each world owns one additional volume texture (1 MiB base, about 1.14 MiB with
+mips) and releases it with the setpieces. The ten shared hero geometries use
+2,399,184 bytes of attributes/indices versus 1,319,520 before (+1.03 MiB for
+the complete two-tier cache); this is bounded family data, not per-body copies.
+
+Against 7c92556, two interleaved 240-frame samples per version/scene/tier on
+Chrome 157 / AMD Radeon D3D11, 960×540, DPR 1 retain 4.25–4.30 ms frame-interval
+P95 across OUTER BELT, DRIFT and boosted RINGBREAK. High OUTER BELT/DRIFT GPU
+P95 averages 1.92→1.94 / 1.83→1.86 ms; calls and nine programs are unchanged.
+GPU timings vary between samples; these short runs do not establish a speedup.
+Fixed-seed angle captures, player-camera approaches and raw measurements are in
+the ignored `scratch/orbit-m1/hero-geology/` directory. Tests cover finite normals,
+nondegenerate faces, bounded local masks, stable geometry/material identity and
+six volume allocations matched by six releases across the three quality tiers.

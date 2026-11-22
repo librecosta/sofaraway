@@ -7,6 +7,7 @@ import { cosmicPresence } from '../core/orbit-setpieces';
 import type { CosmicBody, OrbitSetpiece } from '../core/orbit-setpieces';
 import { astralProjection, cosmicNoise, nebulaFragment } from './orbit-cosmic-shaders';
 import type { OrbitRocks } from './orbit-rocks.client';
+import { OrbitHeroSurface } from './orbit-hero-surface';
 
 const projectionVertex = /* glsl */`
 varying vec2 vUv;
@@ -18,8 +19,7 @@ void main() {
   ${astralProjection}
 }`;
 
-function rockMaterial(rocks:OrbitRocks) {
-  const fade = { value: 1 };
+function rockMaterial(surface:OrbitRocks['surface']|OrbitHeroSurface,fade={value:1}) {
   const material = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8e929b, roughness:.91, metalness:.055,
     transparent:true, depthWrite:true, fog:false });
   material.onBeforeCompile = shader => {
@@ -29,7 +29,7 @@ function rockMaterial(rocks:OrbitRocks) {
       'diffuseColor.a *= cosmicPresence;\n#include <opaque_fragment>');
   };
   material.customProgramCacheKey = () => 'orbit-cosmic-rock-v1';
-  rocks.surface.apply(material);
+  surface.apply(material);
   return { material, fade };
 }
 
@@ -93,19 +93,22 @@ export class OrbitSetpieces {
   private readonly heroes = Array.from({length:heroFamilies.length},(_,shape)=>Array.from({length:2},(_,lod)=>orbitHeroGeometry(shape,lod)));
   private readonly spheres = [new THREE.SphereGeometry(1,32,20),new THREE.SphereGeometry(1,64,40)];
   private readonly plane = new THREE.PlaneGeometry(1,1);
+  private readonly heroSurface = new OrbitHeroSurface();
   private readonly transform = new THREE.Object3D();
   private readonly point = new THREE.Vector3();
   private station = 0;
   constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks) {}
 
   private create(piece: OrbitSetpiece) {
-    const surface = rockMaterial(this.rocks);
+    const surface = rockMaterial(this.rocks.surface);
     const item: ActivePiece = { group:new THREE.Group(), materials:[surface.material],fade:surface.fade, heroes:[],celestials:[], batches:new Map(),
       levels:new Int8Array(piece.rocks.length).fill(-1), instances:0,lastPosition:new THREE.Vector3(Infinity,Infinity,Infinity) };
     item.group.name = piece.name;
+    const heroMaterial=piece.bodies.some(body=>body.type==='hero')?rockMaterial(this.heroSurface,item.fade).material:null;
+    if(heroMaterial)item.materials.push(heroMaterial);
     for (const body of piece.bodies) {
       if (body.type==='hero') {
-        const mesh = new THREE.Mesh(this.heroes[body.shape][1],surface.material);
+        const mesh = new THREE.Mesh(this.heroes[body.shape][1],heroMaterial!);
         mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.rotation.set(...body.rotation);
         mesh.frustumCulled=false; item.heroes.push({mesh,body,lod:1}); item.group.add(mesh);
       } else {
@@ -143,6 +146,7 @@ export class OrbitSetpieces {
 
   update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier) {
     this.station=station;
+    this.heroSurface.update(quality);
     const projection=height*camera.projectionMatrix.elements[5];
     for(const piece of this.descriptions) {
       const presence=cosmicPresence(piece,station);
@@ -196,5 +200,5 @@ export class OrbitSetpieces {
   metrics(){return {station:this.station,active:[...this.active].filter(([,p])=>p.group.visible).map(([id,p])=>({id,presence:p.fade.value,
     instances:p.instances,objects:p.group.children.length,heroes:p.heroes.map(h=>heroFamilies[h.body.shape]),heroGeometry:p.heroes.map(h=>({id:h.body.id,lod:h.lod,vertices:h.mesh.geometry.attributes.position.count}))})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
   private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();for(const material of item.materials)material.dispose();}
-  dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const variants of this.heroes)for(const geometry of variants)geometry.dispose();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
+  dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const variants of this.heroes)for(const geometry of variants)geometry.dispose();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();this.heroSurface.dispose();}
 }

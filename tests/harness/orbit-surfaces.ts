@@ -7,7 +7,7 @@ import { idleInput } from '../../app/game/core/input';
 import { Graphics } from '../../app/game/graphics/scene.client';
 import { nebulaIntegration } from '../../app/game/graphics/orbit-cosmic-shaders';
 
-export async function inspectOrbitSurfaces(quality:QualityTier) {
+export async function inspectOrbitSurfaces(quality:QualityTier,view:'flight'|'front'|'oblique'|'backlit'|'strong'='flight') {
   const canvas=document.createElement('canvas');document.body.append(canvas);
   const graphics=new Graphics(canvas,quality,false,{fixedTime:null,autoplay:false,align:true,god:false,boost:false,
     mobileQuality:false,post:false,record:false,debug:true});
@@ -23,9 +23,17 @@ export async function inspectOrbitSurfaces(quality:QualityTier) {
       const hero=heroes.find(h=>h.body.shape===family&&!h.body.id.includes('plate'));
       const center=hero.mesh.position.clone(),frame=sim.path.sample(sim.trackDistance);
       graphics.camera!.position.copy(center).addScaledVector(frame.f,-hero.body.radius*1.7).addScaledVector(frame.r,-hero.body.radius*.10);
+      if(view!=='flight') {
+        const offset=new THREE.Vector3(view==='oblique'?1.05:view==='backlit'?-1.2:.12,.15,view==='backlit'?-.9:1.25)
+          .applyQuaternion(hero.mesh.quaternion).multiplyScalar(hero.body.radius);
+        graphics.camera!.position.copy(center).add(offset);
+      }
       graphics.camera!.lookAt(center);graphics.camera!.updateMatrixWorld();
+      const light=view==='strong'?new THREE.DirectionalLight(0xfff1da,2):null;
+      if(light){light.position.copy(graphics.camera!.position).addScaledVector(frame.u,hero.body.radius);light.target.position.copy(center);volume.scene.add(light,light.target);}
       graphics.renderer.render(volume.scene,graphics.camera!);
-      frames.push({family,id:hero.body.id,lod:hero.lod,scale:hero.body.scale,png:canvas.toDataURL(),metrics:graphics.metrics()});
+      frames.push({family,id:hero.body.id,lod:hero.lod,scale:hero.body.scale,view,png:canvas.toDataURL(),metrics:graphics.metrics()});
+      if(light){light.removeFromParent();light.target.removeFromParent();light.dispose();}
       await new Promise<void>(r=>requestAnimationFrame(()=>r()));
     }
     return {frames,glError:graphics.gl.getError(),badPrograms:graphics.renderer.info.programs?.filter(p=>Reflect.get(p,'diagnostics')?.runnable===false).length??0};

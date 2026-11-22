@@ -28,7 +28,20 @@ test('all geological families compile at every tier in the real world with nonun
     }
   }
   expect(errors).toEqual([]);
-  expect(await page.evaluate(()=>Reflect.get(window,'stoneTextures'))).toEqual({created:3,released:3});
+  // Each world owns the existing debris field and one hero-only fracture field.
+  expect(await page.evaluate(()=>Reflect.get(window,'stoneTextures'))).toEqual({created:6,released:6});
+});
+
+test('five hero families retain real shear faces under front, oblique, backlit and strong illumination',async({page},run)=>{
+  const errors:string[]=[];page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  await page.goto('http://127.0.0.1:8090/');
+  for(const view of ['front','oblique','backlit','strong'] as const) {
+    const sample=await page.evaluate(view=>window.b0Harness.inspectOrbitSurfaces('high',view),view);
+    expect(sample.glError).toBe(0);expect(sample.badPrograms).toBe(0);
+    for(const frame of sample.frames)await run.attach(`${view}-${frame.id}`,{
+      body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
+  }
+  expect(errors).toEqual([]);
 });
 
 test('production gas optics integrate emission, dust, near-zero density and sorted premultiplied layers',async({page})=>{
