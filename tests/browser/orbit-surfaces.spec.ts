@@ -1,6 +1,22 @@
 import {expect,test} from '@playwright/test';
 import type {} from '../harness/main';
 
+test('supporting ring instances use shared geology across shape families and quality tiers',async({page},run)=>{
+  const errors:string[]=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+  await page.goto('http://127.0.0.1:8090/');
+  for(const quality of ['low','auto','high'] as const) {
+    const result=await page.evaluate(q=>window.b0Harness.inspectSupportingSurfaces(q),quality);
+    expect(result).toMatchObject({glError:0,badPrograms:0});
+    expect(result.frames.map(f=>f.shape)).toEqual([0,1,2,3]);
+    for(const frame of result.frames) {
+      expect(frame.radius).toBeGreaterThanOrEqual(6);
+      expect(frame.lod).toBe(quality==='low'?1:0);
+      await run.attach(`${quality}-support-${frame.shape}`,{body:Buffer.from(frame.png.split(',')[1],'base64'),contentType:'image/png'});
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
 test('all geological families compile at every tier in the real world with nonuniform scale',async({page},run)=>{
   const errors:string[]=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.addInitScript(()=>{
@@ -28,8 +44,8 @@ test('all geological families compile at every tier in the real world with nonun
     }
   }
   expect(errors).toEqual([]);
-  // Each world owns the existing debris field and one hero-only fracture field.
-  expect(await page.evaluate(()=>Reflect.get(window,'stoneTextures'))).toEqual({created:6,released:6});
+  // Early scenes upload one common asteroid field; celestial noise stays lazy.
+  expect(await page.evaluate(()=>Reflect.get(window,'stoneTextures'))).toEqual({created:3,released:3});
 });
 
 test('five hero families retain real shear faces under front, oblique, backlit and strong illumination',async({page},run)=>{

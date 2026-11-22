@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stoneNoise } from './orbit-surface-field';
 import { OrbitRockSurface } from './orbit-rock-surface';
 import { orbitRandom } from '../core/orbit-field';
 import { orbitSpaceColor } from './orbit-sky.client';
@@ -14,6 +15,7 @@ export function orbitRockGeometry(shape: number, lod: number) {
   const angles = Array.from({ length: 6 }, () => random() * 6.28);
   const position = geometry.getAttribute('position');
   const colors = new Float32Array(position.count * 3);
+  const coordinates=new Float32Array(position.count*3),features=new Float32Array(position.count*4);
   const [a, b, c] = profiles[shape];
   for (let i = 0; i < position.count; i++) {
     vertex.fromBufferAttribute(position, i);
@@ -30,9 +32,19 @@ export function orbitRockGeometry(shape: number, lod: number) {
     else vertex.z-=.19*Math.exp(-((x-.22)**2*13+(y+.1)**2*16))*Math.max(0,z);
     vertex.multiplyScalar(radius).clampLength(0, .996);
     position.setXYZ(i, vertex.x, vertex.y, vertex.z);
-    const albedo = .79 + .13 * broad + .065 * folds + .035 * ridge;
+    // Geometry retains its accepted silhouette. Surface color no longer repeats
+    // the sinusoidal displacement phases; semantic masks are shared at all LODs.
+    coordinates.set([x,y,z],i*3);
+    const face=shape===0?z-(.54+.21*x-.1*y):shape===1?y-(.30+.12*x-.08*z):shape===2?(-.44+.16*y)-x:0;
+    const fresh=Math.max(0,Math.min(1,face*12));
+    const scar=shape===3?Math.exp(-((x-.22)**2*13+(y+.1)**2*16))*Math.max(0,z):0;
+    const weather=stoneNoise(x*1.7+3,y*1.7+3,z*1.7+3,7,2391+shape*733);
+    features.set([fresh,scar*.35,0,weather],i*4);
+    const albedo=.80+.065*weather+.045*fresh;
     colors.set([albedo, albedo, albedo], i * 3);
   }
+  geometry.setAttribute('heroCoord',new THREE.BufferAttribute(coordinates,3));
+  geometry.setAttribute('heroFeatures',new THREE.BufferAttribute(features,4));
   geometry.setAttribute('rockFamily',new THREE.BufferAttribute(new Float32Array(position.count).fill([0,4,2,3][shape]),1));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geometry.computeVertexNormals();

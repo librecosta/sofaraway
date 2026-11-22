@@ -1,35 +1,15 @@
 import * as THREE from 'three';
 import type { QualityTier } from '../contracts';
-
-const fade=(x:number)=>x*x*x*(x*(x*6-15)+10);
-const mix=(a:number,b:number,t:number)=>a+(b-a)*t;
-function gradient(x:number,y:number,z:number,seed:number,dx:number,dy:number,dz:number) {
-  let h=Math.imul(x,374761393)^Math.imul(y,668265263)^Math.imul(z,1274126177)^seed;
-  h=Math.imul(h^(h>>>13),1274126177);h=(h^(h>>>16))&15;
-  const u=h<8?dx:dy,v=h<4?dy:h===12||h===14?dx:dz;
-  return ((h&1)?-u:u)+((h&2)?-v:v);
-}
-/** Periodic gradient noise, baked once per world; no DOM or WebGL is needed. */
-export function stoneNoise(x:number,y:number,z:number,period:number,seed:number) {
-  const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z),fx=x-ix,fy=y-iy,fz=z-iz;
-  const wrap=(v:number)=>(v%period+period)%period;
-  const at=(a:number,b:number,c:number)=>gradient(wrap(ix+a),wrap(iy+b),wrap(iz+c),seed,fx-a,fy-b,fz-c);
-  const u=fade(fx),v=fade(fy),w=fade(fz);
-  return .5+.5*mix(mix(mix(at(0,0,0),at(1,0,0),u),mix(at(0,1,0),at(1,1,0),u),v),
-    mix(mix(at(0,0,1),at(1,0,1),u),mix(at(0,1,1),at(1,1,1),u),v),w);
-}
-export function stoneVolume(size=32) {
-  const data=new Uint8Array(size**3*4),periods=[4,7,11,5];
-  for(let z=0;z<size;z++)for(let y=0;y<size;y++)for(let x=0;x<size;x++)for(let c=0;c<4;c++) {
-    const p=periods[c],n=stoneNoise((x+.5)/size*p,(y+.5)/size*p,(z+.5)/size*p,p,1207+c*991);
-    data[((z*size+y)*size+x)*4+c]=Math.round(Math.max(0,Math.min(1,n))*255);
-  }
-  return data;
-}
+import { asteroidSurfaceVolume,stoneVolume } from './orbit-surface-field';
+import { asteroidLithologies } from './orbit-lithology';
+export { stoneNoise,stoneVolume } from './orbit-surface-field';
 
 const vertexHeader=/* glsl */`
+attribute vec4 heroFeatures;
+attribute vec3 heroCoord;
 attribute float rockFamily;
-varying vec3 vStoneCoord,vStoneLocal;
+varying vec4 vStoneFeatures;
+varying vec3 vStoneCoord,vStoneLocal,vStoneTag;
 varying float vStoneFamily,vStoneSize;
 `;
 const vertexBody=/* glsl */`
@@ -38,81 +18,88 @@ mat4 stoneTransform=modelMatrix;
   stoneTransform=modelMatrix*instanceMatrix;
 #endif
 vec3 stoneScale=vec3(length(stoneTransform[0].xyz),length(stoneTransform[1].xyz),length(stoneTransform[2].xyz));
-vStoneCoord=position*stoneScale+mod(stoneTransform[3].xyz,71.0);
-vStoneLocal=position;vStoneFamily=rockFamily;vStoneSize=max(stoneScale.x,max(stoneScale.y,stoneScale.z));
+// Bounded local shape coordinates and scaled local meters avoid UV seams and
+// large world-coordinate precision loss. Translation only selects a stable field.
+vStoneCoord=position*stoneScale;
+vStoneLocal=heroCoord;vStoneFeatures=heroFeatures;vStoneFamily=rockFamily;
+vStoneTag=fract(mod(stoneTransform[3].xyz,71.0)*vec3(.1031,.11369,.13787)+rockFamily*.173);
+vStoneSize=max(stoneScale.x,max(stoneScale.y,stoneScale.z));
 `;
+const profileGLSL=asteroidLithologies.map((p,i)=>`${i?'else ':''}if(lithology<${(i+.5).toFixed(1)}) {
+  weights=vec3(${p.fracture.toFixed(3)},${p.clast.toFixed(3)},${p.pit.toFixed(3)});
+  baseRoughness=${p.roughness.toFixed(3)};baseAlbedo=${p.albedo.toFixed(3)};
+}`).join('\n');
 const fragmentHeader=/* glsl */`
-uniform highp sampler3D stoneField;
+uniform highp sampler3D asteroidField;
 uniform float stoneDetail,stonePixels;
-varying vec3 vStoneCoord,vStoneLocal;
+varying vec4 vStoneFeatures;
+varying vec3 vStoneCoord,vStoneLocal,vStoneTag;
 varying float vStoneFamily,vStoneSize;
-float stoneBand(float phase) {
-  float footprint=fwidth(phase);
-  return (1.0-smoothstep(.06+footprint,.23+footprint,abs(sin(phase))))*(1.0-smoothstep(.35,1.3,footprint));
-}
 `;
 const fragmentBody=/* glsl */`
-// Object axes are measured in world units before interpolation. A true 3D field
-// avoids UV/triplanar seams, even on the nonuniformly scaled instanced slabs.
-vec4 bed=texture(stoneField,vStoneCoord*.0083);
-vec4 grain=vec4(.5);
-vec3 grainCoord=vStoneCoord*.047+bed.xyz*.18;
-vec3 grainDx=dFdx(grainCoord),grainDy=dFdy(grainCoord);
-vec3 microCoord=vStoneCoord*.085,microDx=dFdx(microCoord),microDy=dFdy(microCoord);
-float footprint=max(length(dFdx(vStoneCoord)),length(dFdy(vStoneCoord)));
 float stoneCoverage=2.0*vStoneSize*stonePixels/max(1.0,length(vViewPosition));
-if(stoneDetail>.5&&footprint<3.0)grain=mix(vec4(.5),textureGrad(stoneField,grainCoord,grainDx,grainDy),1.0-smoothstep(1.5,3.0,footprint));
-float pores=0.0;
-if(stoneDetail>1.5&&footprint<.32)pores=smoothstep(.54,.72,textureGrad(stoneField,microCoord,microDx,microDy).b)*(1.0-smoothstep(.12,.32,footprint));
-float cracks=0.0,strata=0.0,scar=0.0;
-float phase=vStoneCoord.y*.28+bed.r*5.0;
-if(vStoneFamily<.5) {
-  cracks=stoneBand(vStoneCoord.x*.16+vStoneCoord.y*.047+bed.g*4.0);
-  strata=stoneBand(vStoneCoord.y*.12+bed.r*2.0)*.45;
-} else if(vStoneFamily<1.5) {
-  float neck=exp(-pow(vStoneLocal.y*5.0,2.0));
-  cracks=stoneBand(phase)*neck*.85;scar=neck*(.2+.8*grain.g);
-} else if(vStoneFamily<2.5) {
-  strata=stoneBand(phase+vStoneCoord.x*.045);
-  cracks=stoneBand(vStoneCoord.x*.22+grain.r*3.0)*strata;
-} else if(vStoneFamily<3.5) {
-  float r=length((vStoneLocal.xy-vec2(.23,.14))*vec2(1.6,1.4));
-  scar=exp(-pow((r-.44)*6.0,2.0));
-  cracks=stoneBand(atan(vStoneLocal.y-.14,vStoneLocal.x-.23)*11.0+bed.g*2.0)*scar;
-} else {
-  cracks=stoneBand(vStoneCoord.x*.31+vStoneCoord.z*.22+bed.g*3.0);
-  strata=stoneBand(vStoneCoord.y*.13+bed.r*3.0)*.35;
-}
-float cavity=clamp(cracks*.65+strata*.42+scar*.24+pores*.12,0.0,.85);
-float mineral=smoothstep(.56,.72,bed.a)*smoothstep(.50,.68,grain.g);
-float stoneHeight=(bed.r-.5)*1.1+(grain.r-.5)*.7-cracks*.20-strata*.18-scar*.14-pores*.04;
-stoneHeight*=min(1.2,vStoneSize*.025);
-vec3 sigmaX=dFdx(-vViewPosition),sigmaY=dFdy(-vViewPosition);
-vec3 r1=cross(sigmaY,normal),r2=cross(normal,sigmaX);
-float determinant=dot(sigmaX,r1);
-vec3 gradient=sign(determinant)*(dFdx(stoneHeight)*r1+dFdy(stoneHeight)*r2);
-// Bound the surface slope, including grazing views and narrow fissures.
-// Unbounded derivative normals turn resolved pores into black pixel spikes.
-float slopeDenominator=max(abs(determinant),max(1e-7,length(gradient)*1.8));
-normal=normalize(normal-gradient*(.65/slopeDenominator));
-diffuseColor.rgb*=mix(vec3(.88,.87,.85),vec3(1.11,1.06,.98),mineral)*(.92+bed.b*.16)*(1.0-cavity*.21);
-roughnessFactor=clamp(.96-mineral*.27+grain.b*.05,.63,1.0);
-metalnessFactor=.025+mineral*mineral*.12;
+float lithology=floor(fract(dot(vStoneTag,vec3(.31,.47,.23))+vStoneFamily*.271)*4.0);
+vec3 weights=vec3(0.0);float baseRoughness=.94,baseAlbedo=1.0;
+${profileGLSL}
+vec3 jointCoord=vStoneLocal*.58+vStoneTag;
+vec4 rock=texture(asteroidField,jointCoord);
+float footprint=max(length(dFdx(vStoneCoord)),length(dFdy(vStoneCoord)));
+float resolved=1.0-smoothstep(.065,.20,max(length(dFdx(jointCoord)),length(dFdy(jointCoord))));
+resolved*=smoothstep(6.0,24.0,stoneCoverage);
+float fresh=vStoneFeatures.x,fault=vStoneFeatures.y,peel=vStoneFeatures.z,weather=vStoneFeatures.w;
+float edgeWidth=max(fwidth(rock.r),.014);
+float joint=1.0-smoothstep(.022-edgeWidth,.075+edgeWidth,rock.r);
+// Patches interrupt polygonal joints. Broad fresh faces remain quiet; finite
+// geometry masks supply primary faults and exfoliation, never repeating bands.
+float region=smoothstep(.37,.67,rock.b)*(1.0-fresh*.78);
+if(vStoneFamily>.5&&vStoneFamily<1.5)region*=.35+.65*exp(-vStoneLocal.y*vStoneLocal.y*7.0);
+float cracks=joint*region*weights.x*resolved;
+float clast=(1.0-smoothstep(.17,.28,rock.a))*smoothstep(.44,.63,rock.b)*weights.y*resolved;
+float pit=(1.0-smoothstep(.20,.35,rock.a))*(1.0-smoothstep(.35,.53,rock.b))*weights.z*resolved;
+vec3 grainCoord=vStoneCoord*.034+vStoneTag;
+vec3 grainDx=dFdx(grainCoord),grainDy=dFdy(grainCoord);
+vec3 microCoord=vStoneCoord*.13+vStoneTag.yzx;
+vec3 microDx=dFdx(microCoord),microDy=dFdy(microCoord);
+float grainWeight=(1.0-smoothstep(.5,2.2,footprint))*smoothstep(12.0,48.0,stoneCoverage);
+grainWeight*=stoneDetail>.5?1.0:.45;
+vec4 grain=vec4(.5);
+if(grainWeight>.001)grain=mix(vec4(.5),textureGrad(asteroidField,grainCoord,grainDx,grainDy),grainWeight);
+float microWeight=(1.0-smoothstep(.10,.5,footprint))*smoothstep(24.0,90.0,stoneCoverage);
+microWeight*=stoneDetail>1.5?1.0:stoneDetail>.5?.4:0.0;
+float micro=.5;
+if(microWeight>.001)micro=mix(.5,textureGrad(asteroidField,microCoord,microDx,microDy).g,microWeight);
+float pore=smoothstep(.65,.82,grain.a)*smoothstep(.48,.65,grain.b)*grainWeight*(.35+weights.y*.65);
+float height=(rock.b-.5)*.30*resolved+(grain.g-.5)*.55+(micro-.5)*.09
+  -cracks*.30-fault*.30-peel*.08+clast*.16-pit*.22-pore*.045;
+height*=min(1.0,vStoneSize*.08);
+vec3 dx=dFdx(-vViewPosition),dy=dFdy(-vViewPosition);
+vec3 r1=cross(dy,normal),r2=cross(normal,dx);
+float det=dot(dx,r1);
+vec3 slope=sign(det)*(dFdx(height)*r1+dFdy(height)*r2);
+normal=normalize(normal-slope*(.65/max(abs(det),max(1e-7,length(slope)*2.4))));
+float cavity=clamp(cracks*.22+fault*.26+peel*.08+pit*.18+pore*.04,0.0,.36);
+float mineral=smoothstep(.69,.83,rock.b)*smoothstep(.59,.74,grain.g)*(1.0-weather);
+diffuseColor.rgb*=mix(vec3(.94,.93,.91),vec3(1.04,1.03,1.01),fresh)*baseAlbedo
+  *(.94+rock.b*.12)*(.96+grain.b*.08)*(1.0-cavity)*(1.0+clast*.12);
+roughnessFactor=clamp(baseRoughness+weather*.035-fresh*.12-peel*.025+(.5-grain.g)*.07-clast*.04,.72,.99);
+metalnessFactor=.015+mineral*.035;
 `;
 
-/** One mipmapped volume and one program per existing material path, not per rock. */
-let bakedStone:Uint8Array|undefined;
+let bakedStone:Uint8Array|undefined,bakedAsteroid:Uint8Array|undefined;
+function field(data:Uint8Array,name:string) {
+  const texture=new THREE.Data3DTexture(data,64,64,64);texture.name=name;
+  texture.format=THREE.RGBAFormat;texture.type=THREE.UnsignedByteType;
+  texture.wrapS=texture.wrapT=texture.wrapR=THREE.RepeatWrapping;
+  texture.magFilter=THREE.LinearFilter;texture.minFilter=THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps=true;texture.needsUpdate=true;return texture;
+}
+/** One surface field and shader for debris, supporting rocks and fixed heroes.
+ * Celestial clouds retain their unchanged legacy texels and independent mapping. */
 export class OrbitRockSurface {
-  readonly texture=new THREE.Data3DTexture(bakedStone??=stoneVolume(64),64,64,64);
+  readonly texture=field(bakedStone??=stoneVolume(64),'ORBIT celestial noise');
+  readonly asteroidTexture=field(bakedAsteroid??=asteroidSurfaceVolume(),'ORBIT shared asteroid surface');
   private readonly detail={value:1};
   private readonly pixels={value:340};
-  constructor() {
-    this.texture.name='ORBIT geological field';
-    this.texture.format=THREE.RGBAFormat;this.texture.type=THREE.UnsignedByteType;
-    this.texture.wrapS=this.texture.wrapT=this.texture.wrapR=THREE.RepeatWrapping;
-    this.texture.magFilter=THREE.LinearFilter;this.texture.minFilter=THREE.LinearMipmapLinearFilter;
-    this.texture.generateMipmaps=true;this.texture.needsUpdate=true;
-  }
   update(camera:THREE.PerspectiveCamera,height:number,quality:QualityTier) {
     this.detail.value=quality==='low'?0:quality==='auto'?1:2;
     this.pixels.value=height*camera.projectionMatrix.elements[5]*.5;
@@ -121,11 +108,11 @@ export class OrbitRockSurface {
     const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
     material.onBeforeCompile=(shader,renderer)=>{
       previous.call(material,shader,renderer);
-      shader.uniforms.stoneField={value:this.texture};shader.uniforms.stoneDetail=this.detail;shader.uniforms.stonePixels=this.pixels;
+      shader.uniforms.asteroidField={value:this.asteroidTexture};shader.uniforms.stoneDetail=this.detail;shader.uniforms.stonePixels=this.pixels;
       shader.vertexShader=vertexHeader+shader.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>\n${vertexBody}`);
       shader.fragmentShader=fragmentHeader+shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>\n${fragmentBody}`);
     };
-    material.customProgramCacheKey=()=>key+'|orbit-geology-v1';
+    material.customProgramCacheKey=()=>key+'|orbit-asteroid-surface-v2';
   }
-  dispose(){this.texture.dispose();}
+  dispose(){this.texture.dispose();this.asteroidTexture.dispose();}
 }

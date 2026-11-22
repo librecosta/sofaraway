@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import { stoneNoise,stoneVolume,OrbitRockSurface } from '../../app/game/graphics/orbit-rock-surface';
 import { orbitHeroGeometry } from '../../app/game/graphics/orbit-geology';
 import { heroGeology,heroSpall } from '../../app/game/graphics/orbit-geology';
-import { heroRockVolume,OrbitHeroSurface } from '../../app/game/graphics/orbit-hero-surface';
+import { asteroidSurfaceVolume } from '../../app/game/graphics/orbit-surface-field';
+import { asteroidLithologies } from '../../app/game/graphics/orbit-lithology';
+import { orbitRockGeometry } from '../../app/game/graphics/orbit-rocks.client';
 
 test('baked gradient fields repeat continuously, have bounded values and are deterministic',()=>{
   expect(stoneVolume(8)).toEqual(stoneVolume(8));
@@ -38,15 +40,65 @@ test('hero joints and spalls are finite local structures, with distinct family m
   expect(new Set(signatures).size).toBe(5);
 });
 
-test('hero fields share bounded baked data while owning and releasing separate GPU resources',()=>{
-  expect(heroRockVolume(8)).toEqual(heroRockVolume(8));
-  const a=new OrbitHeroSurface(),b=new OrbitHeroSurface(),ordinary=new OrbitRockSurface();
-  expect(a.texture.image.data).toBe(b.texture.image.data);
-  expect(a.texture.image.data).not.toBe(ordinary.texture.image.data);
-  expect(a.texture.generateMipmaps).toBe(true);expect(a.texture.colorSpace).toBe(THREE.NoColorSpace);
-  expect(a.texture.minFilter).toBe(THREE.LinearMipmapLinearFilter);
-  let released=0;for(const surface of [a,b,ordinary]){surface.texture.addEventListener('dispose',()=>released++);surface.dispose();}
-  expect(released).toBe(3);
+test('all scales share deterministic cellular data and release world-owned textures',()=>{
+  expect(asteroidSurfaceVolume(8)).toEqual(asteroidSurfaceVolume(8));
+  const a=new OrbitRockSurface(),b=new OrbitRockSurface();
+  expect(a.asteroidTexture.image.data).toBe(b.asteroidTexture.image.data);
+  expect(a.asteroidTexture.image.data).not.toBe(a.texture.image.data);
+  expect(a.asteroidTexture.generateMipmaps).toBe(true);
+  expect(a.asteroidTexture.colorSpace).toBe(THREE.NoColorSpace);
+  expect(a.asteroidTexture.minFilter).toBe(THREE.LinearMipmapLinearFilter);
+  let released=0;
+  for(const surface of [a,b]) {
+    surface.texture.addEventListener('dispose',()=>released++);
+    surface.asteroidTexture.addEventListener('dispose',()=>released++);surface.dispose();
+  }
+  expect(released).toBe(4);
+});
+
+test('finite lithologies keep quiet surfaces, distinct structure and natural PBR ranges',()=>{
+  expect(new Set(asteroidLithologies.map(p=>p.name)).size).toBe(4);
+  for(const profile of asteroidLithologies) {
+    for(const value of Object.values(profile).filter(v=>typeof v==='number'))expect(Number.isFinite(value)).toBe(true);
+    expect(profile.fracture).toBeGreaterThan(0);expect(profile.fracture).toBeLessThan(1);
+    expect(profile.roughness).toBeGreaterThanOrEqual(.85);expect(profile.roughness).toBeLessThan(1);
+    expect(profile.albedo).toBeGreaterThan(.9);expect(profile.albedo).toBeLessThan(1.1);
+  }
+});
+
+test('ordinary LODs supply the same surface contract without invalid attributes',()=>{
+  for(let shape=0;shape<4;shape++)for(let lod=0;lod<3;lod++) {
+    const geometry=orbitRockGeometry(shape,lod);
+    for(const name of ['position','normal','color','heroCoord','heroFeatures','rockFamily']) {
+      const attribute=geometry.getAttribute(name);
+      expect(attribute.count).toBe(geometry.getAttribute('position').count);
+      expect([...attribute.array].every(Number.isFinite)).toBe(true);
+    }
+    geometry.dispose();
+  }
+});
+
+test('shared PBR hooks retain lighting, use one surface field and filter resolved detail',()=>{
+  const surface=new OrbitRockSurface(),camera=new THREE.PerspectiveCamera(76,16/9,.1,680);
+  surface.update(camera,540,'high');
+  const materials=[new THREE.MeshStandardMaterial(),new THREE.MeshStandardMaterial()];
+  for(const material of materials) {
+    material.onBeforeCompile=shader=>{shader.uniforms.existingLight={value:1};};
+    surface.apply(material);
+    const shader={uniforms:{},vertexShader:'#include <begin_vertex>',fragmentShader:'#include <normal_fragment_maps>'};
+    material.onBeforeCompile(shader as unknown as THREE.WebGLProgramParametersWithUniforms,{} as THREE.WebGLRenderer);
+    const uniforms=shader.uniforms as Record<string,{value:unknown}>;
+    expect(uniforms.existingLight.value).toBe(1);
+    expect(uniforms.asteroidField.value).toBe(surface.asteroidTexture);
+    expect(uniforms.stoneDetail.value).toBe(2);
+    expect(uniforms.stonePixels.value).toBeCloseTo(270*camera.projectionMatrix.elements[5]);
+    expect(shader.vertexShader).toContain('modelMatrix*instanceMatrix');
+    expect(shader.fragmentShader).toContain('textureGrad');
+    expect(shader.fragmentShader).not.toMatch(/stoneBand|sin\(|atan\(/);
+    surface.update(camera,540,'low');expect(uniforms.stoneDetail.value).toBe(0);
+    surface.update(camera,540,'high');material.dispose();
+  }
+  surface.dispose();
 });
 
 test('hero cut faces retain finite attributes, valid triangles and explicit material structure',()=>{

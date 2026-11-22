@@ -40,6 +40,35 @@ export async function inspectOrbitSurfaces(quality:QualityTier,view:'flight'|'fr
   } finally{graphics.dispose();canvas.remove();}
 }
 
+/** Close views of real supporting instances, not a separate debug material. */
+export async function inspectSupportingSurfaces(quality:QualityTier) {
+  const canvas=document.createElement('canvas');document.body.append(canvas);
+  const graphics=new Graphics(canvas,quality,false,{fixedTime:null,autoplay:false,align:true,god:false,boost:false,
+    mobileQuality:false,post:false,record:false,debug:true});
+  const sim=new Simulation(volumeById('orbit'),{align:true,branchSide:'center'});sim.start('normal',0);
+  graphics.resize(960,540,1);graphics.load(sim.volume,sim.path,'standard');
+  const frames=[];
+  try {
+    while(sim.trackDistance<sim.reference.station(116,'standard'))sim.step(STEP,idleInput);
+    graphics.draw(sim,true);
+    const volume=Reflect.get(graphics,'volume'),pieces=Reflect.get(volume.orbit,'setpieces');
+    const piece=pieces.descriptions.find((p:any)=>p.id==='ring');
+    const frame=sim.path.sample(sim.trackDistance);
+    for(let shape=0;shape<4;shape++) {
+      const rock=piece.rocks.filter((r:any)=>r.shape===shape&&r.radius>=6).sort((a:any,b:any)=>b.radius-a.radius)[0];
+      const center=new THREE.Vector3().fromArray(rock.position);
+      graphics.camera!.position.copy(center).addScaledVector(frame.f,-rock.radius*2.4).addScaledVector(frame.u,rock.radius*.3);
+      graphics.camera!.lookAt(center);graphics.camera!.updateMatrixWorld();
+      pieces.update(graphics.camera,sim.trackDistance,540,quality);
+      graphics.renderer.render(volume.scene,graphics.camera!);
+      const active=Reflect.get(pieces,'active').get(piece.id),index=piece.rocks.indexOf(rock);
+      frames.push({shape,id:rock.id,radius:rock.radius,lod:active.levels[index],png:canvas.toDataURL(),metrics:graphics.metrics()});
+      await new Promise<void>(r=>requestAnimationFrame(()=>r()));
+    }
+    return {frames,glError:graphics.gl.getError(),badPrograms:graphics.renderer.info.programs?.filter(p=>Reflect.get(p,'diagnostics')?.runnable===false).length??0};
+  }finally{graphics.dispose();canvas.remove();}
+}
+
 export function inspectNebulaSegments() {
   const canvas=document.createElement('canvas'),renderer=new THREE.WebGLRenderer({canvas,alpha:true});
   renderer.setSize(8,8);renderer.outputColorSpace=THREE.LinearSRGBColorSpace;

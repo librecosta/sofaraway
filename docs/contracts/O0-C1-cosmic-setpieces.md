@@ -148,7 +148,7 @@ the ignored `scratch/orbit-c3/` directory, alongside raw interleaved samples.
 
 ## C4-B hero surface authenticity
 
-Heroes now use a separate `OrbitHeroSurface`; ordinary debris, celestial clouds
+At C4-B, heroes used a separate `OrbitHeroSurface` (superseded by E1 below); ordinary debris, celestial clouds
 and their existing volume field are unchanged. The hero path has no sinusoidal
 contour bands. Sparse finite fracture planes, local exfoliation patches and
 shallow spalls are evaluated on the undeformed body. Three unequal cliff shelves
@@ -176,3 +176,58 @@ Fixed-seed angle captures, player-camera approaches and raw measurements are in
 the ignored `scratch/orbit-m1/hero-geology/` directory. Tests cover finite normals,
 nondegenerate faces, bounded local masks, stable geometry/material identity and
 six volume allocations matched by six releases across the three quality tiers.
+
+## E1 shared asteroid surface language
+
+`OrbitRockSurface` now supplies all ordinary, supporting, ring, spiral and hero
+rocks. The old phase/sine contour bands were removed from bump, albedo and
+roughness; ordinary vertex colors no longer reuse periodic displacement phases.
+Geometry positions, fixed hero LOD, world descriptions and music light hooks are
+unchanged. Deeper hero relief remains outside this surface-only change.
+
+Four finite artistic lithologies control localized polygonal joints, clasts,
+shallow pits, grain and roughness. They draw on the differences described in the
+[Bennu boulder classification](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2023JE008019),
+without claiming measured physical reconstruction. Existing finite hero face,
+fault, exfoliation and weather masks feed the same PBR shader. Fresh faces stay
+broad and quiet; secondary detail is patchy rather than all-over wallpaper.
+
+A deterministic mipmapped 64-cubed cellular field is shared across the world.
+Bounded object coordinates avoid UV seams; instance/model axis lengths keep micro
+grain in physical units under nonuniform scaling. Derivatives and projected
+coverage attenuate unresolved features; tiny debris avoids optional grain/micro
+samples. Quality changes detail weights, not lithology, geometry or positions.
+Normals have bounded slopes in the existing Standard material pipeline.
+
+The independent hero surface owner was removed. Worlds dispose their common
+asteroid texture and the unchanged legacy noise texture still used by celestial
+clouds. Early rock-only windows upload just the former; celestial windows can
+upload both. Nebula optics, celestial shaders and their noise bytes are unchanged.
+
+Fixed-seed before/after captures, real-camera approaches and interleaved scenic
+samples are kept in ignored `scratch/orbit-m1/surface-language/`. The test harness
+inspects actual supporting instances and all five hero families with production
+materials; it does not maintain a separate debug rock shader.
+
+Against e5db83d, Chrome 157 / AMD Radeon D3D11 at 960x540, DPR 1, two
+interleaved 180-frame samples per scene/version/tier across beats 20, 116, 192,
+240, 280 and 360 give mean scene GPU P95 of 1.83 to 1.79 ms (Low), 3.00 to
+3.05 ms (Auto), and 2.80 to 2.93 ms (High). These short samples do not establish
+a speedup; High MAELSTROM rises from 2.62 to 3.20 ms. CPU P95 averages remain
+1.48 to 1.48, 2.12 to 2.07 and 1.71 to 1.79 ms respectively. Calls, triangles,
+geometry and program counts match at every paired station. Texture counts fall
+by one in early hero/ring windows and rise by one in celestial windows; ownership
+is bounded. Shared ordinary attributes add 94,080 bytes across all prototypes,
+not per instance. No distance-driven hero geometry/material switching was added.
+
+Mean scene frame-interval P95 is 4.28 to 4.27 ms (Low), 5.63 to 4.98 ms
+(Auto), and 4.26 to 4.63 ms (High). These are scheduling intervals, distinct
+from GPU timer results; the small High increase is retained in the evidence.
+
+Verification: typecheck and 329 unit tests passed. The full browser run passed
+169/170: DAYBREAK's unrelated full-stem download exceeded 280 seconds; its
+isolated rerun passed (1.5 minutes of export). All seven performance cases passed.
+Four recorded runtime flights cover Normal mixed Boost, Impossible cruise,
+Sightseeing and keyboard-held Impossible Boost, including all three routes and
+open-space endings. Menu, near-surface and continuous-frame captures were reviewed;
+no new geometry/material switching or WebGL errors were observed.
