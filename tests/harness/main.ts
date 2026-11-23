@@ -28,6 +28,8 @@ let canvas: HTMLCanvasElement | undefined;
 let metrics: string | undefined;
 
 const harness = {
+  measureAuroraEntry: async (...args: Parameters<typeof import('./orbit-aurora').measureAuroraEntry>) =>
+    (await import('./orbit-aurora')).measureAuroraEntry(...args),
   inspectOrbitLighting: async (...args: Parameters<typeof import('./orbit-lighting').inspectOrbitLighting>) =>
     (await import('./orbit-lighting')).inspectOrbitLighting(...args),
   sectionSignals,

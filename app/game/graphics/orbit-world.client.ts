@@ -98,6 +98,7 @@ export class OrbitWorld {
   private readonly key = new THREE.DirectionalLight(0xffe2c3, 3.55);
   private readonly bounce = new THREE.DirectionalLight(0xb7d8ff, 1.38);
   private readonly ambient = new THREE.AmbientLight(0x929fb5, .40);
+  private readonly lights = [this.key, this.bounce, this.ambient];
   private readonly lighting = newOrbitLighting();
   private readonly warmKey = new THREE.Color(0xffe2c3);
   private readonly coolKey = new THREE.Color(0xcbdfff);
@@ -125,7 +126,11 @@ export class OrbitWorld {
     this.eclipseSun.fromArray(eclipse.bodies[1].position).sub(new THREE.Vector3().fromArray(eclipse.anchor)).normalize();
     this.key.position.set(-.8, .73, -.48);
     this.bounce.position.set(.79, -.30, .58);
-    this.group.add(this.sky.group, this.setpieces.group, this.key, this.bounce, this.ambient);
+    this.group.add(this.sky.group, this.setpieces.group, ...this.lights);
+  }
+
+  warmAurora(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, preparing = false) {
+    this.setpieces.warmAurora(renderer, target, this.lights, preparing);
   }
 
   update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200,

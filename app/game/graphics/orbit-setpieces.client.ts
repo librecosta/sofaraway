@@ -7,6 +7,11 @@ import { astralProjection, cosmicNoise, nebulaFragment } from './orbit-cosmic-sh
 import type { OrbitRocks } from './orbit-rocks.client';
 import { OrbitSurfaceLights } from './orbit-light-rig';
 import type { OrbitLighting } from '../core/orbit-lighting';
+import { IMPOSSIBLE_SPEED_FACTOR } from '../core/difficulty';
+import { BOOST_MULTIPLIER, cruiseTarget } from '../core/reference-motion';
+
+// Allow six seconds of lead time even at the maximum Impossible Boost speed.
+const AURORA_WARMUP_LEAD = 6 * cruiseTarget(Infinity) * BOOST_MULTIPLIER * IMPOSSIBLE_SPEED_FACTOR;
 
 const projectionVertex = /* glsl */`
 varying vec2 vUv;
@@ -84,6 +89,7 @@ type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { va
   lights:OrbitSurfaceLights;
   batches: Map<number,THREE.InstancedMesh>;
   celestials: THREE.Mesh[];
+  nebulaMaterial?: THREE.ShaderMaterial;
   boulderIndices: number[]; levels: Int8Array; quality?: QualityTier; instances:number; lastPosition:THREE.Vector3 };
 
 /** Volume-owned macro geometry. Spatial windows overlap; no playback clock drives visibility. */
@@ -95,7 +101,50 @@ export class OrbitSetpieces {
   private readonly transform = new THREE.Object3D();
   private readonly point = new THREE.Vector3();
   private station = 0;
-  constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks,private readonly sceneScale=1) {}
+  private readonly aurora: OrbitSetpiece | undefined;
+  private readonly warmedOutputs = new Set<string>();
+
+  constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks,private readonly sceneScale=1) {
+    this.aurora = descriptions.find(piece => piece.id === 'nebula');
+  }
+
+  warmAurora(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, lights: readonly THREE.Light[], preparing: boolean) {
+    const piece = this.aurora;
+    if (!piece || (!preparing && (this.station < piece.from - AURORA_WARMUP_LEAD || this.station > piece.to))) return;
+    const output = target ? `${target.texture.type}:${target.samples}` : renderer.outputColorSpace;
+    if (this.warmedOutputs.has(output)) return;
+    const item = this.active.get(piece.id) ?? this.create(piece);
+    if (!item.nebulaMaterial) return;
+
+    // Exercise the real material and plane on the same framebuffer format as production.
+    // A small viewport primes first-draw GPU work without shading six full-screen layers.
+    const probe = new THREE.Scene();
+    // Three includes scene light counts in the program key even for this unlit shader.
+    probe.add(...lights.map(light => light.clone()));
+    const camera = new THREE.PerspectiveCamera(60, 1, .1, 10);
+    const mesh = new THREE.Mesh(this.plane, item.nebulaMaterial);
+    mesh.position.z = -.5;
+    probe.add(mesh);
+    const previous = renderer.getRenderTarget();
+    const previousFace = renderer.getActiveCubeFace();
+    const previousMip = renderer.getActiveMipmapLevel();
+    const viewport = renderer.getViewport(new THREE.Vector4());
+    const autoClear = renderer.autoClear;
+    const presence = item.fade.value;
+    try {
+      item.fade.value = 0;
+      renderer.autoClear = false;
+      renderer.setRenderTarget(target);
+      renderer.setViewport(0, 0, 4, 4);
+      renderer.render(probe, camera);
+      this.warmedOutputs.add(output);
+    } finally {
+      item.fade.value = presence;
+      renderer.autoClear = autoClear;
+      renderer.setViewport(viewport);
+      renderer.setRenderTarget(previous, previousFace, previousMip);
+    }
+  }
 
   private create(piece: OrbitSetpiece) {
     const surface = rockMaterial(this.rocks.surface);
@@ -125,6 +174,7 @@ export class OrbitSetpieces {
         uniforms:{presence:item.fade,detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13},
           choreoGain:{value:1},choreoHue:{value:0},choreoFiber:{value:0},choreoPhase:{value:0}}});
       const mesh=new THREE.Mesh(this.plane,material);
+      item.nebulaMaterial ??= material;
       const f=new THREE.Vector3().fromArray(piece.forward),r=new THREE.Vector3().fromArray(piece.right),u=new THREE.Vector3().fromArray(piece.up);
       mesh.name=structure.role;
       mesh.position.fromArray(piece.anchor).addScaledVector(r,structure.offset[0]).addScaledVector(u,structure.offset[1]).addScaledVector(f,structure.offset[2]);
@@ -132,7 +182,8 @@ export class OrbitSetpieces {
       mesh.rotateZ(structure.angle);mesh.scale.set(...structure.span,1);mesh.frustumCulled=false;
       item.group.add(mesh);item.materials.push(material);
     }
-    this.group.add(item.group);this.active.set(piece.id,item);return item;
+    if (piece !== this.aurora) this.group.add(item.group);
+    this.active.set(piece.id,item);return item;
   }
 
   update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier,lighting?:OrbitLighting) {
@@ -144,6 +195,14 @@ export class OrbitSetpieces {
       if(!item && presence>.0005) item=this.create(piece);
       if(!item)continue;
       item.fade.value=presence;item.group.visible=presence>.001;
+      // Keep the small, fixed nebula alive across seeks without submitting it outside its fade.
+      if (piece === this.aurora) {
+        if (!item.group.visible) {
+          item.group.removeFromParent();
+          continue;
+        }
+        if (!item.group.parent) this.group.add(item.group);
+      }
       if(lighting)item.lights.update(lighting);
       if(!item.group.visible && (station>piece.to+piece.feather || station<piece.from-piece.feather)) {
         this.free(item);this.active.delete(piece.id);continue;

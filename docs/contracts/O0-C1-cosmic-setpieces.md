@@ -34,6 +34,14 @@ hero shape families have their own LODs. Quality reduces small fragments, body
 tessellation and noise octaves without removing any principal scene. Inactive
 windows release instance buffers and materials; shared templates outlive them.
 
+**O0-E3 update.** Aurora keeps its six planes and shared geometry for the life
+of the volume. Scene preparation primes the real nebula material with a small,
+transparent draw on the active output before flight. Preview and output changes
+can also warm it by world station, with six seconds of lead at the maximum
+Impossible Boost speed. The planes join the main scene only inside their
+original presence window. The browser performance suite records cold and warm
+entries, including the timing of the warmup and first visible submission.
+
 The astronomical projection preserves actual world XY/W and therefore angular
 size and parallax. Only depths beyond the ordinary 570-unit field are mapped
 monotonically into the far depth band below the unchanged 680-unit camera clip.

@@ -563,6 +563,9 @@ export class Graphics {
       for (const program of this.renderer.info.programs ?? []) {
         program.getUniforms();
       }
+      // Run the nebula's first GPU submission during scene preparation on the
+      // actual output path. Compiling the main scene alone does not upload it.
+      this.volume?.orbit?.warmAurora(this.renderer, this.post?.rtScene ?? null, true);
     });
   }
 
@@ -728,7 +731,9 @@ export class Graphics {
     this.render(this.volume, view.time, false);
   }
 
-  private render({ scene, camera }: VolumeScene, time: number, playing: boolean) {
+  private render({ scene, camera, orbit }: VolumeScene, time: number, playing: boolean) {
+    // Debug previews and output changes may reach the world without prepare().
+    if (orbit) this.withCoreShaders(() => orbit.warmAurora(this.renderer, this.post?.rtScene ?? null));
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
     if (this.post) {
