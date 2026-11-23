@@ -3,7 +3,7 @@ import { buildRunPath } from '../../app/game/graphics/path';
 import { volumeById } from '../../app/game/core/volumes';
 import type { QualityTier } from '../../app/game/contracts';
 import type { OrbitWorld } from '../../app/game/graphics/orbit-world.client';
-import type { Mesh, ShaderMaterial } from 'three';
+import type { Mesh, ShaderMaterial, Texture } from 'three';
 import { ORBIT_WORLD_SEED } from '../../app/game/core/orbit-field';
 
 /** Fixed player view, independently seekable score; all resources are production-owned. */
@@ -20,6 +20,7 @@ export async function inspectOrbitLighting(quality:QualityTier,worldBeat:number,
       graphics.drawOrbit({station,x:0,y:0,time:0,lighting:{beat,amount,reducedMotion}});
       const orbit:OrbitWorld=Reflect.get(graphics,'volume').orbit;
       const surfaces:unknown[]=[],optics:unknown[]=[],ids:string[]=[];
+      const fields = new Set<Texture>();
       orbit.group.traverse(object=>{
         const mesh=object as Mesh;if(!mesh.isMesh&&!Reflect.get(mesh,'isPoints'))return;
         ids.push(`${mesh.uuid}:${mesh.geometry.uuid}:${mesh.position.toArray()}:${mesh.scale.toArray()}`);
@@ -29,11 +30,13 @@ export async function inspectOrbitLighting(quality:QualityTier,worldBeat:number,
           const shader=material as ShaderMaterial;
           if(shader.uniforms?.choreoGain)optics.push({gain:shader.uniforms.choreoGain.value,alpha:shader.premultipliedAlpha,
             depthTest:shader.depthTest,depthWrite:shader.depthWrite,layer:shader.uniforms.layer.value});
+          const field: Texture | undefined = shader.uniforms?.structuralField?.value;
+          if(field){fields.add(field);resources.add(field);}
           if(material.customProgramCacheKey().includes('starwake-surface-light'))surfaces.push(material.uuid);
         }
       });
       const id=JSON.stringify(ids);if(identity&&id!==identity)replaced=true;identity=id;
-      frames.push({beat,station,fov:graphics.camera!.fov,metrics:graphics.metrics(),surfaces:surfaces.length,optics,png:canvas.toDataURL()});
+      frames.push({beat,station,fov:graphics.camera!.fov,metrics:graphics.metrics(),surfaces:surfaces.length,optics,fields:fields.size,png:canvas.toDataURL()});
     }
     for(const resource of resources)resource.addEventListener('dispose',()=>freed++);
     const glError=graphics.gl.getError();graphics.dispose();

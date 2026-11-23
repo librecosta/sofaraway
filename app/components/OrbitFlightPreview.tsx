@@ -6,6 +6,7 @@ import { ORBIT_WORLD_SEED } from '../game/core/orbit-field';
 import { corridorLength } from '../game/core/corridor-composition';
 import { referenceFor, START_DISTANCE } from '../game/core/reference-track';
 import { orbitSceneBeats, orbitSceneNames } from '../game/core/orbit-setpieces';
+import { auroraViews } from '../game/core/orbit-nebula-structure';
 import { orbitLightScenes } from '../game/core/orbit-lighting';
 import { volumeById } from '../game/core/volumes';
 import type { OrbitDensity } from '../game/core/orbit-field';
@@ -39,6 +40,7 @@ export function OrbitFlightPreview() {
   const [musicBeat, setMusicBeat] = useState(Math.max(0,Math.min(384,Number(params.get('beat'))||0)));
   const [dynamicLights, setDynamicLights] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [nebulaInspection, setNebulaInspection] = useState(0);
   const [metrics, setMetrics] = useState<Metrics>();
   const [status, setStatus] = useState('Loading WebGL preview…');
   const [opened, setOpened] = useState(false);
@@ -46,7 +48,7 @@ export function OrbitFlightPreview() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<Viewer>(null);
   const settings = useRef({ seed, density, quality, station, playing, musicPlaying, musicBeat, dynamicLights,
-    reducedMotion, post: params.get('post') !== '0' });
+    reducedMotion, nebulaInspection, post: params.get('post') !== '0' });
 
   useEffect(() => setReadyToOpen(true), []);
 
@@ -219,7 +221,7 @@ export function OrbitFlightPreview() {
                 controls.musicPlaying = false;setMusicPlaying(false);audio.finish();
               }
             }
-            graphics.drawOrbit({ station: controls.station, x, y, time,
+            graphics.drawOrbit({ station: controls.station, x, y, time, nebulaInspection: controls.nebulaInspection,
               lighting: { beat: controls.musicBeat, amount: Number(controls.dynamicLights), reducedMotion: controls.reducedMotion } });
             if (dirty || !(controls.playing || controls.musicPlaying) || now - reportAt > 230) {
               setMetrics(graphics.metrics());
@@ -304,6 +306,22 @@ export function OrbitFlightPreview() {
         <div className={s.actions} aria-label="Ring inspection">
           {([['Ring: far',104],['Ring: layers',116],['Ring: fracture',126]] as const).map(([name,beat])=>
             <button type="button" key={name} onClick={()=>{settings.current.playing=false;setPlaying(false);switchDensity('flight');seek(reference.station(beat,'standard'));}}>{name}</button>)}
+        </div>
+        <div className={s.actions}>
+          <label>Aurora structure <select value={nebulaInspection} onChange={e => {
+            const value = Number(e.currentTarget.value);
+            settings.current.nebulaInspection = value;
+            setNebulaInspection(value);
+            if (value && (settings.current.station < reference.station(256, 'standard')
+              || settings.current.station >= reference.station(320, 'standard'))) {
+              settings.current.playing = false;
+              setPlaying(false);
+              switchDensity('flight');
+              seek(reference.station(orbitSceneBeats[5], 'standard'));
+            } else {
+              viewer.current?.redraw();
+            }
+          }}>{auroraViews.map((label, index) => <option key={label} value={index}>{label}</option>)}</select></label>
         </div>
         <div className={s.seek}><span>World station</span><output aria-live="off">{station.toFixed(1)}</output>
           <input aria-label="World station" type="range" min={START_DISTANCE} max={Math.floor(length)} step="1" value={Math.min(Math.floor(length), Math.round(station))}

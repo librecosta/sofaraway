@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import type { QualityTier } from '../contracts';
 import { cosmicPresence } from '../core/orbit-setpieces';
 import type { OrbitSetpiece } from '../core/orbit-setpieces';
+import { auroraFrame } from '../core/orbit-nebula-structure';
 import { astralProjection, nebulaFragment } from './orbit-cosmic-shaders';
+import { bakeAuroraField } from './orbit-nebula-field';
 import { aphelionAtmosphere, aphelionClouds, aphelionShellScale, aphelionVertex } from './orbit-gas-giant.client';
 import type { OrbitRocks } from './orbit-rocks.client';
 import { OrbitSurfaceLights } from './orbit-light-rig';
@@ -78,6 +80,7 @@ type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { va
   lights:OrbitSurfaceLights;
   batches: Map<number,THREE.InstancedMesh>;
   celestials: THREE.Mesh[];
+  nebulaField?: THREE.DataArrayTexture;
   nebulaMaterial?: THREE.ShaderMaterial;
   boulderIndices: number[]; levels: Int8Array; quality?: QualityTier; instances:number; lastPosition:THREE.Vector3 };
 
@@ -192,25 +195,29 @@ export class OrbitSetpieces {
       shell.scale.copy(mesh.scale).multiplyScalar(planet?aphelionShellScale:body.type==='star'?1.08:1.022);shell.frustumCulled=false;
       item.group.add(shell);item.materials.push(air);
     }
+    if (piece.nebula.length) item.nebulaField = bakeAuroraField(piece.seed);
+    const f = new THREE.Vector3().fromArray(piece.forward);
+    const u = new THREE.Vector3().fromArray(piece.up);
+    const basis = new THREE.Matrix4().makeBasis(new THREE.Vector3().fromArray(piece.right), u, f.clone().negate());
     for(const [layer,structure] of piece.nebula.entries()) {
       const material=new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:nebulaFragment,transparent:true,
         depthTest:true, depthWrite:false, premultipliedAlpha:true,
-        uniforms:{presence:item.fade,detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13},
+        uniforms:{presence:item.fade,detail:{value:4},layer:{value:layer},seed:{value:(piece.seed%97)*.13},inspection:{value:0},
+          structuralField:{value:item.nebulaField},flowNoise:{value:this.rocks.surface.texture},
           choreoGain:{value:1},choreoHue:{value:0},choreoFiber:{value:0},choreoPhase:{value:0}}});
       const mesh=new THREE.Mesh(this.plane,material);
       item.nebulaMaterial ??= material;
-      const f=new THREE.Vector3().fromArray(piece.forward),r=new THREE.Vector3().fromArray(piece.right),u=new THREE.Vector3().fromArray(piece.up);
       mesh.name=structure.role;
-      mesh.position.fromArray(piece.anchor).addScaledVector(r,structure.offset[0]).addScaledVector(u,structure.offset[1]).addScaledVector(f,structure.offset[2]);
-      mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(r,u,f.negate()));
-      mesh.rotateZ(structure.angle);mesh.scale.set(...structure.span,1);mesh.frustumCulled=false;
+      mesh.position.fromArray(piece.anchor).addScaledVector(u,auroraFrame.lift).addScaledVector(f,structure.depth);
+      mesh.quaternion.setFromRotationMatrix(basis);
+      mesh.scale.set(auroraFrame.width,auroraFrame.height,1);mesh.frustumCulled=false;
       item.group.add(mesh);item.materials.push(material);
     }
     if (piece !== this.aurora && piece !== this.aphelion) this.group.add(item.group);
     this.active.set(piece.id,item);return item;
   }
 
-  update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier,lighting?:OrbitLighting) {
+  update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier,lighting?:OrbitLighting,inspection=0) {
     this.station=station;
     const projection=height*camera.projectionMatrix.elements[5];
     for(const piece of this.descriptions) {
@@ -235,6 +242,7 @@ export class OrbitSetpieces {
         if(material.uniforms.detail)material.uniforms.detail.value=quality==='low'?2:quality==='high'?4:3;
         if(lighting&&material.uniforms.choreoGain){
           const layer=material.uniforms.layer.value;
+          material.uniforms.inspection.value=inspection;
           material.uniforms.choreoGain.value=lighting.nebula[layer];material.uniforms.choreoHue.value=lighting.hues[layer];
           material.uniforms.choreoFiber.value=lighting.fiber*(quality==='low'?.55:1);
           material.uniforms.choreoPhase.value=lighting.travel*Math.PI*2;
@@ -278,6 +286,7 @@ export class OrbitSetpieces {
       const rock=this.descriptions.find(piece=>piece.id===id)!.rocks[index];
       return {id:rock.id,shape:rock.shape,lod:p.levels[index]};
     })})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
-  private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();for(const material of item.materials)material.dispose();}
+  private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();
+    for(const material of item.materials)material.dispose();item.nebulaField?.dispose();}
   dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
 }

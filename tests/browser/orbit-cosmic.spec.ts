@@ -19,7 +19,7 @@ test('seven production cosmic scenes retain their identity at every quality with
       if(i===0)expect(pieces.active.find(p=>p.id==='monolith')!.boulders).toHaveLength(1);
       if(i===1)expect(pieces.active.find(p=>p.id==='fractures')!.boulders).toHaveLength(2);
       if(i===2)expect(pieces.landmarks.find(p=>p.id==='ring')!.structures).toHaveLength(8);
-      if(i===5)expect(pieces.landmarks.find(p=>p.id==='nebula')!.nebula).toEqual(['arc','cliff','pillars','tendrils','filaments','nursery']);
+      if(i===5)expect(pieces.landmarks.find(p=>p.id==='nebula')!.nebula).toEqual(['far-envelope','far-cliff','spine','cavity-wall','return-flow','foreground-dust']);
       expect(frame.bright).toBeGreaterThan(200);
       expect(frame.metrics.chunks).toBe(0);
       if(landmarks)expect(pieces.landmarks).toEqual(landmarks);else landmarks=pieces.landmarks;
@@ -74,4 +74,36 @@ test('cosmic preview seeks, flies across scene boundaries and restores every res
   await section.getByRole('button',{name:'Pause flight'}).click();
   expect((await metric()).orbit.setpieces.active.some((p:{id:string})=>p.id==='planet')).toBe(true);
   expect(await canvas.evaluate((el:HTMLCanvasElement)=>el.getContext('webgl2')!.getError())).toBe(0);
+});
+
+test('Aurora structure inspector isolates real fields and disables music and post-processing', async ({ page }, run) => {
+  await page.goto('/debug/?q=high#orbit');
+  const section = page.locator('#orbit');
+  await section.getByRole('button', { name: 'Open flight preview' }).click();
+  const metrics = section.locator('[data-orbit-metrics]');
+  await expect(metrics).toBeVisible();
+  const read = () => metrics.getAttribute('data-orbit-metrics').then(value => JSON.parse(value!));
+  const selector = section.getByLabel('Aurora structure');
+  const canvas = section.locator('canvas');
+  await section.getByRole('button', { name: 'AURORA', exact: true }).click();
+  await section.getByRole('button', { name: 'Light: AURORA', exact: true }).click();
+  await expect.poll(async () => (await read()).orbit.lighting.amount).toBe(1);
+  const station = (await read()).orbit.setpieces.station;
+  const composite = await canvas.screenshot();
+  const structures = [];
+  for (const label of ['Main Spine Only', 'Branches Only', 'Cavity / Dust', 'Emission Regions', 'Neutral Density']) {
+    await selector.selectOption({ label });
+    await expect.poll(async () => (await read()).orbit.lighting.amount).toBe(0);
+    const capture = await canvas.screenshot();
+    structures.push(capture);
+    await run.attach(label, { body: capture, contentType: 'image/png' });
+  }
+  expect(new Set([composite, ...structures].map(capture => capture.toString('base64'))).size).toBe(6);
+  await section.getByRole('button', { name: 'Light: APHELION', exact: true }).click();
+  await expect.poll(async () => (await read()).orbit.lighting.beat).toBe(320);
+  expect(await canvas.screenshot()).toEqual(structures.at(-1));
+  expect((await read()).orbit.setpieces.station).toBe(station);
+  await selector.selectOption({ label: 'Composite' });
+  await expect.poll(async () => (await read()).orbit.lighting.amount).toBe(1);
+  expect(await canvas.evaluate((el: HTMLCanvasElement) => el.getContext('webgl2')!.getError())).toBe(0);
 });

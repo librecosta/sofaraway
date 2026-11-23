@@ -20,6 +20,7 @@ for (const scenario of cases) {
     expect(result.glError).toBe(0);
     expect(result.probes).toHaveLength(1);
     expect(result.probes[0].station).toBeLessThan(result.from - 330);
+    expect(result.fieldUploads).toEqual([result.probes[0].station]);
     expect(result.preparation.draws).toBe(0);
     if (scenario.prepare) expect(result.preparation.builtMs).not.toBeNull();
     const firstFrames = ['cold', 'warm'].map(entry => result.frames.find(frame => frame.entry === entry && frame.draws > 0)!);

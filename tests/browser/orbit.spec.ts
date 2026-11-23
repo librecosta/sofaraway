@@ -364,7 +364,8 @@ test('@perf ORBIT aperture gates share cached geometry and one glass program in 
     expect(sample.metrics.chunks).toBe(0);
     expect(sample.gateKinds.every(kind => kind.startsWith('orbit-'))).toBe(true);
     expect(sample.metrics.gateGeometryCache).toBeLessThanOrEqual(24);
-    expect(sample.metrics.textures).toBeLessThanOrEqual(6);
+    // The prewarmed AURORA field stays resident as one shared texture.
+    expect(sample.metrics.textures).toBeLessThanOrEqual(7);
     samples.push({ quality, ...sample });
   }
   await run.attach('Aperture GPU and CPU frame measurements', { body: JSON.stringify(samples, null, 2), contentType: 'application/json' });

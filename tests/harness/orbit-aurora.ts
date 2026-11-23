@@ -36,6 +36,7 @@ export async function measureAuroraEntry(quality: QualityTier, boost: boolean, d
     const frames = [];
     const captures: string[] = [];
     const probes: { station: number; ms: number; programs: number }[] = [];
+    const fieldUploads: number[] = [];
     let builtMs: number | null = null, draws = 0, updateMs = 0, renderMs = 0;
     const create = pieces.create.bind(pieces);
     pieces.create = (piece: OrbitSetpiece) => {
@@ -44,6 +45,7 @@ export async function measureAuroraEntry(quality: QualityTier, boost: boolean, d
       if (piece === aurora) {
         builtMs = performance.now() - start;
         for (const mesh of entry.group.children) mesh.onAfterRender = () => draws++;
+        if (entry.nebulaField) entry.nebulaField.onUpdate = () => fieldUploads.push(pieces.metrics().station);
       }
       return entry;
     };
@@ -128,7 +130,7 @@ export async function measureAuroraEntry(quality: QualityTier, boost: boolean, d
         captures.push(canvas.toDataURL());
       }
     }
-    return { frames, from: aurora.from, captures, probes, preparation, renderer: debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL),
+    return { frames, from: aurora.from, captures, probes, fieldUploads, preparation, renderer: debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL),
       gpuTimer: !!timer, dpr: graphics.metrics().dpr, glError: gl.getError() };
   } finally {
     graphics.dispose();

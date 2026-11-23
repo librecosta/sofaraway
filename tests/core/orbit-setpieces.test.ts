@@ -46,7 +46,7 @@ for(const mode of ['standard','sightseeing'] as const) for(const difficulty of [
         expect(rock.rank).toBe(0);
       }
     }
-    expect(a[5].nebula.map(n=>n.role)).toEqual(['arc','cliff','pillars','tendrils','filaments','nursery']);
+    expect(a[5].nebula.map(n=>n.role)).toEqual(['far-envelope','far-cliff','spine','cavity-wall','return-flow','foreground-dust']);
     expect(a.find(p=>p.id==='ring')!.rocks.length).toBeGreaterThan(1200);
     expect(a.find(p=>p.id==='spiral')!.rocks.length).toBeGreaterThan(1500);
     expect(cosmicPresence(a.at(-1)!,reference.boostFinish(mode,difficulty==='impossible'?1.15:1))).toBe(1);

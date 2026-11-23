@@ -42,7 +42,7 @@ const frame = () => ({
 const BASE_FOV = 76;
 type SceneGate = RunGate | EncoreGate;
 interface OrbitView { station: number; x: number; y: number; time: number;
-  lighting?: import('../core/orbit-lighting').OrbitLightOptions & { beat: number } }
+  nebulaInspection?: number; lighting?: import('../core/orbit-lighting').OrbitLightOptions & { beat: number } }
 export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance' | 'beat' | 'time' | 'phase' |
   'mode' | 'route' | 'branch' | 'branchGates' | 'junctionPath' | 'steeringWidth' | 'routeGuide' | 'routeSide' |
   'previewGates' | 'previewEncore' | 'outroPlan' | 'speed' | 'boostLens' | 'boosting' | 'hitTime' |
@@ -182,7 +182,7 @@ class VolumeScene {
   updateOrbit(view: OrbitView, height: number, dpr: number, quality: QualityTier) {
     this.moveCamera(this.path.sample(view.station, this.cameraFrame), view.x, view.y);
     this.setFov(BASE_FOV);
-    this.orbit?.update(this.camera, height, dpr, quality, 0, view.station, view.lighting);
+    this.orbit?.update(this.camera, height, dpr, quality, 0, view.station, view.lighting, view.nebulaInspection);
   }
 
   updateAstralWorld(sim: SceneState, height: number, dpr: number, quality: QualityTier, lighting?: LightingPreview) {
@@ -728,15 +728,15 @@ export class Graphics {
   drawOrbit(view: OrbitView) {
     if (!this.volume?.orbit || this.gl.isContextLost()) return;
     this.volume.updateOrbit(view, this.height * this.effectiveDpr, this.effectiveDpr, this.quality);
-    this.render(this.volume, view.time, false);
+    this.render(this.volume, view.time, false, !!view.nebulaInspection);
   }
 
-  private render({ scene, camera, orbit }: VolumeScene, time: number, playing: boolean) {
+  private render({ scene, camera, orbit }: VolumeScene, time: number, playing: boolean, direct = false) {
     // Debug previews and output changes may reach the world without prepare().
-    if (orbit) this.withCoreShaders(() => orbit.warmAstral(this.renderer, this.post?.rtScene ?? null, this.quality));
+    if (orbit) this.withCoreShaders(() => orbit.warmAstral(this.renderer, direct ? null : this.post?.rtScene ?? null, this.quality));
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
-    if (this.post) {
+    if (this.post && !direct) {
       try {
         this.post.render(scene, camera, time, playing);
       } catch (error) {
@@ -746,7 +746,7 @@ export class Graphics {
         this.renderer.info.reset();
       }
     }
-    if (!this.post) {
+    if (!this.post || direct) {
       this.renderer.setRenderTarget(null);
       this.withCoreShaders(() => this.renderer.render(scene, camera));
     }

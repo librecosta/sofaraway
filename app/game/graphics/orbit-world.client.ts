@@ -135,10 +135,10 @@ export class OrbitWorld {
   }
 
   update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200,
-    music?: OrbitLightOptions & { beat: number }) {
-    const light = orbitLightingAt(music?.beat ?? 0, music ?? { amount: 0 }, this.lighting);
+    music?: OrbitLightOptions & { beat: number }, inspection = 0) {
+    const light = orbitLightingAt(music?.beat ?? 0, inspection ? { amount: 0 } : music ?? { amount: 0 }, this.lighting);
     this.rocks.surface.update(camera,height,quality);
-    this.setpieces.update(camera, station, height, quality, light);
+    this.setpieces.update(camera, station, height, quality, light, inspection);
     const eclipse = cosmicPresence(this.setpieces.descriptions[4],station);
     this.key.position.set(-.8,.73,-.48).normalize().lerp(this.eclipseSun,eclipse);
     this.key.intensity=3.55*light.key;

@@ -1,4 +1,5 @@
 import { ringFragments } from './orbit-ring';
+import { auroraSlices } from './orbit-nebula-structure';
 import type { PlayMode } from '../contracts';
 import { orbitRandom } from './orbit-field';
 import type { OrbitClearance, OrbitPoint, OrbitRock } from './orbit-field';
@@ -20,20 +21,6 @@ export interface CosmicBody {
   readonly radius: number;
 }
 export interface CosmicRock extends OrbitRock { readonly structure: string }
-export interface NebulaStructure {
-  readonly role: 'arc' | 'cliff' | 'pillars' | 'tendrils' | 'filaments' | 'nursery';
-  readonly offset: OrbitPoint;
-  readonly span: readonly [number,number];
-  readonly angle: number;
-}
-export const nebulaStructures: readonly NebulaStructure[] = [
-  {role:'arc',offset:[600,1100,6400],span:[14500,8200],angle:-.12},
-  {role:'cliff',offset:[-2300,100,3900],span:[6900,6500],angle:.12},
-  {role:'pillars',offset:[3100,-250,4700],span:[6300,6200],angle:-.24},
-  {role:'tendrils',offset:[-300,-550,2800],span:[9400,5100],angle:.25},
-  {role:'filaments',offset:[-1650,900,3300],span:[3100,1900],angle:-.38},
-  {role:'nursery',offset:[2100,1350,5100],span:[2800,2300],angle:.18},
-];
 export interface OrbitSetpiece {
   readonly id: CosmicKind;
   readonly section: string;
@@ -49,7 +36,7 @@ export interface OrbitSetpiece {
   readonly forward: OrbitPoint;
   readonly bodies: readonly CosmicBody[];
   readonly rocks: readonly CosmicRock[];
-  readonly nebula: readonly NebulaStructure[];
+  readonly nebula: readonly (typeof auroraSlices)[number][];
   readonly radius: number;
 }
 
@@ -178,7 +165,7 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
     const feather = Math.max(70, (stationAt(section.endBeat) - from) * (id === 'nebula' ? .28 : .18));
     return { id, section: section.name, name: orbitSceneNames[index], seed: seed ^ (index * 991), station,
       from: from - feather, to: to + feather, feather, anchor, right: frame.r.toArray(), up: frame.u.toArray(), forward: frame.f.toArray(),
-      bodies, rocks, nebula: id==='nebula'?nebulaStructures:[], radius: id === 'planet' ? 14000 : id === 'eclipse' ? 8500 : id === 'nebula' ? 18000 : 1100 };
+      bodies, rocks, nebula: id==='nebula'?auroraSlices:[], radius: id === 'planet' ? 14000 : id === 'eclipse' ? 8500 : id === 'nebula' ? 18000 : 1100 };
   });
 }
 

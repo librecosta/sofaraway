@@ -21,6 +21,7 @@ test('STARWAKE lights existing landmarks at independent music positions without 
     expect(first.metrics.orbit!.setpieces.active.length).toBeGreaterThan(0);
     if(index===5){
       expect(first.optics).toHaveLength(6);
+      expect(sample.frames.every(frame => frame.fields === 1)).toBe(true);
       expect(first.optics).toEqual(expect.arrayContaining([expect.objectContaining({alpha:true,depthTest:true,depthWrite:false})]));
       expect(new Set(first.metrics.orbit!.lighting.nebula).size).toBeGreaterThan(3);
     }

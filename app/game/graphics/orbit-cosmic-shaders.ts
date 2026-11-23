@@ -1,3 +1,5 @@
+import { auroraCavity, auroraFrame } from '../core/orbit-nebula-structure';
+
 /** Keep perspective/angular size intact; reserve the far depth band for astronomical distances. */
 export const astralProjection = /* glsl */`
   float distanceZ = -mvPosition.z;
@@ -6,23 +8,6 @@ export const astralProjection = /* glsl */`
     gl_Position.z = (-projectionMatrix[2][2] + projectionMatrix[3][2] / mappedZ) * gl_Position.w;
   }
 `;
-
-export const cosmicNoise = /* glsl */`
-float hash21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float gasNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
-  return mix(mix(hash21(i),hash21(i+vec2(1,0)),f.x),mix(hash21(i+vec2(0,1)),hash21(i+1.0),f.x),f.y);
-}
-float gasFbm(vec2 p, float detail) {
-  float value = 0.0, weight = .53;
-  for (int i=0; i<5; i++) {
-    if(float(i)>detail) break;
-    float footprint = max(length(dFdx(p)), length(dFdy(p)));
-    value += weight * mix(.5, gasNoise(p), 1.0-smoothstep(.18,.8,footprint));
-    p = mat2(1.65,1.18,-1.18,1.65)*p + 7.1; weight *= .49;
-  }
-  return value;
-}`;
 
 /** Homogeneous emission/absorption segment in linear, premultiplied radiance. */
 export const nebulaIntegration = /* glsl */`
@@ -35,99 +20,83 @@ vec4 nebulaSegment(vec3 emissivity,float gas,float dust,float weight) {
 `;
 
 export const nebulaFragment = /* glsl */`
-${cosmicNoise}
 ${nebulaIntegration}
-uniform float presence, detail, layer, seed;
-uniform float choreoGain,choreoHue,choreoFiber,choreoPhase;
+uniform highp sampler2DArray structuralField;
+uniform highp sampler3D flowNoise;
+uniform float presence, detail, layer, seed, inspection;
+uniform float choreoGain, choreoHue, choreoFiber, choreoPhase;
 varying vec2 vUv;
-float cloudWindow(vec2 p,vec2 c,vec2 scale) { vec2 q=(p-c)*scale;return exp(-dot(q,q)); }
+
+float shape(vec2 p, vec2 center, vec2 scale) {
+  vec2 d = (p - center) * scale;
+  return exp(-dot(d, d));
+}
+
 void main() {
-  vec2 p=(vUv-.5)*vec2(6.5,4.7);
-  vec2 warp=vec2(gasFbm(p*.72+seed,detail),gasFbm(p*.72+seed+13.7,detail));
-  vec2 q=p+(warp-.47)*.90;
-  float macro=0.0,edgeLight=0.0;
-  vec2 flow=q;
-  vec3 tint=vec3(.07,.18,.50);
-  if(layer<.5) {
-    // A broken, elliptical cloud ridge around a large empty interior.
-    float arc=abs(length((q-vec2(.1,-.60))*vec2(.72,1.05))-1.55);
-    macro=exp(-arc*arc*9.0)*smoothstep(-1.15,-.50,q.y);
-    macro*=1.0-.84*cloudWindow(q,vec2(.65,1.04),vec2(1.8,2.4));
-    flow=vec2(q.x,q.y+.50*sin(q.x));
-    tint=mix(vec3(.045,.20,.48),vec3(.35,.09,.48),smoothstep(-1.5,1.5,q.x));
-    edgeLight=cloudWindow(q,vec2(-1.5,.55),vec2(1.6,2.2));
-  } else if(layer<1.5) {
-    // A tall gas cliff with an illuminated face and an excavated dust cavern.
-    float face=q.x+.15+.42*gasFbm(vec2(q.y*.95,seed+2.0),detail);
-    macro=(1.0-smoothstep(-.32,.65,face))*cloudWindow(q,vec2(-.55,.0),vec2(.58,.39));
-    edgeLight=exp(-face*face*15.0);
-    flow=vec2(q.x*1.8+.35*q.y,q.y*.65);
-    tint=mix(vec3(.025,.18,.31),vec3(.075,.48,.55),edgeLight);
-  } else if(layer<2.5) {
-    // Three leaning pillars, separated by real low-density gaps.
-    float x=q.x-.26*q.y;
-    float columns=min(abs(x+.88),min(abs(x-.1),abs(x-1.05)));
-    float cap=smoothstep(-2.1,-1.1,q.y)*(1.0-smoothstep(.70,1.7,q.y));
-    macro=exp(-columns*columns*14.0)*cap;
-    flow=vec2(x*1.9,q.y*.7);
-    edgeLight=cloudWindow(q,vec2(.40,.80),vec2(.9,2.5));
-    tint=mix(vec3(.19,.045,.35),vec3(.56,.10,.25),smoothstep(-1.1,.8,q.y));
-  } else if(layer<3.5) {
-    // Low-density foreground tributaries cross the ridge instead of cloning it.
-    float a=abs(q.y-.40*q.x-.24*sin(q.x*1.5)+.5);
-    float b=abs(q.y+.55*q.x-.72+.18*sin(q.x*2.0));
-    macro=exp(-a*a*34.0)*.70+exp(-b*b*48.0)*.55;
-    macro*=1.0-.9*cloudWindow(q,vec2(.1,.1),vec2(1.2,1.1));
-    flow=vec2(q.x*.8,q.y*2.1-q.x*.7);
-    tint=mix(vec3(.06,.25,.52),vec3(.42,.07,.43),smoothstep(-1.3,1.4,q.x));
-  } else if(layer<4.5) {
-    // A small foreground fan: independent threads with dark gaps between them.
-    float bend=.24*sin(q.x*1.2)+.12*q.x;
-    float streams=min(abs(q.y-bend-.62),min(abs(q.y-bend+.1),abs(q.y-bend+.68)));
-    macro=exp(-streams*streams*90.0)*cloudWindow(q,vec2(0),vec2(.45,.7));
-    macro*=1.0-.94*cloudWindow(q,vec2(.6,.3),vec2(2.5,2.0));
-    flow=vec2(q.x*.55,(q.y-bend)*3.7);
-    tint=mix(vec3(.06,.30,.50),vec3(.48,.16,.40),smoothstep(-1.5,1.8,q.x));
-    edgeLight=cloudWindow(q,vec2(-.8,.5),vec2(2.,3.));
+  // Every plane covers the same rectangle in the AURORA frame. Its layer
+  // selects the density at the plane's own physical distance from the anchor.
+  vec2 p = (vUv * 2.0 - 1.0) * vec2(${auroraFrame.xExtent}, ${auroraFrame.yExtent});
+  vec3 noisePos = vec3(p * .27, layer * .13 + seed);
+  vec4 drift = texture(flowNoise, noisePos);
+  vec2 offset = inspection < .5 ? (drift.gb - .5) * vec2(.023, .058) : vec2(0.0);
+  vec4 field = texture(structuralField, vec3(vUv + offset, layer));
+  float rawGas = field.r + field.g;
+  float wall = smoothstep(.018, .23, field.b);
+  vec2 cavity = vec2(${auroraCavity.x}, ${auroraCavity.y});
+  float litWall = wall * smoothstep(-.60, .52, p.y - cavity.y + .32 * (p.x - cavity.x));
+  float nursery = shape(p, vec2(1.02,.85), vec2(2.65,3.8)) * smoothstep(.10,.49,rawGas);
+  float edge = smoothstep(0.0,.12,vUv.x) * smoothstep(0.0,.12,1.0-vUv.x)
+    * smoothstep(0.0,.12,vUv.y) * smoothstep(0.0,.12,1.0-vUv.y);
+  float pathWeight = edge * presence * .53;
+
+  if (inspection > .5) {
+    float visible = rawGas;
+    if (inspection < 1.5) visible = field.r;
+    else if (inspection < 2.5) visible = field.g;
+    else if (inspection < 3.5) visible = field.b * 2.5;
+    else if (inspection < 4.5) visible = rawGas * (.75 * litWall + .95 * nursery);
+    float alpha = 1.0 - exp(-1.65 * visible * pathWeight);
+    gl_FragColor = vec4(vec3(.58), alpha);
   } else {
-    // A local hollow shell and a warm stellar nursery, not another sky-sized sheet.
-    float shell=abs(length(q*vec2(.9,1.2))-.92);
-    macro=exp(-shell*shell*19.0)*cloudWindow(q,vec2(.2,.1),vec2(.5,.65));
-    macro+=.45*cloudWindow(q,vec2(.75,.75),vec2(2.2,2.4));
-    flow=vec2(q.x+.35*q.y,q.y*1.8);
-    edgeLight=cloudWindow(q,vec2(.75,.75),vec2(2.7,2.7));
-    tint=mix(vec3(.12,.11,.39),vec3(.54,.32,.17),edgeLight);
+    vec2 tangent = normalize(vec2(1.0, (field.a - .5) / .23));
+    vec2 flow = vec2(dot(p, tangent), dot(p, vec2(-tangent.y, tangent.x)));
+    vec3 stream = vec3(flow * vec2(.20, .81) + (drift.gb - .5) * .31, noisePos.z);
+    vec4 eddy = texture(flowNoise, stream);
+    float wisps = smoothstep(.27, .71, eddy.g * .74 + drift.g * .26);
+    float fiber = .42;
+    if (detail > 2.5) {
+      // Prefilter the advected filament domain before sharpening its ridges.
+      vec3 fine = stream * vec3(1.75, 3.6, 1.0) + vec3(eddy.b * .23, eddy.g * .32, .37);
+      float footprint = max(length(dFdx(fine)), length(dFdy(fine)));
+      float resolved = 1.0 - smoothstep(.025, .12, footprint);
+      vec4 filament = texture(flowNoise, fine);
+      float ridge = smoothstep(.48, .69, filament.g);
+      if (detail > 3.5) {
+        vec3 split = fine * vec3(1.53, 1.83, 1.0) + vec3(filament.b * .19, filament.g * .27, .24);
+        float splitFootprint = max(length(dFdx(split)), length(dFdy(split)));
+        float splitResolved = 1.0 - smoothstep(.025, .11, splitFootprint);
+        ridge = mix(ridge, ridge * (.57 + .90 * texture(flowNoise, split).g), splitResolved);
+      }
+      fiber = mix(fiber, ridge, resolved * (detail > 3.5 ? 1.0 : .68));
+    }
+    float gas = rawGas * (.48 + .66 * wisps + .31 * fiber);
+    float dust = field.b * (.62 + .76 * smoothstep(.34,.68,drift.b));
+    float violet = smoothstep(-1.65,1.72,p.x + (eddy.b - .5) * 1.4);
+    vec3 pigment = mix(vec3(.022,.094,.23), vec3(.29,.052,.21), violet);
+    pigment = mix(pigment, vec3(.025,.18,.32), (1.0 - violet) * wisps * .55);
+    pigment = mix(pigment, vec3(.24,.42,.56), litWall * (.26 + .58 * wisps));
+    pigment = mix(pigment, vec3(.64,.30,.13), nursery * (.25 + .39 * wisps));
+    float response = rawGas * (litWall * .51 + nursery * .36 + field.g * .13);
+    float travel = .5 + .5 * cos(p.x * .9 + p.y * .46 - choreoPhase - layer * .46);
+    float shimmer = choreoFiber * fiber * travel * (field.g + .3 * litWall);
+    float exposure = 1.0 + (choreoGain - 1.0) * (.66 + .34 * litWall);
+    vec3 emission = pigment * gas * (1.00 + .45 * wisps + .48 * fiber) * exp(-dust * .63);
+    emission *= exposure * (1.0 + shimmer * .42);
+    emission += vec3(.11,.15,.21) * response * choreoHue * travel;
+    vec4 segment = nebulaSegment(emission, gas * .84, dust, pathWeight);
+    gl_FragColor=vec4(segment.rgb/max(segment.a,.000001),segment.a);
   }
-  float meso=gasFbm(flow*2.8+warp*1.5+seed,detail);
-  vec2 axial=(layer>.5&&layer<2.5)?flow.yx:flow;
-  float strand=gasFbm(flow*5.2+warp*2.0,detail);
-  float strandWidth=max(.015,fwidth(strand));
-  float resolved=1.0-smoothstep(.07,.24,strandWidth);
-  float longitudinal=gasNoise(axial*vec2(.85,5.4)+vec2(meso*.65,warp.x*.7));
-  float fibers=mix(.25,pow(max(0.0,1.0-abs(strand*2.0-1.0)),5.0),resolved);
-  fibers*=.78+.40*longitudinal;
-  float density=macro*(.27+.88*meso)*(.72+.40*fibers);
-  float cavern=cloudWindow(q,layer<1.5?vec2(-.45,-.15):vec2(.4,-.1),vec2(1.3,1.9));
-  float dust=macro*smoothstep(.37,.66,gasFbm(q*1.8+21.0,detail))*.70+cavern*macro*(.62+.35*meso);
-  vec3 emission=tint*density*(1.18+1.35*fibers)*exp(-dust*.65);
-  emission+=vec3(.85,.46,.15)*edgeLight*density*.72;
-  // A few resolved stellar nurseries; derivative filtering prevents pinprick shimmer.
-  float knot=cloudWindow(q,vec2(-1.48,.58),vec2(14.0,18.0))
-    +cloudWindow(q,vec2(.42,.82),vec2(18.0,15.0));
-  if(layer>4.5)knot+=cloudWindow(q,vec2(.73,.76),vec2(13.,16.))
-    +cloudWindow(q,vec2(.86,.66),vec2(22.,20.))+cloudWindow(q,vec2(.62,.80),vec2(24.,24.));
-  emission+=vec3(.60,.76,.86)*knot*density*.95;
-  // Modulate emissivity within the existing gas, never optical depth/alpha.
-  // The traveling highlight follows the established flow and is envelope-gated.
-  float response=pow(.5+.5*cos(flow.x*.75+flow.y*.38-choreoPhase-layer*.83),3.0);
-  vec3 responseTint=layer<1.5?vec3(.72,1.12,1.16):layer<4.5?vec3(1.12,.83,1.14):vec3(1.15,1.02,.78);
-  emission*=choreoGain*(1.0+choreoFiber*fibers*response);
-  emission=mix(emission,emission*responseTint,choreoHue*response);
-  float edge=smoothstep(0.0,.16,vUv.x)*smoothstep(0.0,.16,vUv.y)*smoothstep(0.0,.16,1.0-vUv.x)*smoothstep(0.0,.16,1.0-vUv.y);
-  // Fade the optical path, not merely alpha after integration. Dust absorbs
-  // background starlight; it is not a black decal on top of additive gas.
-  vec4 segment=nebulaSegment(emission,density*.95,dust,edge*presence);
-  gl_FragColor=vec4(segment.rgb/max(segment.a,.000001),segment.a);
   #include <colorspace_fragment>
-  gl_FragColor.rgb*=gl_FragColor.a;
-}`;
+  gl_FragColor.rgb *= gl_FragColor.a;
+}
+`;
