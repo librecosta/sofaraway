@@ -129,8 +129,9 @@ export class OrbitWorld {
     this.group.add(this.sky.group, this.setpieces.group, ...this.lights);
   }
 
-  warmAurora(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, preparing = false) {
+  warmAstral(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, quality: QualityTier, preparing = false) {
     this.setpieces.warmAurora(renderer, target, this.lights, preparing);
+    this.setpieces.warmAphelion(renderer, target, this.lights, quality, preparing);
   }
 
   update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200,

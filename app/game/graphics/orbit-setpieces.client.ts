@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import type { QualityTier } from '../contracts';
 import { cosmicPresence } from '../core/orbit-setpieces';
 import type { OrbitSetpiece } from '../core/orbit-setpieces';
-import { astralProjection, cosmicNoise, nebulaFragment } from './orbit-cosmic-shaders';
+import { astralProjection, nebulaFragment } from './orbit-cosmic-shaders';
+import { aphelionAtmosphere, aphelionClouds, aphelionShellScale, aphelionVertex } from './orbit-gas-giant.client';
 import type { OrbitRocks } from './orbit-rocks.client';
 import { OrbitSurfaceLights } from './orbit-light-rig';
 import type { OrbitLighting } from '../core/orbit-lighting';
@@ -37,12 +38,10 @@ function rockMaterial(surface:OrbitRocks['surface'],fade={value:1}) {
   return { material, fade };
 }
 
-const planetFragment = /* glsl */`
-${cosmicNoise}
-uniform float presence, style, detail, celestialGain;
+const celestialFragment = /* glsl */`
+uniform float presence, style, celestialGain;
 uniform highp sampler3D stoneField;
 uniform vec3 sun;
-varying vec2 vUv;
 varying vec3 vLocal, vWorld;
 void main() {
   vec3 normal=normalize(vLocal), eye=normalize(cameraPosition-vWorld);
@@ -53,19 +52,9 @@ void main() {
     float limb=pow(max(.0,dot(normal,eye)),.35);
     gl_FragColor=vec4(vec3(1.22,.81,.36)*(.78+.22*surface)*(.52+.48*limb)*(1.0+(celestialGain-1.0)*.12),presence);
   } else {
-    float jet=normal.y*38.0+cloud.g*6.0+sin(normal.x*5.0+normal.z*4.0)*.65;
-    float stripes=.5+.5*sin(jet)*(1.0-smoothstep(.4,2.0,fwidth(jet)));
-    float pole=smoothstep(.55,.92,abs(normal.y));
-    float storm=exp(-pow((normal.y+.20)*9.0,2.0)-pow((normal.x-.48)*6.0,2.0))*smoothstep(.0,.4,normal.z);
-    vec3 color=style<.5 ? mix(vec3(.055,.063,.082),vec3(.16,.17,.19),surface)
-      : mix(vec3(.07,.16,.24),vec3(.46,.37,.24),stripes*.7+surface*.3);
-    if(style>.5) {
-      color=mix(color,vec3(.16,.24,.30),pole*.62);
-      color=mix(color,vec3(.31,.19,.12),storm*.55);
-      color*=.82+.42*cloud.b;
-    }
+    vec3 color=mix(vec3(.055,.063,.082),vec3(.16,.17,.19),surface);
     float lit=sqrt(max(0.0,mu))*smoothstep(-.02,.10,mu);
-    color*=(style<.5?.22:.10)+1.40*lit;
+    color*=.22+1.40*lit;
     color+=vec3(.027,.043,.067)*pow(1.0-abs(dot(normal,eye)),3.0);
     gl_FragColor=vec4(color*(1.0+(celestialGain-1.0)*.20),presence);
   }
@@ -77,7 +66,7 @@ varying vec3 vLocal,vWorld;
 void main(){
   float facing=abs(dot(normalize(vLocal),normalize(cameraPosition-vWorld)));
   float rim=style>1.5?exp(-pow((facing-.40)/.26,2.0))*smoothstep(0.0,.17,facing):pow(1.0-facing,3.5);
-  vec3 tint=style>1.5?vec3(.85,.46,.13):style<.5?vec3(.34,.50,.73):vec3(.20,.49,.72);
+  vec3 tint=style>1.5?vec3(.85,.46,.13):vec3(.34,.50,.73);
   float angle=atan(vLocal.y,vLocal.x);
   float corona=.80+.12*sin(angle*7.0+sin(angle*3.0))+.08*sin(angle*17.0);
   float illumination=style>1.5?corona:.45+.55*max(0.0,dot(normalize(vLocal),normalize(vec3(-.58,.55,.65))));
@@ -102,10 +91,13 @@ export class OrbitSetpieces {
   private readonly point = new THREE.Vector3();
   private station = 0;
   private readonly aurora: OrbitSetpiece | undefined;
+  private readonly aphelion: OrbitSetpiece | undefined;
   private readonly warmedOutputs = new Set<string>();
+  private readonly warmedAphelion = new Map<string, THREE.BufferGeometry>();
 
   constructor(readonly descriptions: readonly OrbitSetpiece[], private readonly rocks: OrbitRocks,private readonly sceneScale=1) {
     this.aurora = descriptions.find(piece => piece.id === 'nebula');
+    this.aphelion = descriptions.find(piece => piece.id === 'planet');
   }
 
   warmAurora(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, lights: readonly THREE.Light[], preparing: boolean) {
@@ -116,30 +108,55 @@ export class OrbitSetpieces {
     const item = this.active.get(piece.id) ?? this.create(piece);
     if (!item.nebulaMaterial) return;
 
-    // Exercise the real material and plane on the same framebuffer format as production.
-    // A small viewport primes first-draw GPU work without shading six full-screen layers.
     const probe = new THREE.Scene();
-    // Three includes scene light counts in the program key even for this unlit shader.
-    probe.add(...lights.map(light => light.clone()));
-    const camera = new THREE.PerspectiveCamera(60, 1, .1, 10);
     const mesh = new THREE.Mesh(this.plane, item.nebulaMaterial);
     mesh.position.z = -.5;
     probe.add(mesh);
+    this.primeCelestial(renderer, target, lights, probe, item.fade);
+    this.warmedOutputs.add(output);
+  }
+
+  warmAphelion(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, lights: readonly THREE.Light[],
+    quality: QualityTier, preparing: boolean) {
+    const piece = this.aphelion;
+    if (!piece || (!preparing && (this.station < piece.from - AURORA_WARMUP_LEAD || this.station > piece.to))) return;
+    const output = target ? `${target.texture.type}:${target.samples}` : renderer.outputColorSpace;
+    const geometry = this.spheres[quality === 'low' ? 0 : 1];
+    if (this.warmedAphelion.get(output) === geometry) return;
+    const item = this.active.get(piece.id) ?? this.create(piece);
+    const probe = new THREE.Scene();
+    for (const celestial of item.celestials) {
+      const mesh = new THREE.Mesh(geometry, celestial.material);
+      mesh.position.z = -2.5;
+      // Warm both sphere shells without occluding either probe in the tiny viewport.
+      mesh.position.x = probe.children.length % 2 === 0 ? -.8 : .8;
+      mesh.scale.setScalar(.72);
+      probe.add(mesh);
+    }
+    this.primeCelestial(renderer, target, lights, probe, item.fade);
+    this.warmedAphelion.set(output, geometry);
+  }
+
+  private primeCelestial(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null,
+    lights: readonly THREE.Light[], probe: THREE.Scene, fade: { value: number }) {
+    // Match the production target and light counts, which are part of Three's
+    // program key even for these unlit materials.
+    probe.add(...lights.map(light => light.clone()));
+    const camera = new THREE.PerspectiveCamera(60, 1, .1, 10);
     const previous = renderer.getRenderTarget();
     const previousFace = renderer.getActiveCubeFace();
     const previousMip = renderer.getActiveMipmapLevel();
     const viewport = renderer.getViewport(new THREE.Vector4());
     const autoClear = renderer.autoClear;
-    const presence = item.fade.value;
+    const presence = fade.value;
     try {
-      item.fade.value = 0;
+      fade.value = 0;
       renderer.autoClear = false;
       renderer.setRenderTarget(target);
       renderer.setViewport(0, 0, 4, 4);
       renderer.render(probe, camera);
-      this.warmedOutputs.add(output);
     } finally {
-      item.fade.value = presence;
+      fade.value = presence;
       renderer.autoClear = autoClear;
       renderer.setViewport(viewport);
       renderer.setRenderTarget(previous, previousFace, previousMip);
@@ -154,18 +171,25 @@ export class OrbitSetpieces {
       levels:new Int8Array(piece.rocks.length).fill(-1), instances:0,lastPosition:new THREE.Vector3(Infinity,Infinity,Infinity) };
     item.group.name = piece.name;
     for (const body of piece.bodies) {
-      const style = body.type==='moon'?0:body.type==='planet'?1:2;
-      const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65);
-      const uniforms = {stoneField:{value:this.rocks.surface.texture},presence:item.fade,style:{value:style},sun:{value:sun},detail:{value:3},celestialGain:{value:1}};
-      const material = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:planetFragment,uniforms,
+      const planet = body.type === 'planet';
+      const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65).normalize();
+      const shared = {presence:item.fade,sun:{value:sun},celestialGain:{value:1}};
+      const seed = piece.seed >>> 0;
+      const uniforms = planet ? {...shared,cloudField:{value:this.rocks.surface.texture},detail:{value:3},
+        cloudSeed:{value:new THREE.Vector3(.19 + (seed & 255)/1024, .27 + ((seed >>> 8) & 255)/1024, .43 + ((seed >>> 16) & 255)/1024)}}
+        : {...shared,stoneField:{value:this.rocks.surface.texture},style:{value:body.type==='moon'?0:2}};
+      const vertexShader = planet ? aphelionVertex : projectionVertex;
+      const material = new THREE.ShaderMaterial({vertexShader,fragmentShader:planet?aphelionClouds:celestialFragment,uniforms,
         transparent:true,depthWrite:true});
       const mesh = new THREE.Mesh(this.spheres[0],material);item.celestials.push(mesh);
       mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.frustumCulled=false;
+      if (planet) mesh.rotation.set(...body.rotation);
       item.group.add(mesh); item.materials.push(material);
-      const air = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:atmosphereFragment,
+      const air = new THREE.ShaderMaterial({vertexShader,fragmentShader:planet?aphelionAtmosphere:atmosphereFragment,
         uniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
       const shell = new THREE.Mesh(this.spheres[0],air);item.celestials.push(shell);
-      shell.position.copy(mesh.position);shell.scale.copy(mesh.scale).multiplyScalar(body.type==='star'?1.08:1.022);shell.frustumCulled=false;
+      shell.position.copy(mesh.position);shell.quaternion.copy(mesh.quaternion);
+      shell.scale.copy(mesh.scale).multiplyScalar(planet?aphelionShellScale:body.type==='star'?1.08:1.022);shell.frustumCulled=false;
       item.group.add(shell);item.materials.push(air);
     }
     for(const [layer,structure] of piece.nebula.entries()) {
@@ -182,7 +206,7 @@ export class OrbitSetpieces {
       mesh.rotateZ(structure.angle);mesh.scale.set(...structure.span,1);mesh.frustumCulled=false;
       item.group.add(mesh);item.materials.push(material);
     }
-    if (piece !== this.aurora) this.group.add(item.group);
+    if (piece !== this.aurora && piece !== this.aphelion) this.group.add(item.group);
     this.active.set(piece.id,item);return item;
   }
 
@@ -196,7 +220,7 @@ export class OrbitSetpieces {
       if(!item)continue;
       item.fade.value=presence;item.group.visible=presence>.001;
       // Keep the small, fixed nebula alive across seeks without submitting it outside its fade.
-      if (piece === this.aurora) {
+      if (piece === this.aurora || piece === this.aphelion) {
         if (!item.group.visible) {
           item.group.removeFromParent();
           continue;

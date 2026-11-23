@@ -42,6 +42,13 @@ Impossible Boost speed. The planes join the main scene only inside their
 original presence window. The browser performance suite records cold and warm
 entries, including the timing of the warmup and first visible submission.
 
+**O0-E4 update.** APHELION samples the shared celestial noise volume through
+continuous sphere directions. Uneven zonal belts, directional shear and compact
+tangent-plane vortices displace the same cloud deck. Quality changes only the
+filtered fine cloud samples. The thin shell uses a grazing optical path with a
+sun-weighted fade. Both celestial materials are warmed on the live output path
+and kept with the setpiece through Encore and Results.
+
 The astronomical projection preserves actual world XY/W and therefore angular
 size and parallax. Only depths beyond the ordinary 570-unit field are mapped
 monotonically into the far depth band below the unchanged 680-unit camera clip.

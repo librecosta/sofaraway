@@ -51,6 +51,8 @@ const harness = {
     (await import('./orbit')).inspectOrbitStability(...args),
   inspectOrbitGuidance: async (...args: Parameters<typeof import('./orbit').inspectOrbitGuidance>) =>
     (await import('./orbit')).inspectOrbitGuidance(...args),
+  inspectAphelion: async (...args: Parameters<typeof import('./orbit-aphelion').inspectAphelion>) =>
+    (await import('./orbit-aphelion')).inspectAphelion(...args),
   inspectCosmicCourse: async (...args: Parameters<typeof import('./orbit-cosmos').inspectCosmicCourse>) =>
     (await import('./orbit-cosmos')).inspectCosmicCourse(...args),
   inspectOrbitSurfaces: async (...args: Parameters<typeof import('./orbit-surfaces').inspectOrbitSurfaces>) =>
