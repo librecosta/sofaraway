@@ -26,6 +26,10 @@ test('mode is keyboard accessible and switching back restores the Standard diffi
   await page.reload();
   await expect(mode).toHaveText('SIGHTSEEING');
   await step.click();
+  await expect(mode).toHaveText('SHOWCASE');
+  await expect(page.getByRole('group', { name: 'Showcase route' })).toBeInViewport();
+  await expect(page.locator('[data-act=start]')).toBeInViewport();
+  await step.press('ArrowRight');
   await expect(difficulty.locator('[data-selected=true]')).toHaveText('HARD');
   await expect.poll(() => page.evaluate(() => localStorage.getItem('sofaraway.mode'))).toBe('standard');
 });

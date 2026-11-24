@@ -503,6 +503,7 @@ html:has(.viewport), body:has(.viewport){
   font:700 .89rem/1.3 var(--display); letter-spacing:.15em;
 }
 .selector-track span[data-selected=true] { opacity:1; }
+.showcase-flight, .showcase-flight canvas { cursor:none; }
 .menu-difficulty { display:grid; grid-template-rows:1fr; opacity:1;
   transition:grid-template-rows var(--motion-select) var(--motion-out),opacity var(--motion-select) var(--motion-out); }
 .menu-difficulty[data-collapsed=true] { grid-template-rows:0fr; opacity:0; pointer-events:none; }

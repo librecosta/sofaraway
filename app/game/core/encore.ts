@@ -140,7 +140,7 @@ export function outroPhase(plan: OutroPlan | undefined, station: number, mainCom
   return 'transition';
 }
 
-export function recordEncore(gate: EncoreGate, previous: EncoreResult | undefined): EncoreResult {
+export function recordEncore(gate: EncoreGate, previous: EncoreResult | undefined, scoring = true): EncoreResult {
   const combo = gate.passed ? (previous?.combo ?? 0) + 1 : gate.neutralized ? previous?.combo ?? 0 : 0;
   return Object.freeze({
     encountered: (previous?.encountered ?? 0) + 1,
@@ -149,6 +149,6 @@ export function recordEncore(gate: EncoreGate, previous: EncoreResult | undefine
     missed: (previous?.missed ?? 0) + Number(!gate.passed && !gate.neutralized),
     neutralized: (previous?.neutralized ?? 0) + Number(gate.neutralized),
     combo, maxCombo: Math.max(previous?.maxCombo ?? 0, combo),
-    bonusScore: (previous?.bonusScore ?? 0) + (gate.passed ? 200 + Number(gate.clean) * 100 : 0),
+    bonusScore: (previous?.bonusScore ?? 0) + (scoring && gate.passed ? 200 + Number(gate.clean) * 100 : 0),
   });
 }

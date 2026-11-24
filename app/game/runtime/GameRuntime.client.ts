@@ -1,5 +1,6 @@
 import { initialSnapshot } from '../contracts';
-import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, PauseReason, PlayMode, QualityTier, VolumeId } from '../contracts';
+import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, ExperienceMode, PauseReason, PlayMode, QualityTier, VolumeId } from '../contracts';
+import type { RouteKind } from '../core/branches';
 import { FixedStepClock, MAX_STEPS, RECOVERY_GAP, RunTimeline, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
 import { resolveDifficulty, supportsDifficulty } from '../core/difficulty';
@@ -9,6 +10,7 @@ import { referenceFor } from '../core/reference-track';
 import { approachDynamicLights, dynamicLightEnvelope, steadyLights } from '../core/rhythmic-lights';
 import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
+import { ShowcasePilot } from '../core/showcase-pilot';
 import { hasAuthoredAudio, volumeById } from '../core/volumes';
 import { AudioTransport } from '../audio/transport.client';
 import { Graphics, UnsupportedGraphics } from '../graphics/scene.client';
@@ -40,6 +42,8 @@ export class Runtime implements GameRuntime {
   private readonly audio = new AudioTransport(() => { void this.enableAudio(); });
   private graphics?: Graphics;
   private simulation?: Simulation;
+  private showcasePilot?: ShowcasePilot;
+  private loadedForShowcase = false;
   private input?: InputController;
   private recorder?: Recorder;
   private options?: GameOptions;
@@ -92,13 +96,14 @@ export class Runtime implements GameRuntime {
     if (options.saveRecords) this.records = readRecords();
     const difficulty = resolveDifficulty(options.volumeId, options.difficulty);
     this.publish({ phase: 'initializing', volumeId: options.volumeId, difficulty,
-      mode: options.mode, quality: options.quality, volume: options.volume, muted: options.muted,
+      mode: options.mode, showcaseRoute: options.showcaseRoute ?? 'main',
+      quality: options.quality, volume: options.volume, muted: options.muted,
       dynamicLights: !!options.dynamicLights,
-      localRecord: recordFor(this.records, options.volumeId, difficulty, options.mode) });
+      localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
       this.graphics = new Graphics(canvas, options.quality, this.mobile(), options.diagnostics);
-      this.input = new InputController(canvas, () => this.snapshot.phase === 'playing', this.keydown,
+      this.input = new InputController(canvas, () => this.snapshot.phase === 'playing' && this.snapshot.mode !== 'showcase', this.keydown,
         options.diagnostics.cursor);
       if (options.diagnostics.record) this.toggleRecorder();
       this.attach(canvas);
@@ -121,11 +126,15 @@ export class Runtime implements GameRuntime {
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
     const silentFallback = silent && this.snapshot.error?.kind === 'audio';
     const generation = ++this.generation;
-    const { volumeId, mode, difficulty } = this.snapshot;
+    const { volumeId, showcaseRoute } = this.snapshot;
+    const showcase = this.snapshot.mode === 'showcase';
+    const mode = this.simulationMode;
+    const difficulty = showcase ? 'impossible' : this.snapshot.difficulty;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
     const reference = referenceFor(sim.volume, mode === 'standard' ? difficulty : 'normal');
-    if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode) || sim.reference !== reference) {
+    if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode) || sim.reference !== reference ||
+      this.loadedForShowcase !== showcase) {
       // Unlock within the initiating gesture and let the menu paint STARTING before building.
       if (!silent) this.primeAudio();
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -164,10 +173,11 @@ export class Runtime implements GameRuntime {
       this.audio.resetDiagnostics();
       if (silentFallback) this.audio.diagnostics.silentFallbacks++;
     }
-    const fixedSeed = this.options?.runSeed;
+    const fixedSeed = this.options?.runSeed ?? (showcase ? this.options?.showcaseSeed ?? CAPTURE_RUN_SEED : undefined);
     const seed = fixedSeed ?? createRunSeed();
     this.pendingPickupDraw = fixedSeed === undefined && !!sim.gameplay.pickup;
-    sim.start(this.snapshot.difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, this.snapshot.mode);
+    sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, !showcase);
+    this.showcasePilot = showcase ? new ShowcasePilot(sim, showcaseRoute) : undefined;
     try {
       if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
     } catch (error) {
@@ -244,6 +254,7 @@ export class Runtime implements GameRuntime {
     this.audio.stop();
     this.input?.clear();
     this.pendingPickupDraw = false;
+    this.showcasePilot = undefined;
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
@@ -267,7 +278,7 @@ export class Runtime implements GameRuntime {
     const { mode } = this.snapshot;
     const difficulty = resolveDifficulty(id, this.snapshot.difficulty);
     this.publish({ volumeId: id, difficulty, error: null, newBest: false,
-      localRecord: recordFor(this.records, id, difficulty, mode) });
+      localRecord: this.menuRecord(id, difficulty, mode) });
     this.switchMs = performance.now() - begin;
     // Fixed-time diagnostics render the requested volume immediately.
     if (this.options?.diagnostics.fixedTime == null) return;
@@ -286,10 +297,14 @@ export class Runtime implements GameRuntime {
     }
   }
 
-  setMode(value: PlayMode) {
+  setMode(value: ExperienceMode) {
     if (this.snapshot.phase !== 'menu' || this.snapshot.mode === value) return;
     const { volumeId, difficulty } = this.snapshot;
-    this.publish({ mode: value, localRecord: recordFor(this.records, volumeId, difficulty, value) });
+    this.publish({ mode: value, localRecord: this.menuRecord(volumeId, difficulty, value) });
+  }
+
+  setShowcaseRoute(value: RouteKind) {
+    if (this.snapshot.phase === 'menu' && this.snapshot.mode === 'showcase') this.publish({ showcaseRoute: value });
   }
 
   async setQuality(value: QualityTier) {
@@ -380,13 +395,23 @@ export class Runtime implements GameRuntime {
       error: Object.freeze({ kind, stage, message: error instanceof Error ? error.message : 'Could not load the game.' }) });
   }
 
+  private get simulationMode(): PlayMode {
+    return this.snapshot.mode === 'sightseeing' ? 'sightseeing' : 'standard';
+  }
+
+  private menuRecord(id: VolumeId, difficulty: Difficulty, mode: ExperienceMode) {
+    return mode === 'showcase' ? initialSnapshot.localRecord : recordFor(this.records, id, difficulty, mode);
+  }
+
   private loadVolume(id: VolumeId, difficulty: Difficulty = 'normal') {
     const flags = this.options!.diagnostics;
     const volume = volumeById(id);
     const graphics = this.graphics!;
-    const mode = this.snapshot.mode;
-    const sim = this.simulation = new Simulation(volume, flags, undefined, mode,
-      flags.fixedTime === null ? difficulty : this.snapshot.difficulty);
+    const mode = this.simulationMode;
+    const showcase = this.snapshot.mode === 'showcase';
+    const sim = this.simulation = new Simulation(volume, showcase ? {} : flags, undefined, mode,
+      showcase ? 'impossible' : flags.fixedTime === null ? difficulty : this.snapshot.difficulty);
+    this.loadedForShowcase = showcase;
     graphics.load(volume, sim.path, mode);
     if (flags.fixedTime === null) {
       this.draw(this.simulation, performance.now());
@@ -400,16 +425,20 @@ export class Runtime implements GameRuntime {
     const sim = this.simulation!;
     const flags = this.options!.diagnostics;
     const graphics = this.graphics!;
-    sim.start(this.snapshot.difficulty, this.options?.runSeed ?? CAPTURE_RUN_SEED, undefined, this.snapshot.mode);
+    const showcase = this.snapshot.mode === 'showcase';
+    const seed = this.options?.runSeed ?? (showcase ? this.options?.showcaseSeed : undefined) ?? CAPTURE_RUN_SEED;
+    sim.start(showcase ? 'impossible' : this.snapshot.difficulty, seed,
+      undefined, this.simulationMode, !showcase);
+    const pilot = showcase ? new ShowcasePilot(sim, this.snapshot.showcaseRoute) : undefined;
     const time = Math.min(seconds, sim.volume.beats * sim.secondsPerBeat + 10);
     const steps = Math.floor(time / STEP);
     const input = flags.boost ? { ...idleInput, boosting: true } : idleInput;
     const advance = (dt: number) => {
-      sim.step(dt, input);
+      sim.step(dt, pilot && sim.phase === 'playing' ? pilot.input(sim) : input);
       graphics.update(sim, true, this.lighting(sim));
     };
     for (let i = 0; i < steps; i++) advance(STEP);
-    if (time - steps * STEP > 0) advance(time - steps * STEP);
+    if (!pilot && time - steps * STEP > 0) advance(time - steps * STEP);
     if (time === 0) graphics.update(sim, true, this.lighting(sim));
     this.publishRun({ phase: sim.phase });
     this.draw(sim, performance.now(), false);
@@ -517,7 +546,8 @@ export class Runtime implements GameRuntime {
     const result = sim.result;
     const options = this.options!;
     const { fixedTime, autoplay, god, align, debug, record } = options.diagnostics;
-    if (!result || !options.saveRecords || fixedTime !== null || autoplay || god || align || debug || record) return {};
+    if (this.snapshot.mode === 'showcase' || !result || !options.saveRecords ||
+      fixedTime !== null || autoplay || god || align || debug || record) return {};
     if (this.recordsSynced) this.records = readRecords(this.records);
     const { id } = sim.volume;
     const newBest = recordRun(this.records, id, sim.difficulty, sim.mode, {
@@ -530,11 +560,13 @@ export class Runtime implements GameRuntime {
   }
 
   private step(sim: Simulation, neutralize = false) {
-    const input = neutralize ? this.lastInput : this.input?.read() ?? idleInput;
-    if (!neutralize) this.lastInput = { ...input, target: null, dragX: 0, dragY: 0 };
+    const pilot = this.showcasePilot;
+    const input = pilot ? (sim.phase === 'playing' ? pilot.input(sim) : idleInput)
+      : neutralize ? this.lastInput : this.input?.read() ?? idleInput;
+    if (!pilot && !neutralize) this.lastInput = { ...input, target: null, dragX: 0, dragY: 0 };
     const { lives, pickup, branch, gatesNeutralized, encore } = sim;
-    sim.step(STEP, input, neutralize);
-    this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty, sim.steeringWidth);
+    sim.step(STEP, input, !pilot && neutralize);
+    if (!pilot) this.input?.moveReticle(input, sim.camera.tx, sim.camera.ty, sim.steeringWidth);
     if (this.pendingPickupDraw && sim.pickupVisible) {
       this.pickupDeck.consume();
       this.pendingPickupDraw = false;
@@ -592,6 +624,7 @@ export class Runtime implements GameRuntime {
       this.nextDebug = now + 80;
       this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
+        experience: this.snapshot.mode, difficulty: sim.difficulty, gatesPassed: sim.gatesPassed, gatesTotal: sim.gatesTotal,
         branch: sim.branch, trackDistance: sim.trackDistance, neutralized: sim.gatesNeutralized,
         outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
         rhythmGain: this.lightInput.dynamics.fixtureGain, dynamics: this.lightInput.dynamics, lightTime: this.lightTime,
@@ -719,6 +752,12 @@ export class Runtime implements GameRuntime {
       else this.pause('user');
       return true;
     } else if (key === 'm') {
+      if (this.snapshot.mode === 'showcase' && this.snapshot.phase === 'playing' && (this.silent || this.snapshot.soundUnavailable)) {
+        this.setMuted(false);
+        this.publish({ soundUnavailable: true });
+        void this.enableAudio();
+        return true;
+      }
       this.setMuted(!this.snapshot.muted);
       this.showMessage(this.snapshot.muted ? 'MUTED' : 'SOUND ON');
       return true;

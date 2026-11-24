@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
-import type { Difficulty, GameRuntime, GameSnapshot, PlayMode, QualityTier, VolumeId } from '../game/contracts';
+import type { Difficulty, ExperienceMode, GameRuntime, GameSnapshot, QualityTier, VolumeId } from '../game/contracts';
 import { volumeById } from '../game/core/volumes';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import { readOptions, saveSetting } from '../game/runtime/settings.client';
@@ -18,7 +18,7 @@ const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
 const cueControls = 'button:not(:disabled), a[href], input[type="checkbox"]:not(:disabled)';
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
-  'localRecord', 'newBest', 'message', 'dynamicLights'] as const;
+  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute'] as const;
 
 function useMenuSnapshot(runtime: GameRuntime | null) {
   const previous = useRef<GameSnapshot>(initialSnapshot);
@@ -171,7 +171,9 @@ export function GameViewport() {
   const menuVisible = ['uninitialized', 'initializing', 'menu', 'starting', 'unsupported', 'error'].includes(viewSnapshot.phase);
   const modalOpen = !!panel || isBlockingFallback(viewSnapshot);
   const uiCursor = viewSnapshot.phase === 'menu' || viewSnapshot.phase === 'results';
-  const customCursor = uiCursor || viewSnapshot.phase === 'playing' && !modalOpen;
+  const showcase = viewSnapshot.mode === 'showcase';
+  const showcaseFlight = showcase && ['playing', 'crash'].includes(viewSnapshot.phase);
+  const customCursor = uiCursor || viewSnapshot.phase === 'playing' && !modalOpen && !showcase;
   const returnToMenu = () => runtime?.returnToMenu();
 
   useEffect(() => {
@@ -187,7 +189,7 @@ export function GameViewport() {
     if (runtime?.getSnapshot().difficulty === value) saveSetting('difficulty', value);
   }
 
-  function setMode(value: PlayMode) {
+  function setMode(value: ExperienceMode) {
     runtime?.setMode(value);
     if (runtime?.getSnapshot().mode === value) saveSetting('mode', value);
   }
@@ -239,7 +241,7 @@ export function GameViewport() {
   }
 
   return (
-    <main ref={viewport} className={c('viewport', customCursor && 'custom-cursor')}
+    <main ref={viewport} className={c('viewport', customCursor && 'custom-cursor', showcaseFlight && 'showcase-flight')}
       onPointerOver={event => {
         if (!uiCursor || !event.isTrusted || event.pointerType === 'touch') return;
         const control = (event.target as Element).closest(cueControls);
@@ -269,13 +271,14 @@ export function GameViewport() {
       <div id="ui" style={{ display: hideUi ? 'none' : undefined }}>
         <div inert={modalOpen}>
           <MainMenu snapshot={viewSnapshot} visible={menuVisible} chooseDifficulty={setDifficulty} chooseMode={setMode} chooseVolume={chooseVolume}
+            chooseShowcaseRoute={value => runtime?.setShowcaseRoute(value)}
             setMuted={value => {
               runtime?.setMuted(value);
               if (!value) runtime?.playUiCue('press');
             }} onVolumeTarget={id => { volumeTarget.current = id; }}
             start={startSelected} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
             share={() => void share()} fullscreen={fullscreen} />
-          <GameHUD runtime={runtime} />
+          {!showcase && <GameHUD runtime={runtime} />}
           <ResultsScreen snapshot={snapshot} restart={() => void runtime?.start()} menu={returnToMenu} />
         </div>
         <div id="flash" ref={flash} />

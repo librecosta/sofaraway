@@ -96,6 +96,7 @@ export class Simulation {
   private settleSpeed = 0;
   private messageUntil = 0;
   private mult = 1;
+  private scoring = true;
   private runDifficulty: Difficulty = 'normal';
   private speedFactor = 1;
   private playMode: PlayMode;
@@ -187,9 +188,10 @@ export class Simulation {
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
 
-  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED, pickupKind = pickupForSeed(runSeed), mode: PlayMode = 'standard') {
+  start(difficulty: Difficulty, runSeed = CAPTURE_RUN_SEED, pickupKind = pickupForSeed(runSeed), mode: PlayMode = 'standard', scoring = true) {
     if (this.phase !== 'menu' && this.phase !== 'results') return false;
     this.playMode = mode;
+    this.scoring = scoring;
     const sightseeing = mode === 'sightseeing';
     difficulty = sightseeing ? 'normal' : resolveDifficulty(this.volume.id, difficulty);
     this.track = referenceFor(this.volume, difficulty);
@@ -371,7 +373,7 @@ export class Simulation {
     this.speed += (targetSpeed - this.speed) * Math.min(1, elapsed * (boost > 1 ? 4 : CRUISE_RESPONSE));
     this.boostLens += ((this.boosting ? 1 : 0) - this.boostLens) * -Math.expm1(-elapsed / BOOST_LENS_SECONDS);
     this.distance += this.speed * elapsed;
-    this.score += this.speed * elapsed * 0.35;
+    if (this.scoring) this.score += this.speed * elapsed * 0.35;
 
     const width = this.steeringWidth;
     const { x, y } = camera;
@@ -431,7 +433,7 @@ export class Simulation {
         this.messageUntil = this.time + 1.3;
       }
       if (this.lives === 0) {
-        this.score -= Math.max(0, this.distance - station) * 0.35;
+        if (this.scoring) this.score -= Math.max(0, this.distance - station) * 0.35;
         this.distance = station;
         this.beat = previousBeat + (this.beat - previousBeat) * fraction;
         this.finish('TERMINATED');
@@ -485,7 +487,7 @@ export class Simulation {
     } else if (pickup.kind === 'resonance') {
       this.resonance = RESONANCE_CHARGES;
       this.message = 'RESONANCE ×' + this.resonance;
-    } else {
+    } else if (this.scoring) {
       const points = LUMEN_POINTS[this.difficulty];
       this.score += points;
       this.message = 'LUMEN +' + points;
@@ -512,8 +514,8 @@ export class Simulation {
     gate.passed = !neutralize && (this.options.god === true || canPass(gate.kind, gate.open, gate.axis, x, y));
     const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
     gate.clean = gate.passed && Math.hypot(x - lx, y - ly) < CLEAN_RADIUS;
-    this.encore = recordEncore(gate, this.encore);
-    if (gate.passed) {
+    this.encore = recordEncore(gate, this.encore, this.scoring);
+    if (this.scoring && gate.passed) {
       this.message = gate.clean ? 'ENCORE CLEAN +300' : 'ENCORE +200';
       this.messageUntil = this.time + .65;
     }
@@ -535,16 +537,18 @@ export class Simulation {
       this.maxCombo = Math.max(this.maxCombo, this.combo);
       const routeMult = gate.route ? ROUTE_GATE_MULTIPLIERS[gate.route] : 1;
       const gatePoints = 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05) * routeMult;
-      this.score += gatePoints;
+      if (this.scoring) this.score += gatePoints;
       let cleanPoints = 0;
       if (Math.hypot(x - lx, y - ly) < CLEAN_RADIUS) {
         cleanPoints = 150 * this.mult * routeMult;
-        this.score += cleanPoints;
-        this.message = 'CLEAN ×' + this.combo;
-        this.messageUntil = this.time + 0.6;
+        if (this.scoring) {
+          this.score += cleanPoints;
+          this.message = 'CLEAN ×' + this.combo;
+          this.messageUntil = this.time + 0.6;
+        }
       }
       if (this.resonance > 0) {
-        this.score += (gatePoints + cleanPoints) * RESONANCE_BONUS;
+        if (this.scoring) this.score += (gatePoints + cleanPoints) * RESONANCE_BONUS;
         this.resonance--;
       }
     } else {
@@ -586,6 +590,9 @@ export class Simulation {
       this.escapedAt = this.time;
       // DESCENT's audio tail already gives a late rise time to reach its peak.
       if (this.volume.id !== 'descent') this.settleAt += daylightPeak(duration, this.daylightReleasedAt) - duration;
+    }
+    if (title === 'ESCAPED' && !this.scoring) {
+      this.settleAt = Math.max(this.settleAt, this.time + (this.volume.soundtrack?.tail ?? 0));
     }
     this.recoil = title === 'ESCAPED' ? 0 : 0.55;
     this.boosting = false;

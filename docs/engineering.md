@@ -20,6 +20,8 @@ DAYBREAK, DESCENT and ORBIT use a 1.15× longitudinal reference in Impossible St
 
 Standard has three base difficulties and Impossible, with a faster speed ramp and added gates between Hard anchors. See [DAYBREAK Impossible validation](audits/D1-B2-validation.md) for its chart and ending contract and the [DESCENT facility contract](contracts/D2-A0-descent-facility.md) for its CONTROL accents. Sightseeing uses five lives, one-third forward speed, a sparser chart and the same song duration. The fixed pickup, branch layout and obstacle shapes have separate sources in [`pickups.ts`](../app/game/core/pickups.ts), [`branches.ts`](../app/game/core/branches.ts) and [`collision.ts`](../app/game/core/collision.ts). Branch and pickup randomness use independent streams. Rendering and collision must agree on the opening and spatial station of each gate. Technical recovery can neutralize an unobservable crossing without rewarding or penalizing the player. See [`simulation.ts`](../app/game/core/simulation.ts) for the results semantics.
 
+Showcase runs Standard Impossible with scoring disabled. The [pilot](../app/game/core/showcase-pilot.ts) plans through the real openings on the selected seeded branch, supplies ordinary steering and Boost input on every fixed tick, and remains subject to collision even while catching up. The runtime uses the shared music transport and keeps the flight HUD and all record writes disabled. For reproducible browser captures, `?mode=showcase&route=bonus&seed=1` selects the route and seed.
+
 ## Compatibility contracts
 
 | Surface | Authoritative artifact and expected behavior |

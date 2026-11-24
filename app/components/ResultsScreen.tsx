@@ -7,9 +7,24 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
   snapshot: GameSnapshot; restart(): void; menu(): void; preview?: boolean;
 }) {
   const id = (name: string) => preview ? `preview-${name}` : name;
+  const visible = snapshot.phase === 'results';
+  if (snapshot.mode === 'showcase') {
+    return (
+      <section id={id('over')} className={c('screen', preview && 'result-preview', !visible && 'hidden')}>
+        <div className={c('center')}>
+          <h2 className={c('results-title')} id={id('over-title')}>
+            {snapshot.result?.title === 'ESCAPED' ? 'SHOWCASE COMPLETE' : 'SHOWCASE INTERRUPTED'}
+          </h2>
+          <DecodeButton className={c('btn', 'start')} data-act="restart" disabled={preview} onClick={restart}
+            aria-keyshortcuts="X" label="REPLAY" />
+          <DecodeButton className={c('btn', 'tiny')} data-act="menu" disabled={preview} onClick={menu} label="BACK TO MENU" />
+        </div>
+      </section>
+    );
+  }
   const encore = snapshot.mode === 'standard' ? snapshot.result?.encore : undefined;
   return (
-    <section id={id('over')} className={c('screen', preview && 'result-preview', snapshot.phase !== 'results' && 'hidden')}>
+    <section id={id('over')} className={c('screen', preview && 'result-preview', !visible && 'hidden')}>
       <div className={c('center')}>
         <h2 className={c('results-title')} id={id('over-title')}>{snapshot.result?.title ?? 'TERMINATED'}</h2>
         <div className={c('over-score')} id={id('over-score')}>{snapshot.score}</div>

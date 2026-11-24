@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import { classes as c } from '../styles/classes';
 
-export function HorizontalSelector<T extends string>({ label, options, value, choose, disabled }: {
-  label: string; options: readonly T[]; value: T; choose(value: T): void; disabled: boolean;
+export function HorizontalSelector<T extends string>({ label, options, value, choose, disabled, labelFor }: {
+  label: string; options: readonly T[]; value: T; choose(value: T): void; disabled: boolean; labelFor?(value: T): string;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const direction = useRef(1);
@@ -42,7 +42,7 @@ export function HorizontalSelector<T extends string>({ label, options, value, ch
     <button type="button" aria-label={`Previous ${label.toLowerCase()}`} disabled={disabled} onClick={() => step(-1)}>‹</button>
     <div ref={track} className={c('selector-track')} aria-live="polite">
       {options.map(option => <span key={option} data-choice={option} data-selected={option === value}
-        aria-hidden={option !== value || undefined}>{option.toUpperCase()}</span>)}
+        aria-hidden={option !== value || undefined}>{labelFor ? labelFor(option) : option.toUpperCase()}</span>)}
     </div>
     <button type="button" aria-label={`Next ${label.toLowerCase()}`} disabled={disabled} onClick={() => step(1)}>›</button>
   </div>;

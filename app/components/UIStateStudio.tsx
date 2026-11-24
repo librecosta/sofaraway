@@ -187,6 +187,7 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
         }}
         chooseDifficulty={difficulty => patch({ difficulty, localRecord: initialSnapshot.localRecord })}
         chooseMode={mode => patch({ mode, localRecord: initialSnapshot.localRecord })}
+        chooseShowcaseRoute={showcaseRoute => patch({ showcaseRoute })}
         setMuted={muted => patch({ muted })}
         start={play} settings={() => setPanel('settings')} credits={() => setPanel('credits')}
         share={share} fullscreen={() => patch({ message: 'FULL SCREEN UNAVAILABLE' })} />
