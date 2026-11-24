@@ -99,7 +99,8 @@ test('selection animations reverse in place and acrylic dialogs trap and return 
   await page.keyboard.press('ArrowLeft');
   await expect(page.locator('#diff [data-selected=true]')).toHaveText('NORMAL');
   await mode.click();
-  await mode.click();
+  await expect(page.getByRole('group', { name: 'Play mode' }).locator('[data-selected=true]')).toHaveText('SIGHTSEEING');
+  await mode.press('ArrowLeft');
   await expect(page.getByRole('group', { name: 'Play mode' }).locator('[data-selected=true]')).toHaveText('STANDARD');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await difficulty.click();
