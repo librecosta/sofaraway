@@ -85,7 +85,7 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/debug/#descent');
+  await page.goto('/debug/legacy/#gates-descent');
   for (const kind of descentGateKinds) {
     const { label } = gateDescription(kind);
     const canvas = page.getByRole('img', { name: `${label} gate` });
@@ -101,7 +101,8 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
     await select.selectOption('0');
     await canvas.screenshot({ path: info.outputPath(`${kind}.png`) });
   }
-  await page.getByRole('button', { name: 'Open live facility' }).click();
+  await page.goto('/debug/worlds/?vol=descent');
+  await page.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = page.getByRole('img', { name: 'Live DESCENT facility' });
   const chapter = page.getByRole('combobox', { name: 'CONTROL chapter' });
   const frames = [16, 39, 117, 207, descentCargo.beat - .9, 314, 377];
@@ -123,7 +124,7 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   const facility = page.locator('#descent');
   await facility.getByRole('checkbox', { name: 'Boost view' }).uncheck();
   // Low has no depth-of-field easing, so only the light cue changes between draws.
-  await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('low');
+  await facility.getByRole('combobox', { name: 'Quality' }).selectOption('low');
   const firstCue = await canvas.screenshot();
   const offset = facility.getByRole('slider', { name: 'Light beat offset' });
   const station = await canvas.getAttribute('data-station');
@@ -132,7 +133,7 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   await expect(canvas).toHaveAttribute('data-station', station!);
   expect((await canvas.screenshot()).equals(firstCue)).toBe(false);
 
-  await facility.getByRole('checkbox', { name: 'Dynamic lights' }).uncheck();
+  await facility.getByRole('checkbox', { name: 'Dynamic lighting' }).uncheck();
   const steady = await canvas.screenshot();
   await offset.fill('2');
   await expect(canvas).toHaveAttribute('data-light-beat', '316.000');
@@ -165,12 +166,12 @@ test('the fixed DESCENT camera plays, isolates and restores the production light
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/debug/#descent');
+  await page.goto('/debug/worlds/?vol=descent');
   const facility = page.locator('#descent');
-  await facility.getByRole('button', { name: 'Open live facility' }).click();
+  await facility.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
   const phrase = facility.getByRole('combobox', { name: 'Lighting phrase' });
-  const quality = facility.getByRole('combobox', { name: 'Facility quality' });
+  const quality = facility.getByRole('combobox', { name: 'Quality' });
   const focus = facility.getByRole('combobox', { name: 'Lighting focus' });
   const seek = facility.getByRole('slider', { name: 'Score beat' });
   await facility.getByRole('combobox', { name: 'CONTROL chapter' }).selectOption('5');
@@ -219,7 +220,7 @@ test('the fixed DESCENT camera plays, isolates and restores the production light
     await expect(canvas).toHaveAttribute('data-station', station!);
     await expect(canvas).toHaveAttribute('data-light-amount', '1.000');
   }
-  const dynamics = facility.getByRole('checkbox', { name: 'Dynamic lights' });
+  const dynamics = facility.getByRole('checkbox', { name: 'Dynamic lighting' });
   await quality.selectOption('low');
   await dynamics.uncheck();
   await seek.fill('311');
@@ -251,17 +252,17 @@ test('the fixed DESCENT camera plays, isolates and restores the production light
 });
 
 test('the original DESCENT lenses and glass face render the score with Dynamic Lights off', async ({ page }, info) => {
-  await page.goto('/debug/#descent');
+  await page.goto('/debug/worlds/?vol=descent');
   const facility = page.locator('#descent');
-  await facility.getByRole('button', { name: 'Open live facility' }).click();
+  await facility.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
   await facility.getByRole('combobox', { name: 'CONTROL chapter' }).selectOption('5');
-  await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('low');
+  await facility.getByRole('combobox', { name: 'Quality' }).selectOption('low');
   const phrase = facility.getByRole('combobox', { name: 'Lighting phrase' });
   const focus = facility.getByRole('combobox', { name: 'Lighting focus' });
   await phrase.selectOption('18');
   const cursor = facility.getByRole('slider', { name: 'Score beat' });
-  await facility.getByRole('checkbox', { name: 'Dynamic lights' }).uncheck();
+  await facility.getByRole('checkbox', { name: 'Dynamic lighting' }).uncheck();
   const shot = async (beat: number, label: string) => {
     await cursor.fill(String(beat));
     await expect(canvas).toHaveAttribute('data-light-beat', beat.toFixed(3));
@@ -364,9 +365,9 @@ test('the four setpieces fly continuously in the production preview with selecta
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/debug/#descent');
+  await page.goto('/debug/worlds/?vol=descent');
   const facility = page.locator('#descent');
-  await facility.getByRole('button', { name: 'Open live facility' }).click();
+  await facility.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = facility.getByRole('img', { name: 'Live DESCENT facility' });
   const flight = facility.getByRole('combobox', { name: 'Setpiece flight' });
   const beat = facility.getByRole('slider', { name: 'Score beat' });
@@ -377,8 +378,8 @@ test('the four setpieces fly continuously in the production preview with selecta
     await beat.fill(String(at));
     await expect(canvas).toHaveAttribute('data-light-beat', at.toFixed(3));
   };
-  await facility.getByRole('combobox', { name: 'Facility quality' }).selectOption('auto');
-  await facility.getByRole('checkbox', { name: 'Dynamic lights' }).uncheck();
+  await facility.getByRole('combobox', { name: 'Quality' }).selectOption('auto');
+  await facility.getByRole('checkbox', { name: 'Dynamic lighting' }).uncheck();
   await flight.selectOption('0');
   await scrub(133);
   await expect(canvas).toHaveAttribute('data-route', '');

@@ -30,9 +30,9 @@ test('APHELION keeps the same sphere and prewarmed programs from approach throug
 });
 
 test('APHELION debug frames both bodies and restores the selected view', async ({ page }) => {
-  await page.goto('/debug/?q=low#orbit');
+  await page.goto('/debug/worlds/?vol=orbit&q=low');
   const preview = page.locator('#orbit');
-  await preview.getByRole('button', { name: 'Open flight preview' }).click();
+  await preview.getByRole('button', { name: 'Open live scene' }).click();
   await expect(preview.locator('[data-orbit-metrics]')).toBeVisible();
   const select = preview.getByLabel('Aphelion view');
   const canvas = preview.locator('canvas');

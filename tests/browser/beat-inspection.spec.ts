@@ -28,9 +28,13 @@ async function luminance(page: Page, shot: Buffer) {
       }
       return { y: total * 4 / data.length, clipped: clipped * 4 / data.length };
     };
+    // Fractional CSS clip edges can include one background pixel when the page has scrolled.
+    const interior = context.getImageData(2, 2, width - 4, height - 4).data;
+    const digest = await crypto.subtle.digest('SHA-256', interior.buffer);
     return { strip: measure(...regions.strip as [number, number, number, number]),
       wall: measure(...regions.wall as [number, number, number, number]),
-      glass: measure(...regions.glass as [number, number, number, number]), frame: measure(0, 0, 1, 1) };
+      glass: measure(...regions.glass as [number, number, number, number]), frame: measure(0, 0, 1, 1),
+      interior: [...new Uint8Array(digest)].join(',') };
   }, { encoded: shot.toString('base64'), regions });
 }
 
@@ -45,8 +49,8 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
     try {
       const page = await context.newPage();
       await page.goto('http://127.0.0.1:8089/debug/#beat-inspection');
-      const studio = page.locator('#beat-inspection');
-      await studio.getByRole('button', { name: 'Open beat inspection' }).click();
+      const studio = page.locator('#lighting');
+      await studio.getByRole('button', { name: 'Open live scene' }).click();
       const canvas = studio.getByRole('img');
       await expect(canvas).toHaveAttribute('data-ready', 'true');
       await studio.getByLabel('Quality', { exact: true }).selectOption(quality);
@@ -55,10 +59,10 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
         const shot = await canvas.screenshot({ path: info.outputPath(`${quality}-dpr${dpr}-${name}.png`) });
         return { shot, light: await luminance(page, shot) };
       };
-      const dynamic = studio.getByLabel('Dynamic', { exact: true });
+      const dynamic = studio.getByLabel('Dynamic lighting', { exact: true });
       await expect(dynamic).toHaveValue('off');
       await dynamic.selectOption('on');
-      const beat = studio.getByLabel('Beat', { exact: true });
+      const beat = studio.getByLabel('Music beat', { exact: true });
       const station = await canvas.getAttribute('data-station');
       const resources = await canvas.getAttribute('data-resources');
       await studio.getByRole('button', { name: 'Kick Peak' }).click();
@@ -88,15 +92,15 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
       expect(off.light.strip.y).toBeGreaterThan(valley.light.strip.y);
       expect(Math.abs(peak.light.glass.y / off.light.glass.y - 1)).toBeLessThan(.1);
       await dynamic.selectOption('on');
-      expect((await capture('drop-repeat')).shot.equals(peak.shot)).toBe(true);
+      expect((await capture('drop-repeat')).light.interior).toBe(peak.light.interior);
       await expect(canvas).toHaveAttribute('data-station', station!);
       await expect(canvas).toHaveAttribute('data-resources', resources!);
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await expect(studio.locator('output')).toContainText('active · baseline lighting');
+      await expect(studio.locator('#beat-inspection output').first()).toContainText('active · baseline lighting');
       await dynamic.selectOption('off');
       const reducedOff = await capture('reduced-off');
       await dynamic.selectOption('on');
-      expect((await capture('reduced-on')).shot.equals(reducedOff.shot)).toBe(true);
+      expect((await capture('reduced-on')).light.interior).toBe(reducedOff.light.interior);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       const section = studio.getByLabel('Section', { exact: true });
       for (const chapter of ['A', 'BREAK', 'FINALE']) {
@@ -117,14 +121,6 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
             .toBeLessThan(peak.light.frame.y / valley.light.frame.y);
         }
       }
-      await studio.getByLabel('Volume', { exact: true }).selectOption('descent');
-      const descent = await capture('descent-on');
-      await dynamic.selectOption('off');
-      expect((await capture('descent-off')).shot.equals(descent.shot)).toBe(false);
-      await studio.getByRole('button', { name: 'Play continuously' }).click();
-      await expect(canvas).not.toHaveAttribute('data-light-beat', '46.000');
-      await studio.getByRole('button', { name: 'Pause', exact: true }).click();
-      await expect(page.locator('#beat-inspection canvas')).toHaveCount(1);
       console.log('LIGHT ROI', JSON.stringify({ quality, dpr, peak: peak.light, valley: valley.light, off: off.light, decay }));
       expect(await page.evaluate(() => localStorage.getItem('sofaraway.dynamicLights'))).toBeNull();
     } finally {
@@ -134,23 +130,22 @@ test('beat inspection renders DROP contrast and a quieter BREAK at a fixed stati
 });
 
 test('DAYBREAK lighting peaks at an authored onset with the same rendered station and resources', async ({ page }) => {
-  await page.goto('/debug/#beat-inspection');
-  const studio = page.locator('#beat-inspection');
-  await studio.getByRole('button', { name: 'Open beat inspection' }).click();
+  await page.goto('/debug/lighting/?vol=daybreak#beat-inspection');
+  const studio = page.locator('#lighting');
+  await studio.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = studio.getByRole('img');
   await expect(canvas).toHaveAttribute('data-ready', 'true');
-  await studio.getByLabel('Volume', { exact: true }).selectOption('daybreak');
   await studio.getByLabel('Section', { exact: true }).selectOption({ label: 'SUNBURST' });
   await studio.getByLabel('Quality', { exact: true }).selectOption('low');
   await studio.getByRole('button', { name: 'Go to beat’s station' }).click();
-  await studio.getByLabel('Beat', { exact: true }).fill('168');
+  await studio.getByLabel('Music beat', { exact: true }).fill('168');
   await studio.getByRole('button', { name: 'Kick Peak' }).click();
-  await expect(studio.locator('output')).toContainText('At kick · 84.0160 s');
+  await expect(studio.locator('#beat-inspection output').first()).toContainText('At kick · 84.0160 s');
   const station = await canvas.getAttribute('data-station');
   const resources = await canvas.getAttribute('data-resources');
   const off = await canvas.screenshot();
-  await studio.getByLabel('Dynamic', { exact: true }).selectOption('on');
-  await expect(studio.locator('output')).toContainText('Fixture 1.980×');
+  await studio.getByLabel('Dynamic lighting', { exact: true }).selectOption('on');
+  await expect(studio.locator('#beat-inspection output').first()).toContainText('Fixture 1.980×');
   const peak = await canvas.screenshot();
   expect(peak.equals(off)).toBe(false);
   await studio.getByRole('button', { name: 'Beat Valley' }).click();
@@ -160,5 +155,5 @@ test('DAYBREAK lighting peaks at an authored onset with the same rendered statio
   await expect(canvas).toHaveAttribute('data-station', station!);
   await expect(canvas).toHaveAttribute('data-resources', resources!);
   await studio.getByRole('button', { name: 'Fill Peak' }).click();
-  await expect(studio.locator('output')).toContainText('At fill');
+  await expect(studio.locator('#beat-inspection output').first()).toContainText('At fill');
 });

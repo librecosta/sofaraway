@@ -30,8 +30,8 @@ test('seven production cosmic scenes retain their identity at every quality with
 });
 
 test('cosmic preview seeks, flies across scene boundaries and restores every resource owner',async({page})=>{
-  await page.goto('/debug/?q=low#orbit');
-  const section=page.locator('#orbit');await section.getByRole('button',{name:'Open flight preview'}).click();
+  await page.goto('/debug/worlds/?vol=orbit&q=low');
+  const section=page.locator('#orbit');await section.getByRole('button',{name:'Open live scene'}).click();
   const metric=()=>section.locator('[data-orbit-metrics]').getAttribute('data-orbit-metrics').then(s=>JSON.parse(s!));
   await expect(section.locator('[data-orbit-metrics]')).toBeVisible();
   const names=['OUTER BELT','DRIFT','RINGBREAK','MAELSTROM','ECLIPSE','AURORA','APHELION'];
@@ -77,9 +77,9 @@ test('cosmic preview seeks, flies across scene boundaries and restores every res
 });
 
 test('Aurora structure inspector isolates real fields and disables music and post-processing', async ({ page }, run) => {
-  await page.goto('/debug/?q=high#orbit');
+  await page.goto('/debug/worlds/?vol=orbit&q=high');
   const section = page.locator('#orbit');
-  await section.getByRole('button', { name: 'Open flight preview' }).click();
+  await section.getByRole('button', { name: 'Open live scene' }).click();
   const metrics = section.locator('[data-orbit-metrics]');
   await expect(metrics).toBeVisible();
   const read = () => metrics.getAttribute('data-orbit-metrics').then(value => JSON.parse(value!));

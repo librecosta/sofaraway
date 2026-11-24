@@ -5,6 +5,7 @@ import { CAPTURE_RUN_SEED } from '../core/run-seed';
 import { volumeById } from '../core/volumes';
 import { Simulation } from '../core/simulation';
 import { Graphics } from '../graphics/scene.client';
+import type { CirrusLayer } from '../graphics/daybreak-cirrus';
 import type { LightingPreview } from '../graphics/corridor-lights.client';
 import type { ScenicExample } from './scenic-catalog';
 
@@ -22,12 +23,20 @@ export class ScenicPreview {
   private volume = volumeById('elsewhere');
   private quality: QualityTier = 'high';
   private station?: number;
+  private observer?: ResizeObserver;
+  private dpr = 1;
+  private sized: { width: number; dpr: number } | undefined;
   private lighting: LightingPreview = { beat: 0 };
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly onContext: (ready: boolean) => void) {
     const graphics = this.graphics = new Graphics(canvas, 'high', false, flags);
     try {
       graphics.resize(800, 450, 1);
+      this.observer = new ResizeObserver(() => {
+        this.configure(this.quality, window.devicePixelRatio);
+        this.draw(this.lighting);
+      });
+      this.observer.observe(canvas);
       canvas.addEventListener('webglcontextlost', this.onLost);
       canvas.addEventListener('webglcontextrestored', this.onRestored);
     } catch (error) {
@@ -67,12 +76,25 @@ export class ScenicPreview {
   }
 
   configure(quality: QualityTier, dpr = 1) {
+    this.dpr = dpr;
     if (this.lost) return;
     if (quality !== this.quality) {
       this.graphics.configure(quality, false);
       this.quality = quality;
     }
-    this.graphics.resize(800, 450, dpr);
+    this.resize();
+  }
+
+  private resize() {
+    if (this.lost) return;
+    const width = Math.min(1280, Math.max(1, this.canvas.clientWidth));
+    if (this.sized?.width === width && this.sized.dpr === this.dpr) return;
+    this.sized = { width, dpr: this.dpr };
+    this.graphics.resize(width, Math.round(width * 9 / 16), this.dpr);
+  }
+
+  setCirrusLayer(layer: CirrusLayer) {
+    this.graphics.setCirrusLayer(layer);
   }
 
   advance(toSeconds: number, boost: boolean) {
@@ -83,6 +105,7 @@ export class ScenicPreview {
     this.station = undefined;
     this.canvas.dataset.station = sim.trackDistance.toFixed(6);
     this.canvas.dataset.route = sim.route ?? '';
+    return sim.trackDistance;
   }
 
   draw(lighting: LightingPreview) {
@@ -98,6 +121,12 @@ export class ScenicPreview {
       ? routeLighting?.[this.sim.route] : undefined;
     this.canvas.dataset.hue = String(tone?.hue ?? light?.hue ?? 0);
     this.canvas.dataset.rim = JSON.stringify(light?.rim);
+    this.canvas.dataset.volume = this.volume.id;
+    this.canvas.dataset.quality = this.quality;
+    this.canvas.dataset.reducedMotion = String(!!lighting.reducedMotion);
+    this.canvas.dataset.exterior = JSON.stringify(metrics.exterior ?? null);
+    this.canvas.dataset.skyDaylight = String(metrics.skyDaylight ?? '');
+    this.canvas.dataset.cameraY = String(this.graphics.camera?.position.y ?? '');
     if (descentLighting) {
       this.canvas.dataset.lightPhrase = String(descentLighting.phrase);
       this.canvas.dataset.lightAmount = descentLighting.amount.toFixed(3);
@@ -109,18 +138,22 @@ export class ScenicPreview {
   private onLost = (event: Event) => {
     event.preventDefault();
     this.lost = true;
+    this.sized = undefined;
+    delete this.canvas.dataset.ready;
     this.onContext(false);
   };
   private onRestored = () => {
     try {
       this.graphics.restore(this.volume);
       this.lost = false;
+      this.resize();
       this.draw(this.lighting);
       this.onContext(true);
     } catch { this.onContext(false); }
   };
 
   dispose() {
+    this.observer?.disconnect();
     this.canvas.removeEventListener('webglcontextlost', this.onLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
     this.graphics.dispose();

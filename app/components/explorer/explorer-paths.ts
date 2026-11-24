@@ -9,3 +9,17 @@ export function explorerPageAt(pathname: string): ExplorerPage {
 export function explorerPath(page: ExplorerPage) {
   return page === 'overview' ? '/debug/' : `/debug/${page}/`;
 }
+import type { VolumeId } from '../../game/contracts';
+
+
+export const migratedExperiments = new Map<string, readonly [ExplorerPage, VolumeId?]>([
+  ['volumes', ['worlds']],
+  ['daybreak-cabin', ['worlds', 'daybreak']],
+  ['environment', ['worlds', 'daybreak']],
+  ['descent', ['worlds', 'descent']],
+  ['orbit', ['worlds', 'orbit']],
+  ['lighting', ['lighting']],
+  ['s-curve', ['lighting', 'elsewhere']],
+  ['beat-inspection', ['lighting']],
+  ['audio', ['audio']],
+]);

@@ -2,9 +2,9 @@ import { expect, test } from '@playwright/test';
 
 const explorerLabels = ['Overview', 'Worlds', 'Gates', 'Lighting', 'Materials', 'Gameplay', 'Endings', 'Audio', 'Interface'];
 const topics = [
-  ['worlds', 'World Explorer', '#volumes'],
+  ['worlds', 'World Explorer', null],
   ['gates', 'Gate Laboratory', '#gates'],
-  ['lighting', 'Lighting Studio', '#lighting'],
+  ['lighting', 'Lighting Studio', null],
   ['materials', 'Material Laboratory', '#materials'],
   ['gameplay', 'Gameplay Systems', '#pickups'],
   ['endings', 'Ending Studio', '#outro'],
@@ -57,7 +57,7 @@ test('the Explorer overview has nine destinations and loads only static previews
   expect(errors).toEqual([]);
 });
 
-test('each lab is directly served with its real legacy entry point', async ({ page }) => {
+test('each lab is directly served with a live entry or its existing experiment', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   for (const [path, title, anchor] of topics) {
@@ -68,7 +68,10 @@ test('each lab is directly served with its real legacy entry point', async ({ pa
     await expect(page.locator('meta[name=robots]')).toHaveAttribute('content', 'noindex');
     await expect(page.getByRole('navigation', { name: 'Explorer', exact: true }).locator('[aria-current=page]')).toHaveAttribute('href', `/debug/${path}/`);
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: 'Explorer' })).toHaveAttribute('href', '/debug/');
-    await expect(page.getByRole('main').locator(`a[href^="/debug/legacy/"][href$="${anchor}"]`).first()).toBeVisible();
+    if (!anchor) {
+      await expect(page.getByRole('button', { name: 'Open live scene' })).toBeVisible();
+      await expect(page.locator('main canvas')).toHaveCount(0);
+    } else await expect(page.getByRole('main').locator(`a[href^="/debug/legacy/"][href$="${anchor}"]`).first()).toBeVisible();
   }
   expect(errors).toEqual([]);
 });
@@ -76,10 +79,10 @@ test('each lab is directly served with its real legacy entry point', async ({ pa
 test('volume selection survives lab navigation, history and invalid input', async ({ page }) => {
   await page.goto('/debug/worlds/?vol=unknown&seed=7');
   await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('elsewhere');
-  await expect(page.getByRole('img', { name: 'In-game view of ELSEWHERE' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'How ELSEWHERE works' })).toBeVisible();
   await page.getByLabel('Volume', { exact: true }).selectOption('orbit');
   await expect(page).toHaveURL(/\/debug\/worlds\/\?vol=orbit&seed=7$/);
-  await expect(page.getByRole('link', { name: 'Open interactive world lab' })).toHaveAttribute('href', '/debug/legacy/?vol=orbit#orbit');
+  await expect(page.getByRole('heading', { name: 'How ORBIT works' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Explorer', exact: true });
   await nav.getByRole('link', { name: 'Gates' }).click();
   await expect(page.getByRole('link', { name: /Gate Library/ })).toHaveAttribute('href', '/debug/legacy/?vol=orbit#gates-orbit');

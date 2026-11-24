@@ -26,7 +26,7 @@ test('the Debug page scrolls with the results preview and reaches its section li
 test('lighting studio starts from the game score and isolates the dual-color comparison at the same station', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/debug/legacy/');
+  await page.goto('/debug/lighting/?vol=elsewhere#s-curve');
   const studio = page.locator('#lighting');
   await studio.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE lighting' });
@@ -37,9 +37,9 @@ test('lighting studio starts from the game score and isolates the dual-color com
   await expect(studio.locator('option[value=dual-color]')).toHaveAttribute('disabled', '');
   await scene.selectOption({ label: 'Staggered Cells' });
   await expect(canvas).toHaveAttribute('data-zone', 'staggered-cells');
-  await expect(studio.getByLabel('Score chapter')).toHaveValue('2');
+  await studio.getByRole('button', { name: 'Match beat to station' }).click();
 
-  const href = (await studio.getByRole('link', { name: 'Open this station in game' }).getAttribute('href'))!;
+  const href = (await studio.getByRole('link', { name: 'Open in game' }).getAttribute('href'))!;
   const game = await page.context().newPage();
   try {
     await game.goto(href + '&dbg=1&ui=0');
@@ -59,9 +59,9 @@ test('lighting studio starts from the game score and isolates the dual-color com
   await expect.poll(async () => (await canvas.screenshot()).equals(single)).toBe(false);
   await expect(canvas).toHaveAttribute('data-light-beat', sameBeat!);
   await expect(canvas).toHaveAttribute('data-station', station!);
-  await studio.getByRole('button', { name: 'Play lights' }).click();
+  await studio.getByRole('button', { name: 'Play continuously' }).click();
   await expect.poll(async () => Number(await canvas.getAttribute('data-light-beat'))).toBeGreaterThan(Number(sameBeat));
-  await studio.getByRole('button', { name: 'Pause lights' }).click();
+  await studio.getByRole('button', { name: 'Pause', exact: true }).click();
   const beat = await canvas.getAttribute('data-light-beat');
   const lost = await canvas.evaluate((el: HTMLCanvasElement) => {
     const extension = el.getContext('webgl2')?.getExtension('WEBGL_lose_context');
@@ -71,9 +71,9 @@ test('lighting studio starts from the game score and isolates the dual-color com
     return true;
   });
   expect(lost).toBe(true);
-  await expect(studio.getByRole('status')).toContainText('Waiting to restore');
+  await expect(studio.getByText('Waiting to restore the current WebGL scene.')).toBeVisible();
   await canvas.dispatchEvent('restore-scenic');
-  await expect(studio.getByRole('status')).toHaveCount(0);
+  await expect(studio.getByText('Waiting to restore the current WebGL scene.')).toHaveCount(0);
   await expect(canvas).toHaveAttribute('data-station', station!);
   await expect(canvas).toHaveAttribute('data-light-beat', beat!);
   await scene.selectOption({ label: 'Challenge tunnel' });
@@ -96,7 +96,7 @@ test('lighting studio starts from the game score and isolates the dual-color com
   expect(errors).toEqual([]);
 });
 
-test('the legacy laboratory renders lit materials, effects and the existing models and worlds', async ({ page }) => {
+test('the legacy laboratory renders lit materials, effects and the existing models', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
@@ -107,10 +107,10 @@ test('the legacy laboratory renders lit materials, effects and the existing mode
   await expect(page.getByRole('heading', { name: 'Technical Explorer' })).toBeVisible();
   await page.getByRole('link', { name: 'Legacy experiments' }).click();
   const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(31);
-  await expect(page.getByRole('link', { name: "Inspect DAYBREAK's sky and cloud sea" })).toHaveAttribute('href', '#outro');
+  await expect(previews).toHaveCount(24);
+  await expect(page.getByRole('link', { name: 'Explore the four live worlds' })).toHaveAttribute('href', '/debug/worlds/');
   await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
-  for (const name of ['Surface materials', 'Effect materials', 'Lighting & scenic composition', 'Environment', 'Soundtrack']) {
+  for (const name of ['Surface materials', 'Effect materials', 'World and lighting previews', 'Soundtrack']) {
     await expect(page.getByRole('heading', { name })).toBeVisible();
   }
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
@@ -123,8 +123,7 @@ test('the legacy laboratory renders lit materials, effects and the existing mode
     return { id: canvas.dataset.preview, painted: colors.size > 1 };
   }));
   expect(samples).toEqual([
-    'shield', 'resonance', 'lumen', 'elsewhere', 'daybreak', 'descent', 'orbit',
-    'daybreak-cabin-ahead', 'daybreak-cabin-side', 'daybreak-cabin-roof',
+    'shield', 'resonance', 'lumen',
     'iris', 'square', 'diamond', ...daybreakGateKinds, 'laser-matrix', 'laser-slice', 'laser-weave',
     'orbit-single', 'orbit-dual', 'orbit-triple',
     'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
@@ -200,12 +199,15 @@ test('materials and the soundtrack controls are available without WebGL2', async
   await expect(page.locator('#materials canvas[data-mode=raw]')).toHaveCount(6);
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(0);
   await expect(page.getByText(/Lit previews unavailable/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open flight preview' })).toBeVisible();
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
   await expect(page.locator('canvas[data-preview=surface-channel]')).toHaveAttribute('data-channel', 'normal');
-  await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();
   await page.getByRole('link', { name: 'Open Audio Inspector' }).click();
   await expect(page.getByRole('button', { name: 'Render to WAV' })).toBeEnabled();
+  await page.goto('/debug/lighting/?vol=elsewhere#s-curve');
+  await page.getByRole('button', { name: 'Open live scene' }).click();
+  await expect(page.getByText(/A working WebGL2 renderer is required/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry preview' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();
 });
 
 test('the debug material renderer restores one context and redraws the lit specimens', async ({ page }) => {

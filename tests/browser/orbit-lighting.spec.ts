@@ -41,8 +41,8 @@ test('disabled lights stay neutral; reduced motion keeps slow chapters with no t
 
 test('Debug music plays, pauses, seeks and restores without moving its fixed world station',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('/debug/?q=low#orbit');
-  const section=page.locator('#orbit');await section.getByRole('button',{name:'Open flight preview'}).click();
+  await page.goto('/debug/lighting/?vol=orbit&q=low');
+  const section=page.locator('#orbit');await section.getByRole('button',{name:'Open live scene'}).click();
   const metrics=()=>section.locator('[data-orbit-metrics]').getAttribute('data-orbit-metrics').then(s=>JSON.parse(s!));
   await expect(section.locator('[data-orbit-metrics]')).toBeVisible();
   await section.getByRole('button',{name:'AURORA',exact:true}).click();
@@ -68,7 +68,7 @@ test('Debug music plays, pauses, seeks and restores without moving its fixed wor
   await expect(canvas).toHaveAttribute('data-restored','true');
   await expect(section.getByRole('button',{name:'Play STARWAKE',exact:true})).toBeEnabled();
   expect((await metrics()).orbit.setpieces.station).toBe(station);
-  await section.getByRole('link',{name:'Play ORBIT'}).click();
+  await section.getByRole('link',{name:'Open in game'}).click();
   expect(errors).toEqual([]);
 });
 

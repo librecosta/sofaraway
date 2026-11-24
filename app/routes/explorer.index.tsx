@@ -1,20 +1,10 @@
-import { useEffect } from 'react';
-import { Link, useLocation, useNavigate, useOutletContext } from 'react-router';
+import { Link, useOutletContext } from 'react-router';
 import type { ExplorerContext } from '../components/explorer/ExplorerLayout';
-import { explorerHref, explorerPages, explorerVolumeIds, explorerVolumes, laboratoryPages, legacyAnchors } from '../components/explorer/explorer-catalog';
-import { explorerPath } from '../components/explorer/explorer-paths';
+import { explorerHref, explorerPages, explorerVolumeIds, explorerVolumes, laboratoryPages } from '../components/explorer/explorer-catalog';
 import s from '../styles/explorer.module.css';
 
 export default function ExplorerHome() {
-  const { hash, search } = useLocation();
-  const navigate = useNavigate();
   const { selectedVolume } = useOutletContext<ExplorerContext>();
-  useEffect(() => {
-    const anchor = hash.slice(1);
-    if (legacyAnchors.has(anchor)) {
-      navigate({ pathname: explorerPath(anchor === 'audio' ? 'audio' : 'legacy'), search, hash }, { replace: true });
-    }
-  }, [hash, navigate, search]);
 
   return <div className={s.flow}>
     <section className={s.hero} aria-labelledby="explorer-title">

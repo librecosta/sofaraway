@@ -57,12 +57,6 @@ export function gateDescription(kind: GateKind) {
   return { label: kind, note: gateNotes[kind] };
 }
 
-export const cabinViews = [
-  { id: 'daybreak-cabin-ahead', label: 'Ahead · gate and cabin', yaw: 0, pitch: .10 },
-  { id: 'daybreak-cabin-side', label: 'Side · waist and glass', yaw: -.83, pitch: .22 },
-  { id: 'daybreak-cabin-roof', label: 'Up · transparent roof', yaw: .16, pitch: .93 },
-] as const;
-
 export const pickupCards = [
   { kind: 'shield', name: 'Prism Shield', color: '#64d8ff', effect: 'Blocks one hit that would cost a life.' },
   { kind: 'resonance', name: 'Resonance', color: '#ff84e1', effect: '+25% score on the next 8 gates you pass.' },

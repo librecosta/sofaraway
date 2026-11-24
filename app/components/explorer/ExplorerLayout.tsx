@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useSearchParams } from 'react-router';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router';
 import type { VolumeId } from '../../game/contracts';
-import { explorerHref, explorerPages, explorerVolume, explorerVolumeIds, explorerVolumes, laboratoryPages } from './explorer-catalog';
-import { explorerPageAt } from './explorer-paths';
+import { explorerHref, explorerPages, explorerVolume, explorerVolumeIds, explorerVolumes, laboratoryPages, legacyAnchors } from './explorer-catalog';
+import { explorerPageAt, explorerPath, migratedExperiments } from './explorer-paths';
 import s from '../../styles/explorer.module.css';
 
-export type ExplorerContext = { volume: VolumeId; selectedVolume?: VolumeId };
+export type ExplorerContext = { volume: VolumeId; selectedVolume?: VolumeId; hydrated: boolean };
 
 export function ExplorerLayout() {
-  const { hash, pathname } = useLocation();
+  const { hash, pathname, search } = useLocation();
+  const navigate = useNavigate();
   const page = explorerPageAt(pathname);
   const wide = page === 'audio' || page === 'legacy';
   const [params, setParams] = useSearchParams();
@@ -18,6 +19,23 @@ export function ExplorerLayout() {
   const volume = selectedVolume ?? 'elsewhere';
 
   useEffect(() => setHydrated(true), []);
+  useEffect(() => {
+    if (page !== 'overview' && page !== 'legacy') return;
+    const anchor = hash.slice(1);
+    const migrated = migratedExperiments.get(anchor);
+    if (migrated && (page === 'overview' || anchor !== 'audio')) {
+      const [destination, fixedVolume] = migrated;
+      let preserved = search;
+      if (fixedVolume && new URLSearchParams(search).get('vol') !== fixedVolume) {
+        const query = new URLSearchParams(search);
+        query.set('vol', fixedVolume);
+        preserved = '?' + query.toString();
+      }
+      void navigate({ pathname: explorerPath(destination), search: preserved, hash }, { replace: true });
+    } else if (page === 'overview' && legacyAnchors.has(anchor)) {
+      void navigate({ pathname: explorerPath('legacy'), search, hash }, { replace: true });
+    }
+  }, [hash, navigate, page, search]);
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
     else window.scrollTo(0, 0);
@@ -54,7 +72,7 @@ export function ExplorerLayout() {
         <NavLink key={id} to={explorerHref(id, selectedVolume)} end>{explorerPages[id].label}</NavLink>)}
     </nav>
     <main className={s.main} id="explorer-main" tabIndex={-1}>
-      <Outlet context={{ volume, selectedVolume } satisfies ExplorerContext} />
+      <Outlet context={{ volume, selectedVolume, hydrated } satisfies ExplorerContext} />
     </main>
   </div>;
 }

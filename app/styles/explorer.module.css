@@ -105,9 +105,6 @@ body:has(.shell) { margin: 0; background: #080d16; }
 .topicIntro { max-width: 69ch; }
 .topicIntro p { margin: 0 0 13px; color: var(--explorer-muted); }
 .topicIntro .lede { color: var(--explorer-text); font-size: clamp(1.2rem, 2.4vw, 1.65rem); line-height: 1.35; }
-.worldFigure { width: min(100%, 1120px); margin: 0; border: 1px solid var(--explorer-line); border-radius: 9px; background: var(--explorer-surface); }
-.worldFigure img { display: block; width: 100%; height: auto; border-radius: 8px 8px 0 0; }
-.worldFigure figcaption { padding: 9px 13px; color: var(--explorer-muted); font-size: .8125rem; }
 
 @media (max-width: 1050px) {
   .shell { grid-template-columns: 132px minmax(0, 1fr); }

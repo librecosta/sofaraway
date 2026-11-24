@@ -17,19 +17,15 @@ export const explorerPages = {
 export const laboratoryPages = ['worlds', 'gates', 'lighting', 'materials', 'gameplay', 'endings', 'audio', 'interface'] as const;
 
 export const explorerVolumes = {
-  elsewhere: { name: 'ELSEWHERE', number: 'I', accent: '#bea8fa', anchor: 'volumes',
-    summary: 'A luminous tunnel built from a continuous path, with repeating surfaces and gates driven by the score.',
-    source: 'app/game/graphics/path.ts' },
-  daybreak: { name: 'DAYBREAK', number: 'II', accent: '#86daff', anchor: 'daybreak-cabin',
-    summary: 'A glass flight corridor suspended over a procedural cloud sea, with high cirrus guided by branching curves.',
-    source: 'app/game/graphics/daybreak-cloud-field.ts' },
-  descent: { name: 'DESCENT', number: 'III', accent: '#ffc288', anchor: 'descent',
-    summary: 'An industrial facility assembled from repeating architectural sections, with light and motion shaped by CONTROL.',
-    source: 'app/game/graphics/descent-facility.client.ts' },
-  orbit: { name: 'ORBIT', number: 'IV', accent: '#89eee2', anchor: 'orbit',
-    summary: 'An open asteroid belt with world-anchored celestial landmarks, streaming debris and an evolving nebula.',
-    source: 'app/game/core/orbit-setpieces.ts' },
-} satisfies Record<VolumeId, { name: string; number: string; accent: string; anchor: string; summary: string; source: string }>;
+  elsewhere: { name: 'ELSEWHERE', number: 'I', accent: '#bea8fa',
+    summary: 'A luminous tunnel built from a continuous path, with repeating surfaces and gates driven by the score.' },
+  daybreak: { name: 'DAYBREAK', number: 'II', accent: '#86daff',
+    summary: 'A glass flight corridor suspended over a procedural cloud sea, with high cirrus guided by branching curves.' },
+  descent: { name: 'DESCENT', number: 'III', accent: '#ffc288',
+    summary: 'An industrial facility assembled from repeating architectural sections, with light and motion shaped by CONTROL.' },
+  orbit: { name: 'ORBIT', number: 'IV', accent: '#89eee2',
+    summary: 'An open asteroid belt with world-anchored celestial landmarks, streaming debris and an evolving nebula.' },
+} satisfies Record<VolumeId, { name: string; number: string; accent: string; summary: string }>;
 
 export const explorerVolumeIds = Object.keys(explorerVolumes) as VolumeId[];
 
@@ -43,29 +39,19 @@ export function explorerHref(page: ExplorerPage, volume?: VolumeId, anchor?: str
 }
 
 export const legacyAnchors = new Set([
-  'pickups', 'volumes', 'daybreak-cabin', 'descent', 'orbit', 'gates', 'gates-elsewhere',
-  'gates-daybreak', 'gates-descent', 'gates-orbit', 'materials', 'effects', 'lighting',
-  's-curve', 'beat-inspection', 'outro', 'ui-states', 'environment', 'audio',
+  'pickups', 'gates', 'gates-elsewhere', 'gates-daybreak', 'gates-descent',
+  'gates-orbit', 'materials', 'effects', 'outro', 'ui-states',
 ]);
 
 export const explorerSource = (path: string) => `https://github.com/librecosta/sofaraway/blob/dev/${path}`;
 
 type Experiment = { name: string; anchor: string; summary: string };
 
-export const explorerTopicsContent: Record<Exclude<ExplorerTopic, 'worlds'>, { method: string; source: string; experiments: Experiment[] }> = {
+export const explorerTopicsContent: Record<Exclude<ExplorerTopic, 'worlds' | 'lighting'>, { method: string; source: string; experiments: Experiment[] }> = {
   gates: {
     method: 'Each volume defines a family of openings. The gate library lets you rotate their models and inspect the aperture geometry that the collision engine reads.',
     source: 'app/game/core/collision.ts',
     experiments: [{ name: 'Gate Library', anchor: 'gates', summary: 'Rotate the models and compare the opening shapes in each volume.' }],
-  },
-  lighting: {
-    method: 'Each world maps scene position and musical cues to lighting. Inspect the same presets used by the game and isolate the effect of the lighting controls.',
-    source: 'app/game/core/orbit-lighting.ts',
-    experiments: [
-      { name: 'Lighting Preview', anchor: 'lighting', summary: 'Choose a scene preset and compare lighting settings at fixed world stations.' },
-      { name: 'Beat Inspection', anchor: 'beat-inspection', summary: 'Track the beat, song section and gate timing in a selected volume.' },
-      { name: 'S-Curve Controls', anchor: 's-curve', summary: 'Adjust the blend and open a matching station in the game.' },
-    ],
   },
   materials: {
     method: 'Surface presets generate texture channels and feed the game’s materials. Inspect those channels individually and compare the effects applied to the world geometry.',

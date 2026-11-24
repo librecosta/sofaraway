@@ -118,7 +118,7 @@ test('the public ORBIT run recovers WebGL, judges a Hard collision and retries o
 test('Debug renders deterministic rock coverage across density changes, chunk eviction and quality switches', async ({ page }) => {
   await page.goto('/debug/?q=low#orbit');
   const orbit = page.locator('#orbit');
-  await orbit.getByRole('button', { name: 'Open flight preview' }).click();
+  await orbit.getByRole('button', { name: 'Open live scene' }).click();
   await expect(info(page)).toBeVisible({ timeout: 20_000 });
   await orbit.getByRole('button', { name: 'Sparse view' }).click();
   const origin = await seek(page).inputValue();
@@ -311,7 +311,7 @@ test('@perf ORBIT streams dense chunks at Low, Auto and High and releases instan
   for (const [quality, width, height] of [['low', 960, 540], ['auto', 1280, 720], ['high', 1920, 1080]] as const) {
     await page.setViewportSize({ width, height });
     await page.goto(`/debug/?density=dense&station=7470&q=${quality}#orbit`);
-    await page.getByRole('button', { name: 'Open flight preview' }).click();
+    await page.getByRole('button', { name: 'Open live scene' }).click();
     await expect(info(page)).toBeVisible();
     const start = await metrics(page);
     const first = await seek(page).inputValue();

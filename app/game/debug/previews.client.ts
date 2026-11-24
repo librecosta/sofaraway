@@ -1,27 +1,17 @@
 import * as THREE from 'three';
-import type { Diagnostics } from '../contracts';
-import { STEP } from '../core/clock';
 import { opening } from '../core/collision';
 import { isDaybreakGate } from '../core/daybreak-gates';
 import { facilityStages } from '../core/descent-facility';
 import { isDescentGate } from '../core/descent-gates';
-import { idleInput } from '../core/input';
-import { Simulation } from '../core/simulation';
 import { volumeById } from '../core/volumes';
 import { makeEnvMap } from '../graphics/environment.client';
 import { isOrbitGate } from '../core/orbit-gates';
 import { GateGeometries, GateVisual, THICKNESS } from '../graphics/gates.client';
 import { PickupVisual } from '../graphics/pickup.client';
-import { Graphics } from '../graphics/scene.client';
 import type { MaterialLibrary } from '../graphics/materials/library.client';
 import { surfaceIds, surfacePresets } from '../graphics/materials/presets';
 import type { SurfaceChannel, SurfaceMaterialId } from '../graphics/materials/presets';
-import { cabinViews, catalog, descentExamples, pickupCards } from './catalog';
-
-const flags: Diagnostics = {
-  fixedTime: null, autoplay: false, god: false, align: true, boost: false,
-  mobileQuality: false, post: true, record: false, debug: false,
-};
+import { catalog, descentExamples, pickupCards } from './catalog';
 
 type PreviewMode = 'lit' | 'effect' | 'raw' | 'model';
 function paint(root: HTMLElement, id: string, source: HTMLCanvasElement, mode?: PreviewMode) {
@@ -54,32 +44,6 @@ export function renderRawSurfaces(root: HTMLElement, materials: MaterialLibrary)
     canvas.height = image.height;
     canvas.getContext('2d')?.putImageData(image, 0, 0);
     paint(root, id, canvas, 'raw');
-  }
-}
-
-export function renderWorlds(root: HTMLElement) {
-  const canvas = document.createElement('canvas');
-  const graphics = new Graphics(canvas, 'high', false, flags);
-  try {
-    graphics.resize(640, 360, 1);
-    for (const { volume, seconds } of catalog) {
-      const sim = new Simulation(volume, { align: true });
-      sim.start('normal');
-      for (let n = 0; n < Math.floor(seconds / STEP); n++) sim.step(STEP, idleInput);
-      graphics.load(volume, sim.path);
-      graphics.draw(sim, true);
-      paint(root, volume.id, canvas);
-      if (volume.id === 'daybreak') {
-        const next = sim.previewGates.find(gate => !gate.judged && gate.worldStation > sim.trackDistance + 5);
-        const station = next ? next.worldStation - 7 : sim.trackDistance;
-        for (const { id, yaw, pitch } of cabinViews) {
-          graphics.draw(sim, true, true, { beat: sim.beat, station, yaw, pitch });
-          paint(root, id, canvas);
-        }
-      }
-    }
-  } finally {
-    graphics.dispose();
   }
 }
 
