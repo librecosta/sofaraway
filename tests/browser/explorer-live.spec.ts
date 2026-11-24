@@ -19,6 +19,11 @@ async function chooseChapter(page: Page, volume: typeof volumes[number], studio 
 
 const numberAttribute = (canvas: Locator, name: string) => canvas.getAttribute(name).then(Number);
 
+async function checkNarrowLayout(page: Page) {
+  await page.setViewportSize({ width: 360, height: 760 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+}
+
 for (const volume of volumes) {
   test(`${volume} World Explorer renders and flies through the production scene`, async ({ page }, info) => {
     const errors: string[] = [];
@@ -65,6 +70,7 @@ for (const volume of volumes) {
     await expect(page.getByRole('link', { name: 'Open in game', exact: true })).toHaveAttribute('href', new RegExp(`^/\\?vol=${volume}&t=`));
     await page.getByRole('button', { name: 'Reset', exact: true }).click();
     await expect.poll(() => numberAttribute(canvas, 'data-station')).toBeCloseTo(initial, 0);
+    await checkNarrowLayout(page);
     expect(errors).toEqual([]);
   });
 
@@ -90,6 +96,7 @@ for (const volume of volumes) {
     else await dynamic.uncheck();
     await page.getByLabel('Reduced motion', { exact: true }).check();
     await expect(canvas).toHaveAttribute('data-reduced-motion', 'true');
+    await checkNarrowLayout(page);
     expect(errors).toEqual([]);
   });
 }

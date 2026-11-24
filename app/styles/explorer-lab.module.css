@@ -53,7 +53,8 @@
   background: var(--explorer-surface);
 }
 .group legend { padding: 0 6px; color: var(--explorer-text); font-weight: 650; }
-.group > label { display: inline-grid; align-content: end; gap: 4px; min-width: 0; max-width: 100%; }
+.group > label { display: inline-grid; grid-template-columns: minmax(0, 1fr); align-content: end; gap: 4px; min-width: 0; max-width: 100%; }
+.group > label > select { min-width: 0; }
 .group label:has(input[type="checkbox"]) { display: inline-flex; align-items: center; min-height: 36px; }
 .group label:has(input[type="range"]) { flex: 1 1 min(225px, 100%); }
 .group input[type="range"] { width: 100%; min-width: 0; min-height: 22px; accent-color: var(--explorer-accent); }
