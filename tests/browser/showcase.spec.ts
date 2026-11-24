@@ -164,6 +164,10 @@ for (const { volume, route, quality, wide, lights } of flights) {
       await expect.poll(async () => typeof (await read()).sound).toBe('number');
       await expect(page.locator('#hud')).toHaveCount(0);
     }
+    if (volume === 'elsewhere') {
+      await page.keyboard.press('p');
+      await expect(page.getByRole('heading', { name: 'PAUSED' })).toBeVisible();
+    }
     await page.keyboard.press('Escape');
     await expect(page.getByRole('button', { name: 'START SHOWCASE' })).toBeEnabled();
     expect((await read()).sound).toBe('audio');

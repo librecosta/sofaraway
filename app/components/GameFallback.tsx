@@ -32,7 +32,8 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings, pre
     : error?.kind === 'graphics' ? 'GRAPHICS UNAVAILABLE' : 'PAUSED';
   const message = error?.message ?? (pauseReason === 'background' ? 'The run paused when the page left the foreground.'
     : pauseReason === 'context' ? 'Graphics were interrupted. Resume when you are ready.' : 'Your run is paused.');
-  const dismiss = phase === 'paused' && !error ? retry : error?.kind === 'audio' ? menu : undefined;
+  const dismiss = phase === 'paused' && !error ? (snapshot.mode === 'showcase' ? menu : retry)
+    : error?.kind === 'audio' ? menu : undefined;
   return (
     <GameDialog title={title} dismiss={dismiss} preview={preview}>
       <div className={c('panel', 'fallback-panel')}>
