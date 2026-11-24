@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import type { AudioStem } from '../../game/audio/stem-routing';
+import { downloadWav } from '../../game/debug/audio/download.client';
 import { InspectorTransport } from '../../game/debug/audio/inspector-transport.client';
 import type { PlaybackState } from '../../game/debug/audio/inspector-transport.client';
 import { defaultMix, trackInfo } from '../../game/debug/audio/track-adapter';
@@ -39,7 +40,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const exportJob = useRef<AbortController>(undefined);
-  const downloadUrl = useRef<string>(undefined);
+  const releaseDownload = useRef<() => void>(undefined);
   const transport = useRef<InspectorTransport>(undefined);
   const viewport = useRef<HTMLDivElement>(null);
   const playhead = useRef<HTMLDivElement>(null);
@@ -68,25 +69,36 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
   }
 
   useEffect(() => {
+    let raf = 0;
+    let phase: PlaybackState = 'Ready';
     const player = new InspectorTransport(score, (phase, track) => {
-      setState(phase);
+      updatePhase(phase);
       setAudition(track);
     });
     transport.current = player;
     setReady(true);
-    let raf = 0;
     const frame = () => {
       if (!drag.current || drag.current.track) show(player.time);
       raf = requestAnimationFrame(frame);
     };
-    const hidden = () => { if (document.hidden) player.pause(); };
-    const leave = () => player.pause();
+    function updatePhase(next: PlaybackState) {
+      phase = next;
+      setState(next);
+      if (next === 'Playing') {
+        if (!raf) raf = requestAnimationFrame(frame);
+      } else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+        show(player.time);
+      }
+    }
+    const leave = () => { if (phase === 'Playing' || phase === 'Starting') player.pause(); };
+    const hidden = () => { if (document.hidden) leave(); };
     document.addEventListener('visibilitychange', hidden);
     window.addEventListener('pagehide', leave);
-    raf = requestAnimationFrame(frame);
     return () => {
       exportJob.current?.abort();
-      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+      releaseDownload.current?.();
       cancelAnimationFrame(raf);
       document.removeEventListener('visibilitychange', hidden);
       window.removeEventListener('pagehide', leave);
@@ -190,15 +202,12 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
       const result = await exportStem(score, stem, abort.signal,
         fraction => setExportStatus('Rendering ' + trackInfo[stem].label + ' · ' + Math.round(fraction * 100) + '%'));
       abort.signal.throwIfAborted();
-      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
-      const link = document.createElement('a');
-      link.href = downloadUrl.current = URL.createObjectURL(result.blob);
-      link.download = result.filename;
-      link.click();
+      releaseDownload.current?.();
+      releaseDownload.current = downloadWav(result.blob, result.filename);
       setExportStatus(`${trackInfo[stem].label} · ${result.duration.toFixed(1)} s · 44.1 kHz stereo / 16-bit`
         + (result.trim < 1 ? ` · Peak protection ${(20 * Math.log10(result.trim)).toFixed(1)} dB` : ''));
     } catch (error) {
-      if (!abort.signal.aborted) setExportStatus(error instanceof Error ? error.message : 'Stem render failed.');
+      if (!abort.signal.aborted) setExportStatus(error instanceof Error ? `Export failed. ${error.message}` : 'Stem export failed.');
     } finally { if (!abort.signal.aborted) setExporting(false); }
   }
 
@@ -219,6 +228,7 @@ export function AudioInspector({ score }: { score: InspectorScore }) {
     drag.current = undefined;
     if (gesture.track) setCueLabel({ track: gesture.track, time: gesture.time });
     else if (commit) seek(gesture.time);
+    else show(transport.current?.time ?? 0);
   }
 
   function pointerActions(track: TrackId | null) {

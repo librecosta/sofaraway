@@ -135,7 +135,7 @@ export default function GameplayLab({ volume }: { volume: VolumeId }) {
 
   return <>
     <section id="chart" className={s.preview} aria-labelledby="chart-title">
-      <h2 id="chart-title">Chart timeline</h2>
+      <h2 id="chart-title"><span id={volume === 'daybreak' ? 'daybreak-chart' : undefined}>Chart timeline</span></h2>
       <fieldset className={s.group}>
         <legend>Run configuration</legend>
         <label>Difficulty <select aria-label="Difficulty" value={difficulty} onChange={e => update({ diff: e.currentTarget.value as Difficulty, beat: null })}>

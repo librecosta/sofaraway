@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router';
 import type { VolumeId } from '../../game/contracts';
 import { explorerHref, explorerPages, explorerVolume, explorerVolumeIds, explorerVolumes, laboratoryPages } from './explorer-catalog';
@@ -14,6 +14,9 @@ export function ExplorerLayout() {
   const wide = page === 'audio';
   const [params, setParams] = useSearchParams();
   const [hydrated, setHydrated] = useState(false);
+  const navigation = useRef<HTMLElement>(null);
+  const main = useRef<HTMLElement>(null);
+  const previousPath = useRef(pathname);
   const stateVolume = page === 'interface' ? explorerVolumeIds.find(id => id === params.get('state')) : undefined;
   const requested = hydrated ? params.get('vol') ?? stateVolume ?? null : null;
   const selectedVolume = requested === null ? (page === 'audio' && hydrated ? 'daybreak' : undefined) : explorerVolume(requested);
@@ -38,9 +41,29 @@ export function ExplorerLayout() {
     }
   }, [hash, navigate, page, search]);
   useEffect(() => {
+    const changed = previousPath.current !== pathname;
+    previousPath.current = pathname;
+    if (changed) main.current?.focus({ preventScroll: true });
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
     else window.scrollTo(0, 0);
   }, [hash, pathname]);
+
+  useEffect(() => {
+    const nav = navigation.current;
+    if (!wide || !nav) return;
+    const active = nav.querySelector('[aria-current="page"]');
+    if (!active) return;
+    const reveal = () => {
+      const bounds = nav.getBoundingClientRect();
+      const link = active.getBoundingClientRect();
+      if (link.right > bounds.right - 6) nav.scrollLeft += link.right - bounds.right + 6;
+      else if (link.left < bounds.left + 6) nav.scrollLeft -= bounds.left + 6 - link.left;
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [wide]);
 
   return <div className={s.shell} data-workspace={wide ? 'audio' : undefined}>
     <a className={s.skip} href="#explorer-main">Skip to content</a>
@@ -68,11 +91,11 @@ export function ExplorerLayout() {
         <Link className={s.back} to={selectedVolume ? `/?vol=${selectedVolume}` : '/'}>Back to game <span aria-hidden="true">↗</span></Link>
       </div>
     </header>
-    <nav className={s.navigation} aria-label="Explorer">
+    <nav ref={navigation} className={s.navigation} aria-label="Explorer">
       {(['overview', ...laboratoryPages] as const).map(id =>
         <NavLink key={id} to={explorerHref(id, selectedVolume)} end>{explorerPages[id].label}</NavLink>)}
     </nav>
-    <main className={s.main} id="explorer-main" tabIndex={-1}>
+    <main ref={main} className={s.main} id="explorer-main" tabIndex={-1}>
       <Outlet context={{ volume, selectedVolume, hydrated } satisfies ExplorerContext} />
     </main>
   </div>;

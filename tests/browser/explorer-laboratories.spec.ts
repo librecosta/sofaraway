@@ -119,7 +119,7 @@ test('the migrated labs fit five viewports and release their resources while nav
   await page.goto('/debug/gates/?vol=orbit');
   const navigation = page.getByRole('navigation', { name: 'Explorer', exact: true });
   const route = (name: string) => navigation.getByRole('link', { name, exact: true }).click();
-  const viewports = [[1920, 1080], [1280, 720], [960, 540], [390, 844], [360, 760]] as const;
+  const viewports = [[1920, 1080], [1440, 900], [1280, 720], [960, 540], [390, 844], [360, 760]] as const;
   for (const [name, selector, count] of [
     ['Gates', 'canvas[data-ready=true]', 1], ['Materials', 'canvas[data-mode=lit]', 1],
     ['Gameplay', '[data-count=route]', 0], ['Endings', '#outro', 1], ['Interface', 'iframe', 0],
@@ -196,4 +196,79 @@ test('Ending Studio restores a shared phase link and uses the real White Escape 
   await expect(canvas).toHaveAttribute('data-station', station!);
   await page.getByRole('button', { name: 'Escape White Start' }).click();
   await expect(canvas).toHaveAttribute('data-escape-white', '0');
+});
+
+test('two complete Explorer circuits release each renderer, scan and active audio transport', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    if (window !== window.top) return;
+    const contexts = new Set<WebGL2RenderingContext>();
+    const sound = new Set<AudioContext>();
+    const get = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...args: unknown[]) {
+      const ctx = Reflect.apply(get, this, [type, ...args]);
+      if (type === 'webgl2' && ctx) contexts.add(ctx);
+      return ctx;
+    } as typeof get;
+    const Native = window.AudioContext;
+    window.AudioContext = class extends Native {
+      constructor(options?: AudioContextOptions) { super(options); sound.add(this); }
+    };
+    window.addEventListener('resource-check', () => {
+      document.documentElement.dataset.labOwners = JSON.stringify({
+        gl: [...contexts].filter(ctx => !ctx.isContextLost()).length,
+        audio: [...sound].filter(ctx => ctx.state !== 'closed').length,
+      });
+    });
+  });
+  const state = () => page.evaluate(() => {
+    window.dispatchEvent(new Event('resource-check'));
+    return JSON.parse(document.documentElement.dataset.labOwners!);
+  });
+  const count = (gl: number, audio = 0) => expect.poll(state).toEqual({ gl, audio });
+  const nav = page.getByRole('navigation', { name: 'Explorer', exact: true });
+  const go = (name: string) => nav.getByRole('link', { name, exact: true }).click();
+  await page.goto('/debug/?vol=elsewhere');
+  for (let lap = 0; lap < 2; lap++) {
+    await go('Worlds');
+    await count(0);
+    await page.getByRole('combobox', { name: 'Quality', exact: true }).selectOption('low');
+    await page.getByRole('button', { name: 'Open live scene' }).click();
+    await expect(page.locator('canvas[data-ready=true]')).toBeVisible();
+    await count(1);
+    await go('Gates');
+    await expect(page.locator('canvas[data-mode=model]')).toHaveCount(3);
+    await count(1);
+    await go('Materials');
+    const scan = page.getByRole('button', { name: 'Animate scan' });
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await scan.click();
+    await expect(scan).toHaveAttribute('aria-pressed', 'true');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(scan).toHaveAttribute('aria-pressed', 'false');
+    await expect(scan).toBeDisabled();
+    await count(1);
+    await go('Gameplay');
+    await expect(page.locator('[data-count=route]')).toBeVisible();
+    await count(0);
+    await go('Lighting');
+    await page.getByRole('button', { name: 'Open live scene' }).click();
+    await expect(page.locator('canvas[data-ready=true]')).toBeVisible();
+    await count(1);
+    await go('Endings');
+    await count(0);
+    await page.getByRole('button', { name: 'Open live ending' }).click();
+    await expect(page.locator('#outro canvas[data-station]')).toBeVisible();
+    await count(1);
+    await go('Interface');
+    await expect(page.locator('iframe')).toHaveCount(1);
+    await count(0);
+    await go('Audio');
+    await expect(page.locator('iframe')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Play all' }).click();
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+    await count(0, 1);
+    await go('Overview');
+    await count(0);
+  }
 });

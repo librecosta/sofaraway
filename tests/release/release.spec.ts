@@ -27,6 +27,16 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
   expect(await inspector.text()).toContain('SoFaraway / Audio Inspector');
   expect(await html.text()).not.toMatch(/<link[^>]+rel="modulepreload"[^>]+debug\.audio/);
 
+  for (const topic of [...explorerTopics, 'audio', 'legacy']) {
+    const path = `/debug/${topic}`;
+    const direct = await request.get(`${path}?vol=orbit&seed=7`, { maxRedirects: 0 });
+    expect(direct.status(), path).toBe(308);
+    expect(direct.headers()['location'], path).toBe(`${path}/?vol=orbit&seed=7`);
+    const page = await request.get(`${path}/?vol=orbit&seed=7`);
+    expect(page.status(), path).toBe(200);
+    expect(await page.text(), path).toContain('name="robots" content="noindex"');
+  }
+
   for (const path of ['/missing', '/missing/nested/', '/assets/obsolete-abcdef99.js', '/__spa-fallback.html']) {
     const response = await request.get(path);
     expect(response.status(), path).toBe(404);

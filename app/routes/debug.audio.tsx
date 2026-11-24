@@ -4,6 +4,7 @@ import { AudioInspector } from '../components/audio-inspector/AudioInspector';
 import { timecode } from '../components/audio-inspector/Timeline';
 import { explorerSource } from '../components/explorer/explorer-catalog';
 import { VOLUMES, volumeById } from '../game/core/volumes';
+import { downloadWav } from '../game/debug/audio/download.client';
 import { inspectorScore } from '../game/debug/audio/track-adapter';
 import s from '../styles/audio-inspector.module.css';
 
@@ -21,7 +22,7 @@ export default function AudioInspectorPage() {
   const [exportStatus, setExportStatus] = useState('');
   const [exporting, setExporting] = useState(false);
   const lifetime = useRef<AbortController>(null);
-  const downloadUrl = useRef<string>(undefined);
+  const releaseDownload = useRef<() => void>(undefined);
   useEffect(() => {
     setHydrated(true);
     setExporting(false);
@@ -30,7 +31,8 @@ export default function AudioInspectorPage() {
     lifetime.current = abort;
     return () => {
       abort.abort();
-      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
+      releaseDownload.current?.();
+      releaseDownload.current = undefined;
     };
   }, [score.key]);
 
@@ -45,17 +47,14 @@ export default function AudioInspectorPage() {
       signal.throwIfAborted();
       const { blob, duration } = await inspectorOffline(signal, () => exportSoundtrack(volume, Number(params.get('secs')), signal));
       signal.throwIfAborted();
-      if (downloadUrl.current) URL.revokeObjectURL(downloadUrl.current);
-      const url = downloadUrl.current = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = volume.music === 'starwake' ? 'ORBIT-STARWAKE-FULL.wav'
+      const filename = volume.music === 'starwake' ? 'ORBIT-STARWAKE-FULL.wav'
         : volume.music === 'control' ? 'DESCENT-CONTROL.wav'
         : 'sofaraway-' + volume.id + '.wav';
-      link.click();
+      releaseDownload.current?.();
+      releaseDownload.current = downloadWav(blob, filename);
       setExportStatus(`Done · ${(blob.size / 1048576).toFixed(1)} MB · ${duration.toFixed(1)} s`);
     } catch (error) {
-      if (!signal.aborted) setExportStatus(error instanceof Error ? error.message : 'Soundtrack render failed.');
+      if (!signal.aborted) setExportStatus(error instanceof Error ? `Export failed. ${error.message}` : 'Soundtrack export failed.');
     } finally {
       if (!signal.aborted) setExporting(false);
     }
@@ -72,7 +71,7 @@ export default function AudioInspectorPage() {
           {volume.soundtrack && <span>{volume.soundtrack.title}</span>}
           <span>{volume.bpm} BPM</span><span>{volume.beats} beats</span><span>{timecode(score.duration)}</span>
           <label className={s.volume}>Volume
-            <select aria-label="Volume" value={volume.id} disabled={!hydrated || exporting} onChange={event => {
+            <select aria-label="Volume" value={volume.id} disabled={!hydrated} onChange={event => {
               const next = new URLSearchParams(params);
               next.set('vol', event.currentTarget.value);
               next.delete('arrangement');
@@ -85,12 +84,14 @@ export default function AudioInspectorPage() {
 
         </div>
       </header>
-      <AudioInspector key={score.key} score={score} />
+      {hydrated ? <AudioInspector key={score.key} score={score} /> : <p role="status">Loading the audio inspector…</p>}
       <div className={s.export}>
         <button type="button" disabled={!hydrated || exporting} onClick={() => void download()}>Render to WAV</button>
-        <a href={explorerSource('app/game/debug/audio/track-adapter.ts')}>View source</a>
+        <a href={explorerSource('app/game/debug/audio/track-adapter.ts')}>Track source</a>
+        <a href={explorerSource('app/game/debug/audio-export.client.ts')}>WAV export source</a>
         <span role="status" id="audio-status">{exportStatus}</span>
       </div>
+      <p className={s.exportHint}>The WAV renderer exports the soundtrack mix. Use the stem export to download an individual instrument.</p>
     </div>
   </section>;
 }

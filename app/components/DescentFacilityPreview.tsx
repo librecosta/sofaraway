@@ -52,8 +52,8 @@ export function DescentFacilityPreview({ lab }: { lab: LabMode }) {
   const [approachBeat, setApproachBeat] = useState(approachStart);
   const [approachRoute, setApproachRoute] = useState<RouteKind>('main');
   const [boost, setBoost] = useState(false);
-  const [dynamic, setDynamic] = useState(true);
-  const [reduced, setReduced] = useState(false);
+  const [dynamic, setDynamic] = useState(params.get('lights') !== 'false');
+  const [reduced, setReduced] = useState(params.get('reduce') === 'true');
   const [yaw, setYaw] = useState(previewNumber(params, 'view', 0, -36, 36));
   const [stationOverride, setStationOverride] = useState<number | undefined>(params.has('station')
     ? previewNumber(params, 'station', reference.station(controlTrack.sections[1].startBeat + offsets[1], 'standard'), START_DISTANCE, maxStation)
@@ -255,10 +255,11 @@ export function DescentFacilityPreview({ lab }: { lab: LabMode }) {
   const shownStation = flying || setpiece ? displayStation ?? station : station;
   const gameBeat = !setpiece && stationOverride === undefined ? beat : stationBeat(descent, shownStation, mode);
   const snapshot = new URLSearchParams({ vol: descent.id, station: shownStation.toFixed(3),
-    beat: (playing ? cursor : fixedLightBeat ?? musicBeat).toFixed(3), q: quality, view: String(yaw) });
+    beat: (playing ? cursor : fixedLightBeat ?? musicBeat).toFixed(3), q: quality, view: String(yaw),
+    lights: String(dynamic), reduce: String(reduced) });
   return <section id="descent" className={s.preview}>
     <SceneViewport volume="descent" label="Live DESCENT facility" canvas={canvas} open={open} status={status}
-      onOpen={() => { setStatus(''); if (open) setAttempt(attempt + 1); else setOpen(true); }} />
+      onOpen={() => { setStatus('Loading live scene…'); if (open) setAttempt(attempt + 1); else setOpen(true); }} />
     <SceneControls>
       <SceneGroup title="Scene">
         <label>CONTROL chapter <select value={section} disabled={!!setpiece} onChange={event => {

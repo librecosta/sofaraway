@@ -38,13 +38,14 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
   const [playing, setPlaying] = useState(false);
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [musicBeat, setMusicBeat] = useState(previewNumber(params, 'beat', 0, 0, orbit.beats));
-  const [dynamicLights, setDynamicLights] = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(false);
-  const [nebulaInspection, setNebulaInspection] = useState(0);
+  const [dynamicLights, setDynamicLights] = useState(params.get('lights') !== 'false');
+  const [reducedMotion, setReducedMotion] = useState(params.get('reduce') === 'true');
+  const [nebulaInspection, setNebulaInspection] = useState(Math.trunc(previewNumber(params, 'aurora', 0, 0, auroraViews.length - 1)));
   const requestedFocus = params.get('view');
   const [aphelionFocus, setAphelionFocus] = useState<AphelionFocus | undefined>(requestedFocus === 'planet' || requestedFocus === 'moon' ? requestedFocus : undefined);
   const [metrics, setMetrics] = useState<Metrics>();
   const [status, setStatus] = useState('Loading WebGL preview…');
+  const [soundStatus, setSoundStatus] = useState('');
   const [opened, setOpened] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -141,6 +142,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
       element.addEventListener('webglcontextlost', event => {
         event.preventDefault();
         lost = true;
+        delete element.dataset.ready;
         cancelAnimationFrame(frame);
         frame = 0;
         input.clear();
@@ -155,7 +157,6 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
           lost = false;
           last = 0;
           resize();
-          setStatus('');
         } catch {
           setStatus('Could not restore the preview.');
         }
@@ -185,13 +186,17 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
             setMusicBeat(controls.musicBeat);
           }
           if (!play || lost) { if (beat !== undefined) audio.stop(); pauseMusic(); return; }
+          setSoundStatus('');
           if (controls.musicBeat >= 384) controls.musicBeat = 0;
           controls.musicPlaying = true;
           setMusicPlaying(true);
           const request = ++musicRequest;
-          void audio.start(orbit,controls.musicBeat*60/orbit.bpm).then(ok=>{
+          void audio.start(orbit,controls.musicBeat*60/orbit.bpm).catch(() => false).then(ok=>{
             if (signal.aborted || request !== musicRequest) return;
-            if (!ok) pauseMusic();
+            if (!ok) {
+              pauseMusic();
+              setSoundStatus('Sound could not start. You can still inspect the lighting by beat.');
+            }
             invalidate();
           });
         },
@@ -227,6 +232,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
             graphics.drawOrbit({ station: controls.station, x, y, time, nebulaInspection: controls.nebulaInspection,
               aphelionFocus: controls.aphelionFocus,
               lighting: { beat: controls.musicBeat, amount: Number(controls.dynamicLights), reducedMotion: controls.reducedMotion || motion.matches } });
+            if (!element.dataset.ready) setStatus('');
             Object.assign(element.dataset, { volume: orbit.id, station: controls.station.toFixed(3),
               lightBeat: controls.musicBeat.toFixed(3), quality: controls.quality, ready: 'true',
               reducedMotion: String(controls.reducedMotion || motion.matches) });
@@ -237,7 +243,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
               reportAt = now;
             }
             dirty = false;
-          } catch (error) {
+          } catch {
             toggle(false);
             pauseMusic();
             setStatus('Could not render the flight preview.');
@@ -247,11 +253,12 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
         if ((controls.playing || controls.musicPlaying) && !document.hidden) requestDraw();
       }
       resize();
-      setStatus('');
-    }).catch(error => {
+    }).catch(() => {
+      if (signal.aborted) return;
+      events.abort();
       cleanup?.();
       cleanup = undefined;
-      if (!signal.aborted) setStatus(`Could not start the flight preview. ${error instanceof Error ? error.message : ''}`);
+      setStatus('Could not open the flight preview. A working WebGL2 renderer is required.');
     });
     return () => { events.abort(); cleanup?.(); };
   }, [opened, attempt]);
@@ -326,12 +333,17 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
   }
 
   const snapshot = new URLSearchParams({ vol: orbit.id, station: station.toFixed(3), beat: musicBeat.toFixed(3),
-    q: quality, seed: String(seed), density, view: aphelionFocus ?? 'course' });
+    q: quality, seed: String(seed), density, view: aphelionFocus ?? 'course', aurora: String(nebulaInspection),
+    lights: String(dynamicLights), reduce: String(reducedMotion), post: settings.current.post ? '1' : '0' });
   const worldBeat = stationBeat(orbit, station);
   const chapter = sectionAt(orbit, Math.min(orbit.beats - .001, worldBeat))!;
   return <section id="orbit" className={s.preview}>
     <SceneViewport volume="orbit" label="ASTRAL BELT flight" canvas={canvas} open={opened} status={status} steerable
-      onOpen={() => { setOpened(true); setStatus('Loading WebGL preview…'); setAttempt(next => next + 1); }} />
+      id={lab === 'lighting' ? 'beat-inspection' : undefined}
+      onOpen={() => {
+        if (canvas.current) delete canvas.current.dataset.ready;
+        setOpened(true); setStatus('Loading WebGL preview…'); setAttempt(next => next + 1);
+      }} />
     {opened && <SceneControls>
         <SceneGroup title={`Scene / ${chapter.name}`}>
         <div className={s.actions} aria-label="Cosmic setpieces">
@@ -406,6 +418,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
           <span>{musicBeat.toFixed(2)} · {orbitLightScenes[metrics?.orbit ? Math.max(0,orbitLightScenes.indexOf(metrics.orbit.lighting.scene)) : 0]}</span>
         </label>
           <button type="button" disabled={!!status} onClick={()=>viewer.current?.music(!musicPlaying)}>{musicPlaying?'Pause STARWAKE':'Play STARWAKE'}</button>
+          {soundStatus && <p role="status">{soundStatus}</p>}
           <label><input type="checkbox" checked={dynamicLights} onChange={e=>{
             settings.current.dynamicLights=e.currentTarget.checked;setDynamicLights(e.currentTarget.checked);viewer.current?.redraw();
           }} /> Dynamic lighting</label>

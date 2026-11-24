@@ -140,7 +140,7 @@ test('both labs fit each required viewport and only retain their own live contex
       await expect.poll(resources).toEqual({ active: 0, running: 0, open: 0 });
     }
     const canvas = await openScene(page);
-    for (const [width, height] of [[1920, 1080], [1280, 720], [960, 540], [390, 844], [360, 760]]) {
+    for (const [width, height] of [[1920, 1080], [1440, 900], [1280, 720], [960, 540], [390, 844], [360, 760]]) {
       await page.setViewportSize({ width, height });
       const size = (await canvas.boundingBox())!;
       expect(size.width / size.height).toBeCloseTo(16 / 9, 1);
@@ -179,6 +179,7 @@ test('migrated hashes and numeric deep links open the corresponding live experim
     expect(await page.evaluate(() => location.pathname)).toBe(`/debug/${lab}/`);
     expect(await page.evaluate(() => location.hash)).toBe('#' + hash);
     await expect(page.getByRole('combobox', { name: 'Volume', exact: true })).toHaveValue(volume);
+    await expect(page.locator('#' + hash)).toBeInViewport();
     expect(new URL(page.url()).searchParams.get('station')).toBe('4222');
     if (volume !== 'orbit') await expect(page.getByRole('slider', { name: 'World station' })).toHaveValue('4222');
   }
@@ -186,4 +187,30 @@ test('migrated hashes and numeric deep links open the corresponding live experim
   const orbit = await openScene(page);
   await expect(orbit).toHaveAttribute('data-station', '4320.000');
   await expect(orbit).toHaveAttribute('data-light-beat', /^302\.0+$/);
+});
+
+test('the view link captures an unopened camera and restores independent lighting controls', async ({ page }) => {
+  await page.goto('/debug/lighting/?vol=daybreak&station=NaN&beat=Infinity&q=invalid');
+  await page.getByRole('slider', { name: 'World station' }).fill('5000');
+  await page.getByRole('slider', { name: 'Music beat' }).fill('120');
+  await page.getByLabel('Dynamic lighting', { exact: true }).selectOption('off');
+  await page.getByLabel('Reduced motion', { exact: true }).check();
+  await page.getByLabel('Camera view').selectOption('Cloud Sea');
+  const share = page.getByRole('link', { name: 'Link to this view' });
+  await page.goto((await share.getAttribute('href'))!);
+  await expect(page.getByLabel('Camera view')).toHaveValue('Cloud Sea');
+  await expect(page.getByLabel('Dynamic lighting', { exact: true })).toHaveValue('off');
+  await expect(page.getByLabel('Reduced motion', { exact: true })).toBeChecked();
+  const canvas = await openScene(page);
+  await expect(canvas).toHaveAttribute('data-station', /^5000\.0+$/);
+  await expect(canvas).toHaveAttribute('data-light-beat', /^120\.0+$/);
+  await expect(canvas).toHaveAttribute('data-reduced-motion', 'true');
+
+  await page.goto('/debug/legacy/?vol=orbit&beat=280&station=8200&aurora=4&lights=false&reduce=true&post=0#beat-inspection');
+  await expect(page.locator('#beat-inspection')).toBeInViewport();
+  await openScene(page);
+  await expect(page.getByLabel('Aurora structure')).toHaveValue('4');
+  await expect(page.getByLabel('Dynamic lighting', { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel('Reduced motion', { exact: true })).toBeChecked();
+  expect(new URL((await share.getAttribute('href'))!, page.url()).searchParams.get('post')).toBe('0');
 });

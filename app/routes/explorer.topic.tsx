@@ -50,10 +50,9 @@ function EndingLab({ volume }: { volume: VolumeId }) {
   return <Endings key={`${volume}:${configuration}`} volumeId={volume} open={open} setOpen={setOpen} />;
 }
 
-function ExperimentAnchor({ hash }: { hash: string }) {
+export function ExperimentAnchor({ hash }: { hash: string }) {
   useEffect(() => {
-    const anchor = hash === '#daybreak-chart' ? 'chart' : hash.slice(1);
-    if (anchor) document.getElementById(anchor)?.scrollIntoView();
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
   }, [hash]);
   return null;
 }

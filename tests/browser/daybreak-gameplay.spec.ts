@@ -112,6 +112,7 @@ test('DAYBREAK Impossible previews the dense chart and all routes through the ex
   await studio.getByRole('combobox', { name: 'Chart difficulty' }).selectOption('impossible', { timeout: 8000 });
   await studio.getByLabel('Run seed').fill('0');
   const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
+  await expect(canvas).toHaveAttribute('data-difficulty', 'impossible');
   const view = new OutroInspection('standard', 0, 'score', undefined, 'impossible', volumeById('daybreak'));
   const go = (name: string) => studio.getByRole('button', { name, exact: true }).click();
   await go('SUNBURST Gates');

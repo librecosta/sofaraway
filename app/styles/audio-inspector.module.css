@@ -46,6 +46,7 @@
 .playState { line-height: 1.15; margin-left: 4px; }
 .playState[data-playing] { color: var(--signal); }
 .notice { color: #ffcaa8; margin: 8px 0 0; }
+.exportHint { color: var(--muted); font-size: .8rem; margin: 8px 0 0; }
 .navigation { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 5px 16px; padding: 9px 0 7px; }
 .sections, .zoom { display: flex; flex-wrap: wrap; gap: 3px; }
 .sections { flex: 1 1 auto; }

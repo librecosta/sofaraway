@@ -18,6 +18,7 @@ export default function MaterialLab({ volume }: { volume: VolumeId }) {
   const [params, setParams] = useSearchParams();
   const [requestedChannel, setChannel] = useState<SurfaceChannel>('color');
   const [scanning, setScanning] = useState(false);
+  const [reduced, setReduced] = useState(false);
   const { root, model, raw, status } = useSpecimens('materials');
   const surface = surfaceIds.find(id => id === params.get('material')) ?? surfaceIds[0];
   const channels = surfaceChannels(surface);
@@ -27,6 +28,16 @@ export default function MaterialLab({ volume }: { volume: VolumeId }) {
 
   useEffect(() => { raw?.(surface, channel); }, [raw, surface, channel]);
   useEffect(() => { model.current?.setScan(scanning); }, [model, scanning]);
+  useEffect(() => {
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => {
+      setReduced(motion.matches);
+      if (motion.matches) setScanning(false);
+    };
+    sync();
+    motion.addEventListener('change', sync);
+    return () => motion.removeEventListener('change', sync);
+  }, []);
 
   return <section ref={root} className={s.preview} aria-label="Material specimens">
     <section id="materials" className={s.preview}>
@@ -78,12 +89,14 @@ export default function MaterialLab({ volume }: { volume: VolumeId }) {
     </section>
     <section id="effects" className={s.preview}>
       <h2>Effect materials</h2>
+      {status === 'unavailable' && <p className={s.quiet}>Effect previews require WebGL2.</p>}
+      {reduced && status === 'ready' && <p className={s.quiet}>Reduced motion keeps the scan still.</p>}
       <div className={s.specimenGrid}>
         {effectIds.map(id => <figure className={s.specimen} key={id}>
-          <SpecimenCanvas id={id} label={`${effectPresets[id].name} effect preview`} />
+          {status !== 'unavailable' && <SpecimenCanvas id={id} label={`${effectPresets[id].name} effect preview`} />}
           <figcaption className={s.specimenCaption}>
             <h3>{effectPresets[id].name}</h3><p>{effectPresets[id].detail}</p>
-            {id === 'hologram-panel-cyan' && <button type="button" disabled={status !== 'ready'} aria-pressed={scanning}
+            {id === 'hologram-panel-cyan' && <button type="button" disabled={status !== 'ready' || reduced} aria-pressed={scanning}
               onClick={() => setScanning(!scanning)}>Animate scan</button>}
           </figcaption>
         </figure>)}

@@ -242,7 +242,7 @@ test('the real results component remains available without WebGL and keeps Encor
   await page.goto('/debug/#outro');
   const studio = page.locator('#outro');
   await studio.getByRole('button', { name: 'Open live ending' }).click();
-  await expect(studio.locator('p[role=status]')).toContainText('Live ending unavailable');
+  await expect(studio.getByRole('alert')).toContainText('Live ending unavailable');
   const results = studio.getByLabel('Results preview');
   const panel = studio.locator('#preview-over');
   await expect(panel).toBeVisible();

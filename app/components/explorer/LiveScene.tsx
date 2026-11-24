@@ -4,18 +4,18 @@ import s from '../../styles/explorer-lab.module.css';
 
 export type LabMode = 'worlds' | 'lighting';
 
-export function SceneViewport({ volume, label, canvas, open, onOpen, status, steerable }: {
+export function SceneViewport({ volume, label, canvas, open, onOpen, status, steerable, id }: {
   volume: VolumeId; label: string; canvas: Ref<HTMLCanvasElement>; open: boolean; onOpen(): void;
-  status?: string; steerable?: boolean;
+  status?: string; steerable?: boolean; id?: string;
 }) {
-  return <div className={s.viewport}>
+  return <div className={s.viewport} id={id}>
     {open
       ? <canvas ref={canvas} width={800} height={450} role="img" aria-label={label} tabIndex={steerable ? 0 : undefined}
           data-steerable={steerable || undefined} />
       : <><img src={`/explorer/${volume}.webp`} width={768} height={432} alt="" />
           <div className={s.cover}><button type="button" onClick={onOpen}>Open live scene</button></div></>}
     {status && open && <div className={s.status}>
-      <p role="status">{status}</p>
+      <p role={status.startsWith('Could not') ? 'alert' : 'status'}>{status}</p>
       {status.startsWith('Could not') && <button type="button" onClick={onOpen}>Retry preview</button>}
     </div>}
   </div>;

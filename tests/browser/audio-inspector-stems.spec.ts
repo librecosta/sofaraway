@@ -176,3 +176,87 @@ test('a canceled queued stem export allocates no full-song PCM', async ({ page }
   });
   expect(result).toEqual({ allocated:0,error:'AbortError' });
 });
+
+test('full WAV exports can be canceled, retried and released without an idle playhead loop', async ({ page }) => {
+  await page.addInitScript(() => {
+    const frames = new Set<number>();
+    const urls = new Set<string>();
+    const requestFrame = window.requestAnimationFrame.bind(window);
+    const cancelFrame = window.cancelAnimationFrame.bind(window);
+    window.requestAnimationFrame = callback => {
+      const id = requestFrame(time => { frames.delete(id); callback(time); });
+      frames.add(id);
+      return id;
+    };
+    window.cancelAnimationFrame = id => { frames.delete(id); cancelFrame(id); };
+    const createUrl = URL.createObjectURL.bind(URL);
+    const revokeUrl = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = value => { const url = createUrl(value); urls.add(url); return url; };
+    URL.revokeObjectURL = url => { urls.delete(url); revokeUrl(url); };
+    const render = OfflineAudioContext.prototype.startRendering;
+    let release: (() => void) | undefined;
+    let action = 'hold';
+    window.addEventListener('hold-export', () => { action = 'hold'; });
+    window.addEventListener('fail-export', () => { action = 'fail'; });
+    window.addEventListener('release-export', () => { action = ''; release?.(); });
+    window.addEventListener('read-audio-owners', () => {
+      document.documentElement.dataset.audioOwners = JSON.stringify({ frames: frames.size, urls: urls.size });
+    });
+    OfflineAudioContext.prototype.startRendering = async function () {
+      // The short ELSEWHERE export is stereo. Its waveform uses one stereo pair per track.
+      if (this.destination.channelCount === 2 && this.sampleRate === 44_100 && this.length === 132_300) {
+        if (action === 'fail') throw new Error('Test export interruption');
+        if (action === 'hold') {
+          document.documentElement.setAttribute('data-export-holding', 'true');
+          await new Promise<void>(resolve => { release = resolve; });
+          document.documentElement.removeAttribute('data-export-holding');
+        }
+      }
+      return render.call(this);
+    };
+  });
+  const dispatch = (event: string) => page.evaluate(name => window.dispatchEvent(new Event(name)), event);
+  const owners = () => page.evaluate(() => {
+    window.dispatchEvent(new Event('read-audio-owners'));
+    return JSON.parse(document.documentElement.dataset.audioOwners!) as { frames: number; urls: number };
+  });
+  const download = page.getByRole('button', { name: 'Render to WAV' });
+  const volume = page.getByRole('combobox', { name: 'Volume', exact: true });
+  const nav = page.getByRole('navigation', { name: 'Explorer', exact: true });
+  let downloads = 0;
+  page.on('download', () => { downloads++; });
+  await page.goto('/debug/audio/?vol=elsewhere&secs=1');
+  await expect(download).toBeEnabled();
+  await expect.poll(owners).toEqual({ frames: 0, urls: 0 });
+  await download.click();
+  await expect(page.locator('html')).toHaveAttribute('data-export-holding', 'true');
+  await volume.selectOption('daybreak');
+  await dispatch('release-export');
+  await expect(page.getByRole('heading', { name: 'DAYBREAK', exact: true })).toBeVisible();
+  await volume.selectOption('elsewhere');
+  await dispatch('hold-export');
+  await download.click();
+  await expect(page.locator('html')).toHaveAttribute('data-export-holding', 'true');
+  await nav.getByRole('link', { name: 'Overview', exact: true }).click();
+  await dispatch('release-export');
+  await expect(page.locator('html')).not.toHaveAttribute('data-export-holding', 'true');
+  expect(downloads).toBe(0);
+
+  await page.goto('/debug/audio/?vol=elsewhere&secs=1');
+  await dispatch('fail-export');
+  await download.click();
+  await expect(page.locator('#audio-status')).toHaveText('Export failed. Test export interruption');
+  await dispatch('release-export');
+  for (let run = 0; run < 2; run++) {
+    const next = page.waitForEvent('download');
+    await download.click();
+    const wav = await next;
+    expect(wav.suggestedFilename()).toBe('sofaraway-elsewhere.wav');
+    expect(await wav.failure()).toBeNull();
+    await expect.poll(owners).toEqual({ frames: 0, urls: 0 });
+  }
+  await page.getByRole('button', { name: 'Play all' }).click();
+  await expect.poll(async () => (await owners()).frames).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(owners).toEqual({ frames: 0, urls: 0 });
+});

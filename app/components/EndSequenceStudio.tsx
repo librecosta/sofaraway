@@ -99,6 +99,13 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
   }, [open]);
 
   useEffect(() => {
+    if (!flying) return;
+    const pause = () => { if (document.hidden) setFlying(false); };
+    document.addEventListener('visibilitychange', pause);
+    return () => document.removeEventListener('visibilitychange', pause);
+  }, [flying]);
+
+  useEffect(() => {
     if (available) {
       viewer.current?.setQuality(quality);
       viewer.current?.setDynamic(dynamic);
@@ -138,6 +145,7 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
 
   const view = inspection && preset ? inspection.view(preset, movement) : undefined;
   const relative = inspection ? station - inspection.plan.mainLastStation : 0;
+  const unavailable = status.startsWith('Live ending unavailable');
   const share = new URLSearchParams({
     vol: volumeId, mode, diff: difficulty, seed: String(seed), route: route === 'score' ? 'bonus' : route,
     q: quality, lights: String(dynamic), movement, beat: beat.toFixed(3),
@@ -184,7 +192,7 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
         <canvas ref={canvas} width={800} height={450} role="img" aria-label={`Live ${volume.name} ending`} />
         <span className={s.endingWhite} aria-hidden="true" />
       </>}
-      {status && <div className={s.status}><p role="status">{status}</p></div>}
+      {status && <div className={s.status}><p role={unavailable ? 'alert' : 'status'}>{status}</p></div>}
     </div>
     {inspection && <div className={s.actions}><a href={`/debug/endings/?${share}`}>Link to this view</a></div>}
     <p className={s.quiet}>Explore the last main gate, Encore and Afterglow. Music beat and world station can be set independently.</p>
@@ -197,7 +205,7 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
         <label>Route <select aria-label="Route" disabled={!available} value={route} onChange={e => changePlan(mode, seed, e.currentTarget.value as RouteKind)}>
           {routes.map(value => <option key={value} value={value}>{ROUTE_LABELS[value]}</option>)}
         </select></label>
-        <label>Chart difficulty <select disabled={mode === 'sightseeing'} value={mode === 'sightseeing' ? 'normal' : difficulty}
+        <label>Chart difficulty <select disabled={mode === 'sightseeing' || (open && !available && !unavailable)} value={mode === 'sightseeing' ? 'normal' : difficulty}
           onChange={e => changePlan(mode, seed, route, e.currentTarget.value as Difficulty)}>
           <option value="easy">Easy</option><option value="normal">Normal</option>
           <option value="hard">Hard</option><option value="impossible">Impossible</option>

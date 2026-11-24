@@ -115,7 +115,7 @@ test('old experiment and audio URLs preserve settings and replace the history en
 test('the Explorer navigation fits desktop, tablet and mobile and keeps keyboard focus visible', async ({ page }) => {
   await page.goto('/debug/');
   const navigation = page.getByRole('navigation', { name: 'Explorer', exact: true });
-  for (const [width, height] of [[1920, 1080], [1280, 720], [960, 540], [390, 844], [360, 760]]) {
+  for (const [width, height] of [[1920, 1080], [1440, 900], [1280, 720], [960, 540], [390, 844], [360, 760]]) {
     await page.setViewportSize({ width, height });
     await expect(navigation.getByRole('link', { name: 'Interface' })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
@@ -130,5 +130,11 @@ test('the Explorer navigation fits desktop, tablet and mobile and keeps keyboard
   await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', { name: 'World Explorer' })).toBeVisible();
+  await expect(page.getByRole('main')).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  await navigation.getByRole('link', { name: 'Audio', exact: true }).click();
+  const audio = navigation.getByRole('link', { name: 'Audio', exact: true });
+  await expect(audio).toHaveAttribute('aria-current', 'page');
+  await expect(audio).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('main')).toBeFocused();
 });

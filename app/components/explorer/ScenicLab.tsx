@@ -46,7 +46,8 @@ export default function ScenicLab({ id, lab, anchor }: {
   const [view, setView] = useState(() => ({
     station: previewNumber(params, 'station', reference.station(initialBeat, 'standard'), START_DISTANCE, reference.station(maxBeat, 'standard')),
     beat: previewNumber(params, 'beat', initialBeat, 0, maxBeat), quality: previewQuality(params, beatInspection ? 'high' : 'auto'),
-    dynamic: !beatInspection, reduced: false, mode: 'standard' as PlayMode,
+    dynamic: params.get('lights') === 'true' || (!beatInspection && params.get('lights') !== 'false'),
+    reduced: params.get('reduce') === 'true', mode: 'standard' as PlayMode,
     yaw: skyglass ? 0 : previewNumber(params, 'view', 0, -36, 36),
     camera: (Object.keys(skyglassViews).find(key => key === params.get('view')) ?? initialCamera) as SkyglassView,
     layer: 'Composite' as CirrusLayer, pattern: 'single-color' as LightPattern, preset: 'Pure Frame', boost: false,
@@ -202,9 +203,10 @@ export default function ScenicLab({ id, lab, anchor }: {
     change({ beat: low / secondsPerBeat });
   }
 
-  const snapshot = new URLSearchParams({ vol: id, station: shown.station.toFixed(3), beat: shown.beat.toFixed(3),
-    q: view.quality, view: skyglass ? view.camera : String(view.yaw) });
-  return <section className={s.preview} id={lighting ? 'lighting' : skyglass ? 'daybreak-cabin' : 'volumes'}>
+  const snapshot = new URLSearchParams({ vol: id, station: position.toFixed(3), beat: lightBeat.toFixed(3),
+    q: view.quality, view: skyglass ? view.camera : String(view.yaw), lights: String(view.dynamic), reduce: String(view.reduced) });
+  const gameTime = ready ? shown.seconds : stationBeat(volume, position, view.mode) * secondsPerBeat;
+  return <section className={s.preview} id={skyglass ? 'daybreak-cabin' : undefined}>
     <SceneViewport volume={id} label={lighting ? `Live ${volume.name} lighting` : `Live ${volume.name} world`}
       canvas={canvas} open={open} status={status} onOpen={() => {
         setReady(false); setStatus('Loading live scene…'); setOpen(true); setAttempt(value => value + 1);
@@ -241,7 +243,7 @@ export default function ScenicLab({ id, lab, anchor }: {
             {playing ? 'Pause' : lighting ? 'Play continuously' : 'Play flight'}
           </button>
           <button type="button" onClick={reset}>Reset</button>
-          <a href={previewGameHref(id, shown.seconds, view.quality, view.dynamic, view.mode, example?.side, view.boost)}>Open in game</a>
+          <a href={previewGameHref(id, gameTime, view.quality, view.dynamic, view.mode, example?.side, view.boost)}>Open in game</a>
           <a href={`/debug/${lab}/?${snapshot}`}>Link to this view</a>
         </div>
       </SceneGroup>
@@ -253,7 +255,7 @@ export default function ScenicLab({ id, lab, anchor }: {
             onChange={event => change({ yaw: event.currentTarget.valueAsNumber })} /></label>
         </SceneGroup>
       </details>}
-      <SceneGroup title="Camera and quality">
+      <SceneGroup title="Camera and quality" id={skyglass ? 'environment' : undefined}>
         {skyglass && <>
           <label>Camera view<select value={view.camera} onChange={event => change({ camera: event.currentTarget.value as SkyglassView })}>
             {Object.keys(skyglassViews).map(name => <option key={name}>{name}</option>)}
