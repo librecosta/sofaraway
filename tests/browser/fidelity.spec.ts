@@ -8,8 +8,7 @@ import { VOLUMES } from '../../app/game/core/volumes';
 
 const expectedCounts = [[140, 141, 141], [120, 120, 120], [161, 161, 161], [92, 92, 92, 135]];
 // ELSEWHERE, DESCENT and ORBIT default to Main.
-const expectedScores = [[66201, 105326, 156826], [56470, 89395, 133295],
-  [76290, 120915, 180415]];
+const expectedScores = [[66201, 105326, 156826], [56470, 89395, 133295]];
 
 for (const [index, volume] of VOLUMES.entries()) {
   test(`${volume.id} completes all difficulties with collision enabled`, async ({ page }) => {
@@ -27,7 +26,7 @@ for (const [index, volume] of VOLUMES.entries()) {
         await expect(page.locator('#hud-gates')).toHaveText(`1/${count}`);
       }
       await page.goto(`/?vol=${volume.id}&diff=${difficulty}&q=low&t=${time}&align=1&god=0&dbg=1`);
-      const reference = volume.id === 'orbit' ? new Simulation(volume, { align: true }) : undefined;
+      const reference = volume.id === 'orbit' || volume.id === 'descent' ? new Simulation(volume, { align: true }) : undefined;
       reference?.start(difficulty);
       if (reference) while (reference.phase !== 'results') reference.step(STEP, idleInput);
       await expect(page.locator('#over')).toBeVisible();
@@ -39,8 +38,8 @@ for (const [index, volume] of VOLUMES.entries()) {
       await expect(page.locator('#over-score')).toHaveText(String(reference ? Math.floor(reference.score) : expectedScores[index][i]));
       const debug = await page.locator('#errbox').evaluate(el => JSON.parse(el.textContent!));
       expect(debug.hitCount).toBe(0);
-      const pickup = volume.id === 'elsewhere' ? 'missed' : volume.id === 'daybreak' ? 'collected' : null;
-      expect(debug.pickup).toEqual(pickup ? { kind: expect.any(String), status: pickup } : null);
+      const pickup = reference?.pickup?.status ?? (volume.id === 'elsewhere' ? 'missed' : 'collected');
+      expect(debug.pickup).toEqual({ kind: expect.any(String), status: pickup });
     }
     expect(errors).toEqual([]);
   });

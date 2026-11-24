@@ -3,8 +3,11 @@ import type { Group, Mesh, MeshBasicMaterial } from 'three';
 import type { GameOptions } from '../../app/game/contracts';
 import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
+import { descentCargo } from '../../app/game/core/descent-routes';
 import { idleInput } from '../../app/game/core/input';
+import { orbitCargo } from '../../app/game/core/orbit-routes';
 import { PICKUP_APPEAR_BEAT, PICKUP_BEAT, pickupForSeed } from '../../app/game/core/pickups';
+import { volumeById } from '../../app/game/core/volumes';
 import type {} from '../harness/main';
 import type { Simulation } from '../../app/game/core/simulation';
 import type { Graphics } from '../../app/game/graphics/scene.client';
@@ -15,6 +18,20 @@ const cases = [
   { kind: 'resonance', boost: true, feedback: 'RESONANCE ×8', badge: 'RESONANCE ×8' },
   { kind: 'lumen', boost: false, feedback: 'LUMEN +5000', badge: null },
 ] as const;
+
+for (const [volumeId, beat] of [['descent', descentCargo.beat], ['orbit', orbitCargo.beat]] as const) {
+  const { bpm } = volumeById(volumeId);
+  test(`${volumeId} renders and collects the shared pickup after the merge`, async ({ page }, info) => {
+    const capture = (at: number) => page.goto(`/?vol=${volumeId}&diff=normal&q=high&align=1&god=0&dbg=1&t=${at * 60 / bpm}`);
+    const diagnostics = page.locator('#errbox');
+    await capture(beat - 1.5);
+    await expect(diagnostics).toContainText(/"pickup":\{"kind":".+?","status":"pending"\}/);
+    await diagnostics.evaluate(el => { el.style.visibility = 'hidden'; });
+    await page.locator('canvas').screenshot({ path: info.outputPath(`${volumeId}-pickup-approach.png`) });
+    await capture(beat + .5);
+    await expect(diagnostics).toContainText(/"pickup":\{"kind":".+?","status":"collected"\}/);
+  });
+}
 
 for (const { kind, boost, feedback, badge } of cases) {
   test(`${kind} renders on approach, survives pause and resets on exit or retry`, async ({ page }) => {

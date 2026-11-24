@@ -182,9 +182,7 @@ export class Simulation {
     return this.branch?.side ? this.junctionPath!.stationAt(this.distance, this.branch.side) : this.distance;
   }
   get pickupVisible() {
-    const route = this.gameplay.pickup?.route;
-    return this.pickup?.status === 'pending' && (!route || this.route === route) &&
-      this.trackDistance >= this.pickupPreviewStation;
+    return this.pickup?.status === 'pending' && this.trackDistance >= this.pickupPreviewStation;
   }
   get section() { return sectionAt(this.volume, this.beat)?.name ?? this.volume.sections.at(-1)!.name; }
   get progress() { return this.beat / this.volume.beats; }
@@ -404,8 +402,7 @@ export class Simulation {
     while (travel > 0) {
       const gate = this.chart[this.judged];
       const encore = this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined;
-      const pickupRoute = this.gameplay.pickup?.route;
-      const pickup = this.pickup?.status === 'pending' && (!pickupRoute || this.route === pickupRoute)
+      const pickup = this.pickup?.status === 'pending'
         ? this.junctionPath?.arcAt(this.pickupStation, this.branch?.side ?? 'center') ?? this.pickupStation : Infinity;
       const split = this.branch && !this.branch.side ? this.junctionPath!.split : Infinity;
       const station = Math.min(gate?.routeStation ?? Infinity, pickup, split, encore?.routeStation ?? Infinity);
@@ -467,8 +464,6 @@ export class Simulation {
   private chooseRoute(side: RouteSide) {
     const { layout } = this.branch!;
     this.branch = { layout, side };
-    const pickupRoute = this.gameplay.pickup?.route;
-    if (pickupRoute && layout[side] !== pickupRoute) this.pickup = null;
     this.chart.splice(this.judged, this.chart.length - this.judged,
       ...this.branchGates![layout[side]], ...this.suffixBySide![side]);
     this.previewGates = this.previewGates.filter(gate => gate.worldStation < this.junctionPath!.end);

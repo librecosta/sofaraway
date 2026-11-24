@@ -26,7 +26,12 @@ The chamber takes over the tunnel's streaming interval. It releases two geometry
 
 D2-A3-C1 supersedes the FLIGHT gate counts above. The last shared approach shutter is at beat 126.5. The rails display the seeded side colors at beat 128, where the hologram appears. The route still locks at beat 138.92's world station. At the full-Boost speed of 49.3 units per second, the last shutter is 186.3 units or 3.78 seconds before the choice, and the hologram is visible for 3.32 seconds before it. Main and Challenge resume at beat 145, when the tracks reach full separation. Bonus resumes at 146 and retains its supply carrier at 161. All three tracks clear their final shutter by beat 159. The shared chart resumes at beat 169, 30 units after the rejoin, with a centered Slice opening. Standard totals are 161 Main, 161 Challenge and 158 Bonus. Sightseeing samples 54 Main, 54 Challenge and 53 Bonus. The current `descent-junction-approach` record ID retains the original spiral-junction scores separately.
 
-Use `/debug/#descent` for seven chapter views and the Transfer chamber controls. Approach can scrub from the last shared gates through recognition, choice and track entry. The same controls expose all three guideways, the supply carrier and the merge. Use `/debug/#gates-descent` for all gate states. The ordinary gameplay route is `/?vol=descent`.
+Use `/debug/#descent` for seven chapter views and the Transfer chamber controls. Approach can scrub from the last shared gates through recognition, choice and track entry. The same controls expose all three guideways and the merge. Use `/debug/#gates-descent` for all gate states. The ordinary gameplay route is `/?vol=descent`.
+
+The shared-pickup update moves the carrier to the CORE centerline at HOLD beat
+276, between the shutters at 272 and 280. Its eight-beat preview starts at 268.
+All three routes can reach it after merging. The HOLD chapter camera previews
+the new position. The former Bonus guideway cradle was removed.
 
 D2-A3-C4-A adds Impossible to Standard using the shared one life, 1.15× speed and 3.4× score rules. It adds six LOCK, six shared FLIGHT, seven PRESSURE and seven LOCKDOWN shutters on CONTROL percussion onsets. Main adds two more shutters inside the transfer chamber, Challenge adds three and Bonus keeps its five original shutters and cargo. The resulting totals are 189 Main, 190 Challenge and 184 Bonus. The original C4-A release used the C1 world stations and the `descent-junction-approach` record ID. The shared path sizing leaves at least 650 units beyond the maximum sustained Boost finish.
 

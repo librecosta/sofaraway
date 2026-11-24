@@ -11,7 +11,8 @@ export const descentJunction = {
   charts: descentRouteCharts,
 } satisfies BranchSpec;
 
-export const descentCargo = { beat: 161, preview: 153, x: 0, y: 0, radius: .95, route: 'score' } as const;
+// HOLD leaves room to approach the carrier between the CORE shutters.
+export const descentCargo = { beat: 276, preview: 268, x: 0, y: 0, radius: .95 } as const;
 export const descentRouteSwatches = { main: '#a3d8e6', challenge: '#a9a2fa', score: '#ffbc73' } as const;
 
 function routeGate(beat: number, kind: ChartGate['kind'], sector: number, axis: 0 | 1 = 0): ChartGate {

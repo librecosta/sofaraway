@@ -50,7 +50,7 @@ test('touch chooses the visible astral route, whose entry beacons survive pause 
   expect((await state()).metrics.entryBeacons!.colors).toEqual(['#f2c575', '#66ddec', '#c78bf3']);
   await page.mouse.move(480, 270);
   await page.evaluate(() => window.b0Harness.advanceAndPause(146));
-  expect((await state()).pickup?.status).toBe('collected');
+  expect((await state()).pickup?.status).toBe('pending');
   expect((await state()).metrics.entryBeacons?.visible).toBe(false);
   await page.evaluate(async () => {
     window.b0Harness.returnToMenu();

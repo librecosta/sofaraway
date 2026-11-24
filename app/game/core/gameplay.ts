@@ -1,6 +1,6 @@
 import type { ChartGate } from './chart';
 import { orbitReferenceChart } from './orbit-chart';
-import type { BranchSpec, RouteKind } from './branches';
+import type { BranchSpec } from './branches';
 import { orbitJunction, orbitCargo } from './orbit-routes';
 import { elsewhereBranch } from './branches';
 import { DAYBREAK_PICKUP_BEAT, daybreakJunctionWindow, daybreakRouteCharts } from './daybreak-chart';
@@ -10,7 +10,7 @@ import type { GateKind } from './volumes';
 import type { VolumeId } from '../contracts';
 import { clamp } from './collision';
 
-interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number; route?: RouteKind }
+interface PickupSpec { beat: number; preview: number; x: number; y: number; radius: number }
 interface EncoreSpec {
   first?: number; minSpacing?: number; maxSpacing?: number; kinds?: readonly GateKind[]; reserve: number;
   impossibleSpacing?: number;

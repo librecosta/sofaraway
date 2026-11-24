@@ -420,9 +420,7 @@ class VolumeScene {
       this.pickup = new PickupVisual(sim.pickup.kind, !!this.facility);
       this.scene.add(this.pickup.group);
     }
-    const { p, r, u, f } = spec.route && sim.junctionPath && sim.branch?.side
-      ? sim.junctionPath.sample(sim.pickupStation, sim.branch.side, this.pickupFrame)
-      : this.path.sample(sim.pickupStation, this.pickupFrame);
+    const { p, r, u, f } = this.path.sample(sim.pickupStation, this.pickupFrame);
     const group = this.pickup.group;
     group.position.copy(p).addScaledVector(r, spec.x).addScaledVector(u, spec.y);
     this.basis.makeBasis(r, u, this.backwards.copy(f).negate());

@@ -5,7 +5,7 @@ import { FixedStepClock, MAX_STEPS, STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
-import { VOLUMES } from '../../app/game/core/volumes';
+import { sectionAt, VOLUMES, volumeById } from '../../app/game/core/volumes';
 
 const gatesOf = (sim: Simulation): RunGate[] => Reflect.get(sim, 'chart');
 
@@ -69,6 +69,23 @@ test.each(playModes)('%s Boost reaches the same pickup earlier, clear of neighbo
   expect(results[1].station).toBe(results[0].station);
   expect(results[1].time).toBeLessThan(results[0].time);
   console.log('PICKUP_SPACE ' + JSON.stringify({ mode, cruise: results[0], boost: results[1] }));
+});
+
+test.each([['descent', 'HOLD'], ['orbit', 'ECLIPSE']] as const)('%s shares one clear %s pickup station across all routes', (id, section) => {
+  const volume = volumeById(id);
+  for (const mode of playModes) for (const difficulty of [...difficulties, 'impossible'] as const) {
+    const stations = routeSides.map(side => {
+      const sim = new Simulation(volume, { align: true, branchSide: side });
+      sim.start(difficulty, 0, 'lumen', mode);
+      const { junctionPath, pickupStation, pickupPreviewStation } = sim;
+      expect(sectionAt(volume, sim.gameplay.pickup!.beat)?.name).toBe(section);
+      expect(pickupPreviewStation).toBeGreaterThan(junctionPath!.end);
+      expect(Math.min(...sim.mainGates.map(gate => Math.abs(gate.worldStation - pickupStation)))).toBeGreaterThan(12);
+      expect(junctionPath!.sample(pickupStation, side).p.distanceTo(sim.path.sample(pickupStation).p)).toBe(0);
+      return pickupStation;
+    });
+    expect(new Set(stations).size).toBe(1);
+  }
 });
 
 test('song end leaves an unreachable station unjudged and includes it in planned accuracy', () => {

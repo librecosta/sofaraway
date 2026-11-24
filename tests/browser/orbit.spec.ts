@@ -280,16 +280,12 @@ for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard
       await poll(async () => (await snap()).gatesPassed).toBe(++passed);
       if (!index) await page.locator('canvas').screenshot({ path: info.outputPath('orbit-branch.png') });
     }
-    if (route === 'score') {
-      await aim(0, 0);
-      await poll(async () => (await state()).pickup?.status).toBe('collected');
-    }
     if (boost) await page.keyboard.up('Shift');
     await gateAim(exit);
     await poll(async () => (await state()).lastGate?.beat).toBe(exit.beat);
     await poll(async () => (await snap()).gatesPassed).toBe(++passed);
     expect(await snap()).toMatchObject({ phase: 'playing', lives: sim.lives, gatesPassed: passed, gatesTotal: routeTotal });
-    expect(await state()).toMatchObject({ sharedPath: true, metrics: { chunks: 0, junctionMeshes: 0 } });
+    expect(await state()).toMatchObject({ sharedPath: true, pickup: { status: 'pending' }, metrics: { chunks: 0, junctionMeshes: 0 } });
     await page.evaluate(() => window.b0Harness.dispose());
   });
 }

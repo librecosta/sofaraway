@@ -181,7 +181,7 @@ test.each(endingRuns)('DESCENT %s %s clears each route with 60 Hz keys and 150 m
     expect(sim.result).toMatchObject({ title: 'ESCAPED', route, accuracy: 1, unreached: 0 });
     expect(sim.hits).toBe(0);
     expect(sim.gatesPassed).toBe(difficulty === 'impossible' ? totals[route] : route === 'score' ? 158 : 161);
-    expect(sim.pickup?.status).toBe(route === 'score' ? 'collected' : undefined);
+    expect(sim.pickup?.status).toBe('collected');
     expect(sim.path.length - sim.trackDistance).toBeGreaterThan(650);
     expect(firstWhiteAt).toBeGreaterThan(lastCrossing);
     expect(firstWhiteAt).toBeLessThan(Infinity);

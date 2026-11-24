@@ -104,7 +104,7 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   await page.getByRole('button', { name: 'Open live facility' }).click();
   const canvas = page.getByRole('img', { name: 'Live DESCENT facility' });
   const chapter = page.getByRole('combobox', { name: 'CONTROL chapter' });
-  const frames = [16, 39, 117, 207, 271, 314, 377];
+  const frames = [16, 39, 117, 207, descentCargo.beat - .9, 314, 377];
   const stations: number[] = [];
   for (const [index, beat] of frames.entries()) {
     await chapter.selectOption(String(index));
@@ -158,9 +158,6 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   await transfer.selectOption({ label: 'Bonus guideway' });
   await expect(canvas).toHaveAttribute('data-route', 'score');
   expect((await canvas.screenshot({ path: info.outputPath('guideway-bonus.png') })).equals(challenge)).toBe(false);
-  await transfer.selectOption({ label: 'Supply carrier' });
-  await expect(canvas).toHaveAttribute('data-light-beat', (descentCargo.beat - .9).toFixed(3));
-  await canvas.screenshot({ path: info.outputPath('guideway-supply-carrier.png') });
   expect(errors).toEqual([]);
 });
 
@@ -511,7 +508,6 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
     const lastOnRoute = (await state()).lastGate!;
     if (speed === 'intervals') await page.keyboard.up('Shift');
     await steer(0, 0);
-    if (route === 'score') await poll(async () => (await state()).pickup?.status).toBe('collected');
     await aim(exit);
     await poll(async () => (await state()).trackDistance).toBeGreaterThanOrEqual(path.end);
     const merged = await state();
@@ -522,6 +518,7 @@ for (const { route, difficulty, mode, seed, speed } of transferFlights) {
       lives: mode === 'sightseeing' ? 5 : difficulty === 'hard' || impossible ? 1 : 2 });
     if (impossible) expect((await snap()).gatesTotal).toBe(190);
     const after = await state();
+    expect(after.pickup?.status).toBe('pending');
     expect(after.sharedPath).toBe(true);
     expect(after.lastGate?.beat).toBe(exit.beat);
     await info.attach('choice-window', { contentType: 'application/json', body: JSON.stringify({

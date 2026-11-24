@@ -8,4 +8,5 @@ export const orbitJunction = {
   merge: { standard: 148, sightseeing: 148 }, rejoin: 156, spacing: 22, rise: 0,
   sightseeingPattern: 'preserve-main', charts: orbitRouteCharts,
 } satisfies BranchSpec;
-export const orbitCargo = { beat: 145, preview: 137, x: 0, y: 0, radius: .95, route: 'score' } as const;
+// The two ECLIPSE gates leave a clear shared approach to the pickup.
+export const orbitCargo = { beat: 238, preview: 230, x: 0, y: 0, radius: .95 } as const;

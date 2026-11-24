@@ -514,7 +514,7 @@ test.each(descentRuns)('$mode $route seed $seed completes with real 60 Hz steeri
     expect(committedAt! - recognizedAt!).toBeGreaterThan(3.25);
     expect(sim.branchGates![route][0].crossedAt! - committedAt!).toBeGreaterThan(1.8);
     expect(sim.result).toMatchObject({ title: 'ESCAPED', unreached: 0, accuracy: 1, route });
-    expect(sim.pickup?.status).toBe(route === 'score' ? 'collected' : undefined);
+    expect(sim.pickup?.status).toBe('collected');
   }
 });
 
@@ -569,8 +569,7 @@ test.each(['standard', 'sightseeing'] as const)('TRANSFER in %s crosses above an
       checkClear(gate.worldStation, ...lanePoint(gate.kind, gate.open, gate.axis));
     }
   }
-  const cargoStation = path.distanceAt(descentCargo.beat);
-  expect(Math.min(...sim.branchGates!.score.map(gate => Math.abs(cargoStation - gate.worldStation)))).toBeGreaterThan(12);
+  expect(path.distanceAt(descentCargo.preview)).toBeGreaterThan(path.end);
   junction.dispose();
   expect(disposed).toEqual(new Set([chase, chase.geometry]));
   bothFaces.dispose();

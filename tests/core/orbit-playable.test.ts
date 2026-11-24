@@ -148,8 +148,7 @@ test.each([
       const index = sim.gatesJudged;
       const gate = sim.mainGates[index] ?? plan.gates[extra];
       const choosing = !!sim.routeGuide && !sim.branch!.side;
-      const pickup = sim.route === 'score' && sim.pickup?.status === 'pending' && sim.pickupStation - sim.trackDistance < (mode === 'sightseeing' ? 6 : 17)
-        && sim.trackDistance < sim.pickupStation;
+      const pickup = sim.pickupVisible && gate && gate.worldStation > sim.pickupStation;
       if (choosing && !guideAt) guideAt = sim.time;
       let [x, y] = choosing ? [side === 'left' ? -3.2 : side === 'right' ? 3.2 : 0, 0]
         : pickup ? [0, 0] : gate ? lanePoint(gate.kind, gate.open, gate.axis) : [0, 0];
@@ -167,7 +166,7 @@ test.each([
     expect(sim.result, `${seed}/${side} at ${sim.trackDistance}. Unpassed beats: ${sim.mainGates.filter(gate => gate.crossedAt === undefined || gate.hit).map(gate => gate.beat)}`)
       .toMatchObject({ title: 'ESCAPED', passed: sim.gatesTotal, accuracy: 1, route });
     expect(chosenAt - guideAt).toBeGreaterThan(1.5);
-    expect(sim.pickup?.status === 'collected').toBe(sim.route === 'score');
+    expect(sim.pickup?.status).toBe('collected');
     expect(sim.beat).toBe(384);
     if (mode === 'standard' && motion === 'cruise' && side === 'center') {
       for (const gate of sim.mainGates) expect(Math.abs(gate.crossedAt! - gate.beat * sim.secondsPerBeat)).toBeLessThan(STEP);

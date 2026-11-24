@@ -46,11 +46,13 @@ Fixed-step checks include continuous keyboard pursuit and every incoming
 aperture with 150 ms reaction at maximum Boost.
 
 RINGBREAK uses preview 108, choice 120, route entry 128, merge 148 and rejoin
-156. Ordinary gates are absent from 108–128 and 147–158. Bonus cargo is at 145.
+156. Ordinary gates are absent from 108–128 and 147–158.
 Main, Challenge and Bonus retain the shared seeded route system. OrbitWorld
 protects the actual three BranchPaths and their 450-unit gate observation spans.
 Natural S-curves remain outside the selection window.
 The standard run totals are 92 on Main, 93 on Challenge and 89 on Bonus.
+One pickup sits on the shared centerline at ECLIPSE beat 238, between the gates
+at 232 and 244. Its preview starts at 230. Every route can reach it after merging.
 
 Encore uses the same three aperture families and shared bounded world-space
 planner, reserving eight seconds at maximum Boost for open-space Afterglow.

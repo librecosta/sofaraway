@@ -16,7 +16,7 @@ import type { ScenicPreview } from '../game/debug/scenic-preview.client';
 import s from '../styles/debug.module.css';
 
 const descent = volumeById('descent');
-const offsets = [16, 7, 21, 31, 15, 26, 25];
+const offsets = [16, 7, 21, 31, descentCargo.beat - controlTrack.sections[4].startBeat - .9, 26, 25];
 const layout = branchLayout(CAPTURE_RUN_SEED);
 const approachStart = descentJunction.preview - 5;
 const secondsPerBeat = 60 / descent.bpm;
@@ -32,7 +32,6 @@ const junctionViews: readonly { label: string; beat: number; route?: RouteKind }
   { label: 'Main spine', beat: 148, route: 'main' },
   { label: 'Challenge guideway', beat: 151, route: 'challenge' },
   { label: 'Bonus guideway', beat: 151, route: 'score' },
-  { label: 'Supply carrier', beat: descentCargo.beat - .9, route: 'score' },
   { label: 'Merge', beat: descentJunction.rejoin - 2.2, route: 'challenge' },
 ];
 

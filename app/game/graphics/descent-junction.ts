@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { routeSides } from '../core/branches';
 import type { BranchLayout, RouteSide } from '../core/branches';
 import { facilityStages } from '../core/descent-facility';
-import { descentCargo, descentRouteSwatches } from '../core/descent-routes';
+import { descentRouteSwatches } from '../core/descent-routes';
 import { SECTION } from '../core/section';
 import type { BranchPath } from './branch-path';
 import { collar, conduit, crossBeam, point, section } from './descent-architecture';
@@ -177,19 +177,6 @@ export class DescentJunction {
           .16, .74, rail, 0, IndustrialSurface.Machined);
       }
     }
-    const cargoSide = layout.left === 'score' ? 'left' : 'right';
-    const cargoStation = path.distanceAt(descentCargo.beat);
-    const cargo = path.sample(cargoStation, cargoSide);
-    const approach = path.sample(cargoStation - 8, cargoSide);
-    const exit = path.sample(cargoStation + 6, cargoSide);
-    const amber = tint.set(descentRouteSwatches.score);
-    lights.lightAt(ControlLamp.Route, cargoStation);
-    for (const x of [-2.05, 2.05]) {
-      conduit(metal, approach, exit, x, -3.56, .83, .54, rail, IndustrialSurface.Machined);
-      conduit(lights, approach, exit, x, -3.28, .15, .04, amber);
-    }
-    crossBeam(metal, cargo, [-2.55, -3.4], [2.55, -3.4], .31, 1.18, rib);
-    crossBeam(lights, cargo, [-1.32, -3.09], [1.32, -3.09], .064, .88, amber);
     const hull = new THREE.Mesh(metal.build(), shell);
     hull.name = 'descent-transfer-chamber';
     const guides = new THREE.Mesh(lights.build(), fixtures);
