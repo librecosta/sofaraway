@@ -5,7 +5,7 @@ import { fallback, ready, record, startButton, startRun } from './support';
 test('material lab renders lit specimens or clearly exposes raw channels', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/debug/');
+  await page.goto('/debug/legacy/');
   const surface = page.locator('#materials');
   await expect(surface.locator('figure canvas[data-ready=true]')).toHaveCount(6);
   const lit = await surface.locator('canvas[data-mode=lit]').count();

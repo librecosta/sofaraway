@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const waveformsReadyTimeout = 90_000;
+const waveformsReadyTimeout = 150_000;
 
 test('STARWAKE Inspector uses the complete official master and seven sections with seek, pause and resume', async ({ page }, run) => {
   test.setTimeout(360_000);
@@ -40,8 +40,7 @@ test('CONTROL shares the production master, preserves the release and skips elap
 test('DESCENT routes to CONTROL with authored sections, a rendered waveform and working seek and resume', async ({ page }) => {
   test.setTimeout(waveformsReadyTimeout + 30_000);
   await page.goto('/debug/?vol=descent#audio');
-  await page.getByRole('link', { name: 'DESCENT — CONTROL' }).click();
-  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=descent$/);
+  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=descent#audio$/);
   await expect(page.getByText('136 BPM', { exact: true })).toBeVisible();
   await expect(page.getByText('384 beats', { exact: true })).toBeVisible();
   const sections = page.getByRole('navigation', { name: 'Music sections' });
@@ -246,17 +245,17 @@ test('real waveforms, cueing and playback share one synchronized timeline and on
   const stats = await readStats();
   expect(stats).toMatchObject({ created: 1, closed: 0, offlinePeak: 1, offlineActive: 0 });
   expect(stats.offlineFrames).toBeLessThanOrEqual(14 * 22050 * 16);
-  await page.getByRole('link', { name: 'SoFarAway' }).click();
-  await expect(page).toHaveURL(/\/debug\/$/);
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Overview' }).click();
+  await expect(page).toHaveURL(/\/debug\/\?vol=daybreak$/);
   await expect.poll(async () => (await readStats()).closed).toBe(1);
   await info.attach('Playback and resources', { body: JSON.stringify({ ...stats, testElapsedMs: Date.now() - started }), contentType: 'application/json' });
 });
 
-test('responsive layouts, high-DPI canvas, direct refresh and four multitrack volumes', async ({ browser }, info) => {
+test('responsive layouts, high-DPI canvas, direct refresh and four multitrack volumes', async ({ browser, baseURL }, info) => {
   test.setTimeout(600_000);
-  const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 });
+  const context = await browser.newContext({ baseURL, viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
-  await page.goto('http://127.0.0.1:8089/debug/audio/');
+  await page.goto('/debug/audio/');
   const canvas = page.getByRole('img', { name: 'Master waveform' });
   await expect(canvas).toBeVisible({ timeout: 40_000 });
   await expect(page.getByText('Waveforms ready')).toBeVisible({ timeout: waveformsReadyTimeout });

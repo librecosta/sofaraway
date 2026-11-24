@@ -5,31 +5,26 @@
   font-display: swap;
 }
 
-body:has(.page) { margin: 0; background: #091116; }
-
 .page {
-  --panel: #101b22;
+  --panel: var(--explorer-surface);
   --lane: #15252f;
   --line: #304550;
-  --text: #e6eff2;
-  --muted: #9caeb9;
-  --signal: #80e0d0;
+  --text: var(--explorer-text);
+  --muted: var(--explorer-muted);
+  --signal: var(--explorer-accent);
   --channel: 53px;
   --ruler: 52px;
   color: var(--text);
-  min-height: 100vh;
-  padding: clamp(12px, 2.4vw, 40px);
   font: .875rem/1.4 system-ui, sans-serif;
   color-scheme: dark;
 }
 
 .page *, .page *::before, .page *::after { box-sizing: border-box; }
-.workspace { background: var(--panel); padding: clamp(14px, 2vw, 34px); border-radius: 16px; max-width: 2020px; margin: 0 auto; }
+.workspace { background: var(--panel); padding: clamp(10px, 2vw, 28px); border: 1px solid var(--explorer-line); border-radius: 9px; max-width: 2020px; margin: 0 auto; }
 .header { display: flex; justify-content: space-between; align-items: end; flex-wrap: wrap; gap: 8px 20px; }
-.header h1 { font: 700 clamp(1.8rem, 3vw, 2.9rem)/1 "Chakra Petch", system-ui, sans-serif; margin: 8px 0 0; letter-spacing: .025em; }
-.back { color: var(--signal); text-decoration: none; }
-.back:hover { text-decoration: underline; text-underline-offset: 3px; }
-.breadcrumb, .metadata, .footer, .export { color: var(--muted); }
+.header h2 { font: 700 clamp(1.65rem, 3vw, 2.55rem)/1 "Chakra Petch", system-ui, sans-serif; margin: 0; letter-spacing: .025em; }
+.metadata, .footer, .export { color: var(--muted); }
+.export a { color: var(--signal); text-underline-offset: .2em; }
 .metadata { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .volume { display: flex; align-items: center; gap: 6px; }
 .volume select { max-width: 115px; }
@@ -107,8 +102,9 @@ body:has(.page) { margin: 0; background: #091116; }
 .export button { font-size: .77rem; }
 
 @media (max-width: 680px) {
-  .page { --channel: 55px; padding: 0; }
+  .page { --channel: 52px; }
   .workspace { padding: 13px 10px; border-radius: 0; }
+  .metadata { gap: 5px 10px; font-size: .8rem; }
   .editor { grid-template-columns: 158px minmax(0, 1fr); }
   .channel { padding-inline: 2px 5px; }
   .controlHeader { padding-inline: 3px; }
@@ -121,8 +117,15 @@ body:has(.page) { margin: 0; background: #091116; }
 }
 
 @media (max-height: 755px) and (min-width: 681px) {
-  .page { --channel: 45px; padding-block: 12px; }
+  .page { --channel: 45px; }
   .workspace { padding-block: 14px; }
   .channel { padding-block: 0; }
   .channelTop button { min-height: 23px; }
+}
+
+@media (max-height: 640px) and (min-width: 721px) {
+  .page { --channel: 41px; --ruler: 48px; }
+  .workspace { padding-block: 7px; }
+  .transport { margin-top: 4px; padding-top: 4px; }
+  .navigation { padding-block: 4px; }
 }

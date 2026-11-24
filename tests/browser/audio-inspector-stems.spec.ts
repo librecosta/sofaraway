@@ -68,7 +68,7 @@ test('four-volume live mixing, interruption, switching and cleanup', async ({ pa
   }
   for (const id of ['daybreak','orbit','descent','elsewhere'])
     await page.getByRole('combobox',{name:'Volume',exact:true}).selectOption(id);
-  await page.getByRole('link',{name:'SoFarAway',exact:true}).click();
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Overview' }).click();
   await expect.poll(() => page.evaluate(() => (window as any).stemLive.contexts.every((ctx:AudioContext) => ctx.state==='closed'))).toBe(true);
   const measured = await page.evaluate(() => { const s=(window as any).stemLive; return { contexts:s.contexts.length, states:s.contexts.map((c:AudioContext)=>c.state),sources:s.sources,live:s.live,maxLive:s.maxLive,peak:s.peak }; });
   expect(measured.live).toBe(0);

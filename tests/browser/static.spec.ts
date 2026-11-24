@@ -25,7 +25,7 @@ test('the old audio address leads to the unified WAV exporter', async ({ page })
 });
 
 test('DAYBREAK Debug previews the live soundtrack, WAV export and the new chart', async ({ page }) => {
-  await page.goto('/debug/?vol=daybreak&secs=2#audio');
+  await page.goto('/debug/legacy/?vol=daybreak&secs=2#audio');
   await page.getByRole('link', { name: 'Open Audio Inspector' }).click();
   await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('daybreak');
   await page.getByRole('button', { name: 'Play all' }).click();

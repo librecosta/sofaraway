@@ -13,7 +13,7 @@ export function CreditsPanel({ volume, close, preview }: { volume: VolumeId; clo
         <p>Made by <NavigationButton className={c('credit-link')} to="https://librecosta.com" newTab preview={preview}>librecosta</NavigationButton>.<br />
           Every material, shader, texture and note is generated at runtime.</p>
         <p><b>INSPIRATION</b><br />Inspired by <NavigationButton className={c('credit-link')} to="https://helloenjoy.itch.io/hellorun" newTab preview={preview}>HelloRun</NavigationButton> (HelloEnjoy, 2013).</p>
-        <p><NavigationButton to={`/debug/?vol=${volume}`} preview={preview}>Debug overview</NavigationButton></p>
+        <p><NavigationButton to={`/debug/?vol=${volume}`} preview={preview}>Technical Explorer</NavigationButton></p>
         <hr className={c('credits-divider')} />
         <NavigationButton className={c('credit-link', 'credits-contact')} to="mailto:contact@librecosta.com" preview={preview}>
           <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">

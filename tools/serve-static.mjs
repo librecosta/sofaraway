@@ -19,6 +19,7 @@ const types = {
   '.json': 'application/json',
   '.woff2': 'font/woff2',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
 };

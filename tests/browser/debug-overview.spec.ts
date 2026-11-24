@@ -3,7 +3,7 @@ import { daybreakGateKinds, daybreakGates } from '../../app/game/core/daybreak-g
 
 test('the Debug page scrolls with the results preview and reaches its section links', async ({ page }) => {
   const scrollY = () => page.evaluate(() => window.scrollY);
-  await page.goto('/debug/');
+  await page.goto('/debug/legacy/');
   await expect(page.locator('#preview-over')).toBeVisible();
   expect(await scrollY()).toBe(0);
   await page.mouse.move(450, 390);
@@ -26,7 +26,7 @@ test('the Debug page scrolls with the results preview and reaches its section li
 test('lighting studio starts from the game score and isolates the dual-color comparison at the same station', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/debug/');
+  await page.goto('/debug/legacy/');
   const studio = page.locator('#lighting');
   await studio.getByRole('button', { name: 'Open live scene' }).click();
   const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE lighting' });
@@ -96,14 +96,16 @@ test('lighting studio starts from the game score and isolates the dual-color com
   expect(errors).toEqual([]);
 });
 
-test('the unified overview renders lit materials, effects and the existing models and worlds', async ({ page }) => {
+test('the legacy laboratory renders lit materials, effects and the existing models and worlds', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   await page.getByRole('button', { name: /^credits$/i }).click();
-  await page.getByRole('link', { name: 'Debug overview' }).click();
+  await page.getByRole('link', { name: 'Technical Explorer' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
+  await expect(page.getByRole('heading', { name: 'Technical Explorer' })).toBeVisible();
+  await page.getByRole('link', { name: 'Legacy experiments' }).click();
   const previews = page.locator('canvas[data-ready=true]');
   await expect(previews).toHaveCount(31);
   await expect(page.getByRole('link', { name: "Inspect DAYBREAK's sky and cloud sea" })).toHaveAttribute('href', '#outro');
@@ -192,7 +194,7 @@ test('materials and the soundtrack controls are available without WebGL2', async
       },
     });
   });
-  await page.goto('/debug/');
+  await page.goto('/debug/legacy/');
   await expect(page.getByText('WebGL2 is needed for 3D previews.')).toBeVisible();
   await expect(page.getByRole('slider', { name: 'View angle', exact: true })).toBeDisabled();
   await expect(page.locator('#materials canvas[data-mode=raw]')).toHaveCount(6);
@@ -223,8 +225,11 @@ test('the debug material renderer restores one context and redraws the lit speci
       window.addEventListener('test-debug-restore', () => extension.restoreContext(), { once: true });
       extension.loseContext();
     });
+    window.addEventListener('test-debug-disposed', () => {
+      document.documentElement.dataset.debugDisposed = String(contexts[0]?.isContextLost());
+    });
   });
-  await page.goto('/debug/');
+  await page.goto('/debug/legacy/');
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
   await page.evaluate(() => window.dispatchEvent(new Event('test-debug-loss')));
   await expect(page.getByText(/Waiting for WebGL/)).toBeVisible();
@@ -235,5 +240,12 @@ test('the debug material renderer restores one context and redraws the lit speci
   });
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
   await expect(page.locator('canvas[data-mode=effect]')).toHaveCount(2);
-  await expect(page.getByRole('button', { name: 'Animate scan' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Animate scan' }).click();
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Overview' }).click();
+  await expect(page.getByRole('heading', { name: 'Technical Explorer' })).toBeVisible();
+  await expect(page.locator('canvas')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    window.dispatchEvent(new Event('test-debug-disposed'));
+    return document.documentElement.dataset.debugDisposed;
+  })).toBe('true');
 });

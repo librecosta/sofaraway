@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { AudioInspector } from '../components/audio-inspector/AudioInspector';
 import { timecode } from '../components/audio-inspector/Timeline';
+import { explorerSource } from '../components/explorer/explorer-catalog';
 import { VOLUMES, volumeById } from '../game/core/volumes';
 import { inspectorScore } from '../game/debug/audio/track-adapter';
 import s from '../styles/audio-inspector.module.css';
@@ -60,13 +61,11 @@ export default function AudioInspectorPage() {
     }
   }
 
-  return <main className={s.page}>
+  return <section id="audio" className={s.page} aria-label="Soundtrack workspace">
     <div className={s.workspace}>
       <header className={s.header}>
         <div>
-          <Link to="/debug/" className={s.back}>SoFarAway</Link>
-          <span className={s.breadcrumb}> / Audio Inspector</span>
-          <h1>{volume.music === 'starwake' ? volume.soundtrack!.title : volume.name}</h1>
+          <h2>{volume.music === 'starwake' ? volume.soundtrack!.title : volume.name}</h2>
           {volume.id === 'orbit' && <p>STARWAKE · 96 bars · Melodic Cosmic Electronica</p>}
         </div>
         <div className={s.metadata}>
@@ -89,8 +88,9 @@ export default function AudioInspectorPage() {
       <AudioInspector key={score.key} score={score} />
       <div className={s.export}>
         <button type="button" disabled={!hydrated || exporting} onClick={() => void download()}>Render to WAV</button>
+        <a href={explorerSource('app/game/debug/audio/track-adapter.ts')}>View source</a>
         <span role="status" id="audio-status">{exportStatus}</span>
       </div>
     </div>
-  </main>;
+  </section>;
 }

@@ -77,10 +77,12 @@ synthesizes the soundtrack with Web Audio. Start with the [contributor guide](AG
 or read the [engineering architecture](docs/engineering.md) for runtime boundaries,
 timing, spatial crossings and resource ownership.
 
-## Debug overview
+## Technical Explorer
 
-Open `/debug/` directly or follow **Debug overview** from **Credits**.
-The page renders the playable courses, their gate types and the floating pickups.
+Open `/debug/` directly or follow **Technical Explorer** from **Credits**.
+Browse eight laboratories and four procedural worlds from one navigation.
+The interactive models and scene previews live at `/debug/legacy/` during migration.
+Existing `/debug/#section` links still open the matching experiment.
 **ASTRAL BELT** at `/?vol=orbit` is the full playable fourth course. The world preview at `/debug/#orbit`
 uses the same course path and asteroid generator. Choose Sparse or Dense, or select Flight progression to see density change along the route.
 The preview supports `seed`, `station`, `density`, and `q` query parameters and displays live draw, geometry, chunk and LOD counts.
@@ -94,9 +96,8 @@ include a two-color comparison.
 Encore, Afterglow and results. Seek by world station or fly a ten-second segment.
 **UI State Studio** at `/debug/#ui-states` opens production menus, overlays,
 results and recovery states in six viewport sizes without touching records or settings.
-**Audio Inspector** at `/debug/audio/` displays DAYBREAK's seven waveforms on
-one timeline, with track cues, solo, mute and gain. All four volumes support
-master playback and WAV export. ORBIT temporarily uses the ELSEWHERE soundtrack.
+**Audio Inspector** at `/debug/audio/` displays the four official soundtracks
+with independent stem waveforms, track cues, solo, mute, gain and WAV export.
 
 ### In-game debug parameters
 

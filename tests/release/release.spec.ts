@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readdir, readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
+import { explorerTopics } from '../../app/components/explorer/explorer-paths';
 
 const start = '[data-act=start]';
 const runtimeChunk = '**/assets/GameRuntime.client-*.js';
@@ -45,7 +46,8 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
   const fingerprinted = /^assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
   const metadata = new Set(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'debug/audio/index.html', 'tools/render-audio.html',
     'THIRD-PARTY-NOTICES.txt', 'licenses/SoFaraway.txt', 'licenses/OFL-Chakra-Petch.txt', 'licenses/OFL-Rajdhani.txt',
-    '_headers', 'edgeone.json']);
+    ...[...explorerTopics, 'legacy'].map(topic => `debug/${topic}/index.html`),
+    ...['elsewhere', 'daybreak', 'descent', 'orbit'].map(volume => `explorer/${volume}.webp`), '_headers', 'edgeone.json']);
   expect(files.filter(path => !fingerprinted.test(path) && !metadata.has(path))).toEqual([]);
   const assets = files.filter(path => fingerprinted.test(path)).map(path => '/' + path).sort();
   const cache = 'public, max-age=31536000, immutable';
@@ -54,7 +56,7 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
   expect(JSON.parse(await readFile('build/client/edgeone.json', 'utf8'))).toEqual({
     headers: assets.map(source => ({ source, headers: [{ key: 'Cache-Control', value: cache }] })),
   });
-  const mime = { js: /javascript/, css: /text\/css/, woff2: /font\/woff2/, html: /text\/html/, svg: /image\/svg\+xml/, txt: /text\/plain/ };
+  const mime = { js: /javascript/, css: /text\/css/, woff2: /font\/woff2/, html: /text\/html/, svg: /image\/svg\+xml/, webp: /image\/webp/, txt: /text\/plain/ };
   for (const path of files) {
     if (path === '_headers' || path === 'edgeone.json') continue;
     const ext = path.split('.').at(-1) as keyof typeof mime;
