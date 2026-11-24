@@ -5,19 +5,17 @@ import { fallback, ready, record, startButton, startRun } from './support';
 test('material lab renders lit specimens or clearly exposes raw channels', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/debug/legacy/');
+  await page.goto('/debug/materials/');
   const surface = page.locator('#materials');
   await expect(surface.locator('figure canvas[data-ready=true]')).toHaveCount(6);
   const lit = await surface.locator('canvas[data-mode=lit]').count();
   if (lit === 6) {
     await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
-    await expect(page.getByText('S-Curve Preview', { exact: true })).toBeVisible();
     record(info, 'PASS', 'Six lit surfaces and both effects render on the shared specimen renderer');
   } else {
     expect(lit).toBe(0);
     await expect(surface.locator('canvas[data-mode=raw]')).toHaveCount(6);
     await expect(surface.getByText(/Lit previews unavailable/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'First lateral peak' })).toBeDisabled();
     record(info, 'BLOCKED', 'Lit material previews unavailable; raw fallback verified');
   }
   await surface.getByRole('button', { name: 'Normal', exact: true }).click();

@@ -39,6 +39,5 @@ export default function ExplorerHome() {
         </Link>)}
       </div>
     </section>
-    <footer className={s.links}><Link to={explorerHref('legacy', selectedVolume)}>Legacy experiments</Link></footer>
   </div>;
 }

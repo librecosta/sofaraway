@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { daybreakGateKinds, daybreakGates } from '../../app/game/core/daybreak-gates';
 
-test('the Debug page scrolls with the results preview and reaches its section links', async ({ page }) => {
+test('the Ending Studio scrolls with the production results preview and keeps Explorer navigation', async ({ page }) => {
   const scrollY = () => page.evaluate(() => window.scrollY);
-  await page.goto('/debug/legacy/');
+  await page.goto('/debug/endings/');
   await expect(page.locator('#preview-over')).toBeVisible();
   expect(await scrollY()).toBe(0);
   await page.mouse.move(450, 390);
@@ -11,12 +11,10 @@ test('the Debug page scrolls with the results preview and reaches its section li
   await expect.poll(scrollY).toBeGreaterThan(0);
 
   await page.goto('/debug/#outro');
-  await expect(page.getByRole('heading', { name: 'End Sequence Studio' })).toBeInViewport();
-  const endingPosition = await scrollY();
-  await page.mouse.wheel(0, -550);
-  await expect.poll(scrollY).toBeLessThan(endingPosition);
-  await page.getByRole('navigation', { name: 'Debug sections' }).getByRole('link', { name: 'Audio', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Soundtrack' })).toBeInViewport();
+  await expect(page).toHaveURL(/\/debug\/endings\/#outro$/);
+  await expect(page.getByRole('button', { name: 'Open live ending' })).toBeInViewport();
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Audio', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Audio Inspector', exact: true }).first()).toBeVisible();
 
   await page.goto('/');
   await expect(page.locator('html')).toHaveCSS('overflow-y', 'hidden');
@@ -96,7 +94,20 @@ test('lighting studio starts from the game score and isolates the dual-color com
   expect(errors).toEqual([]);
 });
 
-test('the legacy laboratory renders lit materials, effects and the existing models', async ({ page }) => {
+async function expectSpecimens(page: import('@playwright/test').Page, ids: readonly string[]) {
+  const previews = page.locator('canvas[data-ready=true]');
+  await expect(previews).toHaveCount(ids.length);
+  const samples = await previews.evaluateAll(elements => (elements as HTMLCanvasElement[]).map(canvas => {
+    const { width, height } = canvas;
+    const { data } = canvas.getContext('2d')!.getImageData(0, 0, width, height);
+    const colors = new Set<number>();
+    for (let i = 0; i < data.length; i += 20) colors.add(data[i] << 16 | data[i + 1] << 8 | data[i + 2]);
+    return { id: canvas.dataset.preview, painted: colors.size > 1 };
+  }));
+  expect(samples).toEqual(ids.map(id => ({ id, painted: true })));
+}
+
+test('Gameplay and Gates preserve every production pickup and gate specimen', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
@@ -105,36 +116,29 @@ test('the legacy laboratory renders lit materials, effects and the existing mode
   await page.getByRole('link', { name: 'Technical Explorer' }).click();
   await expect(page).toHaveURL(/\/debug\/\?vol=elsewhere$/);
   await expect(page.getByRole('heading', { name: 'Technical Explorer' })).toBeVisible();
-  await page.getByRole('link', { name: 'Legacy experiments' }).click();
-  const previews = page.locator('canvas[data-ready=true]');
-  await expect(previews).toHaveCount(24);
-  await expect(page.getByRole('link', { name: 'Explore the four live worlds' })).toHaveAttribute('href', '/debug/worlds/');
-  await expect(page.getByRole('heading', { name: /loose props|cargo group/i })).toHaveCount(0);
-  for (const name of ['Surface materials', 'Effect materials', 'World and lighting previews', 'Soundtrack']) {
-    await expect(page.getByRole('heading', { name })).toBeVisible();
-  }
-  await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
-  await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
-  const samples = await previews.evaluateAll(elements => (elements as HTMLCanvasElement[]).map(canvas => {
-    const { width, height } = canvas;
-    const { data } = canvas.getContext('2d')!.getImageData(0, 0, width, height);
-    const colors = new Set<number>();
-    for (let i = 0; i < data.length; i += 20) colors.add(data[i] << 16 | data[i + 1] << 8 | data[i + 2]);
-    return { id: canvas.dataset.preview, painted: colors.size > 1 };
-  }));
-  expect(samples).toEqual([
-    'shield', 'resonance', 'lumen',
-    'iris', 'square', 'diamond', ...daybreakGateKinds, 'laser-matrix', 'laser-slice', 'laser-weave',
-    'orbit-single', 'orbit-dual', 'orbit-triple',
-    'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
-    'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
-  ].map(id => ({ id, painted: true })));
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Gameplay' }).click();
+  await expect(page.locator('canvas')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Open 3D pickups' }).click();
+  await expectSpecimens(page, ['shield', 'resonance', 'lumen']);
   const shield = page.getByRole('img', { name: 'Prism Shield 3D model' });
   const first = await shield.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await page.getByRole('slider', { name: 'View angle', exact: true }).focus();
   await page.keyboard.press('End');
   expect(await shield.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).not.toBe(first);
 
+
+  const families = {
+    elsewhere: ['iris', 'square', 'diamond'],
+    daybreak: daybreakGateKinds,
+    descent: ['laser-matrix', 'laser-slice', 'laser-weave'],
+    orbit: ['orbit-single', 'orbit-dual', 'orbit-triple'],
+  };
+  for (const [volume, ids] of Object.entries(families)) {
+    await page.goto(`/debug/gates/?vol=${volume}`);
+    await expectSpecimens(page, ids);
+  }
+  await page.getByLabel('Volume', { exact: true }).selectOption('daybreak');
+  await expectSpecimens(page, daybreakGateKinds);
   const gate = page.getByRole('img', { name: 'Crystal gate', exact: true });
   const face = await gate.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await page.getByRole('slider', { name: 'DAYBREAK specimen angle' }).focus();
@@ -162,6 +166,20 @@ test('the legacy laboratory renders lit materials, effects and the existing mode
     expect(images.has(await canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL()))).toBe(false);
   }
 
+
+  expect(errors).toEqual([]);
+});
+
+test('Material Laboratory renders the existing surfaces, raw channels and scan animation', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/debug/materials/');
+  await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
+  await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
+  await expectSpecimens(page, [
+    'alloy-satin-dark', 'alloy-brushed-tech', 'panel-recessed', 'panel-reinforced', 'floor-grip', 'utility-polymer',
+    'surface-channel', 'emissive-channel-cyan', 'hologram-panel-cyan',
+  ]);
   const raw = page.locator('canvas[data-preview=surface-channel]');
   const before = await raw.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await page.getByRole('button', { name: 'Height' }).click();
@@ -193,15 +211,14 @@ test('materials and the soundtrack controls are available without WebGL2', async
       },
     });
   });
-  await page.goto('/debug/legacy/');
+  await page.goto('/debug/materials/');
   await expect(page.getByText('WebGL2 is needed for 3D previews.')).toBeVisible();
-  await expect(page.getByRole('slider', { name: 'View angle', exact: true })).toBeDisabled();
   await expect(page.locator('#materials canvas[data-mode=raw]')).toHaveCount(6);
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(0);
   await expect(page.getByText(/Lit previews unavailable/)).toBeVisible();
   await page.getByRole('button', { name: 'Normal', exact: true }).click();
   await expect(page.locator('canvas[data-preview=surface-channel]')).toHaveAttribute('data-channel', 'normal');
-  await page.getByRole('link', { name: 'Open Audio Inspector' }).click();
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Audio' }).click();
   await expect(page.getByRole('button', { name: 'Render to WAV' })).toBeEnabled();
   await page.goto('/debug/lighting/?vol=elsewhere#s-curve');
   await page.getByRole('button', { name: 'Open live scene' }).click();
@@ -231,7 +248,7 @@ test('the debug material renderer restores one context and redraws the lit speci
       document.documentElement.dataset.debugDisposed = String(contexts[0]?.isContextLost());
     });
   });
-  await page.goto('/debug/legacy/');
+  await page.goto('/debug/materials/');
   await expect(page.locator('#materials canvas[data-mode=lit]')).toHaveCount(6);
   await page.evaluate(() => window.dispatchEvent(new Event('test-debug-loss')));
   await expect(page.getByText(/Waiting for WebGL/)).toBeVisible();

@@ -26,7 +26,7 @@ test('the old audio address leads to the unified WAV exporter', async ({ page })
 
 test('DAYBREAK Debug previews the live soundtrack, WAV export and the new chart', async ({ page }) => {
   await page.goto('/debug/legacy/?vol=daybreak&secs=2#audio');
-  await page.getByRole('link', { name: 'Open Audio Inspector' }).click();
+  await expect(page).toHaveURL(/\/debug\/audio\/\?vol=daybreak&secs=2#audio$/);
   await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('daybreak');
   await page.getByRole('button', { name: 'Play all' }).click();
   await expect(page.getByText('Playing', { exact: true })).toBeVisible();
@@ -35,11 +35,10 @@ test('DAYBREAK Debug previews the live soundtrack, WAV export and the new chart'
   await page.getByRole('button', { name: 'Render to WAV' }).click();
   expect((await download).suggestedFilename()).toBe('sofaraway-daybreak.wav');
   await expect(page.locator('#audio-status')).toHaveText(/Done.*4\.0 s/);
-  await page.goBack();
-  await page.getByText('DAYBREAK chart and ending').click();
-  await expect(page.getByText(/SUNBURST · beats 160–224 · 38 gates/)).toBeVisible();
+  await page.getByRole('navigation', { name: 'Explorer', exact: true }).getByRole('link', { name: 'Gameplay' }).click();
+  await expect(page.getByRole('row', { name: /SUNBURST/ })).toContainText(/160–224.*38/);
   await expect(page.getByText(/Song end · 144 s/)).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Inspect the result' })).toHaveAttribute('href', /vol=daybreak.*t=144\.8/);
+  await expect(page.getByRole('link', { name: 'Inspect the result' })).toHaveAttribute('href', /vol=daybreak.*stage=results-world/);
 });
 
 test('legacy DAYBREAK links normalize the volume ID and keep the other URL settings', async ({ page }) => {

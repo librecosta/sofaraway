@@ -13,10 +13,10 @@ test('UI State Studio renders production states, stays scrollable and never writ
   const scenario = studio.getByLabel('Scenario');
   const iframe = studio.locator('iframe');
   const frame = studio.frameLocator('iframe');
-  await expect(page.getByRole('link', { name: 'UI States' })).toHaveAttribute('href', '#ui-states');
+  await expect(page.getByRole('link', { name: 'Interface', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(studio.getByRole('heading', { name: 'UI State Studio' })).toBeVisible();
   await expect(frame.getByRole('heading', { name: 'SOFARAWAY' })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight * 2)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
   await expect(frame.getByText('PROCEDURAL RUNNER')).toBeVisible();
   await expect(frame.getByText('MUSIC IN MOTION')).toBeVisible();
   await frame.getByRole('link', { name: 'SoFaraway on GitHub' }).click();
@@ -46,6 +46,8 @@ test('UI State Studio renders production states, stays scrollable and never writ
     if (status) await expect(frame.getByRole('dialog')).toHaveCount(0);
     else await expect(studio.locator('iframe')).not.toBeFocused();
   }
+  await scenario.selectOption('playing-sound-off');
+  await expect(frame.getByRole('button', { name: 'SOUND OFF · RESTORE AUDIO' })).toBeVisible();
   await scenario.selectOption('audio-unavailable');
   await iframe.scrollIntoViewIfNeeded();
   await frame.getByRole('button', { name: 'SOUND OFF · RESTORE AUDIO' }).click();
@@ -64,6 +66,12 @@ test('UI State Studio renders production states, stays scrollable and never writ
   await scenario.selectOption('sightseeing-complete');
   await expect(frame.locator('#over-mode')).toHaveText('SIGHTSEEING');
   await expect(frame.getByText('ENCORE BONUS')).toHaveCount(0);
+  await scenario.selectOption('showcase');
+  await expect(frame.getByText(/AUTO PILOT.*IMPOSSIBLE COURSE.*NO SCORE/)).toBeVisible();
+  await scenario.selectOption('showcase-playing');
+  await expect(frame.locator('#hud')).toBeHidden();
+  await scenario.selectOption('showcase-complete');
+  await expect(frame.getByRole('heading', { name: 'SHOWCASE COMPLETE' })).toBeVisible();
 
   await scenario.selectOption('settings-quality-disabled');
   await expect(frame.getByRole('button', { name: 'HIGH' })).toBeDisabled();

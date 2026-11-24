@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
 import type { GameSnapshot, VolumeId } from '../game/contracts';
 import { resolveDifficulty } from '../game/core/difficulty';
@@ -7,7 +8,8 @@ import { studioGroups, studioSizes, uiStates } from '../game/debug/ui-state-cata
 import type { UIState } from '../game/debug/ui-state-catalog';
 import type { UIBackdrop } from '../game/debug/ui-backdrop.client';
 import { classes as c } from '../styles/classes';
-import s from '../styles/debug.module.css';
+import s from '../styles/explorer-lab.module.css';
+import { explorerVolumeIds } from './explorer/explorer-catalog';
 import { CreditsPanel } from './CreditsPanel';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { HUDView } from './GameHUD';
@@ -18,9 +20,13 @@ import { SettingsPanel } from './SettingsPanel';
 
 const frameHtml = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Game UI preview</title></head><body></body></html>';
 
-export function UIStateStudio() {
-  const [selected, setSelected] = useState(uiStates[0]);
-  const [size, setSize] = useState(2);
+export function UIStateStudio({ volume }: { volume: VolumeId }) {
+  const [query, setQuery] = useSearchParams();
+  const requested = query.get('state');
+  const state = uiStates.find(item => item.id === requested && !explorerVolumeIds.includes(item.id as VolumeId))
+    ?? uiStates.find(item => item.id === volume)!;
+  const selected = useMemo(() => ({ ...state, snapshot: { ...state.snapshot, volumeId: volume } }), [state, volume]);
+  const [size, setSize] = useState(state.size ?? 2);
   const [real, setReal] = useState(false);
   const [ready, setReady] = useState(false);
   const [frame, setFrame] = useState<HTMLBodyElement | null>(null);
@@ -59,13 +65,17 @@ export function UIStateStudio() {
     return () => { observer.disconnect(); window.removeEventListener('resize', resize); };
   }, [open, fit, width, height]);
 
-  return <section id="ui-states" className={s.section}>
+  return <section id="ui-states" className={s.preview}>
     <h2>UI State Studio</h2>
     <p>Inspect the live interface components in a separate viewport. Preview actions stay here; game settings and scores are untouched.</p>
-    <div className={s.studioTools}>
+    <fieldset className={s.group}>
+      <legend>Interface preview</legend>
       <label>Scenario <select value={selected.id} onChange={event => {
         const item = uiStates.find(scene => scene.id === event.target.value)!;
-        setSelected(item);
+        const next = new URLSearchParams(query);
+        next.set('state', item.id);
+        if (explorerVolumeIds.includes(item.id as VolumeId)) next.set('vol', item.id);
+        setQuery(next, { replace: true, preventScrollReset: true });
         if (item.size !== undefined) setSize(item.size);
         setOpen(true);
         reset(value => value + 1);
@@ -77,14 +87,14 @@ export function UIStateStudio() {
       <label>Preview viewport <select value={size} onChange={event => setSize(Number(event.target.value))}>
         {studioSizes.map(([w, h], index) => <option key={w} value={index}>{w} × {h}</option>)}
       </select></label>
-      <label className={s.studioCheck}><input type="checkbox" checked={real} onChange={event => {
+      <label><input type="checkbox" checked={real} onChange={event => {
         setReal(event.target.checked);
         setReady(false);
       }} /> Real corridor background</label>
-      <label className={s.studioCheck}><input type="checkbox" checked={fit} onChange={event => setFit(event.target.checked)} /> Fit preview</label>
+      <label><input type="checkbox" checked={fit} onChange={event => setFit(event.target.checked)} /> Fit preview</label>
       <button type="button" onClick={() => reset(value => value + 1)} disabled={!open}>Replay state</button>
       <button type="button" onClick={() => { setFrame(null); setReady(false); setOpen(!open); }}>{open ? 'Close preview' : 'Open preview'}</button>
-    </div>
+    </fieldset>
     <dl className={s.studioMeta}>
       <div><dt>State</dt><dd>{selected.name} · {selected.group}</dd></div>
       <div><dt>Component</dt><dd>{selected.component}</dd></div>
@@ -111,7 +121,7 @@ function StudioFrame({ selected, revision, real, onBackdrop }: {
   const [volume, setVolume] = useState(selected.snapshot.volumeId);
   return <main className={c('viewport', 'studio-stage')}>
     <Backdrop real={real} volume={volume} onBackdrop={onBackdrop} />
-    <StudioControls key={revision} selected={selected} setBackdropVolume={setVolume} />
+    <StudioControls key={`${selected.snapshot.volumeId}:${selected.id}:${revision}`} selected={selected} setBackdropVolume={setVolume} />
   </main>;
 }
 
@@ -191,8 +201,9 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
         setMuted={muted => patch({ muted })}
         start={play} settings={() => setPanel('settings')} credits={() => setPanel('credits')}
         share={share} fullscreen={() => patch({ message: 'FULL SCREEN UNAVAILABLE' })} />
-      <HUDView snapshot={snapshot} pause={() => patch({ phase: 'paused', pauseReason: 'user' })}
-        enableAudio={() => patch({ soundUnavailable: false })} />
+      {snapshot.mode !== 'showcase' && <HUDView snapshot={snapshot}
+        pause={() => patch({ phase: 'paused', pauseReason: 'user' })}
+        enableAudio={() => patch({ soundUnavailable: false })} />}
       <ResultsScreen snapshot={snapshot} restart={play} menu={menu} />
     </div>
     <div id="shade" />

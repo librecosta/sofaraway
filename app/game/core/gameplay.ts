@@ -59,6 +59,12 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
 
 export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }
 
+export const ELSEWHERE_ESCAPE_BEATS = 12;
+
+export function elsewhereEscapeFade(beat: number, endBeat: number) {
+  return clamp((beat - (endBeat - ELSEWHERE_ESCAPE_BEATS)) / ELSEWHERE_ESCAPE_BEATS, 0, 1);
+}
+
 const protectedDaylight = .12;
 const minimumRiseSeconds = 1.25;
 

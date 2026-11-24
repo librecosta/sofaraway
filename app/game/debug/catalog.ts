@@ -1,22 +1,15 @@
-import { chartFor } from '../core/chart';
+import type { VolumeId } from '../contracts';
+import { lanePoint, opening, type Axis } from '../core/collision';
 import { daybreakGateKinds, daybreakGates, isDaybreakGate } from '../core/daybreak-gates';
-import { descentDirections, isDescentGate } from '../core/descent-gates';
+import { descentDirections, descentGateKinds, isDescentGate } from '../core/descent-gates';
 import type { DescentGateKind } from '../core/descent-gates';
-import { isOrbitGate, orbitPresets } from '../core/orbit-gates';
-import { VOLUMES } from '../core/volumes';
+import { isOrbitGate, orbitGateKinds, orbitPresets } from '../core/orbit-gates';
 import type { GateKind } from '../core/volumes';
 
-const sceneTimes = { elsewhere: 36, daybreak: 32, descent: 45, orbit: 95 };
-
-export const catalog = VOLUMES.map(volume => {
-  const chart = chartFor(volume, 'normal');
-  return {
-    volume,
-    seconds: sceneTimes[volume.id],
-    gates: volume.id === 'daybreak' ? daybreakGateKinds : [...new Set(chart.map(gate => gate.kind))],
-    gateCount: chart.length,
-  };
-});
+export const gateFamilies = {
+  elsewhere: ['iris', 'square', 'diamond'], daybreak: daybreakGateKinds,
+  descent: descentGateKinds, orbit: orbitGateKinds,
+} as const satisfies Record<VolumeId, readonly GateKind[]>;
 
 const gateNotes = {
   iris: 'One open wedge around a solid hub.',
@@ -30,8 +23,8 @@ const descentDescriptions = {
   'laser-weave': { label: 'Diagonal Weave', note: 'Mirrored glass wedges frame a diagonal passage.' },
 };
 
-type DescentExample = { label: string; open: number; axis: 0 | 1 };
-export const descentExamples: Record<DescentGateKind, readonly DescentExample[]> = {
+type GateOpening = { label: string; open: number; axis: Axis };
+export const descentExamples: Record<DescentGateKind, readonly GateOpening[]> = {
   'laser-matrix': descentDirections.map((direction, open) => ({ label: direction, open, axis: 0 })),
   'laser-slice': [
     { label: 'Vertical · left', open: 4, axis: 0 }, { label: 'Vertical · centre', open: 2, axis: 0 },
@@ -45,6 +38,30 @@ export const descentExamples: Record<DescentGateKind, readonly DescentExample[]>
   ],
 };
 
+const irisOpenings = ['Right', 'Upper right', 'Top', 'Upper left', 'Left', 'Lower left', 'Bottom', 'Lower right'];
+
+export function gateOpenings(kind: GateKind): readonly GateOpening[] {
+  if (isDescentGate(kind)) return descentExamples[kind];
+  const labels = isOrbitGate(kind) ? orbitPresets[kind].map(preset => preset.label)
+    : isDaybreakGate(kind) ? daybreakGates[kind].openings : kind === 'iris' ? irisOpenings : ['Center'];
+  const variants: GateOpening[] = labels.map((label, open) => ({ label, open, axis: 0 }));
+  return kind === 'daybreak-crystal' ? [{ label: 'Complete layout', open: -1, axis: 0 }, ...variants] : variants;
+}
+
+export function gateOpeningAt(kind: GateKind, open: number, axis: number): GateOpening | undefined {
+  if (!Number.isInteger(open) || (axis !== 0 && axis !== 1)) return;
+  const variants = gateOpenings(kind);
+  const exact = variants.find(variant => variant.open === open && variant.axis === axis);
+  if (exact || open < 0 || opening(kind, open) !== open) return exact;
+  const [x, y] = lanePoint(kind, open, axis);
+  const equivalent = variants.find(variant => {
+    if (variant.open === -1 || (isDescentGate(kind) && kind !== 'laser-matrix' && variant.axis !== axis)) return false;
+    const [vx, vy] = lanePoint(kind, variant.open, variant.axis);
+    return vx === x && vy === y;
+  });
+  return { open, axis, label: equivalent?.label ?? variants.find(item => item.open === open)!.label };
+}
+
 export function gateDescription(kind: GateKind) {
   if (isOrbitGate(kind)) return { label: kind === 'orbit-single' ? 'Single Aperture' : kind === 'orbit-dual' ? 'Dual Aperture' : 'Triple Aperture',
     note: `${orbitPresets[kind].length} fixed variants · real circle, square and diamond throats through beveled holographic glass.` };
@@ -54,7 +71,7 @@ export function gateDescription(kind: GateKind) {
     return { label, note: kind === 'daybreak-crystal' ? 'One of eight radial slices opens around a solid octagonal hub.'
       : kind === 'daybreak-vertical' ? 'Fixed tall opening with four clipped corners.' : 'Fixed wide hexagonal opening.' };
   }
-  return { label: kind, note: gateNotes[kind] };
+  return { label: kind[0].toUpperCase() + kind.slice(1), note: gateNotes[kind] };
 }
 
 export const pickupCards = [

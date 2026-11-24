@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router';
 import type { VolumeId } from '../../game/contracts';
-import { explorerHref, explorerPages, explorerVolume, explorerVolumeIds, explorerVolumes, laboratoryPages, legacyAnchors } from './explorer-catalog';
+import { explorerHref, explorerPages, explorerVolume, explorerVolumeIds, explorerVolumes, laboratoryPages } from './explorer-catalog';
 import { explorerPageAt, explorerPath, migratedExperiments } from './explorer-paths';
 import s from '../../styles/explorer.module.css';
 
@@ -11,10 +11,11 @@ export function ExplorerLayout() {
   const { hash, pathname, search } = useLocation();
   const navigate = useNavigate();
   const page = explorerPageAt(pathname);
-  const wide = page === 'audio' || page === 'legacy';
+  const wide = page === 'audio';
   const [params, setParams] = useSearchParams();
   const [hydrated, setHydrated] = useState(false);
-  const requested = hydrated ? params.get('vol') : null;
+  const stateVolume = page === 'interface' ? explorerVolumeIds.find(id => id === params.get('state')) : undefined;
+  const requested = hydrated ? params.get('vol') ?? stateVolume ?? null : null;
   const selectedVolume = requested === null ? (page === 'audio' && hydrated ? 'daybreak' : undefined) : explorerVolume(requested);
   const volume = selectedVolume ?? 'elsewhere';
 
@@ -23,7 +24,7 @@ export function ExplorerLayout() {
     if (page !== 'overview' && page !== 'legacy') return;
     const anchor = hash.slice(1);
     const migrated = migratedExperiments.get(anchor);
-    if (migrated && (page === 'overview' || anchor !== 'audio')) {
+    if (migrated) {
       const [destination, fixedVolume] = migrated;
       let preserved = search;
       if (fixedVolume && new URLSearchParams(search).get('vol') !== fixedVolume) {
@@ -32,8 +33,8 @@ export function ExplorerLayout() {
         preserved = '?' + query.toString();
       }
       void navigate({ pathname: explorerPath(destination), search: preserved, hash }, { replace: true });
-    } else if (page === 'overview' && legacyAnchors.has(anchor)) {
-      void navigate({ pathname: explorerPath('legacy'), search, hash }, { replace: true });
+    } else if (page === 'legacy') {
+      void navigate({ pathname: explorerPath('overview'), search }, { replace: true });
     }
   }, [hash, navigate, page, search]);
   useEffect(() => {
@@ -41,7 +42,7 @@ export function ExplorerLayout() {
     else window.scrollTo(0, 0);
   }, [hash, pathname]);
 
-  return <div className={s.shell} data-workspace={page === 'audio' ? 'audio' : wide ? 'wide' : undefined}>
+  return <div className={s.shell} data-workspace={wide ? 'audio' : undefined}>
     <a className={s.skip} href="#explorer-main">Skip to content</a>
     <header className={s.header}>
       <div>

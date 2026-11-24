@@ -60,7 +60,7 @@
 .group input[type="range"] { width: 100%; min-width: 0; min-height: 22px; accent-color: var(--explorer-accent); }
 .group input[type="number"] { width: min(100%, 13ch); }
 .group output { min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.lab button, .lab select, .lab input[type="number"] {
+.lab button:not(#preview-over button), .lab select, .lab input[type="number"] {
   min-height: 36px;
   max-width: 100%;
   border: 1px solid #395270;
@@ -83,7 +83,57 @@
 .details > summary { cursor: pointer; color: var(--explorer-accent); padding-block: .45em; }
 .details[open] > summary { margin-bottom: 8px; }
 
+.quiet { color: var(--explorer-muted); margin: 0; }
+.preview > h2, .inspection h2 { margin: 0; font: 700 1.3rem/1.2 "Chakra Petch", sans-serif; }
+.specimenGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(225px, 100%), 1fr)); gap: 12px; }
+.specimenGrid[data-layout=surface] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.specimen { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--explorer-line); border-radius: 8px; background: var(--explorer-surface); }
+.specimenCanvas { display: block; width: 100%; height: auto; background: #081216; }
+.specimenCaption { padding: 12px 14px; border-top: 1px solid var(--explorer-line); }
+.specimenCaption h2, .specimenCaption h3 { margin: 0; color: var(--explorer-text); font: 700 1.12rem/1.3 "Chakra Petch", sans-serif; }
+.specimenCaption p { color: var(--explorer-muted); margin: 5px 0 10px; }
+.specimenCaption label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-block: 10px; font-size: .875rem; }
+.specimenCaption select { min-width: 0; text-overflow: ellipsis; }
+.specimenCaption button { font-size: .875rem; }
+.inspection { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(38%, 320px)); align-items: center; gap: 16px; }
+.inspection p { color: var(--explorer-muted); }
+.aperture { display: block; width: 100%; border: 1px solid var(--explorer-line); border-radius: 7px; background: #080e19; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--explorer-line); border-radius: 7px; background: var(--explorer-line); }
+.stats > div { display: flex; flex-direction: column; min-width: 0; padding: 9px 14px; background: var(--explorer-surface); overflow-wrap: anywhere; }
+.stats strong { color: var(--explorer-text); font-size: clamp(.875rem, 2vw, 1.2rem); font-variant-numeric: tabular-nums; }
+.stats span { color: var(--explorer-muted); font-size: .8125rem; }
+.stats [data-selected=true] { background: #203752; }
+.timelineScroll, .tableScroll { min-width: 0; overflow: auto; border: 1px solid var(--explorer-line); border-radius: 7px; }
+.timelineScroll { background: #0a1423; }
+.timeline { display: block; width: 100%; min-width: 850px; font: 12px system-ui, sans-serif; }
+.gateMark { cursor: pointer; stroke: transparent; stroke-width: 5px; }
+.gateMark:hover { stroke: #ffffff60; }
+.timelineLegend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .8125rem; color: var(--explorer-muted); }
+.timelineLegend span::before { display: inline-block; content: ""; margin-right: 6px; width: 7px; height: 7px; border-radius: 50%; background: #7ddaff; }
+.timelineLegend span:nth-child(2)::before { background: #d5a0fc; }
+.timelineLegend span:nth-child(3)::before { background: #ffc184; }
+.timelineLegend span:last-child::before { display: none; }
+.dataTable { width: 100%; border-collapse: collapse; white-space: nowrap; text-align: left; font-size: .875rem; font-variant-numeric: tabular-nums; }
+.dataTable th, .dataTable td { padding: 4px 12px; border-bottom: 1px solid var(--explorer-line); }
+.dataTable thead { background: var(--explorer-surface); }
+.dataTable tr:last-child td, .dataTable tr:last-child th { border-bottom: 0; }
+.dataTable td { color: var(--explorer-muted); }
+.endingWhite { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: #fff; opacity: var(--escape-white, 0); }
+.studioMeta { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; font-size: .875rem; }
+.studioMeta div { min-width: 0; flex: 1 1 10rem; }
+.studioMeta dt { color: var(--explorer-muted); }
+.studioMeta dd { margin: .2rem 0 0; }
+.studioViewport { max-height: min(78vh, 850px); overflow: auto; background: #080e13; border: 1px solid var(--explorer-line); border-radius: 7px; }
+.studioSurface { position: relative; margin-inline: auto; }
+.studioViewport iframe { display: block; position: absolute; inset: 0; max-width: none; border: 0; background: #0a1016; transform-origin: top left; }
+
 @media (max-width: 720px) {
   .group { padding-inline: 10px; }
-  .lab button, .lab select { min-height: 40px; }
+  .lab button:not(#preview-over button), .lab select { min-height: 40px; }
+  .specimenGrid[data-layout=surface] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .inspection { grid-template-columns: minmax(0, 1fr); }
+  .stats > div { padding-inline: 7px; }
+  .specimenGrid[data-layout=surface] { grid-template-columns: minmax(0, 1fr); }
 }

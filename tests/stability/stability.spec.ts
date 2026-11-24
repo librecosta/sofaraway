@@ -387,7 +387,8 @@ test('ELSEWHERE material views and unaffected volumes @m0', async ({ browser }, 
     }
     for (const build of haveReference ? [reference, candidate] : [candidate]) {
       const begin = performance.now();
-      await page.goto(`${build.client}/debug/`);
+      const route = build === candidate ? '/debug/materials/' : '/debug/';
+      await page.goto(`${build.client}${route}`);
       const target = page.locator('#materials');
       const count = build === candidate ? 7 : 4;
       await expect(target.locator('canvas[data-ready=true]')).toHaveCount(count);

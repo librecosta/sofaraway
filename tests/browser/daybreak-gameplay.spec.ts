@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { branchLayout, ROUTE_LABELS } from '../../app/game/core/branches';
-import { OutroInspection } from '../../app/game/debug/outro-inspection';
+import { OutroInspection, previewResults } from '../../app/game/debug/outro-inspection';
 import { volumeById } from '../../app/game/core/volumes';
 import type {} from '../harness/main';
 
@@ -47,7 +47,7 @@ test('End Sequence Studio renders DAYBREAK routes, pickup, Encore and long-lived
   const studio = page.locator('#outro');
   await studio.getByRole('button', { name: 'Open live ending' }).click();
   await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-station', /\d+/);
-  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  await page.getByLabel('Volume', { exact: true }).selectOption('daybreak');
   const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
   const go = (name: string) => studio.getByRole('button', { name, exact: true }).click();
   await go('Branch Preview');
@@ -108,7 +108,7 @@ test('DAYBREAK Impossible previews the dense chart and all routes through the ex
   const studio = page.locator('#outro');
   await studio.getByRole('button', { name: 'Open live ending' }).click();
   await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-station', /\d+/);
-  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  await page.getByLabel('Volume', { exact: true }).selectOption('daybreak');
   await studio.getByRole('combobox', { name: 'Chart difficulty' }).selectOption('impossible', { timeout: 8000 });
   await studio.getByLabel('Run seed').fill('0');
   const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
@@ -136,7 +136,9 @@ test('DAYBREAK Impossible previews the dense chart and all routes through the ex
   await studio.getByLabel('Results preview').selectOption('Perfect Encore');
   const results = studio.locator('#preview-over');
   await expect(results.getByText('IMPOSSIBLE', { exact: true })).toBeVisible();
-  await expect(results.locator('#preview-over-gates')).toHaveText('147/147');
+  const bonusResult = previewResults(0, 'Perfect Encore', 'impossible', volumeById('daybreak'), 'score');
+  await expect(results.locator('#preview-over-gates')).toHaveText(`${bonusResult.gatesPassed}/${bonusResult.gatesTotal}`);
+  await expect(results.locator('#preview-over-route')).toHaveText('BONUS ROUTE');
 
   await page.goto('/?vol=daybreak&diff=impossible&boost=1&t=146.5&align=1&god=0&q=low&dbg=1');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
@@ -153,7 +155,7 @@ test('DAYBREAK junction renders its seeded arrows and lit glass routes in the re
   const studio = page.locator('#outro');
   await studio.getByRole('button', { name: 'Open live ending' }).click();
   await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-station', /\d+/);
-  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  await page.getByLabel('Volume', { exact: true }).selectOption('daybreak');
   const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
   const go = (name: string) => studio.getByRole('button', { name, exact: true }).click();
   const capture = async (name: string) => {

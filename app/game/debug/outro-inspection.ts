@@ -7,7 +7,7 @@ import { STEP } from '../core/clock';
 import { difficultySettings } from '../core/chart';
 import { idleInput } from '../core/input';
 import type { EncoreGate, OutroPlan } from '../core/encore';
-import { daylightFade } from '../core/gameplay';
+import { daylightFade, ELSEWHERE_ESCAPE_BEATS, elsewhereEscapeFade } from '../core/gameplay';
 import type { SceneState } from '../graphics/scene.client';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale } from '../core/reference-track';
 import { GATE_RELEASE_BEHIND, Simulation } from '../core/simulation';
@@ -98,7 +98,7 @@ export class OutroInspection {
       if (frame) return { station: frame.station, musicBeat: volume.beats };
     }
     if (preset === 'white-start' || preset === 'white-peak' || preset === 'results-world') {
-      const musicBeat = preset === 'white-start' ? volume.beats - 12 : volume.beats;
+      const musicBeat = preset === 'white-start' ? volume.beats - (sim.gameplay.ending?.beats ?? ELSEWHERE_ESCAPE_BEATS) : volume.beats;
       const station = sim.reference.boostAt(musicBeat * sim.secondsPerBeat, sim.mode,
         difficultySettings(volume, sim.difficulty).speedFactor, arc => path.stationAt(arc, side));
       return { station: station + (preset === 'results-world' ? 9 : 0), musicBeat };
@@ -190,6 +190,7 @@ export class OutroInspection {
     const speed = cruise * (boosting ? BOOST_MULTIPLIER : 1);
     const ending = sim.gameplay.ending;
     let escapeWhite = results ? undefined : frame?.white;
+    if (this.volume.id === 'elsewhere' && !results) escapeWhite = elsewhereEscapeFade(beat, this.volume.beats);
     if (ending && !results && escapeWhite === undefined) {
       const elapsed = (musicBeat - (this.volume.beats - ending.beats)) * sim.secondsPerBeat;
       const duration = ending.beats * sim.secondsPerBeat;

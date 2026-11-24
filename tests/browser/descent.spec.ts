@@ -85,7 +85,7 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/debug/legacy/#gates-descent');
+  await page.goto('/debug/gates/?vol=descent');
   for (const kind of descentGateKinds) {
     const { label } = gateDescription(kind);
     const canvas = page.getByRole('img', { name: `${label} gate` });
@@ -94,7 +94,9 @@ test('the Debug library renders all 20 DESCENT glass profiles and seven facility
     await expect(select).toBeEnabled();
     for (const index of descentExamples[kind].keys()) {
       await select.selectOption(String(index));
-      await expect(canvas).toHaveAttribute('data-rendered-opening', String(index));
+      const { open, axis } = descentExamples[kind][index];
+      await expect(canvas).toHaveAttribute('data-rendered-opening', String(open));
+      await expect(canvas).toHaveAttribute('data-rendered-axis', String(axis));
       images.add(await canvas.evaluate((element: HTMLCanvasElement) => element.toDataURL()));
     }
     expect(images.size).toBe(descentExamples[kind].length);

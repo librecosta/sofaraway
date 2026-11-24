@@ -8,7 +8,7 @@ import type { Axis } from './collision';
 import { resolveDifficulty } from './difficulty';
 import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
-import { daylightFade, daylightPeak, gameplayFor } from './gameplay';
+import { daylightFade, daylightPeak, elsewhereEscapeFade, gameplayFor } from './gameplay';
 import { steer, steeringDamping } from './input';
 import type { InputFrame } from './input';
 import { LUMEN_POINTS, pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
@@ -142,9 +142,9 @@ export class Simulation {
   get escapeWhite() {
     if (this.volume.id === 'orbit') return 0;
     const ending = this.gameplay.ending;
-    const duration = ending?.beats ?? 12;
+    if (!ending) return this.phase === 'playing' || this.phase === 'crash' ? elsewhereEscapeFade(this.beat, this.volume.beats) : 0;
+    const duration = ending.beats;
     const elapsed = this.beat - (this.volume.beats - duration);
-    if (!ending) return this.phase === 'playing' || this.phase === 'crash' ? clamp(elapsed / duration, 0, 1) : 0;
     if (this.result?.title === 'TERMINATED' || this.phase === 'menu') return 0;
     if (elapsed < 1e-9) return 0;
     const seconds = duration * this.secondsPerBeat;

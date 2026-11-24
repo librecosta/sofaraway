@@ -9,7 +9,7 @@ test('ORBIT ending studio uses STARWAKE apertures and open-space ending for ever
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/debug/#outro');
   const studio = page.locator('#outro');
-  await studio.getByLabel('World', { exact: true }).selectOption('orbit');
+  await page.getByLabel('Volume', { exact: true }).selectOption('orbit');
   await studio.getByRole('button', { name: 'Open live ending' }).click();
   const canvas = studio.getByRole('img', { name: 'Live ORBIT ending' });
   for (const [quality, difficulty, route] of [['low', 'normal', 'main'], ['auto', 'hard', 'challenge'], ['high', 'impossible', 'score']] as const) {
@@ -36,7 +36,7 @@ test('DESCENT End Sequence Studio renders each route through its bonus gates and
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/debug/#outro');
   const studio = page.locator('#outro');
-  await studio.getByLabel('World', { exact: true }).selectOption('descent');
+  await page.getByLabel('Volume', { exact: true }).selectOption('descent');
   await studio.getByRole('button', { name: 'Open live ending' }).click();
   const canvas = studio.getByRole('img', { name: 'Live DESCENT ending' });
   const jump = (label: string) => studio.getByRole('button', { name: label, exact: true }).click();
@@ -145,7 +145,7 @@ test('End Sequence Studio locates real gates, keeps music separate, flies, and r
   const studio = page.locator('#outro');
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await expect(studio.getByRole('heading', { name: 'End Sequence Studio' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ending Studio' })).toBeVisible();
   await studio.getByRole('button', { name: 'Open live ending' }).click();
   const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE ending' });
   const inspection = new OutroInspection('standard', 0, 'main');

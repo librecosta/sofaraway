@@ -57,7 +57,7 @@ test('the Explorer overview has nine destinations and loads only static previews
   expect(errors).toEqual([]);
 });
 
-test('each lab is directly served with a live entry or its existing experiment', async ({ page }) => {
+test('each lab is directly served with its interactive workspace', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   for (const [path, title, anchor] of topics) {
@@ -71,7 +71,7 @@ test('each lab is directly served with a live entry or its existing experiment',
     if (!anchor) {
       await expect(page.getByRole('button', { name: 'Open live scene' })).toBeVisible();
       await expect(page.locator('main canvas')).toHaveCount(0);
-    } else await expect(page.getByRole('main').locator(`a[href^="/debug/legacy/"][href$="${anchor}"]`).first()).toBeVisible();
+    } else await expect(page.locator(anchor)).toBeVisible();
   }
   expect(errors).toEqual([]);
 });
@@ -85,7 +85,7 @@ test('volume selection survives lab navigation, history and invalid input', asyn
   await expect(page.getByRole('heading', { name: 'How ORBIT works' })).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Explorer', exact: true });
   await nav.getByRole('link', { name: 'Gates' }).click();
-  await expect(page.getByRole('link', { name: /Gate Library/ })).toHaveAttribute('href', '/debug/legacy/?vol=orbit#gates-orbit');
+  await expect(page.locator('#gates-orbit canvas[data-mode=model]')).toHaveCount(3);
   await nav.getByRole('link', { name: 'Audio' }).click();
   await expect(page.getByLabel('Volume', { exact: true })).toHaveValue('orbit');
   await expect(page.getByRole('link', { name: 'Back to game' })).toHaveAttribute('href', '/?vol=orbit');
@@ -100,12 +100,12 @@ test('volume selection survives lab navigation, history and invalid input', asyn
 test('old experiment and audio URLs preserve settings and replace the history entry', async ({ page }) => {
   await page.goto('/debug/worlds/?vol=orbit');
   await page.evaluate(() => location.assign('/debug/?vol=orbit&q=low&station=5000#gates-orbit'));
-  await expect(page).toHaveURL(/\/debug\/legacy\/\?vol=orbit&q=low&station=5000#gates-orbit$/);
+  await expect(page).toHaveURL(/\/debug\/gates\/\?vol=orbit&q=low&station=5000#gates-orbit$/);
   await expect(page.locator('#gates-orbit')).toBeInViewport();
   await page.goBack();
   await expect(page).toHaveURL(/\/debug\/worlds\/\?vol=orbit$/);
   await page.goForward();
-  await expect(page).toHaveURL(/\/debug\/legacy\/\?vol=orbit&q=low&station=5000#gates-orbit$/);
+  await expect(page).toHaveURL(/\/debug\/gates\/\?vol=orbit&q=low&station=5000#gates-orbit$/);
 
   await page.goto('/debug/?vol=descent&secs=2#audio');
   await expect(page).toHaveURL(/\/debug\/audio\/\?vol=descent&secs=2#audio$/);

@@ -85,7 +85,7 @@ test('End Sequence Studio renders the production sky, cloud sea and recovered co
   const button = (name: string) => studio.getByRole('button', { name, exact: true });
   await button('Open live ending').click();
   await expect(studio.getByRole('img', { name: 'Live ELSEWHERE ending' })).toHaveAttribute('data-exterior', 'null');
-  await studio.getByLabel('World', { exact: true }).selectOption('daybreak');
+  await page.getByLabel('Volume', { exact: true }).selectOption('daybreak');
   const canvas = studio.getByRole('img', { name: 'Live DAYBREAK ending' });
   const view = studio.getByLabel('Exterior view', { exact: true });
   for (const { name, startBeat, endBeat } of sections) {
@@ -148,13 +148,16 @@ test('End Sequence Studio renders the production sky, cloud sea and recovered co
   const restoredSky = await imageSamples(canvas, await canvas.screenshot(), skyPoints);
   expect(Math.max(...restoredSky.flatMap((rgb, i) => rgb.map((value, c) => Math.abs(value - sky[i][c]))))).toBeLessThan(3);
   for (const volume of ['elsewhere', 'daybreak', 'elsewhere', 'daybreak']) {
-    await studio.getByLabel('World', { exact: true }).selectOption(volume);
+    await page.getByLabel('Volume', { exact: true }).selectOption(volume);
     await expect(studio.getByRole('img')).toHaveAttribute('data-exterior', volume === 'elsewhere' ? 'null' : /"seaLevel":-22/);
   }
-  expect(await canvas.evaluate((el, initial) => el === initial, original)).toBe(true);
+  expect(await canvas.evaluate((el, initial) => el === initial, original)).toBe(false);
+  await expect.poll(() => gl.evaluate(context => context.isContextLost())).toBe(true);
+  const active = await canvas.evaluateHandle((el: HTMLCanvasElement) => el.getContext('webgl2')!);
   await button('Close live ending').click();
   await expect(canvas).toHaveCount(0);
-  await expect.poll(() => gl.evaluate(context => context.isContextLost())).toBe(true);
+  await expect.poll(() => active.evaluate(context => context.isContextLost())).toBe(true);
+  await active.dispose();
   await gl.dispose();
   await loss.dispose();
   await original!.dispose();

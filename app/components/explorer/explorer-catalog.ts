@@ -38,45 +38,27 @@ export function explorerHref(page: ExplorerPage, volume?: VolumeId, anchor?: str
   return explorerPath(page) + (volume ? `?vol=${volume}` : '') + (anchor ? `#${anchor}` : '');
 }
 
-export const legacyAnchors = new Set([
-  'pickups', 'gates', 'gates-elsewhere', 'gates-daybreak', 'gates-descent',
-  'gates-orbit', 'materials', 'effects', 'outro', 'ui-states',
-]);
-
 export const explorerSource = (path: string) => `https://github.com/librecosta/sofaraway/blob/dev/${path}`;
 
-type Experiment = { name: string; anchor: string; summary: string };
-
-export const explorerTopicsContent: Record<Exclude<ExplorerTopic, 'worlds' | 'lighting'>, { method: string; source: string; experiments: Experiment[] }> = {
+export const explorerTopicsContent = {
   gates: {
-    method: 'Each volume defines a family of openings. The gate library lets you rotate their models and inspect the aperture geometry that the collision engine reads.',
-    source: 'app/game/core/collision.ts',
-    experiments: [{ name: 'Gate Library', anchor: 'gates', summary: 'Rotate the models and compare the opening shapes in each volume.' }],
+    method: 'The specimens use the same gate geometry and opening definitions as the game. The sectional view samples the production collision test, including each aperture, hub and laser gap.',
+    source: { 'Gate geometry source': 'app/game/graphics/gates.client.ts', 'Collision source': 'app/game/core/collision.ts' },
   },
   materials: {
-    method: 'Surface presets generate texture channels and feed the game’s materials. Inspect those channels individually and compare the effects applied to the world geometry.',
-    source: 'app/game/graphics/materials/presets.ts',
-    experiments: [
-      { name: 'Surface Materials', anchor: 'materials', summary: 'Browse material presets and inspect their texture channels.' },
-      { name: 'Effect Materials', anchor: 'effects', summary: 'Preview the shaders used for glow, glass and other effects.' },
-    ],
+    method: 'The corridor library generates and caches its tiled textures. The lit specimens share a lighting rig so their roughness and metalness are comparable. Raw channels expose the texture inputs directly.',
+    source: { 'Material library source': 'app/game/graphics/materials/library.client.ts', 'Texture presets source': 'app/game/graphics/materials/presets.ts' },
   },
   gameplay: {
-    method: 'The game advances in fixed simulation steps. Travel along the reference track determines when you cross gates, reach branches and collect pickups.',
-    source: 'app/game/core/simulation.ts',
-    experiments: [
-      { name: 'Floating Pickups', anchor: 'pickups', summary: 'Inspect the pickup models and their individual gameplay effects.' },
-      { name: 'Gameplay Stations', anchor: 'volumes', summary: 'Open fixed frames from the production runs to see gates and routes in context.' },
-    ],
+    method: 'The production chart supplies authored beats, and the run replaces the junction segment with the chosen route. The reference track assigns world stations. Encore is a separate distance-based plan.',
+    source: { 'Chart source': 'app/game/core/chart.ts', 'Branch source': 'app/game/core/branches.ts', 'Reference track source': 'app/game/core/reference-track.ts' },
   },
   endings: {
-    method: 'After the last regular gate, the run can continue through Encore and Afterglow while the soundtrack reaches its ending. The studio can scrub that transition directly.',
-    source: 'app/game/core/encore.ts',
-    experiments: [{ name: 'End Sequence Preview', anchor: 'outro', summary: 'Scrub DAYBREAK’s ending and compare camera, glass and cloud controls.' }],
+    method: 'The production ending plan places Encore and Afterglow beyond the regular course. The preview samples that plan and renders the actual world. White Escape is specific to worlds that use it.',
+    source: { 'Ending plan source': 'app/game/core/encore.ts', 'Ending preview source': 'app/game/debug/outro-preview.client.ts' },
   },
   interface: {
-    method: 'Menu, HUD and results components reflect the state of the runtime. The state studio provides direct access to representative screens and transitions.',
-    source: 'app/components/GameViewport.tsx',
-    experiments: [{ name: 'UI State Studio', anchor: 'ui-states', summary: 'Open presets for the menu, active play, pause and results.' }],
+    method: 'The iframe renders the game’s menu, HUD, overlays and results from isolated example snapshots. Preview interactions change those snapshots, and the optional corridor comes from the game renderer.',
+    source: { 'Interface scenarios source': 'app/game/debug/ui-state-catalog.ts', 'Game viewport source': 'app/components/GameViewport.tsx' },
   },
-};
+} satisfies Record<Exclude<ExplorerTopic, 'worlds' | 'lighting'>, { method: string; source: Record<string, string> }>;
