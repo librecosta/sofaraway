@@ -6,7 +6,7 @@ import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
 import { idleInput, STEERING_SPEED } from './input';
 import type { InputFrame } from './input';
 import { apertureAnchors, isOrbitGate, orbitPreset } from './orbit-gates';
-import { BOOST_MULTIPLIER, cruiseTarget } from './reference-motion';
+import { cruiseTarget } from './reference-motion';
 import type { RunGate, Simulation } from './simulation';
 
 type Gate = Pick<RunGate, 'kind' | 'open' | 'axis'>;
@@ -14,7 +14,7 @@ interface Crossing { station: number; openings: readonly Point[] }
 interface Waypoint { station: number; target: Point }
 
 const center: Point = [0, 0];
-const maximumSpeed = cruiseTarget(Infinity) * BOOST_MULTIPLIER * IMPOSSIBLE_SPEED_FACTOR;
+const maximumCruiseSpeed = cruiseTarget(Infinity) * IMPOSSIBLE_SPEED_FACTOR;
 
 function openings({ kind, open, axis }: Gate): readonly Point[] {
   const preferred = lanePoint(kind, open, axis);
@@ -54,8 +54,6 @@ export class ShowcasePilot {
   private readonly target: Point = [0, 0];
   private readonly frame = { ...idleInput, target: this.target };
   private index = 0;
-  private endingBoost = false;
-  private readonly afterglow: number;
 
   constructor(sim: Simulation, route: RouteKind) {
     const branch = sim.junctionPath;
@@ -68,8 +66,8 @@ export class ShowcasePilot {
       const x = Math.min(SECTION.a - .39, threshold + .65);
       crossings.push({ station: branch.split, openings: [[side === 'left' ? -x : side === 'right' ? x : 0, 0]] });
     }
-    this.afterglow = arc(sim.outroPlan?.afterglowStart ?? sim.reference.station(sim.volume.beats, sim.mode));
-    crossings.push({ station: this.afterglow, openings: [center] });
+    const afterglow = arc(sim.outroPlan?.afterglowStart ?? sim.reference.station(sim.volume.beats, sim.mode));
+    crossings.push({ station: afterglow, openings: [center] });
     this.line = [{ station: sim.distance, target: center },
       ...planLine(crossings.sort((a, b) => a.station - b.station), sim.distance)];
   }
@@ -81,20 +79,13 @@ export class ShowcasePilot {
     const gap = to.station - from.station;
     const travel = Math.hypot(nextX - x, nextY - y);
     const time = .42 + travel * 1.25 / STEERING_SPEED;
-    const start = Math.max(from.station, to.station - maximumSpeed * time);
+    const start = Math.max(from.station, to.station - maximumCruiseSpeed * time);
     // Leave room for the normal damped camera to settle before the swept crossing.
     const end = to.station - Math.min(9, gap * .22);
     const t = gap > 0 ? clamp((sim.distance - start) / Math.max(1, end - start), 0, 1) : 1;
     const ease = t * t * (3 - 2 * t);
     this.target[0] = (x + (nextX - x) * ease) * RANGE_X / (RANGE_X + sim.steeringWidth);
     this.target[1] = y + (nextY - y) * ease;
-
-    const remaining = (sim.volume.beats - sim.beat) * sim.secondsPerBeat;
-    const toAfterglow = this.afterglow - sim.distance;
-    // Start on cruise, then sustain normal Boost when required to reach the
-    // planned Encore and leave several seconds for the existing Afterglow.
-    this.endingBoost ||= (remaining - 8) * maximumSpeed < toAfterglow + 24;
-    this.frame.boosting = sim.phase === 'playing' && this.endingBoost && toAfterglow > 0;
     return this.frame;
   }
 }

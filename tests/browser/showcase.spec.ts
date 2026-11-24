@@ -15,17 +15,17 @@ const savedRecords = JSON.stringify({
 });
 
 const flights = [
-  { volume: 'elsewhere', route: 'main', quality: 'low', wide: false, lights: true },
-  { volume: 'daybreak', route: 'challenge', quality: 'auto', wide: true, lights: true },
-  { volume: 'descent', route: 'score', quality: 'high', wide: false, lights: false },
-  { volume: 'orbit', route: 'challenge', quality: 'auto', wide: true, lights: true },
+  { volume: 'elsewhere', route: 'main', quality: 'low', wide: false, lights: true, encore: 10 },
+  { volume: 'daybreak', route: 'challenge', quality: 'auto', wide: true, lights: true, encore: 0 },
+  { volume: 'descent', route: 'score', quality: 'high', wide: false, lights: false, encore: 0 },
+  { volume: 'orbit', route: 'challenge', quality: 'auto', wide: true, lights: true, encore: 0 },
 ] as const;
 
 interface ShowcaseTestWindow extends Window {
   showcaseRuntime?: Runtime;
 }
 
-for (const { volume, route, quality, wide, lights } of flights) {
+for (const { volume, route, quality, wide, lights, encore } of flights) {
   test(`${volume} starts an audible Showcase and completes the Impossible flight in the browser`, async ({ page }, info) => {
     test.setTimeout(120_000);
     const errors: string[] = [];
@@ -112,10 +112,12 @@ for (const { volume, route, quality, wide, lights } of flights) {
       const updateClock = Reflect.get(runtime, 'runTime');
       const duration = sim.volume.beats * sim.secondsPerBeat;
       let target = clock.elapsed, now = performance.now();
+      let boostLens = sim.boostLens;
       const phases = new Set([sim.outroPhase]);
       const runFrame = (dt = step) => {
         cancelAnimationFrame(Reflect.get(runtime, 'raf'));
         frame(now += dt * 1000);
+        boostLens = Math.max(boostLens, sim.boostLens);
         phases.add(sim.outroPhase);
       };
       Reflect.set(runtime, 'runTime', () => target);
@@ -132,15 +134,18 @@ for (const { volume, route, quality, wide, lights } of flights) {
       } finally {
         Reflect.set(runtime, 'runTime', updateClock);
       }
-      return { snapshot: runtime.getSnapshot(), phases: [...phases], saveRecords, diagnostics,
+      return { snapshot: runtime.getSnapshot(), phases: [...phases], boostLens, saveRecords, diagnostics,
         glError: graphics.gl.getError(), measuredMs: performance.now() - begin };
     }, { step: STEP });
     expect(observed.saveRecords).toBe(true);
     expect(observed.diagnostics).toMatchObject({ fixedTime: null, autoplay: false, debug: false, god: false, align: false, post: true });
     expect(observed.snapshot).toMatchObject({ phase: 'results', score: 0, lives: 1, route,
-      result: { title: 'ESCAPED', accuracy: 1, unreached: 0 }, encore: { missed: 0, neutralized: 0, bonusScore: 0 } });
-    expect(observed.snapshot.encore?.passed).toBeGreaterThan(0);
-    expect(observed.phases).toEqual(['main', 'transition', 'encore', 'afterglow']);
+      result: { title: 'ESCAPED', accuracy: 1, unreached: 0 } });
+    expect(observed.boostLens).toBe(0);
+    expect(observed.snapshot.encore?.passed ?? 0).toBe(encore);
+    if (encore) expect(observed.snapshot.encore).toMatchObject({ encountered: encore, missed: 0, neutralized: 0, bonusScore: 0 });
+    expect(observed.phases).toContain('transition');
+    expect(observed.phases.includes('encore')).toBe(encore > 0);
     expect(observed.glError).toBe(0);
     await info.attach('flight', { body: JSON.stringify(observed), contentType: 'application/json' });
     await expect(page.getByRole('heading', { name: 'SHOWCASE COMPLETE' })).toBeVisible();

@@ -22,15 +22,20 @@ test.each(VOLUMES)('$id showcases every Impossible route with real steering and 
     expect(sim.outroPlan).toEqual(standard.outroPlan);
     const pilot = new ShowcasePilot(sim, route);
     const ending = new Set();
-    let cruise = 0, boost = 0, maxMotion = 0, maxAimMotion = 0;
+    let endStation = 0, maxMotion = 0, maxAimMotion = 0;
     while (sim.phase !== 'results') {
       const previous = { ...sim.camera };
       const next = sim.mainGates[sim.gatesJudged];
       const input = pilot.input(sim);
-      if (sim.phase === 'playing') {
-        if (input.boosting) boost++; else cruise++;
-      }
+      if (input.boosting) throw new Error('Showcase requested Boost');
       sim.step(STEP, input);
+      if (standard.phase === 'playing') {
+        standard.step(STEP, { ...input, boosting: false });
+        endStation = sim.distance;
+        if (sim.speed !== standard.speed || sim.distance !== standard.distance || sim.boostLens !== 0) {
+          throw new Error(`Showcase diverged from Impossible cruise at beat ${sim.beat}`);
+        }
+      }
       maxMotion = Math.max(maxMotion, Math.hypot(sim.camera.x - previous.x, sim.camera.y - previous.y));
       maxAimMotion = Math.max(maxAimMotion, Math.hypot(sim.camera.tx - previous.tx, sim.camera.ty - previous.ty));
       ending.add(sim.outroPhase);
@@ -43,10 +48,10 @@ test.each(VOLUMES)('$id showcases every Impossible route with real steering and 
     expect(sim.result, label).toMatchObject({ title: 'ESCAPED', route, accuracy: 1, unreached: 0, neutralized: 0 });
     expect(sim.branch?.side).toBe(side);
     expect(sim.gatesPassed).toBe(sim.gatesTotal);
-    expect(sim.encore, label).toMatchObject({ passed: sim.outroPlan!.gates.length, missed: 0, neutralized: 0, bonusScore: 0 });
-    expect(ending, label).toEqual(new Set(['main', 'transition', 'encore', 'afterglow']));
-    expect(cruise).toBeGreaterThan(60);
-    expect(boost).toBeGreaterThan(60);
+    const reachedEncore = sim.outroPlan!.gates.filter(gate => gate.routeStation <= endStation + 1e-8).length;
+    expect(sim.encore?.passed ?? 0, label).toBe(reachedEncore);
+    expect(ending.has('encore')).toBe(reachedEncore > 0);
+    if (sim.encore) expect(sim.encore, label).toMatchObject({ missed: 0, neutralized: 0, bonusScore: 0 });
     expect(maxMotion, label).toBeLessThan(.35);
     expect(maxAimMotion, label).toBeLessThan(.5);
     expect(clampSection(sim.camera.x, sim.camera.y, .34)).toEqual([sim.camera.x, sim.camera.y]);
