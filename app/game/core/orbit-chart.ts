@@ -47,9 +47,7 @@ const base = arrange(anchors);
 // Density changes must not move existing world landmarks or the shared cruise ramp.
 export const orbitReferenceChart = () => base.map(g => ({ ...g }));
 
-function originalChart(difficulty: Difficulty): ChartGate[] {
-  if (difficulty === 'easy') return base.filter((g, i) => i % 3 !== 2 || g.beat >= 224 && g.beat < 256);
-  if (difficulty !== 'impossible') return base.map(g => ({ ...g }));
+function buildOriginalImpossible(): ChartGate[] {
   const out = [...base];
   for (const beat of orbitCueBeats) {
     if (!allowed(beat) || beat < 32 || beat >= 352 || beat >= 224 && beat < 256) continue;
@@ -64,10 +62,10 @@ function originalChart(difficulty: Difficulty): ChartGate[] {
   return out;
 }
 
-// Promote selected existing Impossible accents into the shared Normal/Hard score.
-// Their original openings and every earlier anchor stay fixed; Easy stays unchanged.
+// Promote selected existing Impossible accents into the shared standard chart.
+// Their original openings and every earlier anchor stay fixed.
 const reinforcementBeats = new Set([54, 66, 75, 99, 130, 173, 213, 259, 304, 315, 331]);
-const originalImpossible = originalChart('impossible');
+const originalImpossible = buildOriginalImpossible();
 const reinforced = [...base, ...originalImpossible.filter(g => reinforcementBeats.has(g.beat))
   .map(({ inserted, ...g }) => g)].sort((a, b) => a.beat - b.beat);
 
@@ -99,7 +97,6 @@ const impossibleResponses: ChartGate[] = [
 ];
 
 export function orbitChart(difficulty: Difficulty = 'normal'): ChartGate[] {
-  if (difficulty === 'easy') return originalChart('easy');
   if (difficulty !== 'impossible') return reinforced.map(g => ({ ...g }));
   return [...originalImpossible.map(g => {
     if (!reinforcementBeats.has(g.beat)) return { ...g };
@@ -113,11 +110,8 @@ export function orbitRouteCharts(main: readonly ChartGate[], difficulty: Difficu
     .filter(beat => beat !== undefined && beat < 147);
   const challenge = arrange(choose(difficulty === 'impossible' ? [128, 130, 132, 134, 136, 138, 140, 142, 144, 146]
     : [128, 131, 134, 137, 140, 143, 146]), 3);
-  // One broad response strengthens Main/Challenge while Bonus retains its four rewards.
-  if (difficulty !== 'easy') {
-    challenge.push(difficulty === 'impossible' ? gate(145, 'orbit-single', 0) : gate(132, 'orbit-dual', 0));
-    challenge.sort((a, b) => a.beat - b.beat);
-  }
+  challenge.push(difficulty === 'impossible' ? gate(145, 'orbit-single', 0) : gate(132, 'orbit-dual', 0));
+  challenge.sort((a, b) => a.beat - b.beat);
   const score = choose([130, 134, 138, 142]).map((beat, i) => gate(beat, i === 2 ? 'orbit-triple' : 'orbit-single', 0));
   return { main: main.map(g => ({ ...g })), challenge, score };
 }

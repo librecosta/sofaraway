@@ -30,12 +30,13 @@ MAELSTROM and AURORA develop denser multi-aperture motion. Impossible retains
 every Hard anchor, central resets and authored multi-hole phrase responses.
 The C4-A density pass preserves all 2ec9709 gate beats and openings and supplements
 Normal/Hard from 81 to 92 gates (+13.58%), Impossible from 114 to 135 (+18.42%).
-Easy stays at 55. Section counts in score order are:
+F0 adopts the same 92-gate chart for Easy, including the standard Challenge
+route. Lives and score multipliers still distinguish the three difficulties.
+Section counts in score order are:
 
 | Difficulty | OUTER | DRIFT | RINGBREAK | MAELSTROM | ECLIPSE | AURORA | APHELION |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Easy | 2 | 11 | 7 | 13 | 2 | 13 | 7 |
-| Normal / Hard | 3 | 19 | 12 | 22 | 2 | 22 | 12 |
+| Easy / Normal / Hard | 3 | 19 | 12 | 22 | 2 | 22 | 12 |
 | Impossible | 3 | 33 | 19 | 29 | 2 | 30 | 19 |
 
 The original 81-gate skeleton remains the motion reference, so added crossings
@@ -49,6 +50,7 @@ RINGBREAK uses preview 108, choice 120, route entry 128, merge 148 and rejoin
 Main, Challenge and Bonus retain the shared seeded route system. OrbitWorld
 protects the actual three BranchPaths and their 450-unit gate observation spans.
 Natural S-curves remain outside the selection window.
+The standard run totals are 92 on Main, 93 on Challenge and 89 on Bonus.
 
 Encore uses the same three aperture families and shared bounded world-space
 planner, reserving eight seconds at maximum Boost for open-space Afterglow.

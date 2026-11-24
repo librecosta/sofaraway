@@ -217,7 +217,7 @@ test('STARWAKE runs for its complete body and tail through real boosted gameplay
   await page.evaluate(() => window.b0Harness.dispose());
 });
 
-for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard', 'normal'], [0, 'right', false, 'standard', 'normal'],
+for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard', 'normal'], [0, 'right', true, 'standard', 'easy'],
   [1, 'left', false, 'standard', 'normal'], [1, 'center', false, 'standard', 'normal'], [1, 'right', true, 'standard', 'normal'],
   [0, 'center', false, 'standard', 'normal'], [0, 'right', true, 'standard', 'impossible'], [1, 'right', false, 'sightseeing', 'normal']] as const) {
   const route = branchLayout(seed)[side];
@@ -229,6 +229,7 @@ for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard
     const lead = sim.mainGates.filter(gate => gate.worldStation < junction.split).at(-1)!;
     const exit = sim.mainGates.find(gate => gate.worldStation >= junction.end)!;
     const routeGates = sim.branchGates![route];
+    const routeTotal = sim.mainGates.length + routeGates.length;
     await page.goto('http://127.0.0.1:8090/');
     const initial = await page.evaluate(async ({ seed, mode, difficulty }) => {
       const runtime = window.b0Harness;
@@ -287,7 +288,7 @@ for (const [seed, side, boost, mode, difficulty] of [[0, 'left', true, 'standard
     await gateAim(exit);
     await poll(async () => (await state()).lastGate?.beat).toBe(exit.beat);
     await poll(async () => (await snap()).gatesPassed).toBe(++passed);
-    expect(await snap()).toMatchObject({ phase: 'playing', lives: mode === 'sightseeing' ? 5 : difficulty === 'impossible' ? 1 : 2, gatesPassed: passed });
+    expect(await snap()).toMatchObject({ phase: 'playing', lives: sim.lives, gatesPassed: passed, gatesTotal: routeTotal });
     expect(await state()).toMatchObject({ sharedPath: true, metrics: { chunks: 0, junctionMeshes: 0 } });
     await page.evaluate(() => window.b0Harness.dispose());
   });

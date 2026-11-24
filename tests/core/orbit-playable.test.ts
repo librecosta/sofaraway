@@ -21,6 +21,21 @@ const axis = (delta: number) => Math.abs(delta) < .052 ? 0 : Math.sign(delta);
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const withoutMarker = ({ inserted, ...gate }: ChartGate) => gate;
+const standardDifficulties = ['easy', 'normal', 'hard'] as const;
+const standardRouteTotals = { main: 92, challenge: 93, score: 89 };
+const impossibleRouteTotals = { main: 135, challenge: 136, score: 129 };
+
+// Complete chart and route descriptors captured at 654f022 before Easy parity.
+const baseline = {
+  hard: 'e647f06fdbc9c793fe3cb6af9bcc4d3691b4f48563f916cbfce797ef698533ca',
+  impossible: '68940a3c06d8277450e7e51c408b8b273d7af2964b1f3b76fea0698982ae7a57',
+  challenge: '3489b37558838be80c5f32865e6342c80f37978cafd10ee9d684e0b872d071d3',
+  impossibleChallenge: 'f09ae06bcc1fa1447eb6cc1409cdb583e24dba2c9ede2ebb311d177c96913101',
+  bonus: '4d7fc3784bab70f515eb78c52085874a8dd187a02780401791f6767d2febd59e',
+  sightseeing: '17992dd21325ba04cb72af8a523bf78591786beef13e416363d907134c52fd59',
+  cues: '0423d862a547e4929544c79ece3ea2b596b2260e2dc7a130f94c633488b6ef1d',
+};
+
 // Frozen 2ec9709 anchors: compare their complete descriptors, not just counts.
 const priorBeats = [
   12, 20, 28, 32, 36, 40, 44, 48, 52, 56, 59.75, 63.625,
@@ -37,45 +52,56 @@ const priorInserts = [
   319, 323, 327, 331, 335, 339, 343, 347, 351,
 ];
 
-test('density reinforcement preserves every previous opening, Easy, Bonus and the motion/world reference', () => {
+test('ORBIT standard difficulties share the frozen Hard chart and all branches', () => {
+  const hard = orbitChart('hard');
+  const routes = orbitRouteCharts(hard, 'hard');
+  expect(hash(hard)).toBe(baseline.hard);
+  expect(hash(routes.challenge)).toBe(baseline.challenge);
+  expect(hard).toHaveLength(92);
+  expect(routes.challenge).toHaveLength(8);
+  for (const difficulty of standardDifficulties) {
+    const chart = orbitChart(difficulty);
+    expect(chart).toEqual(hard);
+    expect(chartFor(orbit, difficulty)).toEqual(hard);
+    expect(orbitRouteCharts(chart, difficulty)).toEqual(routes);
+  }
+  expect(standardDifficulties.map(difficulty => difficultySettings(orbit, difficulty)))
+    .toMatchObject([{ lives: 3, mult: 1, speedFactor: 1 }, { lives: 2, mult: 1.6, speedFactor: 1 },
+      { lives: 1, mult: 2.4, speedFactor: 1 }]);
+});
+
+test('density reinforcement preserves previous openings, Impossible, Bonus and the motion/world reference', () => {
   const hard = orbitChart('hard'), impossible = orbitChart('impossible');
-  expect(orbitChart('normal')).toEqual(hard);
   expect(hash(hard.filter(g => priorBeats.includes(g.beat)).map(withoutMarker)))
     .toBe('b1a61c41145b57d4ecbd14f570c511b8f3fca110a7f2df435b88e20980063376');
   expect(hash(impossible.filter(g => [...priorBeats, ...priorInserts].includes(g.beat)).map(withoutMarker)))
     .toBe('ae9d82249553d3235f14340a6df774fee3091b15572fc90171db850b995aedb5');
-  expect(hash(orbitChart('easy').map(withoutMarker)))
-    .toBe('ccaee7ff06a750b6bee6c23242c766c7d695b9cfba7829790ef559a1708dea5e');
-  const expectedSections = {
-    easy: [2, 11, 7, 13, 2, 13, 7], normal: [3, 19, 12, 22, 2, 22, 12],
-    hard: [3, 19, 12, 22, 2, 22, 12], impossible: [3, 33, 19, 29, 2, 30, 19],
-  };
-  for (const difficulty of ['easy', 'normal', 'hard', 'impossible'] as const) {
+  expect(hash(impossible)).toBe(baseline.impossible);
+  expect(hash(orbitCueBeats)).toBe(baseline.cues);
+  const reference = orbitReferenceChart();
+  expect(hash(reference)).toBe('b1a61c41145b57d4ecbd14f570c511b8f3fca110a7f2df435b88e20980063376');
+  for (const difficulty of [...standardDifficulties, 'impossible'] as const) {
+    const isImpossible = difficulty === 'impossible';
     const chart = orbitChart(difficulty), routes = orbitRouteCharts(chart, difficulty);
-    expect(starwakeTrack.sections.map(s => chart.filter(g => g.section === s.name).length)).toEqual(expectedSections[difficulty]);
+    expect(starwakeTrack.sections.map(s => chart.filter(g => g.section === s.name).length))
+      .toEqual(isImpossible ? [3, 33, 19, 29, 2, 30, 19] : [3, 19, 12, 22, 2, 22, 12]);
     expect(new Set(chart.map(g => g.beat)).size).toBe(chart.length);
     for (const route of Object.values(routes)) for (const g of route) {
       expect(orbitCueBeats).toContain(g.beat);
       expect(g.beat >= 108 && g.beat < 128 || g.beat >= 147 && g.beat < 158).toBe(false);
     }
-    const additions = difficulty === 'impossible' ? [145] : difficulty === 'easy' ? [] : [132];
-    expect(hash(routes.challenge.filter(g => !additions.includes(g.beat))))
-      .toBe(difficulty === 'impossible' ? '2e49bda078b8b882260af50c476f33f7671493ee5ebb04e928d7de3e70e3e18e'
-        : '5116c9a03d12a388641147dc07b9d04b50ed3fbe9c74c0759189b8a7af977b0e');
-    expect(hash(routes.score)).toBe('4d7fc3784bab70f515eb78c52085874a8dd187a02780401791f6767d2febd59e');
+    expect(hash(routes.challenge)).toBe(isImpossible ? baseline.impossibleChallenge : baseline.challenge);
+    expect(hash(routes.score)).toBe(baseline.bonus);
     for (const mode of ['standard', 'sightseeing'] as const) {
       const sim = new Simulation(orbit); sim.start(difficulty, 0, undefined, mode);
-      const reference = orbitReferenceChart();
-      expect(hash(reference)).toBe('b1a61c41145b57d4ecbd14f570c511b8f3fca110a7f2df435b88e20980063376');
       const motion = referenceMotion(384, 60 / 128, reference);
-      for (const beat of [...priorBeats, 108, 120, 148, 156, 384]) {
+      for (const beat of [...priorBeats, 108, 120, 122, 128, 148, 156, 384]) {
         expect(sim.reference.station(beat, mode)).toBeCloseTo(START_DISTANCE + motion(beat)
           * (mode === 'sightseeing' ? 1 / 3 : 1) * (sim.difficulty === 'impossible' ? 1.15 : 1), 8);
       }
-      if (mode === 'sightseeing') expect(sim.mainGates.length).toBeLessThanOrEqual(32);
+      if (mode === 'sightseeing') expect(hash([sim.mainGates, sim.branchGates])).toBe(baseline.sightseeing);
     }
   }
-  expect(hard).toHaveLength(92);
   expect(impossible).toHaveLength(135);
   expect(impossible.filter(g => g.inserted)).toHaveLength(43);
 });
@@ -108,6 +134,9 @@ test.each([
     const sim = new Simulation(orbit);
     const kind = side === 'center' ? 'lumen' : side === 'left' ? 'resonance' : 'shield';
     sim.start(difficulty, seed, kind, mode);
+    const route = branchLayout(seed)[side];
+    const expectedTotals = difficulty === 'impossible' ? impossibleRouteTotals : standardRouteTotals;
+    if (mode === 'standard') expect(sim.gatesTotal).toBe(expectedTotals.main);
     const plan = sim.outroPlan!;
     const branch = sim.junctionPath!;
     const lastApproach = sim.mainGates.filter(gate => gate.worldStation < branch.split).at(-1)!;
@@ -134,12 +163,13 @@ test.each([
       if (!afterglowAt && sim.outroPhase === 'afterglow') afterglowAt = sim.time;
       if (!sim.lives) throw new Error(`${difficulty}/${mode}/${motion}/${seed}/${side} failed at beat ${gate?.beat}, camera ${JSON.stringify(sim.camera)}`);
     }
+    if (mode === 'standard') expect(sim.gatesTotal).toBe(expectedTotals[route]);
     expect(sim.result, `${seed}/${side} at ${sim.trackDistance}. Unpassed beats: ${sim.mainGates.filter(gate => gate.crossedAt === undefined || gate.hit).map(gate => gate.beat)}`)
-      .toMatchObject({ title: 'ESCAPED', passed: sim.gatesTotal, accuracy: 1, route: branchLayout(seed)[side] });
+      .toMatchObject({ title: 'ESCAPED', passed: sim.gatesTotal, accuracy: 1, route });
     expect(chosenAt - guideAt).toBeGreaterThan(1.5);
     expect(sim.pickup?.status === 'collected').toBe(sim.route === 'score');
     expect(sim.beat).toBe(384);
-    if (mode === 'standard' && motion === 'cruise' && side === 'center' && difficulty !== 'easy') {
+    if (mode === 'standard' && motion === 'cruise' && side === 'center') {
       for (const gate of sim.mainGates) expect(Math.abs(gate.crossedAt! - gate.beat * sim.secondsPerBeat)).toBeLessThan(STEP);
     }
     expect(afterglowAt).toBeGreaterThan(sim.mainGates.at(-1)!.crossedAt!);
