@@ -6,7 +6,8 @@ import type { OrbitSetpiece } from '../core/orbit-setpieces';
 import { auroraFrame } from '../core/orbit-nebula-structure';
 import { astralProjection, nebulaFragment } from './orbit-cosmic-shaders';
 import { bakeAuroraField } from './orbit-nebula-field';
-import { aphelionAtmosphere, aphelionClouds, aphelionShellScale, aphelionVertex } from './orbit-gas-giant.client';
+import { aphelionAtmosphere, aphelionClouds, aphelionMoon, aphelionRingBounds, aphelionRings,
+  aphelionShellScale, aphelionVertex } from './orbit-gas-giant.client';
 import type { OrbitRocks } from './orbit-rocks.client';
 import { OrbitSurfaceLights } from './orbit-light-rig';
 import type { OrbitLighting } from '../core/orbit-lighting';
@@ -80,6 +81,7 @@ type ActivePiece = { group: THREE.Group; materials: THREE.Material[]; fade: { va
   lights:OrbitSurfaceLights;
   batches: Map<number,THREE.InstancedMesh>;
   celestials: THREE.Mesh[];
+  rings?: THREE.Mesh;
   nebulaField?: THREE.DataArrayTexture;
   nebulaMaterial?: THREE.ShaderMaterial;
   boulderIndices: number[]; levels: Int8Array; quality?: QualityTier; instances:number; lastPosition:THREE.Vector3 };
@@ -89,6 +91,7 @@ export class OrbitSetpieces {
   readonly group = new THREE.Group();
   private readonly active = new Map<string,ActivePiece>();
   private readonly spheres = [new THREE.SphereGeometry(1,32,20),new THREE.SphereGeometry(1,64,40)];
+  private readonly ringGeometry = new THREE.RingGeometry(...aphelionRingBounds, 128).rotateX(-Math.PI / 2);
   private readonly plane = new THREE.PlaneGeometry(1,1);
   private readonly transform = new THREE.Object3D();
   private readonly point = new THREE.Vector3();
@@ -128,12 +131,12 @@ export class OrbitSetpieces {
     if (this.warmedAphelion.get(output) === geometry) return;
     const item = this.active.get(piece.id) ?? this.create(piece);
     const probe = new THREE.Scene();
-    for (const celestial of item.celestials) {
-      const mesh = new THREE.Mesh(geometry, celestial.material);
+    for (const celestial of [...item.celestials, item.rings!]) {
+      const mesh = new THREE.Mesh(celestial === item.rings ? this.ringGeometry : geometry, celestial.material);
       mesh.position.z = -2.5;
-      // Warm both sphere shells without occluding either probe in the tiny viewport.
-      mesh.position.x = probe.children.length % 2 === 0 ? -.8 : .8;
-      mesh.scale.setScalar(.72);
+      mesh.position.x = (probe.children.length % 2 === 0 ? -.8 : .8);
+      mesh.scale.setScalar(.55);
+      if (celestial === item.rings) mesh.rotation.x = Math.PI / 2;
       probe.add(mesh);
     }
     this.primeCelestial(renderer, target, lights, probe, item.fade);
@@ -173,26 +176,21 @@ export class OrbitSetpieces {
       boulderIndices: piece.rocks.flatMap((rock, index) => rock.structure.endsWith('-boulder') ? [index] : []),
       levels:new Int8Array(piece.rocks.length).fill(-1), instances:0,lastPosition:new THREE.Vector3(Infinity,Infinity,Infinity) };
     item.group.name = piece.name;
-    for (const body of piece.bodies) {
-      const planet = body.type === 'planet';
+    if (piece === this.aphelion) this.createAphelion(piece, item);
+    else for (const body of piece.bodies) {
       const sun = body.type==='moon' ? new THREE.Vector3().fromArray(piece.forward) : new THREE.Vector3(-.58,.55,.65).normalize();
-      const shared = {presence:item.fade,sun:{value:sun},celestialGain:{value:1}};
-      const seed = piece.seed >>> 0;
-      const uniforms = planet ? {...shared,cloudField:{value:this.rocks.surface.texture},detail:{value:3},
-        cloudSeed:{value:new THREE.Vector3(.19 + (seed & 255)/1024, .27 + ((seed >>> 8) & 255)/1024, .43 + ((seed >>> 16) & 255)/1024)}}
-        : {...shared,stoneField:{value:this.rocks.surface.texture},style:{value:body.type==='moon'?0:2}};
-      const vertexShader = planet ? aphelionVertex : projectionVertex;
-      const material = new THREE.ShaderMaterial({vertexShader,fragmentShader:planet?aphelionClouds:celestialFragment,uniforms,
+      const uniforms = {presence:item.fade,sun:{value:sun},celestialGain:{value:1},
+        stoneField:{value:this.rocks.surface.texture},style:{value:body.type==='moon'?0:2}};
+      const material = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:celestialFragment,uniforms,
         transparent:true,depthWrite:true});
       const mesh = new THREE.Mesh(this.spheres[0],material);item.celestials.push(mesh);
       mesh.position.fromArray(body.position); mesh.scale.fromArray(body.scale); mesh.frustumCulled=false;
-      if (planet) mesh.rotation.set(...body.rotation);
       item.group.add(mesh); item.materials.push(material);
-      const air = new THREE.ShaderMaterial({vertexShader,fragmentShader:planet?aphelionAtmosphere:atmosphereFragment,
+      const air = new THREE.ShaderMaterial({vertexShader:projectionVertex,fragmentShader:atmosphereFragment,
         uniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
       const shell = new THREE.Mesh(this.spheres[0],air);item.celestials.push(shell);
       shell.position.copy(mesh.position);shell.quaternion.copy(mesh.quaternion);
-      shell.scale.copy(mesh.scale).multiplyScalar(planet?aphelionShellScale:body.type==='star'?1.08:1.022);shell.frustumCulled=false;
+      shell.scale.copy(mesh.scale).multiplyScalar(body.type==='star'?1.08:1.022);shell.frustumCulled=false;
       item.group.add(shell);item.materials.push(air);
     }
     if (piece.nebula.length) item.nebulaField = bakeAuroraField(piece.seed);
@@ -215,6 +213,54 @@ export class OrbitSetpieces {
     }
     if (piece !== this.aurora && piece !== this.aphelion) this.group.add(item.group);
     this.active.set(piece.id,item);return item;
+  }
+
+  private createAphelion(piece: OrbitSetpiece, item: ActivePiece) {
+    const [planet, moon] = piece.bodies;
+    const orientation = new THREE.Euler(.23, 0, -.25, 'ZYX');
+    const ringNormal = new THREE.Vector3(0, 1, 0).applyEuler(orientation);
+    const seed = piece.seed >>> 0;
+    const uniforms = {
+      presence: item.fade,
+      celestialGain: { value: 1 },
+      detail: { value: 3 },
+      cloudField: { value: this.rocks.surface.texture },
+      cloudSeed: { value: new THREE.Vector3(.19 + (seed & 255)/1024, .27 + ((seed >>> 8) & 255)/1024, .43 + ((seed >>> 16) & 255)/1024) },
+      sun: { value: new THREE.Vector3(-.58, .55, .65).normalize() },
+      ringNormal: { value: ringNormal },
+      planetCenter: { value: new THREE.Vector3().fromArray(planet.position) },
+      planetRadius: { value: planet.radius },
+    };
+    const globe = (name: string, body: typeof planet, fragmentShader: string, shell = false) => {
+      const material = new THREE.ShaderMaterial({vertexShader:aphelionVertex, fragmentShader, uniforms,
+        transparent:true, depthWrite:!shell, blending:shell ? THREE.AdditiveBlending : THREE.NormalBlending});
+      const mesh = new THREE.Mesh(this.spheres[0], material);
+      mesh.name = name;
+      mesh.position.fromArray(body.position);
+      mesh.scale.fromArray(body.scale).multiplyScalar(shell ? aphelionShellScale : 1);
+      mesh.rotation.copy(body === planet ? orientation : new THREE.Euler(.12, -.25, .11));
+      mesh.frustumCulled = false;
+      // Draw distant solid bodies before their transparent optics and foreground nebula.
+      mesh.renderOrder = shell ? -2 : -3;
+      item.group.add(mesh);
+      item.celestials.push(mesh);
+      item.materials.push(material);
+    };
+    globe('Aphelion gas giant', planet, aphelionClouds);
+    globe('Aphelion atmosphere', planet, aphelionAtmosphere, true);
+    globe('Aphelion companion', moon, aphelionMoon);
+    const material = new THREE.ShaderMaterial({vertexShader:aphelionVertex, fragmentShader:aphelionRings, uniforms,
+      transparent:true, depthWrite:false, side:THREE.DoubleSide, forceSinglePass:true});
+    const rings = new THREE.Mesh(this.ringGeometry, material);
+    rings.name = 'Aphelion rings';
+    rings.position.copy(uniforms.planetCenter.value);
+    rings.scale.setScalar(planet.radius);
+    rings.rotation.copy(orientation);
+    rings.renderOrder = -1;
+    rings.frustumCulled = false;
+    item.group.add(rings);
+    item.rings = rings;
+    item.materials.push(material);
   }
 
   update(camera:THREE.PerspectiveCamera,station:number,height:number,quality:QualityTier,lighting?:OrbitLighting,inspection=0) {
@@ -288,5 +334,5 @@ export class OrbitSetpieces {
     })})),landmarks:this.descriptions.map(p=>({id:p.id,station:p.station,anchor:p.anchor,bodies:p.bodies.length,rocks:p.rocks.length,structures:[...new Set(p.rocks.map(r=>r.structure))],nebula:p.nebula.map(n=>n.role)}))};}
   private free(item:ActivePiece){item.group.removeFromParent();for(const batch of item.batches.values())batch.dispose();
     for(const material of item.materials)material.dispose();item.nebulaField?.dispose();}
-  dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const sphere of this.spheres)sphere.dispose();this.plane.dispose();}
+  dispose(){for(const item of this.active.values())this.free(item);this.active.clear();for(const sphere of this.spheres)sphere.dispose();this.ringGeometry.dispose();this.plane.dispose();}
 }

@@ -12,6 +12,7 @@ import type { Path } from './path';
 import { OrbitRocks, ROCK_LODS, ROCK_SHAPES } from './orbit-rocks.client';
 import { OrbitSky } from './orbit-sky.client';
 import { cosmicPresence, makeOrbitSetpieces } from '../core/orbit-setpieces';
+import type { AphelionFocus } from '../core/orbit-setpieces';
 import { OrbitSetpieces } from './orbit-setpieces.client';
 import { newOrbitLighting, orbitLightingAt, orbitLightScenes } from '../core/orbit-lighting';
 import type { OrbitLightOptions } from '../core/orbit-lighting';
@@ -132,6 +133,17 @@ export class OrbitWorld {
   warmAstral(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget | null, quality: QualityTier, preparing = false) {
     this.setpieces.warmAurora(renderer, target, this.lights, preparing);
     this.setpieces.warmAphelion(renderer, target, this.lights, quality, preparing);
+  }
+
+  focusAphelion(camera: THREE.PerspectiveCamera, station: number, focus: AphelionFocus) {
+    const piece = this.setpieces.descriptions[6];
+    if (cosmicPresence(piece, station) < .01) return;
+    const body = piece.bodies.find(body => body.type === focus);
+    if (!body) return;
+    const target = new THREE.Vector3().fromArray(body.position);
+    const offset = focus === 'planet' ? new THREE.Vector3(-.07,.33,.94) : new THREE.Vector3(.04,.27,.96);
+    camera.position.copy(target).addScaledVector(offset.normalize(), body.radius * (focus === 'planet' ? 2.8 : 2.6));
+    camera.lookAt(target);
   }
 
   update(camera: THREE.PerspectiveCamera, height: number, dpr: number, quality: QualityTier, release = 0, station = 4200,

@@ -6,6 +6,7 @@ import { ORBIT_WORLD_SEED } from '../game/core/orbit-field';
 import { corridorLength } from '../game/core/corridor-composition';
 import { referenceFor, START_DISTANCE } from '../game/core/reference-track';
 import { orbitSceneBeats, orbitSceneNames } from '../game/core/orbit-setpieces';
+import type { AphelionFocus } from '../game/core/orbit-setpieces';
 import { auroraViews } from '../game/core/orbit-nebula-structure';
 import { orbitLightScenes } from '../game/core/orbit-lighting';
 import { volumeById } from '../game/core/volumes';
@@ -41,6 +42,7 @@ export function OrbitFlightPreview() {
   const [dynamicLights, setDynamicLights] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [nebulaInspection, setNebulaInspection] = useState(0);
+  const [aphelionFocus, setAphelionFocus] = useState<AphelionFocus>();
   const [metrics, setMetrics] = useState<Metrics>();
   const [status, setStatus] = useState('Loading WebGL preview…');
   const [opened, setOpened] = useState(false);
@@ -48,7 +50,7 @@ export function OrbitFlightPreview() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<Viewer>(null);
   const settings = useRef({ seed, density, quality, station, playing, musicPlaying, musicBeat, dynamicLights,
-    reducedMotion, nebulaInspection, post: params.get('post') !== '0' });
+    reducedMotion, nebulaInspection, aphelionFocus, post: params.get('post') !== '0' });
 
   useEffect(() => setReadyToOpen(true), []);
 
@@ -222,6 +224,7 @@ export function OrbitFlightPreview() {
               }
             }
             graphics.drawOrbit({ station: controls.station, x, y, time, nebulaInspection: controls.nebulaInspection,
+              aphelionFocus: controls.aphelionFocus,
               lighting: { beat: controls.musicBeat, amount: Number(controls.dynamicLights), reducedMotion: controls.reducedMotion } });
             if (dirty || !(controls.playing || controls.musicPlaying) || now - reportAt > 230) {
               setMetrics(graphics.metrics());
@@ -255,10 +258,16 @@ export function OrbitFlightPreview() {
   }
 
   function toggle() {
+    if (!playing) setFocus();
     if (!playing && settings.current.station >= length) seek(START_DISTANCE);
     settings.current.playing = !playing;
     setPlaying(!playing);
     viewer.current?.redraw();
+  }
+
+  function setFocus(focus?: AphelionFocus) {
+    settings.current.aphelionFocus = focus;
+    setAphelionFocus(focus);
   }
 
   function switchDensity(next: OrbitDensity) {
@@ -280,6 +289,7 @@ export function OrbitFlightPreview() {
   function preset(value: 'Sparse' | 'Dense') {
     settings.current.playing = false;
     setPlaying(false);
+    setFocus();
     seek(views[value]);
     switchDensity(value === 'Sparse' ? 'sparse' : 'dense');
   }
@@ -301,7 +311,7 @@ export function OrbitFlightPreview() {
         </div>
         <div className={s.actions} aria-label="Cosmic setpieces">
           {orbit.sections.map((section,index)=><button type="button" key={section.name} title={orbitSceneNames[index]}
-            onClick={()=>{settings.current.playing=false;setPlaying(false);switchDensity('flight');seek(reference.station(orbitSceneBeats[index],'standard'));}}>{section.name}</button>)}
+            onClick={()=>{settings.current.playing=false;setPlaying(false);setFocus();switchDensity('flight');seek(reference.station(orbitSceneBeats[index],'standard'));}}>{section.name}</button>)}
         </div>
         <div className={s.actions} aria-label="Ring inspection">
           {([['Ring: far',104],['Ring: layers',116],['Ring: fracture',126]] as const).map(([name,beat])=>
@@ -310,6 +320,7 @@ export function OrbitFlightPreview() {
         <div className={s.actions}>
           <label>Aurora structure <select value={nebulaInspection} onChange={e => {
             const value = Number(e.currentTarget.value);
+            if (value) setFocus();
             settings.current.nebulaInspection = value;
             setNebulaInspection(value);
             if (value && (settings.current.station < reference.station(256, 'standard')
@@ -322,6 +333,24 @@ export function OrbitFlightPreview() {
               viewer.current?.redraw();
             }
           }}>{auroraViews.map((label, index) => <option key={label} value={index}>{label}</option>)}</select></label>
+          <label>Aphelion view <select value={aphelionFocus ?? 'course'} onChange={e => {
+            const value = e.currentTarget.value;
+            setFocus(value === 'course' ? undefined : value as AphelionFocus);
+            if (value === 'course') {
+              viewer.current?.redraw(true);
+              return;
+            }
+            settings.current.playing = false;
+            setPlaying(false);
+            settings.current.nebulaInspection = 0;
+            setNebulaInspection(0);
+            switchDensity('flight');
+            seek(reference.station(orbitSceneBeats[6], 'standard'));
+          }}>
+            <option value="course">Course camera</option>
+            <option value="planet">Planet and rings</option>
+            <option value="moon">Companion moon</option>
+          </select></label>
         </div>
         <div className={s.seek}><span>World station</span><output aria-live="off">{station.toFixed(1)}</output>
           <input aria-label="World station" type="range" min={START_DISTANCE} max={Math.floor(length)} step="1" value={Math.min(Math.floor(length), Math.round(station))}

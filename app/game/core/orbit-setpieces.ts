@@ -12,6 +12,7 @@ export const orbitLandmarkBeats = [25, 66, 140, 190, 237, 279, 346] as const;
 export const orbitSceneNames = ['Outer Boulder', 'Twin Asteroids', 'Shattered Ring', 'Spiral Debris Storm',
   'Celestial Occlusion', 'Nebula Veil', 'Into the Open Void'] as const;
 export type CosmicKind = 'monolith' | 'fractures' | 'ring' | 'spiral' | 'eclipse' | 'nebula' | 'planet';
+export type AphelionFocus = 'planet' | 'moon';
 export interface CosmicBody {
   readonly id: string;
   readonly type: 'moon' | 'star' | 'planet';
@@ -146,7 +147,7 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
       // Collinear from the chapter's inspection point: a real opaque occultation.
       body('star', 1250 * 1.86, 530 * 1.86, 3200 * 1.86, [1705, 1705, 1705]);
     }
-    if (id === 'planet') body('planet', -4900, -1450, 9000, [3300, 3300, 3300]);
+    if (id === 'planet') body('planet', -4450, -1060, 9000, [3300, 3300, 3300]);
     // Keep the later scenes on their existing independent detail stream.
     const detail = orbitRandom(seed, 0x504c4154, index);
     if(id==='spiral') for(let stream=0;stream<3;stream++)for(let i=0;i<9;i++) {
@@ -157,7 +158,7 @@ export function makeOrbitSetpieces(path: Path, mode: PlayMode, seed: number, cle
     if(id==='eclipse')for(let i=0;i<5;i++)rock(world(station,(-170-i*31)*size,(95-i*47)*size,(-45+i*39)*size),
       (11+detail()*12)*size,rocks.length,'rim-fragments');
     if(id==='planet') {
-      body('moon',-1500,1100,7000,[240,240,240]);
+      body('moon', 620, 2200, 7440, [345, 345, 345]);
       for(let i=0;i<12;i++)rock(world(station,(detail()-.5)*680*size,(130+detail()*150)*size,(detail()-.5)*500*size),
         (1+detail()*4)*size,rocks.length,'open-void-shards');
     }

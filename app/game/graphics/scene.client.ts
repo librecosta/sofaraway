@@ -42,6 +42,7 @@ const frame = () => ({
 const BASE_FOV = 76;
 type SceneGate = RunGate | EncoreGate;
 interface OrbitView { station: number; x: number; y: number; time: number;
+  aphelionFocus?: import('../core/orbit-setpieces').AphelionFocus;
   nebulaInspection?: number; lighting?: import('../core/orbit-lighting').OrbitLightOptions & { beat: number } }
 export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance' | 'beat' | 'time' | 'phase' |
   'mode' | 'route' | 'branch' | 'branchGates' | 'junctionPath' | 'steeringWidth' | 'routeGuide' | 'routeSide' |
@@ -183,6 +184,7 @@ class VolumeScene {
     this.moveCamera(this.path.sample(view.station, this.cameraFrame), view.x, view.y);
     this.setFov(BASE_FOV);
     this.orbit?.update(this.camera, height, dpr, quality, 0, view.station, view.lighting, view.nebulaInspection);
+    if (view.aphelionFocus) this.orbit?.focusAphelion(this.camera, view.station, view.aphelionFocus);
   }
 
   updateAstralWorld(sim: SceneState, height: number, dpr: number, quality: QualityTier, lighting?: LightingPreview) {

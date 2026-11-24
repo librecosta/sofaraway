@@ -49,6 +49,14 @@ filtered fine cloud samples. The thin shell uses a grazing optical path with a
 sun-weighted fade. Both celestial materials are warmed on the live output path
 and kept with the setpiece through Encore and Results.
 
+**O0-E6-A update.** APHELION retains the E4 spherical flow and separates the
+high condensate deck from the deeper belts in its lighting. The thin inclined
+rings share one radial density profile with their shadow on the globe. Ring
+visibility tests against the globe analytically within the shared far depth
+band. The companion uses the same stellar direction and adds crater relief in
+one draw. The four celestial materials and the ring geometry are warmed on the
+active output. The ORBIT preview offers course, planet, and moon cameras.
+
 The astronomical projection preserves actual world XY/W and therefore angular
 size and parallax. Only depths beyond the ordinary 570-unit field are mapped
 monotonically into the far depth band below the unchanged 680-unit camera clip.
