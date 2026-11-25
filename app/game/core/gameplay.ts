@@ -27,7 +27,7 @@ interface GameplaySpec {
 
 const window = daybreakJunctionWindow;
 const elsewherePickup = { beat: PICKUP_BEAT, preview: PICKUP_APPEAR_BEAT, x: PICKUP_LOCAL_X, y: PICKUP_LOCAL_Y, radius: PICKUP_RADIUS };
-const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
+const gameplay: Record<VolumeId, GameplaySpec> = {
   elsewhere: {
     branch: elsewhereBranch,
     pickup: elsewherePickup,
@@ -57,7 +57,7 @@ const gameplay: Partial<Record<VolumeId, GameplaySpec>> = {
   },
 };
 
-export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id] ?? {}; }
+export function gameplayFor(id: VolumeId): GameplaySpec { return gameplay[id]; }
 
 export const ELSEWHERE_ESCAPE_BEATS = 12;
 

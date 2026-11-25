@@ -51,6 +51,14 @@ export function branchLayout(seed: number): BranchLayout {
     : { left: 'score', center: 'main', right: 'challenge' };
 }
 
+export function sideForRoute(layout: BranchLayout | undefined, route: RouteKind): RouteSide {
+  return routeSides.find(side => layout?.[side] === route) ?? 'center';
+}
+
+export function inBranchWindow(spec: BranchSpec, beat: number) {
+  return beat >= spec.split && beat < spec.rejoin;
+}
+
 export function selectSide(x: number, threshold = BRANCH_SIDE_THRESHOLD): RouteSide {
   return x <= -threshold ? 'left' : x >= threshold ? 'right' : 'center';
 }

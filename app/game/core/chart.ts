@@ -8,7 +8,7 @@
  *      0 E   1 NE   2 N   3 NW   4 W   5 SW   6 S   7 SE
  * ------------------------------------------------------------------ */
 
-import type { Difficulty } from '../contracts';
+import type { Difficulty, VolumeId } from '../contracts';
 import type { Axis } from './collision';
 import { daybreakChart } from './daybreak-chart';
 import { descentChart } from './descent-chart';
@@ -61,16 +61,11 @@ function nextSector(pattern: string, prev: number, i: number, rng: () => number)
   }
 }
 
-/** the authored chart, deterministic for a given seed */
-export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartGate[] {
+function elsewhereChart(volume: VolumeDefinition, seed: number, difficulty?: Difficulty): ChartGate[] {
   const rng = mulberry32(seed);
   const out: ChartGate[] = [];
   let beat = 0;
   let prev = 2;          // start up
-
-  if (volume.music === 'breakbeat') return daybreakChart();
-  if (volume.music === 'control') return descentChart();
-  if (volume.music === 'starwake') return orbitChart();
 
   for (const sec of volume.sections) {
     const end = beat + sec.beats;
@@ -88,29 +83,31 @@ export function buildChart(volume: VolumeDefinition, seed = volume.seed): ChartG
     }
     beat = end;
   }
-  return out;
+  if (difficulty === 'impossible') return impossibleChart(out);
+  if (difficulty !== 'easy') return out;
+  let last = -99;
+  return out.filter(gate => {
+    if (gate.beat - last < 2) return false;
+    last = gate.beat;
+    return true;
+  });
 }
 
-export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed = difficultySettings(volume, difficulty).seed): ChartGate[] {
-  difficulty = resolveDifficulty(volume.id, difficulty);
-  if (volume.music === 'breakbeat') return daybreakChart(difficulty);
-  if (volume.music === 'control') return descentChart(difficulty);
-  if (volume.music === 'starwake') return orbitChart(difficulty);
-  const base = buildChart(volume, seed);
-  const authored = difficulty === 'impossible' ? impossibleChart(base) : base;
-  const course = authored;
-  if (difficulty === 'impossible') return course;
-  if (difficulty !== 'easy') return course;
+type ChartProvider = (volume: VolumeDefinition, seed: number, difficulty?: Difficulty) => ChartGate[];
+const chartProviders: Record<VolumeId, ChartProvider> = {
+  elsewhere: elsewhereChart,
+  daybreak: (_volume, _seed, difficulty) => daybreakChart(difficulty),
+  descent: (_volume, _seed, difficulty) => descentChart(difficulty),
+  orbit: (_volume, _seed, difficulty) => orbitChart(difficulty),
+};
 
-  const out: ChartGate[] = [];
-  let last = -99;
-  for (const g of course) {
-    if (g.beat - last >= 2) {
-      out.push(g);
-      last = g.beat;
-    }
-  }
-  return out;
+/** The default authored chart, deterministic for a given seed. */
+export function buildChart(volume: VolumeDefinition, seed = volume.seed) {
+  return chartProviders[volume.id](volume, seed);
+}
+
+export function chartFor(volume: VolumeDefinition, difficulty: Difficulty, seed = difficultySettings(volume, difficulty).seed) {
+  return chartProviders[volume.id](volume, seed, resolveDifficulty(volume.id, difficulty));
 }
 
 export function difficultySettings(volume: VolumeDefinition, difficulty: Difficulty) {

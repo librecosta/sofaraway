@@ -1,4 +1,5 @@
 import type { Difficulty, PlayMode } from '../contracts';
+import { inBranchWindow } from './branches';
 import { chartFor } from './chart';
 import { gameplayFor } from './gameplay';
 import { STEP } from './clock';
@@ -23,9 +24,8 @@ export class ReferenceTrack {
     const gameplay = gameplayFor(volume.id);
     const normal = gameplay.referenceChart?.() ?? chartFor(volume, 'normal');
     const branch = gameplay.branch;
-    const inJunction = (beat: number) => branch && beat >= branch.split && beat < branch.rejoin;
-    const gates = branch ? [...normal.filter(gate => !inJunction(gate.beat)),
-      ...branch.charts(normal.filter(gate => inJunction(gate.beat))).main].sort((a, b) => a.beat - b.beat)
+    const gates = branch ? [...normal.filter(gate => !inBranchWindow(branch, gate.beat)),
+      ...branch.charts(normal.filter(gate => inBranchWindow(branch, gate.beat))).main].sort((a, b) => a.beat - b.beat)
       : normal;
     this.sample = referenceMotion(volume.beats, secondsPerBeat, gates);
     this.gateStations = gates.map(gate => this.station(gate.beat, 'standard'));

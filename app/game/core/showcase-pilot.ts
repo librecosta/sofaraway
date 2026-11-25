@@ -1,4 +1,4 @@
-import { BRANCH_SIDE_THRESHOLD, routeSides } from './branches';
+import { BRANCH_SIDE_THRESHOLD, sideForRoute } from './branches';
 import type { RouteKind } from './branches';
 import { canPass, clamp, lanePoint, RANGE_X, SECTION } from './collision';
 import type { Point } from './collision';
@@ -7,7 +7,9 @@ import { idleInput, STEERING_SPEED } from './input';
 import type { InputFrame } from './input';
 import { apertureAnchors, isOrbitGate, orbitPreset } from './orbit-gates';
 import { cruiseTarget } from './reference-motion';
-import type { RunGate, Simulation } from './simulation';
+import { gatesForRoute } from './run-chart';
+import type { RunGate } from './run-chart';
+import type { Simulation } from './simulation';
 
 type Gate = Pick<RunGate, 'kind' | 'open' | 'axis'>;
 interface Crossing { station: number; openings: readonly Point[] }
@@ -57,10 +59,11 @@ export class ShowcasePilot {
 
   constructor(sim: Simulation, route: RouteKind) {
     const branch = sim.junctionPath;
-    const side = routeSides.find(candidate => sim.branch?.layout[candidate] === route) ?? 'center';
+    const side = sideForRoute(sim.branch?.layout, route);
     const arc = (station: number) => branch?.arcAt(station, side) ?? station;
-    const gates = [...sim.mainGates, ...(sim.branchGates?.[route] ?? []), ...(sim.outroPlan?.gates ?? [])];
-    const crossings = gates.map(gate => ({ station: arc(gate.worldStation), openings: openings(gate) }));
+    const crossing = (gate: Gate & { worldStation: number }) => ({ station: arc(gate.worldStation), openings: openings(gate) });
+    const crossings = gatesForRoute(sim.mainGates, sim.branchGates, route).map(crossing);
+    for (const gate of sim.outroPlan?.gates ?? []) crossings.push(crossing(gate));
     if (branch) {
       const threshold = branch.spec.sideThreshold ?? BRANCH_SIDE_THRESHOLD;
       const x = Math.min(SECTION.a - .39, threshold + .65);

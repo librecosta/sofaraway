@@ -1,10 +1,9 @@
 import type { Difficulty, PlayMode, RunResult } from '../contracts';
 import { branchLayout, BRANCH_SIDE_THRESHOLD, ROUTE_GATE_MULTIPLIERS, routeSides, selectSide } from './branches';
 import type { BranchRun, RouteKind, RouteSide } from './branches';
-import { chartFor, difficultySettings } from './chart';
+import { difficultySettings } from './chart';
 import type { ChartGate } from './chart';
-import { canPass, clamp, lanePoint, opening, SECTION } from './collision';
-import type { Axis } from './collision';
+import { canPass, clamp, lanePoint, SECTION } from './collision';
 import { resolveDifficulty } from './difficulty';
 import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
@@ -13,18 +12,21 @@ import { steer, steeringDamping } from './input';
 import type { InputFrame } from './input';
 import { LUMEN_POINTS, pickupForSeed, RESONANCE_BONUS, RESONANCE_CHARGES } from './pickups';
 import type { RunPickup } from './pickups';
+import { projectRunChart } from './run-chart';
+import type { RunGate } from './run-chart';
 import { CAPTURE_RUN_SEED } from './run-seed';
 import { BOOST_MULTIPLIER, CRUISE_RESPONSE, CRUISE_SPEED, cruiseTarget, modeScale,
   referenceFor, START_DISTANCE } from './reference-track';
-import { sightseeingChart, sightseeingRoute, SIGHTSEEING_LIVES, SIGHTSEEING_SPEED } from './sightseeing';
+import { SIGHTSEEING_LIVES, SIGHTSEEING_SPEED } from './sightseeing';
 import { sectionAt } from './volumes';
-import type { GateKind, VolumeDefinition } from './volumes';
+import type { VolumeDefinition } from './volumes';
 import { BranchPath } from '../graphics/branch-path';
 import { buildRunPath } from '../graphics/path';
 import type { Path } from '../graphics/path';
 
 export { START_DISTANCE } from './reference-track';
 export { corridorLength } from './corridor-composition';
+export type { RunGate } from './run-chart';
 const MENU_DISTANCE = START_DISTANCE + 140;
 const BOOST_LENS_SECONDS = 0.18;
 export const GATE_LOAD_AHEAD = 210;
@@ -33,21 +35,6 @@ export const GATE_RELEASE_BEHIND = 8;
 const STATION_EPSILON = 1e-8;
 const RESULTS_SETTLE_SECONDS = .7;
 const DESCENT_COAST_SECONDS = 1.05;
-
-export interface RunGate {
-  readonly beat: number;
-  readonly kind: GateKind;
-  readonly open: number;
-  readonly axis: Axis;
-  readonly inserted?: true;
-  readonly route?: RouteKind;
-  readonly worldStation: number;
-  readonly routeStation: number;
-  judged: boolean;
-  hit: boolean;
-  crossedAt?: number;
-  neutralizedByRecovery?: true;
-}
 
 export class Simulation {
   phase: 'menu' | 'playing' | 'crash' | 'results' = 'menu';
@@ -85,6 +72,7 @@ export class Simulation {
   encore?: EncoreResult;
   private encoreCursor = 0;
   private encoreReveal = 0;
+  private authored: readonly Readonly<ChartGate>[] = [];
   private chart: RunGate[] = [];
   private reveal = 0;
   private judged = 0;
@@ -123,6 +111,7 @@ export class Simulation {
   }
 
   get gatesTotal() { return this.chart.length + (this.branch && !this.branch.side ? this.branchGates!.main.length : 0); }
+  get authoredGates() { return this.authored; }
   get mainGates(): readonly RunGate[] { return this.chart; }
   get gateLoadAhead() { return this.gameplay.gateLoadAhead ?? GATE_LOAD_AHEAD * modeScale(this.mode); }
   get outroPhase() {
@@ -196,24 +185,7 @@ export class Simulation {
     difficulty = sightseeing ? 'normal' : resolveDifficulty(this.volume.id, difficulty);
     this.track = referenceFor(this.volume, difficulty);
     const rules = difficultySettings(this.volume, difficulty);
-    let rng = 987654321;
     const station = (beat: number) => this.reference.station(beat, mode);
-    const makeGate = ({ beat, kind, sector, inserted }: ChartGate, axis: Axis, route?: RouteKind, side: RouteSide = 'center'): RunGate => {
-      const worldStation = station(beat);
-      return { beat, kind, open: opening(kind, sector), axis, worldStation,
-        routeStation: route ? this.junctionPath!.arcAt(worldStation, side) : worldStation,
-        judged: false, hit: false, ...(inserted ? { inserted } : {}), ...(route ? { route } : {}) };
-    };
-    const authored = chartFor(this.volume, difficulty, rules.seed);
-    const gates = authored.map(gate => {
-      if (gate.axis !== undefined) return makeGate(gate, gate.axis);
-      let axis: Axis = 0;
-      if (this.volume.id !== 'daybreak' && !gate.inserted && gate.kind !== 'square' && gate.kind !== 'diamond') {
-        rng = (rng * 1103515245 + 12345) & 0x7fffffff;
-        axis = rng / 0x7fffffff < 0.5 ? 0 : 1;
-      }
-      return makeGate(gate, axis);
-    });
     const { branch, pickup, encore } = this.gameplay;
     this.branch = branch ? { layout: branchLayout(runSeed), side: null } : null;
     if (branch) {
@@ -224,46 +196,15 @@ export class Simulation {
         this.junctions.set(base, path);
       }
       this.junctionPath = path;
-      const { left, right } = this.branch!.layout;
-      const sideFor = (route: RouteKind): RouteSide => left === route ? 'left' : right === route ? 'right' : 'center';
-      const inside = (gate: { beat: number }) => gate.beat >= branch.split && gate.beat < branch.rejoin;
-      const { main, challenge, score } = branch.charts(authored.filter(inside), difficulty);
-      const preserveMain = sightseeing && branch.sightseeingPattern === 'preserve-main';
-      const primary = preserveMain ? sightseeingChart(gates, this.volume.sections) : gates;
-      this.branchGates = {
-        main: preserveMain ? primary.filter(inside).map(gate => ({ ...gate, route: 'main' }))
-          : main.map(gate => makeGate(gate, gate.axis ?? 0, 'main')),
-        challenge: challenge.map(gate => makeGate(gate, gate.axis ?? 0, 'challenge', sideFor('challenge'))),
-        score: score.map(gate => makeGate(gate, gate.axis ?? 0, 'score', sideFor('score'))),
-      };
-      this.chart = primary.filter(gate => !inside(gate));
-    } else {
-      this.branchGates = null;
-      this.chart = gates;
     }
+    const junction = this.junctionPath;
+    const projected = projectRunChart(this.volume, { difficulty, chartSeed: rules.seed, mode, reference: this.reference },
+      junction && this.branch ? { path: junction, layout: this.branch.layout } : undefined);
+    this.authored = projected.authored;
+    this.chart = projected.mainGates;
+    this.branchGates = projected.branchGates;
+    this.suffixBySide = projected.suffixBySide;
     this.referenceProgress = 0;
-    if (sightseeing) {
-      if (branch?.sightseeingPattern !== 'preserve-main') this.chart = sightseeingChart(this.chart, this.volume.sections);
-      // At tour speed the wide ORBIT side arcs consume part of the final phrase.
-      if (this.volume.id === 'orbit') this.chart = this.chart.filter(gate => gate.beat < this.volume.beats - 6);
-      if (this.branchGates) {
-        const { main, challenge, score } = this.branchGates;
-        this.branchGates = {
-          main: branch?.sightseeingPattern === 'preserve-main' ? main : sightseeingRoute(main, 'main', branch),
-          challenge: sightseeingRoute(challenge, 'challenge', branch),
-          score: sightseeingRoute(score, 'score', branch),
-        };
-      }
-    }
-    if (this.junctionPath) {
-      const path = this.junctionPath;
-      const center = this.chart.filter(gate => gate.worldStation >= path.end);
-      this.suffixBySide = {
-        center,
-        left: center.map(gate => ({ ...gate, routeStation: path.arcAt(gate.worldStation, 'left') })),
-        right: center.map(gate => ({ ...gate, routeStation: path.arcAt(gate.worldStation, 'right') })),
-      };
-    }
     this.phase = 'playing';
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
     this.daylightReleasedAt = undefined;
@@ -273,7 +214,6 @@ export class Simulation {
     this.previewEncore = [];
     this.encore = undefined;
     this.encoreCursor = this.encoreReveal = 0;
-    const junction = this.junctionPath;
     const last = Math.max(this.chart.at(-1)?.worldStation ?? START_DISTANCE, this.branchGates?.main.at(-1)?.worldStation ?? START_DISTANCE);
     this.outroPlan = encore ? makeOutroPlan(this.volume, mode, runSeed, last,
       difficulty, junction && encore !== 'legacy' ? seconds => Math.min(...routeSides.map(side =>
@@ -318,6 +258,7 @@ export class Simulation {
     this.resonance = 0;
     this.branch = null;
     this.branchGates = null;
+    this.authored = [];
     this.junctionPath = undefined;
     this.suffixBySide = undefined;
     this.message = '';

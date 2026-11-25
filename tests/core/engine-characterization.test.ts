@@ -3,7 +3,7 @@ import { expect, test } from 'vitest';
 import type { Difficulty, PlayMode } from '../../app/game/contracts';
 import { branchLayout, routeSides } from '../../app/game/core/branches';
 import type { RouteKind } from '../../app/game/core/branches';
-import { chartFor } from '../../app/game/core/chart';
+import { buildChart, chartFor } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { ShowcasePilot } from '../../app/game/core/showcase-pilot';
@@ -70,6 +70,12 @@ test.each(VOLUMES)('$id preserves authored and spatial fingerprints', volume => 
   expect(authored.map(chart => chart.length)).toEqual(baseline[volume.id].counts);
   expect(digest(authored)).toBe(baseline[volume.id].authored);
   expect(digest(spatial)).toBe(baseline[volume.id].spatial);
+});
+
+test.each(VOLUMES)('$id selects authored charts independently of music', volume => {
+  const otherScore = { ...volume, music: volume.music === 'techno' ? 'starwake' as const : 'techno' as const };
+  expect(buildChart(otherScore)).toEqual(buildChart(volume));
+  for (const difficulty of difficulties) expect(chartFor(otherScore, difficulty)).toEqual(chartFor(volume, difficulty));
 });
 
 const flights = [
