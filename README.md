@@ -10,19 +10,23 @@ Vol. I–IV · runtime procedural graphics and music · WebGL2
 
 ## What it is
 
-You fly down a corridor while the game synthesises its soundtrack. Each glass
-gate has exactly one opening. Find it before you reach the gate. Hold Shift to
-reach the next gate sooner, or choose Sightseeing for one-third forward speed
-and the same soundtrack.
+You fly through a procedural world while the game synthesizes its soundtrack.
+Aim for an opening in each gate. ORBIT also uses gates with two or three legal
+openings. Hold Shift to reach the next gate sooner, or choose Sightseeing for
+one-third forward speed and the same soundtrack.
 
 Four rhythm-runner courses share the same runtime, steering and rendering pipeline.
 
-| | World | Glass | Music | Length | Gates (Normal) |
-|---|---|---|---|---|---|
-| **I · ELSEWHERE** | closed octagonal conduit | **iris** — one of eight radial panes missing · **square** and **diamond** — fixed central openings | techno · 128 | 3:30 | 141 / 145 / 157 (Main / Challenge / Bonus) |
-| **II · DAYBREAK** | enclosed skyglass cabin | **Crystal / Crystal 45° / Vertical / Horizontal** — radial slices and geometric windows | breakbeat · 120 | 2:24 | 97 |
-| **III · DESCENT** | industrial security facility and vertical well | **Matrix 3×3**, **Slice Gate**, **Diagonal Weave** | CONTROL · 136 | 2:49 | 174 |
-| **IV · ORBIT** | ASTRAL BELT asteroid field | **Iris**, **Square**, **Diamond** | temporary ELSEWHERE techno · 128 | 3:30 | 139 / 143 / 155 (Main / Challenge / Bonus) |
+| Course | World | Gate families | Soundtrack | Music body | Authored Normal gates | Normal route totals (Main / Challenge / Bonus) |
+|---|---|---|---|---:|---:|---:|
+| **I · ELSEWHERE** | Octagonal conduit | Iris, Square, Diamond | ELSEWHERE · 128 BPM | 3:30 | 144 | 141 / 145 / 157 |
+| **II · DAYBREAK** | Skyglass cabin above a cloud sea | Crystal, Vertical, Horizontal | GLASSHOUSE · 120 BPM | 2:24 | 120 | 120 / 121 / 131 |
+| **III · DESCENT** | Industrial facility and vertical well | Matrix 3×3, Slice Gate, Diagonal Weave | CONTROL · 136 BPM | 2:49.4 | 161 | 161 / 161 / 158 |
+| **IV · ORBIT** | Asteroid fields and deep space | Single Aperture, Dual Aperture, Triple Aperture | STARWAKE · 128 BPM | 3:00 | 92 | 92 / 93 / 89 |
+
+The authored count is measured before junction replacement. Each route total
+includes the gates for that choice after replacement. Encore has its own plan
+and count. The music body excludes any release tail.
 
 The soundtrack sets the palette, the light pulses and the spacing of gates.
 Your flight speed determines when you cross each gate.
@@ -45,6 +49,10 @@ artifact and hosting requirements.
 Standard offers Impossible in all four volumes. The menu keeps Best and Last by
 volume and difficulty in this browser, including Encore bonuses in both totals.
 Sightseeing shows Last Visit per volume.
+
+Showcase flies the selected route through the real Impossible course at cruise
+speed. The pilot steers through the openings while the soundtrack and scene
+play, without the flight HUD, scoring or record writes.
 
 ### Tests
 
@@ -80,24 +88,19 @@ timing, spatial crossings and resource ownership.
 ## Technical Explorer
 
 Open `/debug/` directly or follow **Technical Explorer** from **Credits**.
-Browse eight laboratories and four procedural worlds from one navigation.
-The interactive models and scene previews live at `/debug/legacy/` during migration.
-Existing `/debug/#section` links still open the matching experiment.
-**ASTRAL BELT** at `/?vol=orbit` is the full playable fourth course. The world preview at `/debug/#orbit`
-uses the same course path and asteroid generator. Choose Sparse or Dense, or select Flight progression to see density change along the route.
-The preview supports `seed`, `station`, `density`, and `q` query parameters and displays live draw, geometry, chunk and LOD counts.
-**Surface Materials** shows six lit ELSEWHERE samples and their raw channels;
-**Effect Materials** shows the cyan light channel and hologram film.
-**Lighting & Scenic Composition** previews six installed corridors in Standard
-or Sightseeing. Choose a fixed station or one of the five S-curve views, then
-scrub or play the in-game lighting score. Staggered Cells and Connected Flow
-include a two-color comparison.
-**End Sequence Studio** at `/debug/#outro` previews Normal and Impossible courses,
-Encore, Afterglow and results. Seek by world station or fly a ten-second segment.
-**UI State Studio** at `/debug/#ui-states` opens production menus, overlays,
-results and recovery states in six viewport sizes without touching records or settings.
-**Audio Inspector** at `/debug/audio/` displays the four official soundtracks
-with independent stem waveforms, track cues, solo, mute, gain and WAV export.
+Choose a volume and open a live experiment from its lab. Existing
+`/debug/#section` and `/debug/legacy/#section` links redirect to the owning lab.
+
+| Lab | What to inspect |
+|---|---|
+| `/debug/worlds/` | Fly the four production worlds. ORBIT offers density, seed, station and quality controls, plus AURORA and APHELION inspection. |
+| `/debug/gates/` | Rotate production gate families and sample their legal openings. |
+| `/debug/lighting/` | Scrub the production lighting scores independently of world station. |
+| `/debug/materials/` | Compare lit ELSEWHERE surfaces, raw texture channels and effect specimens. |
+| `/debug/gameplay/` | Compare authored charts, route totals, pickups and Encore plans. |
+| `/debug/endings/` | Inspect ending presets, spatial motion, music time and results. |
+| `/debug/audio/` | Play the four soundtracks with stem waveforms, cues, solo, mute, gain and WAV export. |
+| `/debug/interface/` | Inspect production UI states in an isolated frame without changing settings or records. |
 
 ### In-game debug parameters
 

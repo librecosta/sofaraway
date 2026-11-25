@@ -10,6 +10,8 @@ Use the [player README](../README.md) for controls and diagnostics, and the [ver
 - **Graphics** owns the visual scene and reads simulation state. Volume-owned materials, textures and reusable templates outlive streamed chunks. Chunks dispose their own geometry. Debug previews use the runtime generators with their own resource owners. ELSEWHERE-specific art belongs in its own paths and presets.
 - **Audio** owns Web Audio activation, the per-run output bus, scheduling and synthesis. Runtime aligns its anchor to the same run timeline as simulation. Audio callbacks have no authority over scoring or crossings.
 
+The Explorer's [preview surface](../app/game/debug/preview-surface.client.ts) owns one `Graphics` instance, the canvas context listeners and its resize observer. Scenic scenes, endings, the Interface backdrop and ORBIT flights use it to roll back failed setup and dispose on exit. Each preview retains its scene and redraw state. ORBIT retains its own restoration, flight frames, input and audio transport.
+
 ## Time, space and recovery
 
 [`clock.ts`](../app/game/core/clock.ts) defines a monotonic run timeline and 60 Hz simulation. User pauses, background suspension and graphics interruptions freeze the timeline. Ordinary stalls leave bounded catch-up debt. Audio skips expired scheduling steps and resumes on its original grid. A later audio interruption can fall back to silent play and offer a gesture to restore sound at the current offset.
