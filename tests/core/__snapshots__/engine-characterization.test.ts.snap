@@ -1,0 +1,134 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`four volumes preserve fixed-step crossings, branch selection and endings 1`] = `
+{
+  "daybreak": [
+    [
+      "main",
+      "ESCAPED",
+      "main",
+      "1ec2a432b6ced4d3210d9908eeaa4e3a991a00d408bee8a664f3884e7500b02d",
+    ],
+    [
+      "challenge boost",
+      "ESCAPED",
+      "challenge",
+      "10012d2533d8e4f4869958e5c843c82afb203159436d7e10bc2d637a8a6e1bc6",
+    ],
+    [
+      "sightseeing bonus",
+      "ESCAPED",
+      "score",
+      "df345e116e614fd64c87eeba9c67ef1fe341ba777843402455a16fe700095ba3",
+    ],
+    [
+      "showcase bonus",
+      "ESCAPED",
+      "score",
+      "4842effacf1879720cac3899ee73e7e689bfba90b92bc403ff2a14e57eff9aa3",
+    ],
+    [
+      "collision",
+      "TERMINATED",
+      undefined,
+      "b900787abdefc1f28172810bc3bf98a3fc1c43f6689461c2902249d9b7d0c948",
+    ],
+  ],
+  "descent": [
+    [
+      "main",
+      "ESCAPED",
+      "main",
+      "d66447cd3a164d9b1a1775816f17e3487fd521e04b62b059f7d9629cd05d826d",
+    ],
+    [
+      "challenge boost",
+      "ESCAPED",
+      "challenge",
+      "788d44b67ba836ffe0f48c6f54c904e932b56fde6989b7e69757b19621a39d11",
+    ],
+    [
+      "sightseeing bonus",
+      "ESCAPED",
+      "score",
+      "347ef01bc725ba5a8158ea16a023612ecbda4cb1dc27c90bd612040eab2db866",
+    ],
+    [
+      "showcase bonus",
+      "ESCAPED",
+      "score",
+      "918b147f30974e3f11ca98143ad5e6afbf75d5fe3975045114006e9de42310bc",
+    ],
+    [
+      "collision",
+      "TERMINATED",
+      undefined,
+      "0a28412f77a3f895a3bce048d012d7cdeb950ccfdaf3567272444ceed52b30f3",
+    ],
+  ],
+  "elsewhere": [
+    [
+      "main",
+      "ESCAPED",
+      "main",
+      "339876b39b73ad89857b3932fb5b4bfd607434e8f8180b4ee9bd1192ad835e67",
+    ],
+    [
+      "challenge boost",
+      "ESCAPED",
+      "challenge",
+      "ea712c3b000e03c03211646eb772e3719c943e435c236ca59875f7691d555559",
+    ],
+    [
+      "sightseeing bonus",
+      "ESCAPED",
+      "score",
+      "bbd60ead9dc6610694487356df6d658912868451877ec09031f9f39388de6b8b",
+    ],
+    [
+      "showcase bonus",
+      "ESCAPED",
+      "score",
+      "fa5161487d6c3fdcf919b9f48a50e0cc03f05962905d406c7877240f7fc888d7",
+    ],
+    [
+      "collision",
+      "TERMINATED",
+      undefined,
+      "0ac08959f25532d0f8deb3aabe718309c0c855dbd6b438cb1f4a03e5974bc5cb",
+    ],
+  ],
+  "orbit": [
+    [
+      "main",
+      "ESCAPED",
+      "main",
+      "43d637dbe7ef0ac6c2eae84b224952f27172fdcd8d1f43345a889cda0789ed85",
+    ],
+    [
+      "challenge boost",
+      "ESCAPED",
+      "challenge",
+      "dc8ca8045051d3d42bef04ffa463bbe6d114ee8e015dc5725d6a5462b8eb3e2d",
+    ],
+    [
+      "sightseeing bonus",
+      "ESCAPED",
+      "score",
+      "10383dac7a25d93e146c293285b9731097e91814766f5b17ec5565359431784e",
+    ],
+    [
+      "showcase bonus",
+      "ESCAPED",
+      "score",
+      "f6de1feb796e1f3f5d3b250e7fd154b8052525addec7843f417c568d506ba399",
+    ],
+    [
+      "collision",
+      "TERMINATED",
+      undefined,
+      "e910a560eac598656b6b04e0d8d23bcf007f2d8ef93ec535c093982dca770c23",
+    ],
+  ],
+}
+`;
