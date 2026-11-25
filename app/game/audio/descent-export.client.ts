@@ -21,13 +21,18 @@ export async function renderDescent(arrangement = controlArrangement, seconds = 
     const until = last ? length : Math.round(end * rate);
     const context = new OfflineAudioContext(2, (last ? length : Math.round((end + .06) * rate)) - offset, rate);
     const synth = new DescentSynthesizer(context, context.destination, arrangement, start, end + .06);
-    if (last) synth.finishAt(duration - offset / rate);
-    const before = end + (last && duration < arrangement.duration ? 0 : .06);
-    for (let i = Math.max(0, bar - 1) * 16; i < Math.ceil(before / step); i++) {
-      synth.scheduleStep(i, -offset / rate, start - 1e-9, before);
+    let block: AudioBuffer;
+    try {
+      if (last) synth.finishAt(duration - offset / rate);
+      const before = end + (last && duration < arrangement.duration ? 0 : .06);
+      for (let i = Math.max(0, bar - 1) * 16; i < Math.ceil(before / step); i++) {
+        synth.scheduleStep(i, -offset / rate, start - 1e-9, before);
+      }
+      signal?.throwIfAborted();
+      block = await context.startRendering();
+    } finally {
+      synth.dispose();
     }
-    const block = await context.startRendering();
-    synth.dispose();
     signal?.throwIfAborted();
     const preroll = from - offset;
     for (let channel = 0; channel < 2; channel++) {
