@@ -112,10 +112,10 @@ export function DescentFacilityPreview({ lab }: { lab: LabMode }) {
     document.addEventListener('visibilitychange', visibility);
     void import('../game/debug/scenic-preview.client').then(({ ScenicPreview }) => {
       if (stale || !canvas.current) return;
-      viewer.current = new ScenicPreview(canvas.current, restored => {
+      viewer.current = new ScenicPreview(canvas.current, (restored, failed) => {
         if (!restored) pause();
         setReady(restored);
-        setStatus(restored ? '' : 'Waiting for WebGL to restore…');
+        setStatus(restored ? '' : failed ? 'Could not render the facility.' : 'Waiting for WebGL to restore…');
       });
       setReady(true);
       setStatus('');
@@ -179,6 +179,7 @@ export function DescentFacilityPreview({ lab }: { lab: LabMode }) {
     if (!ready || !viewer.current) return;
     const preview = viewer.current;
     const camera = preview.select({ label, beat, boost: !setpiece && boost, side }, mode, beat, 'descent', station);
+    if (!camera) return;
     cameraClock.current = { seconds: camera.seconds, station: camera.station };
     setDisplayStation(camera.station);
     if (setpiece) flightClock.current = { seconds: camera.seconds, lastBeat: beat };
@@ -192,7 +193,9 @@ export function DescentFacilityPreview({ lab }: { lab: LabMode }) {
       if (setpiece) {
         const clock = flightClock.current;
         if (lightBeat < clock.lastBeat) {
-          clock.seconds = preview.select({ label, beat, boost: false, side }, mode, beat, 'descent', station).seconds;
+          const camera = preview.select({ label, beat, boost: false, side }, mode, beat, 'descent', station);
+          if (!camera) return;
+          clock.seconds = camera.seconds;
         }
         const at = preview.advance(clock.seconds + (lightBeat - beat) * secondsPerBeat, boost);
         if (at !== undefined) setDisplayStation(Math.round(at));

@@ -4,7 +4,7 @@ import { referenceFor } from '../core/reference-track';
 import { dynamicLightEnvelope } from '../core/rhythmic-lights';
 import type { VolumeDefinition } from '../core/volumes';
 import type { CirrusLayer } from '../graphics/daybreak-cirrus';
-import { Graphics } from '../graphics/scene.client';
+import { PreviewSurface } from './preview-surface.client';
 import { exteriorViews, OutroInspection, outroVolume } from './outro-inspection';
 import type { ExteriorView, OutroMovement, OutroPreset } from './outro-inspection';
 import type { SceneState } from '../graphics/scene.client';
@@ -13,12 +13,11 @@ const flags: Diagnostics = { fixedTime: null, autoplay: false, god: false, align
   mobileQuality: false, post: true, record: false, debug: false };
 
 export class OutroPreview {
-  private readonly graphics: Graphics;
-  private readonly resizeObserver: ResizeObserver;
+  private readonly surface: PreviewSurface;
+  private get graphics() { return this.surface.graphics; }
   private mode?: PlayMode;
   private volume = outroVolume;
   private quality: QualityTier = 'high';
-  private lost = false;
   private dynamic = false;
   private exteriorView: ExteriorView = 'Forward';
   private cirrusLayer: CirrusLayer = 'Composite';
@@ -27,28 +26,33 @@ export class OutroPreview {
   private roaming?: ['menu' | 'results', number, number];
   get lastView() { return this.view; }
 
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly onContext: (ready: boolean) => void,
+  constructor(private readonly canvas: HTMLCanvasElement, onContext: (ready: boolean, failed?: boolean) => void,
     private readonly showContinuity: (summary: string) => void = () => {}) {
-    this.graphics = new Graphics(canvas, 'high', false, flags);
-    this.resizeObserver = new ResizeObserver(this.resize);
-    this.resizeObserver.observe(canvas);
-    canvas.addEventListener('webglcontextlost', this.onLost);
-    canvas.addEventListener('webglcontextrestored', this.onRestored);
-    this.resize();
+    this.surface = new PreviewSurface(canvas, 'high', false, flags);
+    this.surface.observe({ resize: this.resize,
+      lost: () => onContext(false),
+      restore: () => { this.restore(); onContext(true); },
+      failed: () => onContext(false, true),
+    });
+    this.surface.initialize(this.resize);
   }
 
   select(mode: PlayMode, seed: number, route: RouteKind, difficulty: Difficulty, volume: VolumeDefinition = outroVolume) {
-    const reference = referenceFor(volume, mode === 'standard' ? difficulty : 'normal');
-    const rebuild = this.mode !== mode || this.volume !== volume ||
-      (this.graphics.path?.reference ?? referenceFor(volume)) !== reference;
-    const inspection = this.inspection = new OutroInspection(mode, seed, route, rebuild ? undefined : this.graphics.path, difficulty, volume);
-    if (!this.lost && rebuild) {
-      this.graphics.load(volume, inspection.sim.path, mode);
-      this.graphics.prepare();
-      this.mode = mode;
-      this.volume = volume;
-    }
-    return inspection;
+    return this.surface.initialize(() => {
+      const reference = referenceFor(volume, mode === 'standard' ? difficulty : 'normal');
+      const rebuild = this.mode !== mode || this.volume !== volume ||
+        (this.graphics.path?.reference ?? referenceFor(volume)) !== reference;
+      const inspection = this.inspection = new OutroInspection(mode, seed, route, rebuild ? undefined : this.graphics.path, difficulty, volume);
+      if (!this.surface.unavailable && rebuild) this.load(inspection);
+      return inspection;
+    });
+  }
+
+  private load(inspection: OutroInspection) {
+    this.graphics.load(inspection.volume, inspection.sim.path, inspection.sim.mode);
+    this.graphics.prepare();
+    this.mode = inspection.sim.mode;
+    this.volume = inspection.volume;
   }
 
   setQuality(quality: QualityTier) {
@@ -79,12 +83,12 @@ export class OutroPreview {
   draw(station: number, beat: number, movement: OutroMovement, angle: number, preset?: OutroPreset) {
     this.roaming = undefined;
     this.view = [station, beat, movement, angle, preset];
-    if (this.lost || !this.inspection) return;
+    if (this.surface.unavailable || !this.inspection) return;
     this.paint(this.inspection.state(station, beat, movement, preset), angle);
   }
 
   roam(phase: 'menu' | 'results', minutes: number, angle: number) {
-    if (this.lost || !this.inspection) return;
+    if (this.surface.unavailable || !this.inspection) return;
     this.roaming = [phase, minutes, angle];
     this.paint(this.inspection.roam(phase, minutes), angle);
   }
@@ -121,7 +125,7 @@ export class OutroPreview {
   }
 
   private resize = () => {
-    if (this.lost) return;
+    if (this.surface.unavailable) return;
     const width = Math.max(1, this.canvas.clientWidth);
     this.graphics.resize(width, Math.round(width * 9 / 16), window.devicePixelRatio);
     this.redraw();
@@ -132,32 +136,14 @@ export class OutroPreview {
     else if (this.view) this.draw(...this.view);
   }
 
-  private onLost = (event: Event) => {
-    event.preventDefault();
-    this.lost = true;
-    this.onContext(false);
-  };
-
-  private onRestored = () => {
-    try {
-      const inspection = this.inspection;
-      this.graphics.restore(this.volume);
-      if (inspection && (this.mode !== inspection.sim.mode || this.volume !== inspection.volume || this.graphics.path !== inspection.sim.path)) {
-        this.graphics.load(inspection.volume, inspection.sim.path, inspection.sim.mode);
-        this.graphics.prepare();
-        this.mode = inspection.sim.mode;
-        this.volume = inspection.volume;
-      }
-      this.lost = false;
-      this.resize();
-      this.onContext(true);
-    } catch { this.onContext(false); }
-  };
-
-  dispose() {
-    this.resizeObserver.disconnect();
-    this.canvas.removeEventListener('webglcontextlost', this.onLost);
-    this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
-    this.graphics.dispose();
+  private restore() {
+    const inspection = this.inspection;
+    this.graphics.restore(this.volume);
+    if (inspection && (this.mode !== inspection.sim.mode || this.volume !== inspection.volume || this.graphics.path !== inspection.sim.path)) {
+      this.load(inspection);
+    }
+    this.resize();
   }
+
+  dispose() { this.surface.dispose(); }
 }

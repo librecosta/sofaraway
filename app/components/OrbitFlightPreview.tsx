@@ -60,24 +60,35 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
     const events = new AbortController();
     const { signal } = events;
     let cleanup: (() => void) | undefined;
+    const close = () => {
+      events.abort();
+      const release = cleanup;
+      cleanup = undefined;
+      release?.();
+    };
     void Promise.all([
-      import('../game/graphics/scene.client'),
+      import('../game/debug/preview-surface.client'),
       import('../game/runtime/input.client'),
       import('../game/audio/transport.client'),
       import('../game/graphics/path'),
-    ]).then(([{ Graphics }, { InputController }, { AudioTransport }, { buildRunPath }]) => {
+    ]).then(([{ PreviewSurface }, { InputController }, { AudioTransport }, { buildRunPath }]) => {
       if (signal.aborted) return;
       const path = buildRunPath(orbit);
       const mobile = matchMedia('(pointer: coarse)').matches;
-      const graphics = new Graphics(element, controls.quality, mobile, {
+      const surface = new PreviewSurface(element, controls.quality, mobile, {
         fixedTime: null, autoplay: false, god: false, align: false, boost: false,
         mobileQuality: false, post: controls.post, debug: false, record: false,
       });
-      cleanup = () => graphics.dispose();
-      graphics.loadOrbit(path, controls.seed, controls.density);
+      const { graphics } = surface;
       let frame = 0;
+      let releaseControls: (() => void) | undefined;
+      cleanup = () => {
+        cancelAnimationFrame(frame);
+        viewer.current = null;
+        try { releaseControls?.(); } finally { surface.dispose(); }
+      };
+      surface.initialize(() => graphics.loadOrbit(path, controls.seed, controls.density));
       let dirty = true;
-      let lost = false;
       let last = 0;
       let reportAt = -Infinity;
       let time = 0;
@@ -87,7 +98,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
       const active = () => !!element.closest('#orbit')?.contains(document.activeElement);
       const motion = matchMedia('(prefers-reduced-motion: reduce)');
       const requestDraw = () => {
-        if (!lost && !frame) frame = requestAnimationFrame(draw);
+        if (!surface.unavailable && !frame) frame = requestAnimationFrame(draw);
       };
       const invalidate = () => {
         dirty = true;
@@ -104,6 +115,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
         invalidate();
       };
       const audio = new AudioTransport(pauseMusic);
+      releaseControls = () => audio.dispose();
       const toggle = (value: boolean) => {
         controls.playing = value;
         setPlaying(value);
@@ -116,50 +128,45 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
         input.clear();
         return true;
       });
+      releaseControls = () => { try { input.dispose(); } finally { audio.dispose(); } };
       const resize = () => {
         const { clientWidth, clientHeight } = element;
         graphics.resize(clientWidth, clientHeight, window.devicePixelRatio);
         invalidate();
       };
-      const observer = new ResizeObserver(resize);
-      cleanup = () => {
-        cancelAnimationFrame(frame);
-        observer.disconnect();
-        input.dispose();
-        viewer.current = null;
-        audio.dispose();
-        graphics.dispose();
+      const failed = () => {
+        delete element.dataset.ready;
+        close();
+        setStatus('Could not restore the preview.');
       };
-      observer.observe(element);
-      window.addEventListener('resize', resize, { signal });
+      surface.observe({ resize,
+        lost: () => {
+          delete element.dataset.ready;
+          cancelAnimationFrame(frame);
+          frame = 0;
+          input.clear();
+          pauseMusic();
+          toggle(false);
+          graphics.releaseSurface();
+          setStatus('Graphics paused. Waiting for WebGL recovery…');
+        },
+        restore: () => {
+          graphics.restoreOrbit(path, controls.seed, controls.density, controls.quality);
+          last = 0;
+          resize();
+        },
+        failed,
+      });
+      window.addEventListener('resize', () => {
+        if (surface.unavailable) return;
+        try { resize(); } catch { failed(); }
+      }, { signal });
       motion.addEventListener('change', invalidate, { signal });
       document.addEventListener('visibilitychange', () => {
         last = 0;
         input.clear();
         if (document.hidden) pauseMusic();
         if (!document.hidden && controls.playing) requestDraw();
-      }, { signal });
-      element.addEventListener('webglcontextlost', event => {
-        event.preventDefault();
-        lost = true;
-        delete element.dataset.ready;
-        cancelAnimationFrame(frame);
-        frame = 0;
-        input.clear();
-        pauseMusic();
-        toggle(false);
-        graphics.releaseSurface();
-        setStatus('Graphics paused. Waiting for WebGL recovery…');
-      }, { signal });
-      element.addEventListener('webglcontextrestored', () => {
-        try {
-          graphics.restoreOrbit(path, controls.seed, controls.density, controls.quality);
-          lost = false;
-          last = 0;
-          resize();
-        } catch {
-          setStatus('Could not restore the preview.');
-        }
       }, { signal });
       viewer.current = {
         redraw(resetView) {
@@ -171,21 +178,25 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
           invalidate();
         },
         reload() {
-          if (lost) return;
-          graphics.loadOrbit(path, controls.seed, controls.density);
-          invalidate();
+          if (surface.unavailable) return;
+          try {
+            graphics.loadOrbit(path, controls.seed, controls.density);
+            invalidate();
+          } catch { failed(); }
         },
         quality() {
-          if (lost) return;
-          graphics.configure(controls.quality, mobile);
-          resize();
+          if (surface.unavailable) return;
+          try {
+            graphics.configure(controls.quality, mobile);
+            resize();
+          } catch { failed(); }
         },
         music(play, beat) {
           if (beat !== undefined) {
             controls.musicBeat = Math.max(0,Math.min(384,beat));
             setMusicBeat(controls.musicBeat);
           }
-          if (!play || lost) { if (beat !== undefined) audio.stop(); pauseMusic(); return; }
+          if (!play || surface.unavailable) { if (beat !== undefined) audio.stop(); pauseMusic(); return; }
           setSoundStatus('');
           if (controls.musicBeat >= 384) controls.musicBeat = 0;
           controls.musicPlaying = true;
@@ -208,7 +219,7 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
         const sounding = controls.musicPlaying && !document.hidden;
         const dt = flying && last ? Math.min(.05, (now - last) / 1000) : 0;
         last = flying ? now : 0;
-        if (!lost && (dirty || flying || sounding)) {
+        if (!surface.unavailable && (dirty || flying || sounding)) {
           try {
             const controlsFrame = input.read();
             const boosting = flying && active() && controlsFrame.boosting;
@@ -246,21 +257,21 @@ export function OrbitFlightPreview({ lab }: { lab: LabMode }) {
           } catch {
             toggle(false);
             pauseMusic();
+            close();
+            delete element.dataset.ready;
             setStatus('Could not render the flight preview.');
             return;
           }
         }
         if ((controls.playing || controls.musicPlaying) && !document.hidden) requestDraw();
       }
-      resize();
+      surface.initialize(resize);
     }).catch(() => {
       if (signal.aborted) return;
-      events.abort();
-      cleanup?.();
-      cleanup = undefined;
+      close();
       setStatus('Could not open the flight preview. A working WebGL2 renderer is required.');
     });
-    return () => { events.abort(); cleanup?.(); };
+    return close;
   }, [opened, attempt]);
 
   function seek(next: number) {

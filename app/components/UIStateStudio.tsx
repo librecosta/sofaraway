@@ -136,27 +136,19 @@ function Backdrop({ real, volume, onBackdrop }: {
     if (!real || !canvas.current) return;
     const element = canvas.current;
     let stale = false;
-    let resize: ResizeObserver | undefined;
     void import('../game/debug/ui-backdrop.client').then(({ UIBackdrop }) => {
       if (stale) return;
-      const backdrop = preview.current = new UIBackdrop(element, onBackdrop);
-      const render = () => {
-        try { backdrop.render({ volumeId: current.current }); } catch { onBackdrop(false); }
-      };
-      resize = new ResizeObserver(render);
-      resize.observe(element);
-      render();
+      preview.current = new UIBackdrop(element, () => current.current, onBackdrop);
     }).catch(() => { if (!stale) onBackdrop(false); });
     return () => {
       stale = true;
-      resize?.disconnect();
       preview.current?.dispose();
       preview.current = null;
     };
   }, [real, onBackdrop]);
 
   useEffect(() => {
-    try { preview.current?.render({ volumeId: volume }); } catch { onBackdrop(false); }
+    try { preview.current?.render(); } catch { onBackdrop(false); }
   }, [volume, onBackdrop]);
 
   return real ? <canvas id="gl" ref={canvas} aria-hidden="true" /> : null;

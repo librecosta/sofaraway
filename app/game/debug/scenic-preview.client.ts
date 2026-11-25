@@ -4,9 +4,9 @@ import { idleInput } from '../core/input';
 import { CAPTURE_RUN_SEED } from '../core/run-seed';
 import { volumeById } from '../core/volumes';
 import { Simulation } from '../core/simulation';
-import { Graphics } from '../graphics/scene.client';
 import type { CirrusLayer } from '../graphics/daybreak-cirrus';
 import type { LightingPreview } from '../graphics/corridor-lights.client';
+import { PreviewSurface } from './preview-surface.client';
 import type { ScenicExample } from './scenic-catalog';
 
 const flags: Diagnostics = {
@@ -16,36 +16,51 @@ const flags: Diagnostics = {
 
 /** One renderer for all lighting comparisons, independent of the specimen renderer. */
 export class ScenicPreview {
-  private readonly graphics: Graphics;
+  private readonly surface: PreviewSurface;
+  private get graphics() { return this.surface.graphics; }
   private sim?: Simulation;
-  private lost = false;
   private mode?: PlayMode;
   private volume = volumeById('elsewhere');
   private quality: QualityTier = 'high';
   private station?: number;
-  private observer?: ResizeObserver;
   private dpr = 1;
   private sized: { width: number; dpr: number } | undefined;
   private lighting: LightingPreview = { beat: 0 };
 
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly onContext: (ready: boolean) => void) {
-    const graphics = this.graphics = new Graphics(canvas, 'high', false, flags);
-    try {
-      graphics.resize(800, 450, 1);
-      this.observer = new ResizeObserver(() => {
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly onContext: (ready: boolean, failed?: boolean) => void) {
+    this.surface = new PreviewSurface(canvas, 'high', false, flags);
+    this.surface.initialize(() => this.graphics.resize(800, 450, 1));
+    this.surface.observe({
+      resize: () => {
         this.configure(this.quality, window.devicePixelRatio);
         this.draw(this.lighting);
-      });
-      this.observer.observe(canvas);
-      canvas.addEventListener('webglcontextlost', this.onLost);
-      canvas.addEventListener('webglcontextrestored', this.onRestored);
-    } catch (error) {
-      graphics.dispose();
-      throw error;
-    }
+      },
+      lost: () => {
+        this.sized = undefined;
+        delete canvas.dataset.ready;
+        onContext(false);
+      },
+      restore: () => {
+        this.graphics.restore(this.volume);
+        this.resize();
+        this.draw(this.lighting);
+        onContext(true);
+      },
+      failed: () => { delete canvas.dataset.ready; onContext(false, true); },
+    });
   }
 
   select(example: ScenicExample, mode: PlayMode, fixedBeat: number, id: VolumeId = 'elsewhere', fixedStation?: number) {
+    if (this.surface.unavailable) return;
+    try {
+      return this.surface.initialize(() => this.selectScene(example, mode, fixedBeat, id, fixedStation));
+    } catch {
+      delete this.canvas.dataset.ready;
+      this.onContext(false, true);
+    }
+  }
+
+  private selectScene(example: ScenicExample, mode: PlayMode, fixedBeat: number, id: VolumeId, fixedStation?: number) {
     const volume = volumeById(id);
     const rebuild = this.mode !== mode || this.volume !== volume;
     const sim = new Simulation(volume, { align: true, branchSide: example.side },
@@ -77,7 +92,7 @@ export class ScenicPreview {
 
   configure(quality: QualityTier, dpr = 1) {
     this.dpr = dpr;
-    if (this.lost) return;
+    if (this.surface.unavailable) return;
     if (quality !== this.quality) {
       this.graphics.configure(quality, false);
       this.quality = quality;
@@ -86,7 +101,7 @@ export class ScenicPreview {
   }
 
   private resize() {
-    if (this.lost) return;
+    if (this.surface.unavailable) return;
     const width = Math.min(1280, Math.max(1, this.canvas.clientWidth));
     if (this.sized?.width === width && this.sized.dpr === this.dpr) return;
     this.sized = { width, dpr: this.dpr };
@@ -99,7 +114,7 @@ export class ScenicPreview {
 
   advance(toSeconds: number, boost: boolean) {
     const sim = this.sim;
-    if (this.lost || !sim) return;
+    if (this.surface.unavailable || !sim) return;
     const input = boost ? { ...idleInput, boosting: true } : idleInput;
     while (sim.phase === 'playing' && sim.time + STEP * .5 < toSeconds) sim.step(STEP, input);
     this.station = undefined;
@@ -110,7 +125,7 @@ export class ScenicPreview {
 
   draw(lighting: LightingPreview) {
     this.lighting = lighting;
-    if (this.lost || !this.sim) return;
+    if (this.surface.unavailable || !this.sim) return;
     this.graphics.draw(this.sim, true, true, { ...lighting, station: this.station });
     const metrics = this.graphics.metrics();
     const { scenicLights: light, routeLighting, descentLighting } = metrics;
@@ -135,27 +150,5 @@ export class ScenicPreview {
     return metrics;
   }
 
-  private onLost = (event: Event) => {
-    event.preventDefault();
-    this.lost = true;
-    this.sized = undefined;
-    delete this.canvas.dataset.ready;
-    this.onContext(false);
-  };
-  private onRestored = () => {
-    try {
-      this.graphics.restore(this.volume);
-      this.lost = false;
-      this.resize();
-      this.draw(this.lighting);
-      this.onContext(true);
-    } catch { this.onContext(false); }
-  };
-
-  dispose() {
-    this.observer?.disconnect();
-    this.canvas.removeEventListener('webglcontextlost', this.onLost);
-    this.canvas.removeEventListener('webglcontextrestored', this.onRestored);
-    this.graphics.dispose();
-  }
+  dispose() { this.surface.dispose(); }
 }

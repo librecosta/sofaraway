@@ -64,7 +64,7 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
     setStatus('Loading the live ending…');
     void import('../game/debug/outro-preview.client').then(({ OutroPreview }) => {
       if (stale || !canvas.current) return;
-      viewer.current = new OutroPreview(canvas.current, restored => {
+      viewer.current = new OutroPreview(canvas.current, (restored, failed) => {
         if (!restored && viewer.current?.lastView) {
           const [distance, musicBeat] = viewer.current.lastView;
           setStation(distance);
@@ -72,7 +72,7 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
         }
         setFlying(false);
         setAvailable(restored);
-        setStatus(restored ? '' : 'WebGL interrupted. Waiting to restore the ending.');
+        setStatus(restored ? '' : failed ? 'Could not render the live ending.' : 'WebGL interrupted. Waiting to restore the ending.');
       }, summary => { if (continuity.current) continuity.current.textContent = summary; });
       const next = viewer.current.select(mode, seed, route, difficulty, volume);
       setInspection(next);
@@ -87,9 +87,10 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
       setStatus('');
       setAvailable(true);
     }).catch(() => {
+      if (stale) return;
       viewer.current?.dispose();
       viewer.current = null;
-      if (!stale) setStatus('Live ending unavailable. This preview needs a working WebGL2 renderer.');
+      setStatus('Live ending unavailable. This preview needs a working WebGL2 renderer.');
     });
     return () => {
       stale = true;
@@ -165,7 +166,13 @@ export function EndSequenceStudio({ volumeId, open, setOpen }: { volumeId: Volum
     nextPreset = preset) => {
     setFlying(false);
     setRoam(undefined);
-    const next = viewer.current?.select(nextMode, nextSeed, nextRoute, nextDifficulty, volume);
+    let next: OutroInspection | undefined;
+    try { next = viewer.current?.select(nextMode, nextSeed, nextRoute, nextDifficulty, volume); }
+    catch {
+      viewer.current = null;
+      setAvailable(false);
+      setStatus('Could not render the live ending.');
+    }
     if (next) {
       const selected = nextMode === 'sightseeing' && nextPreset.startsWith('encore-')
         ? 'afterglow-entry' : nextPreset;

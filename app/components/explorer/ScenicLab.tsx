@@ -76,11 +76,11 @@ export default function ScenicLab({ id, lab, anchor }: {
     const element = canvas.current!;
     void import('../../game/debug/scenic-preview.client').then(({ ScenicPreview }) => {
       if (stale) return;
-      viewer.current = new ScenicPreview(element, restored => {
+      viewer.current = new ScenicPreview(element, (restored, failed) => {
         setReady(restored);
         setPlaying(false);
         if (!restored) setView(previous => ({ ...previous, station: playhead.current.station, beat: playhead.current.beat }));
-        setStatus(restored ? '' : 'Waiting to restore the current WebGL scene.');
+        setStatus(restored ? '' : failed ? 'Could not render the current scene.' : 'Waiting to restore the current WebGL scene.');
       });
       setReady(true);
       setStatus('');
@@ -98,7 +98,7 @@ export default function ScenicLab({ id, lab, anchor }: {
     if (!ready || !viewer.current) return;
     const selected = viewer.current.select({ label: example?.label ?? volume.name, beat: 0,
       side: example?.side, boost: view.boost }, view.mode, 0, id, view.station);
-    startTime.current = selected.seconds;
+    if (selected) startTime.current = selected.seconds;
   }, [ready, volume.name, id, view.mode, view.station, example, view.boost]);
 
   useEffect(() => {
@@ -172,7 +172,7 @@ export default function ScenicLab({ id, lab, anchor }: {
   function choose(next: ScenicExample) {
     let station = reference.station(next.beat, view.mode);
     if (viewer.current && ready) {
-      station = viewer.current.select(next, view.mode, next.beat, id).station;
+      station = viewer.current.select(next, view.mode, next.beat, id)?.station ?? station;
     }
     change({ station, preset: next.curveT === undefined ? next.label : 'S-Curve', yaw: 0,
       boost: !!next.boost, pattern: 'single-color', ...(!lighting && { beat: next.beat }) });
