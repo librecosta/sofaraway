@@ -159,8 +159,8 @@ test('the production result transition saves once, skips abandoned and diagnosti
         diagnostics[diagnostic] = true;
         await live.start(true);
         while (sim.phase === 'playing') clock.consume(clock.elapsed + 1 / 60, () => step.call(live, sim));
-        await settle();
         diagnostics[diagnostic] = false;
+        await settle();
       }
       const diagnosticsSaved = saved();
       // Reproduce a technically neutralized crossing followed by a real miss.

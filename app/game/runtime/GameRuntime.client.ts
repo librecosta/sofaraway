@@ -1,5 +1,5 @@
 import { initialSnapshot } from '../contracts';
-import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, ExperienceMode, PauseReason, PlayMode, QualityTier, VolumeId } from '../contracts';
+import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, ExperienceMode, PauseReason, QualityTier, VolumeId } from '../contracts';
 import type { RouteKind } from '../core/branches';
 import { FixedStepClock, MAX_STEPS, RECOVERY_GAP, RunTimeline, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
@@ -8,7 +8,9 @@ import { idleInput } from '../core/input';
 import { PickupDeck } from '../core/pickups';
 import { referenceFor } from '../core/reference-track';
 import { approachDynamicLights, dynamicLightEnvelope, steadyLights } from '../core/rhythmic-lights';
-import { CAPTURE_RUN_SEED, createRunSeed } from '../core/run-seed';
+import { resolveRunPolicy } from '../core/run-policy';
+import type { RunPolicy } from '../core/run-policy';
+import { createRunSeed } from '../core/run-seed';
 import { Simulation } from '../core/simulation';
 import { ShowcasePilot } from '../core/showcase-pilot';
 import { hasAuthoredAudio, volumeById } from '../core/volumes';
@@ -43,12 +45,12 @@ export class Runtime implements GameRuntime {
   private graphics?: Graphics;
   private simulation?: Simulation;
   private showcasePilot?: ShowcasePilot;
-  private loadedForShowcase = false;
+  private loadedWithDiagnostics = false;
   private input?: InputController;
   private recorder?: Recorder;
   private options?: GameOptions;
   private readonly recordStore = new RunRecordStore();
-  private runRecord?: { submitted: boolean };
+  private activeRun?: { readonly policy: RunPolicy; submitted: boolean };
   private raf = 0;
   private generation = 0;
   private resumePending = false;
@@ -108,7 +110,7 @@ export class Runtime implements GameRuntime {
       this.attach(canvas);
       this.resizeGraphics();
       this.audio.setLevel(options.volume, options.muted);
-      this.loadVolume(options.volumeId);
+      this.loadVolume();
       this.initMs = performance.now() - begin;
       this.publish({ phase: 'menu', section: this.simulation!.section });
       if (options.diagnostics.fixedTime !== null) this.capture(options.diagnostics.fixedTime);
@@ -125,15 +127,13 @@ export class Runtime implements GameRuntime {
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
     const silentFallback = silent && this.snapshot.error?.kind === 'audio';
     const generation = ++this.generation;
-    const { volumeId, showcaseRoute } = this.snapshot;
-    const showcase = this.snapshot.mode === 'showcase';
-    const mode = this.simulationMode;
-    const difficulty = showcase ? 'impossible' : this.snapshot.difficulty;
+    const policy = resolveRunPolicy(this.snapshot, this.options!, 'run');
+    const { volumeId, mode, difficulty, showcaseRoute } = policy;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
-    const reference = referenceFor(sim.volume, mode === 'standard' ? difficulty : 'normal');
+    const reference = referenceFor(sim.volume, policy.referenceDifficulty);
     if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode) || sim.reference !== reference ||
-      this.loadedForShowcase !== showcase) {
+      this.loadedWithDiagnostics !== policy.allowSimulationDiagnostics) {
       // Unlock within the initiating gesture and let the menu paint STARTING before building.
       if (!silent) this.primeAudio();
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
@@ -143,7 +143,7 @@ export class Runtime implements GameRuntime {
         return;
       }
       try {
-        this.loadVolume(volumeId, difficulty);
+        this.loadVolume(policy);
         sim = this.simulation!;
       } catch (error) {
         this.fail(error);
@@ -172,12 +172,11 @@ export class Runtime implements GameRuntime {
       this.audio.resetDiagnostics();
       if (silentFallback) this.audio.diagnostics.silentFallbacks++;
     }
-    const fixedSeed = this.options?.runSeed ?? (showcase ? this.options?.showcaseSeed ?? CAPTURE_RUN_SEED : undefined);
-    const seed = fixedSeed ?? createRunSeed();
-    this.pendingPickupDraw = fixedSeed === undefined && !!sim.gameplay.pickup;
-    sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, !showcase);
-    this.runRecord = { submitted: false };
-    this.showcasePilot = showcase ? new ShowcasePilot(sim, showcaseRoute) : undefined;
+    const seed = policy.seed ?? createRunSeed();
+    this.pendingPickupDraw = policy.seed === undefined && !!sim.gameplay.pickup;
+    sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, policy.scoring);
+    this.activeRun = { policy: { ...policy, seed }, submitted: false };
+    this.showcasePilot = showcaseRoute ? new ShowcasePilot(sim, showcaseRoute) : undefined;
     try {
       if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
     } catch (error) {
@@ -255,7 +254,7 @@ export class Runtime implements GameRuntime {
     this.input?.clear();
     this.pendingPickupDraw = false;
     this.showcasePilot = undefined;
-    this.runRecord = undefined;
+    this.activeRun = undefined;
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
@@ -285,7 +284,7 @@ export class Runtime implements GameRuntime {
     // Fixed-time diagnostics render the requested volume immediately.
     if (this.options?.diagnostics.fixedTime == null) return;
     try {
-      this.loadVolume(id);
+      this.loadVolume();
       this.capture(this.options.diagnostics.fixedTime);
     } catch (error) {
       this.fail(error);
@@ -382,7 +381,7 @@ export class Runtime implements GameRuntime {
     this.input?.dispose();
     this.audio.stop();
     this.simulation = undefined;
-    this.runRecord = undefined;
+    this.activeRun = undefined;
     this.graphics?.dispose();
     this.graphics = undefined;
     this.audio.dispose();
@@ -398,25 +397,20 @@ export class Runtime implements GameRuntime {
       error: Object.freeze({ kind, stage, message: error instanceof Error ? error.message : 'Could not load the game.' }) });
   }
 
-  private get simulationMode(): PlayMode {
-    return this.snapshot.mode === 'sightseeing' ? 'sightseeing' : 'standard';
-  }
-
   private menuRecord(id: VolumeId, difficulty: Difficulty, mode: ExperienceMode) {
     return mode === 'showcase' || !this.options?.saveRecords ? initialSnapshot.localRecord
       : recordFor(readRecords(), id, difficulty, mode);
   }
 
-  private loadVolume(id: VolumeId, difficulty: Difficulty = 'normal') {
+  private loadVolume(policy = resolveRunPolicy(this.snapshot, this.options!,
+    this.options!.diagnostics.fixedTime === null ? 'menu' : 'capture')) {
     const flags = this.options!.diagnostics;
-    const volume = volumeById(id);
+    const volume = volumeById(policy.volumeId);
     const graphics = this.graphics!;
-    const mode = this.simulationMode;
-    const showcase = this.snapshot.mode === 'showcase';
-    const sim = this.simulation = new Simulation(volume, showcase ? {} : flags, undefined, mode,
-      showcase ? 'impossible' : flags.fixedTime === null ? difficulty : this.snapshot.difficulty);
-    this.loadedForShowcase = showcase;
-    graphics.load(volume, sim.path, mode);
+    const sim = this.simulation = new Simulation(volume, policy.allowSimulationDiagnostics ? flags : undefined,
+      undefined, policy.mode, policy.referenceDifficulty);
+    this.loadedWithDiagnostics = policy.allowSimulationDiagnostics;
+    graphics.load(volume, sim.path, policy.mode);
     if (flags.fixedTime === null) {
       this.draw(this.simulation, performance.now());
       graphics.prepare();
@@ -427,16 +421,13 @@ export class Runtime implements GameRuntime {
 
   private capture(seconds: number) {
     const sim = this.simulation!;
-    const flags = this.options!.diagnostics;
     const graphics = this.graphics!;
-    const showcase = this.snapshot.mode === 'showcase';
-    const seed = this.options?.runSeed ?? (showcase ? this.options?.showcaseSeed : undefined) ?? CAPTURE_RUN_SEED;
-    sim.start(showcase ? 'impossible' : this.snapshot.difficulty, seed,
-      undefined, this.simulationMode, !showcase);
-    const pilot = showcase ? new ShowcasePilot(sim, this.snapshot.showcaseRoute) : undefined;
+    const policy = resolveRunPolicy(this.snapshot, this.options!, 'capture');
+    sim.start(policy.difficulty, policy.seed, undefined, policy.mode, policy.scoring);
+    const pilot = policy.showcaseRoute ? new ShowcasePilot(sim, policy.showcaseRoute) : undefined;
     const time = Math.min(seconds, sim.volume.beats * sim.secondsPerBeat + 10);
     const steps = Math.floor(time / STEP);
-    const input = flags.boost ? { ...idleInput, boosting: true } : idleInput;
+    const input = policy.captureBoost ? { ...idleInput, boosting: true } : idleInput;
     const advance = (dt: number) => {
       sim.step(dt, pilot && sim.phase === 'playing' ? pilot.input(sim) : input);
       graphics.update(sim, true, this.lighting(sim));
@@ -500,7 +491,7 @@ export class Runtime implements GameRuntime {
     try {
       if (!fixed) {
         if (this.snapshot.phase === 'menu' && sim.volume.id !== this.snapshot.volumeId) {
-          this.loadVolume(this.snapshot.volumeId);
+          this.loadVolume();
           this.switchMs = performance.now() - now;
           this.schedule();
           return;
@@ -549,14 +540,10 @@ export class Runtime implements GameRuntime {
 
   private finishRecord(sim: Simulation) {
     const result = sim.result;
-    const run = this.runRecord;
-    const options = this.options!;
-    const { fixedTime, autoplay, god, align, debug, record } = options.diagnostics;
-    if (!run || run.submitted || this.snapshot.mode === 'showcase' || !result || !options.saveRecords ||
-      fixedTime !== null || autoplay || god || align || debug || record) return;
+    const run = this.activeRun;
+    if (!result || !run?.policy.recordsEligible || run.submitted) return;
     run.submitted = true;
-    const { id: volume } = sim.volume;
-    const { difficulty, mode } = sim;
+    const { volumeId: volume, difficulty, mode } = run.policy;
     const last = {
       score: Math.floor(sim.score), outcome: result.title,
       ...(result.encore ? { encoreBonus: result.encore.bonusScore } : {}),
@@ -565,7 +552,7 @@ export class Runtime implements GameRuntime {
     void this.recordStore.commitRunRecord({ volume, difficulty, mode, last }).then(saved => {
       if (!saved) return;
       const snapshot = this.snapshot;
-      if (this.runRecord === run && snapshot.phase === 'results') this.publish(saved);
+      if (this.activeRun === run && snapshot.phase === 'results') this.publish(saved);
       else if (snapshot.phase === 'menu' && snapshot.volumeId === volume && snapshot.mode === mode &&
         (mode === 'sightseeing' || snapshot.difficulty === difficulty)) {
         this.publish({ localRecord: this.menuRecord(volume, difficulty, mode) });
