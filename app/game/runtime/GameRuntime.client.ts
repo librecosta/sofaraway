@@ -17,7 +17,7 @@ import { Graphics, UnsupportedGraphics } from '../graphics/scene.client';
 import { Recorder } from '../debug/recorder.client';
 import { InputController } from './input.client';
 import type { PointerView } from './input.client';
-import { emptyRecords, readRecords, recordFor, recordRun, writeRecords } from './records.client';
+import { readRecords, recordFor, RunRecordStore } from './records.client';
 
 export interface RuntimeView {
   pointer(view: PointerView): void;
@@ -47,8 +47,8 @@ export class Runtime implements GameRuntime {
   private input?: InputController;
   private recorder?: Recorder;
   private options?: GameOptions;
-  private records = emptyRecords();
-  private recordsSynced = true;
+  private readonly recordStore = new RunRecordStore();
+  private runRecord?: { submitted: boolean };
   private raf = 0;
   private generation = 0;
   private resumePending = false;
@@ -93,7 +93,6 @@ export class Runtime implements GameRuntime {
     this.options = options;
     this.lightAmount = Number(!!options.dynamicLights);
     this.lightMotion = matchMedia('(prefers-reduced-motion: reduce)');
-    if (options.saveRecords) this.records = readRecords();
     const difficulty = resolveDifficulty(options.volumeId, options.difficulty);
     this.publish({ phase: 'initializing', volumeId: options.volumeId, difficulty,
       mode: options.mode, showcaseRoute: options.showcaseRoute ?? 'main',
@@ -177,6 +176,7 @@ export class Runtime implements GameRuntime {
     const seed = fixedSeed ?? createRunSeed();
     this.pendingPickupDraw = fixedSeed === undefined && !!sim.gameplay.pickup;
     sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, !showcase);
+    this.runRecord = { submitted: false };
     this.showcasePilot = showcase ? new ShowcasePilot(sim, showcaseRoute) : undefined;
     try {
       if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
@@ -255,12 +255,14 @@ export class Runtime implements GameRuntime {
     this.input?.clear();
     this.pendingPickupDraw = false;
     this.showcasePilot = undefined;
+    this.runRecord = undefined;
     this.simulation?.returnToMenu();
     this.view.flash(0, '#fff');
     this.publish({ phase: 'menu', error: this.contextLost ? this.snapshot.error : null,
       pauseReason: null, result: null, hint: false, boosting: false, shield: false, resonance: 0, soundUnavailable: false,
       outroPhase: undefined, encore: undefined, newBest: false,
-      route: null, routeHint: null });
+      route: null, routeHint: null,
+      localRecord: this.menuRecord(this.snapshot.volumeId, this.snapshot.difficulty, this.snapshot.mode) });
     // Release the run-only visuals even if the next menu frame has not painted yet.
     if (this.simulation && !this.unavailable()) {
       try {
@@ -293,7 +295,7 @@ export class Runtime implements GameRuntime {
   setDifficulty(value: Difficulty) {
     const { volumeId, mode } = this.snapshot;
     if (this.snapshot.phase === 'menu' && mode === 'standard' && supportsDifficulty(volumeId, value)) {
-      this.publish({ difficulty: value, localRecord: recordFor(this.records, volumeId, value, mode) });
+      this.publish({ difficulty: value, localRecord: this.menuRecord(volumeId, value, mode) });
     }
   }
 
@@ -380,6 +382,7 @@ export class Runtime implements GameRuntime {
     this.input?.dispose();
     this.audio.stop();
     this.simulation = undefined;
+    this.runRecord = undefined;
     this.graphics?.dispose();
     this.graphics = undefined;
     this.audio.dispose();
@@ -400,7 +403,8 @@ export class Runtime implements GameRuntime {
   }
 
   private menuRecord(id: VolumeId, difficulty: Difficulty, mode: ExperienceMode) {
-    return mode === 'showcase' ? initialSnapshot.localRecord : recordFor(this.records, id, difficulty, mode);
+    return mode === 'showcase' || !this.options?.saveRecords ? initialSnapshot.localRecord
+      : recordFor(readRecords(), id, difficulty, mode);
   }
 
   private loadVolume(id: VolumeId, difficulty: Difficulty = 'normal') {
@@ -526,7 +530,8 @@ export class Runtime implements GameRuntime {
             this.step(sim);
           }
           if (this.snapshot.phase !== sim.phase) {
-            this.publishRun({ phase: sim.phase, ...this.finishRecord(sim) });
+            this.finishRecord(sim);
+            this.publishRun({ phase: sim.phase });
           }
         }
         if (now >= this.nextPublish) {
@@ -542,21 +547,30 @@ export class Runtime implements GameRuntime {
     }
   };
 
-  private finishRecord(sim: Simulation): Partial<GameSnapshot> {
+  private finishRecord(sim: Simulation) {
     const result = sim.result;
+    const run = this.runRecord;
     const options = this.options!;
     const { fixedTime, autoplay, god, align, debug, record } = options.diagnostics;
-    if (this.snapshot.mode === 'showcase' || !result || !options.saveRecords ||
-      fixedTime !== null || autoplay || god || align || debug || record) return {};
-    if (this.recordsSynced) this.records = readRecords(this.records);
-    const { id } = sim.volume;
-    const newBest = recordRun(this.records, id, sim.difficulty, sim.mode, {
+    if (!run || run.submitted || this.snapshot.mode === 'showcase' || !result || !options.saveRecords ||
+      fixedTime !== null || autoplay || god || align || debug || record) return;
+    run.submitted = true;
+    const { id: volume } = sim.volume;
+    const { difficulty, mode } = sim;
+    const last = {
       score: Math.floor(sim.score), outcome: result.title,
       ...(result.encore ? { encoreBonus: result.encore.bonusScore } : {}),
       ...(result.neutralized || result.encore?.neutralized ? { recovery: true } : {}),
+    };
+    void this.recordStore.commitRunRecord({ volume, difficulty, mode, last }).then(saved => {
+      if (!saved) return;
+      const snapshot = this.snapshot;
+      if (this.runRecord === run && snapshot.phase === 'results') this.publish(saved);
+      else if (snapshot.phase === 'menu' && snapshot.volumeId === volume && snapshot.mode === mode &&
+        (mode === 'sightseeing' || snapshot.difficulty === difficulty)) {
+        this.publish({ localRecord: this.menuRecord(volume, difficulty, mode) });
+      }
     });
-    this.recordsSynced = writeRecords(this.records);
-    return { localRecord: recordFor(this.records, id, sim.difficulty, sim.mode), newBest };
   }
 
   private step(sim: Simulation, neutralize = false) {

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import type { Simulation } from '../../app/game/core/simulation';
 import type { Runtime } from '../../app/game/runtime/GameRuntime.client';
+import { RECORDS_LOCK } from '../../app/game/runtime/records.client';
 
 const key = 'sofaraway.records.v1';
 
@@ -121,6 +122,10 @@ test('the production result transition saves once, skips abandoned and diagnosti
     document.querySelector<HTMLButtonElement>('[data-act=start]')!.click();
     Engine.prototype.start = start;
     const live = runtime!;
+    // Drive the runtime clock explicitly while waiting for native lock callbacks.
+    cancelAnimationFrame(Reflect.get(live, 'raf'));
+    Reflect.set(live, 'raf', 0);
+    Reflect.set(live, 'schedule', () => {});
     const sim: Simulation = Reflect.get(live, 'simulation');
     const clock: FixedStepClock = Reflect.get(live, 'clock');
     const { diagnostics } = Reflect.get(live, 'options') as { diagnostics: { align: boolean; god: boolean; debug: boolean } };
@@ -131,12 +136,13 @@ test('the production result transition saves once, skips abandoned and diagnosti
         clock.consume(clock.elapsed + 1 / 60, () => step.call(live, sim));
       }
     };
-    const settle = () => {
+    const settle = async () => {
       const now = performance.now() + clock.elapsed * 1000;
       for (let index = 0; index < 70; index++) {
         cancelAnimationFrame(Reflect.get(live, 'raf'));
         frame(now + index * 17);
       }
+      await Reflect.get(Reflect.get(live, 'recordStore'), 'tail');
       return live.getSnapshot();
     };
     const saved = () => JSON.parse(localStorage.getItem(key) ?? 'null');
@@ -146,14 +152,14 @@ test('the production result transition saves once, skips abandoned and diagnosti
       live.setDifficulty('impossible');
       await live.start(true);
       firstGate();
-      const fail = settle();
+      const fail = await settle();
       const original = saved();
       const writesAfterFail = writes;
       for (const diagnostic of ['align', 'god', 'debug'] as const) {
         diagnostics[diagnostic] = true;
         await live.start(true);
         while (sim.phase === 'playing') clock.consume(clock.elapsed + 1 / 60, () => step.call(live, sim));
-        settle();
+        await settle();
         diagnostics[diagnostic] = false;
       }
       const diagnosticsSaved = saved();
@@ -161,7 +167,7 @@ test('the production result transition saves once, skips abandoned and diagnosti
       await live.start(true);
       while (sim.gatesJudged === 0) clock.consume(clock.elapsed + 1 / 60, () => step.call(live, sim, true));
       while (sim.phase === 'playing') clock.consume(clock.elapsed + 1 / 60, () => step.call(live, sim));
-      const recovery = settle();
+      const recovery = await settle();
       return { abandoned, fail, original, writesAfterFail, diagnosticsSaved, recovery, last: saved(), writes };
     } finally { Storage.prototype.setItem = setItem; }
   }, key);
@@ -218,6 +224,7 @@ test('the real Sightseeing result saves a Last Visit while a fixed capture canno
       cancelAnimationFrame(Reflect.get(live, 'raf'));
       frame(now + index * 17);
     }
+    await Reflect.get(Reflect.get(live, 'recordStore'), 'tail');
     return { snapshot: live.getSnapshot(), raw: localStorage.getItem(key)! };
   }, key);
   expect(result.snapshot).toMatchObject({ mode: 'sightseeing', phase: 'results', newBest: false });
@@ -227,4 +234,120 @@ test('the real Sightseeing result saves a Last Visit while a fixed capture canno
   await page.goto('http://127.0.0.1:8091/?vol=daybreak&t=144.8&align=1&q=low');
   await expect(page.locator('#over-title')).toHaveText('ESCAPED');
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(result.raw);
+});
+
+async function holdRecordLock(page: import('@playwright/test').Page) {
+  await page.evaluate(name => new Promise<void>(acquired => {
+    void navigator.locks.request(name, () => new Promise<void>(release => {
+      Reflect.set(window, 'releaseRecordLock', release);
+      acquired();
+    }));
+  }), RECORDS_LOCK);
+}
+
+test('same-origin tabs serialize records and reconcile overlapping courses and difficulties', async ({ context, page }) => {
+  const second = await context.newPage();
+  for (const tab of [page, second]) await tab.goto('http://127.0.0.1:8091/debug/');
+  await page.evaluate(key => localStorage.setItem(key, JSON.stringify({ version: 1, standard: {
+    elsewhere: { normal: { best: 100, last: { score: 100, outcome: 'ESCAPED' } } },
+    'daybreak-impossible-timing': { impossible: { best: 111, last: null } },
+  }, sightseeing: {} })), key);
+  await holdRecordLock(page);
+  const queue = (tab: typeof page, score: number, volume: 'elsewhere' | 'orbit', difficulty: 'normal' | 'hard', encoreBonus?: number) =>
+    tab.evaluate(async intent => {
+      const path = '/app/game/runtime/records.client.ts';
+      const { RunRecordStore }: typeof import('../../app/game/runtime/records.client') = await import(path);
+      let store: InstanceType<typeof RunRecordStore> = Reflect.get(window, 'recordStore');
+      if (!store) {
+        store = new RunRecordStore();
+        Reflect.set(window, 'recordStore', store);
+        Reflect.set(window, 'recordCommits', []);
+      }
+      Reflect.get(window, 'recordCommits').push(store.commitRunRecord(intent));
+    }, { volume, difficulty, mode: 'standard' as const, last: { score, outcome: 'ESCAPED' as const, encoreBonus } });
+  const pending = (count: number) => expect.poll(() => page.evaluate(async name =>
+    (await navigator.locks.query()).pending?.filter(lock => lock.name === name).length, RECORDS_LOCK)).toBe(count);
+  await queue(page, 850, 'elsewhere', 'normal', 50);
+  await pending(1);
+  await queue(second, 200, 'elsewhere', 'normal');
+  await pending(2);
+  await second.evaluate(key => {
+    const getItem = Storage.prototype.getItem;
+    const stale = localStorage.getItem(key);
+    // Reproduce a renderer that has yet to observe the earlier lock holder's write.
+    Storage.prototype.getItem = function (name) {
+      if (name !== key) return getItem.call(this, name);
+      Storage.prototype.getItem = getItem;
+      return stale;
+    };
+  }, key);
+  await queue(page, 700, 'elsewhere', 'hard');
+  await queue(second, 500, 'orbit', 'normal');
+  await page.evaluate(() => Reflect.get(window, 'releaseRecordLock')());
+  const a = await page.evaluate(() => Promise.all(Reflect.get(window, 'recordCommits')));
+  const b = await second.evaluate(() => Promise.all(Reflect.get(window, 'recordCommits')));
+  expect(a[0]).toMatchObject({ localRecord: { best: 900 }, newBest: true });
+  expect(b[0]).toMatchObject({ localRecord: { best: 900, last: { score: 200 } }, newBest: false });
+  expect(await second.evaluate(key => JSON.parse(localStorage.getItem(key)!), key)).toEqual({
+    version: 1, standard: {
+      elsewhere: {
+        normal: { best: 900, last: { score: 200, outcome: 'ESCAPED' } },
+        hard: { best: 700, last: { score: 700, outcome: 'ESCAPED' } },
+      },
+      'orbit-starwake-density-v2': { normal: { best: 500, last: { score: 500, outcome: 'ESCAPED' } } },
+      'daybreak-impossible-timing': { impossible: { best: 111, last: null } },
+    }, sightseeing: {},
+  });
+});
+
+test('results render during a pending save and a volume switch cannot inherit the previous result', async ({ context, page }) => {
+  const lockHolder = await context.newPage();
+  await lockHolder.goto('http://127.0.0.1:8091/debug/');
+  await holdRecordLock(lockHolder);
+  await page.goto('http://127.0.0.1:8091/?q=low');
+  await expect(page.locator('[data-act=start]')).toBeEnabled();
+  await page.evaluate(async () => {
+    const url = performance.getEntriesByType('resource').find(entry =>
+      new URL(entry.name).pathname === '/app/game/runtime/GameRuntime.client.ts')!.name;
+    const { Runtime: Engine }: typeof import('../../app/game/runtime/GameRuntime.client') = await import(url);
+    const start = Engine.prototype.start;
+    Engine.prototype.start = function () { Reflect.set(window, 'liveRuntime', this); return start.call(this, true); };
+    document.querySelector<HTMLButtonElement>('[data-act=start]')!.click();
+    Engine.prototype.start = start;
+    const live: Runtime = Reflect.get(window, 'liveRuntime');
+    live.returnToMenu();
+    live.setDifficulty('impossible');
+    await live.start(true);
+    const sim: Simulation = Reflect.get(live, 'simulation');
+    const clock: FixedStepClock = Reflect.get(live, 'clock');
+    const step = Reflect.get(live, 'step') as (sim: Simulation) => void;
+    while (sim.phase === 'playing') clock.consume(clock.elapsed + 1 / 60, () => step.call(live, sim));
+    const frame: FrameRequestCallback = Reflect.get(live, 'frame');
+    const now = performance.now() + clock.elapsed * 1000;
+    for (let index = 0; index < 70; index++) {
+      cancelAnimationFrame(Reflect.get(live, 'raf'));
+      frame(now + index * 17);
+    }
+    Reflect.get(live, 'finishRecord').call(live, sim);
+    Reflect.get(live, 'finishRecord').call(live, sim);
+  });
+  await expect(page.locator('#over-title')).toHaveText('TERMINATED');
+  await expect.poll(() => page.evaluate(async name =>
+    (await navigator.locks.query()).pending?.filter(lock => lock.name === name).length, RECORDS_LOCK)).toBe(1);
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBeNull();
+  await page.evaluate(async () => {
+    const live: Runtime = Reflect.get(window, 'liveRuntime');
+    live.returnToMenu();
+    await live.selectVolume('orbit');
+  });
+  await lockHolder.evaluate(() => Reflect.get(window, 'releaseRecordLock')());
+  const snapshot = await page.evaluate(async () => {
+    const live: Runtime = Reflect.get(window, 'liveRuntime');
+    await Reflect.get(Reflect.get(live, 'recordStore'), 'tail');
+    return live.getSnapshot();
+  });
+  expect(snapshot).toMatchObject({ volumeId: 'orbit', phase: 'menu', result: null, newBest: false,
+    localRecord: { best: null, last: null } });
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).standard.elsewhere.impossible, key))
+    .toMatchObject({ best: expect.any(Number), last: { outcome: 'TERMINATED' } });
 });

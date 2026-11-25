@@ -4,6 +4,9 @@ import { difficultiesFor } from '../core/difficulty';
 import { VOLUMES } from '../core/volumes';
 
 export const RECORDS_KEY = 'sofaraway.records.v1';
+export const RECORDS_LOCK = `${RECORDS_KEY}.write`;
+const handoffStore = 'commits';
+const allDifficulties = [...difficulties, 'impossible'] as const;
 const daybreakRecordIds = ['drift', 'daybreak-skyglass', 'daybreak-crystal', 'daybreak-gameplay', 'daybreak-choreography'] as const;
 const controlRecordId = 'descent-control';
 const laserRecordId = 'descent-laser-security';
@@ -114,9 +117,108 @@ export function recordRun(records: RecordsV1, volume: VolumeId, difficulty: Diff
   return newBest;
 }
 
-export function writeRecords(records: RecordsV1) {
-  try {
-    localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
-    return true;
-  } catch { return false; }
+interface RunRecordIntent {
+  readonly volume: VolumeId;
+  readonly difficulty: Difficulty;
+  readonly mode: PlayMode;
+  readonly last: LastRun;
+}
+
+function mergeHandoff(records: RecordsV1, raw: string) {
+  const handoff = parseRecords(raw);
+  for (const id of Object.keys(handoff.standard) as RecordId[]) {
+    for (const difficulty of allDifficulties) {
+      const previous = handoff.standard[id]?.[difficulty];
+      if (!previous) continue;
+      const entries = records.standard[id] ??= {};
+      const current = entries[difficulty];
+      entries[difficulty] = {
+        best: previous.best === null ? current?.best ?? null : Math.max(previous.best, current?.best ?? 0),
+        last: previous.last ?? current?.last ?? null,
+      };
+    }
+  }
+  Object.assign(records.sightseeing, handoff.sightseeing);
+}
+
+function openHandoff(): Promise<IDBDatabase | null> {
+  return new Promise(resolve => {
+    try {
+      const request = indexedDB.open(RECORDS_LOCK, 1);
+      request.onupgradeneeded = () => { request.result.createObjectStore(handoffStore); };
+      let blocked = false;
+      request.onblocked = () => { blocked = true; resolve(null); };
+      request.onsuccess = () => {
+        if (blocked) request.result.close();
+        else resolve(request.result);
+      };
+      request.onerror = () => resolve(null);
+    } catch { resolve(null); }
+  });
+}
+
+// Web Locks serialize the callbacks, but a renderer may still see a stale localStorage cache.
+// Carry the last successful V1 write across lock holders via a single IndexedDB row.
+function withHandoff<T>(database: IDBDatabase, write: (previous?: string, publish?: (value: string) => void) => T): Promise<T> {
+  return new Promise(resolve => {
+    const transaction = database.transaction(handoffStore, 'readwrite');
+    const store = transaction.objectStore(handoffStore);
+    const request = store.get(RECORDS_KEY);
+    let result: { value: T } | undefined;
+    request.onsuccess = () => {
+      const previous = typeof request.result === 'string' ? request.result : undefined;
+      result = { value: write(previous, value => store.put(value, RECORDS_KEY)) };
+    };
+    transaction.oncomplete = () => resolve(result!.value);
+    transaction.onabort = () => resolve(result ? result.value : write());
+  });
+}
+
+export class RunRecordStore {
+  private tail = Promise.resolve();
+  private readonly pending: RunRecordIntent[] = [];
+
+  commitRunRecord(intent: RunRecordIntent) {
+    const completion = this.tail.then(() => this.commit(intent));
+    this.tail = completion.then(() => {});
+    return completion;
+  }
+
+  private async commit(intent: RunRecordIntent) {
+    const { volume, difficulty, mode, last } = intent;
+    const save = (previous?: string, publish?: (value: string) => void) => {
+      try {
+        const current = localStorage.getItem(RECORDS_KEY);
+        const records = parseRecords(current);
+        if (previous !== undefined && previous !== current) mergeHandoff(records, previous);
+        for (const { volume, difficulty, mode, last } of this.pending) {
+          recordRun(records, volume, difficulty, mode, last);
+        }
+        const newBest = recordRun(records, volume, difficulty, mode, last);
+        const raw = JSON.stringify(records);
+        localStorage.setItem(RECORDS_KEY, raw);
+        this.pending.length = 0;
+        try { publish?.(raw); } catch { /* The V1 document was saved even if the handoff is unavailable. */ }
+        const localRecord = recordFor(publish ? records : readRecords(records), volume, difficulty, mode);
+        return { localRecord, newBest: newBest && localRecord.best === totalRunScore(last) };
+      } catch { return null; }
+    };
+
+    const persist = async () => {
+      try {
+        const locks = globalThis.navigator?.locks;
+        if (locks) {
+          const handoff = await openHandoff();
+          try {
+            return await locks.request(RECORDS_LOCK, { mode: 'exclusive' }, () => handoff ? withHandoff(handoff, save) : save());
+          } finally { handoff?.close(); }
+        }
+      } catch { /* The lock API can be restricted by the browser. */ }
+      // A fresh read and verification give best-effort persistence without a lock.
+      return save();
+    };
+    const saved = await persist();
+    if (!saved) this.pending.push(intent);
+    return saved;
+  }
 }

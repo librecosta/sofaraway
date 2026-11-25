@@ -1,7 +1,7 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { difficultiesFor } from '../../app/game/core/difficulty';
 import { VOLUMES } from '../../app/game/core/volumes';
-import { emptyRecords, parseRecords, readRecords, recordFor, recordRun, writeRecords } from '../../app/game/runtime/records.client';
+import { emptyRecords, parseRecords, readRecords, recordFor, recordRun, RunRecordStore } from '../../app/game/runtime/records.client';
 
 test('Best and Last are independent across every supported volume and difficulty', () => {
   const records = emptyRecords();
@@ -137,7 +137,7 @@ test('DESCENT keeps both retired Standard records and the active Sightseeing las
   expect(recordFor(restored, 'descent', 'normal', 'sightseeing').last).toEqual(last);
 });
 
-test('records reject invalid or unknown storage values and tolerate a missing browser', () => {
+test('records reject invalid or unknown storage values and tolerate a missing browser', async () => {
   for (const raw of [null, '{bad', 'null', '[]', '{"version":2}', '{"version":"1"}']) expect(parseRecords(raw)).toEqual(emptyRecords());
   const raw = '{"version":1,"standard":{"elsewhere":{"hard":{"best":1e999,"last":{"score":-1,"outcome":"ESCAPED"}},' +
     '"normal":{"best":7,"last":{"score":"8","outcome":"TERMINATED"}},"easy":{"best":-10,' +
@@ -146,5 +146,44 @@ test('records reject invalid or unknown storage values and tolerate a missing br
   expect(parseRecords(raw)).toEqual({ version: 1, standard: { elsewhere: { normal: { best: 7, last: null },
     easy: { best: null, last: { score: 8, outcome: 'ESCAPED' } } } }, sightseeing: {} });
   expect(readRecords()).toEqual(emptyRecords());
-  expect(() => writeRecords(emptyRecords())).not.toThrow();
+  await expect(new RunRecordStore().commitRunRecord({ volume: 'elsewhere', difficulty: 'normal', mode: 'standard',
+    last: { score: 100, outcome: 'ESCAPED' } })).resolves.toBeNull();
+});
+
+test('a failed save retries its intent against fresh storage and never writes after a blocked read', async () => {
+  let raw: string | null = null;
+  let readsBlocked = false, writesBlocked = true;
+  const setItem = vi.fn((_key: string, value: string) => {
+    if (writesBlocked) throw new Error('Write blocked');
+    raw = value;
+  });
+  vi.stubGlobal('navigator', {});
+  vi.stubGlobal('localStorage', { setItem, getItem: () => {
+    if (readsBlocked) throw new Error('Read blocked');
+    return raw;
+  } });
+  const store = new RunRecordStore();
+  const submit = (score: number, recovery = false) => store.commitRunRecord({ volume: 'elsewhere', difficulty: 'normal',
+    mode: 'standard', last: { score, outcome: 'ESCAPED', ...(recovery ? { recovery } : {}) } });
+  try {
+    await expect(submit(300)).resolves.toBeNull();
+    expect(raw).toBeNull();
+    raw = JSON.stringify({ version: 1, standard: {
+      elsewhere: { normal: { best: 200, last: { score: 200, outcome: 'ESCAPED' } } },
+      drift: { normal: { best: 90, last: { score: 80, outcome: 'ESCAPED', encoreBonus: 10 } } },
+      'orbit-starwake-density-v2': { easy: { best: 50, last: null } },
+    }, sightseeing: {} });
+    readsBlocked = true;
+    writesBlocked = false;
+    await expect(submit(400, true)).resolves.toBeNull();
+    expect(setItem).toHaveBeenCalledTimes(1);
+    readsBlocked = false;
+    await expect(submit(100)).resolves.toEqual({ localRecord: { best: 300, last: { score: 100, outcome: 'ESCAPED' } }, newBest: false });
+    const records = readRecords();
+    expect(records.standard.drift?.normal?.best).toBe(90);
+    expect(recordFor(records, 'orbit', 'easy', 'standard').best).toBe(50);
+    await expect(submit(800, true)).resolves.toEqual({ localRecord: { best: 300,
+      last: { score: 800, outcome: 'ESCAPED', recovery: true } }, newBest: false });
+    expect(setItem).toHaveBeenCalledTimes(3);
+  } finally { vi.unstubAllGlobals(); }
 });

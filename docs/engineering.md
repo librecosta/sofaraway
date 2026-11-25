@@ -22,6 +22,8 @@ Standard has three base difficulties and Impossible, with a faster speed ramp an
 
 Showcase runs Standard Impossible at cruise speed with scoring disabled. The [pilot](../app/game/core/showcase-pilot.ts) plans through the real openings on the selected seeded branch, supplies ordinary steering each fixed tick, and remains subject to collision even while catching up. The shared music transport determines the run duration, and Encore gates beyond cruise range stay unreached. The runtime keeps the flight HUD and all record writes disabled. For reproducible browser captures, `?mode=showcase&route=bonus&seed=1` selects the route and seed.
 
+The [record store](../app/game/runtime/records.client.ts) saves completed run intents under one origin-scoped exclusive Web Lock. It reads and writes the original V1 localStorage document while holding the lock. One IndexedDB row hands the last successful document to the next lock holder because a different renderer can still read a stale localStorage cache. The handoff is consulted only during commits. Last follows successful commit order, and failed intents can be retried on the next completion in the same runtime. When either coordination API is unavailable, the remaining localStorage path is best effort. Coordination covers clients using the same lock protocol.
+
 ## Compatibility contracts
 
 | Surface | Authoritative artifact and expected behavior |
