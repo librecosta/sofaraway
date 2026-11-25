@@ -1,6 +1,13 @@
 import { devices, expect, test, webkit } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
-import { VOLUMES } from '../../app/game/core/volumes';
+import type { TestInfo } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import { VOLUMES, volumeById } from '../../app/game/core/volumes';
+import { branchLayout, sideForRoute } from '../../app/game/core/branches';
+import { gameplayFor } from '../../app/game/core/gameplay';
+import { orbitLandmarkBeats, orbitSceneBeats } from '../../app/game/core/orbit-setpieces';
+import { curveExamples, scenicExamples } from '../../app/game/debug/scenic-catalog';
 import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
@@ -246,6 +253,232 @@ async function productionStartup(browser: Browser, url: string) {
     return samples;
   } finally { await page.close(); }
 }
+
+const baselineProfiles = [
+  { id: '540-low', width: 960, height: 540, dpr: 1, quality: 'low' },
+  { id: '540-auto', width: 960, height: 540, dpr: 1, quality: 'auto' },
+  { id: '540-high', width: 960, height: 540, dpr: 1, quality: 'high' },
+  { id: '720-auto', width: 1280, height: 720, dpr: 1, quality: 'auto' },
+  { id: '1080-high', width: 1920, height: 1080, dpr: 1, quality: 'high' },
+  { id: '390-touch-auto', width: 390, height: 844, dpr: 2, quality: 'auto', touch: true },
+] as const satisfies readonly { id: string; width: number; height: number; dpr: number; quality: QualityTier; touch?: boolean }[];
+
+function chapterMiddle(id: VolumeId, name: string) {
+  let start = 0;
+  for (const section of volumeById(id).sections) {
+    if (section.name === name) return start + section.beats / 2;
+    start += section.beats;
+  }
+  throw new Error(`Unknown chapter ${id}/${name}`);
+}
+
+const baselineScenes = {
+  elsewhere: {
+    open: 5, ordinary: 112, 'scenic-lighting': scenicExamples.find(scene => scene.kind === 'raked-bands')!.beat,
+    's-curve': curveExamples[2].beat, dense: 256,
+  },
+  daybreak: {
+    open: 12, ordinary: chapterMiddle('daybreak', 'GLIDE'), cirrus: chapterMiddle('daybreak', 'LIFT'),
+    sunburst: chapterMiddle('daybreak', 'SUNBURST'), return: chapterMiddle('daybreak', 'RETURN'),
+  },
+  descent: { open: 16, ordinary: 70, transfer: 151, well: 201, core: 278, lockdown: 314, breach: 366 },
+  orbit: {
+    open: orbitSceneBeats[0], ordinary: orbitSceneBeats[1], ringbreak: orbitLandmarkBeats[2],
+    maelstrom: orbitSceneBeats[3], eclipse: orbitSceneBeats[4], aurora: orbitSceneBeats[5], aphelion: orbitSceneBeats[6],
+  },
+} as const;
+const baselineFocus = { elsewhere: 's-curve', daybreak: 'sunburst', descent: 'well', orbit: 'aurora' } as const;
+
+async function baselineImage(info: TestInfo, volume: VolumeId, scene: string, image: string) {
+  const png = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
+  const path = info.outputPath(`${scene}.png`);
+  await writeFile(path, png);
+  log('f4-p0-image', { volume, scene, path, sha256: createHash('sha256').update(png).digest('hex') });
+}
+
+for (const { id } of VOLUMES) {
+  test(`@f4-p0 fixed rendering and visual baseline · ${id}`, async ({ browser }, info) => {
+    const branch = gameplayFor(id).branch!;
+    const challengeBeat = (branch.open.standard + branch.merge.standard) / 2;
+    const scenes = [
+      ...Object.entries(baselineScenes[id]).map(([name, beat]) => ({ name, beat })),
+      { name: 'challenge', beat: challengeBeat }, { name: 'encore', beat: volumeById(id).beats - 12 },
+    ];
+    const focus = scenes.find(scene => scene.name === baselineFocus[id])!;
+    for (const profile of baselineProfiles) {
+      const touch = 'touch' in profile;
+      const page = await browser.newPage({ viewport: { width: profile.width, height: profile.height },
+        deviceScaleFactor: profile.dpr, hasTouch: touch, isMobile: touch });
+      const errors = captureErrors(page);
+      try {
+        await openHarness(page);
+        const selected = profile.id === '540-high' ? scenes : [focus];
+        for (const scene of selected) {
+          const runs = scene === focus ? 3 : 2;
+          for (let trial = 0; trial < runs; trial++) {
+            const side = scene.name === 'challenge' ? sideForRoute(branchLayout(0), 'challenge') : 'center';
+            const result = await page.evaluate(({ id, scene, profile, trial, focus, side }) =>
+              window.stability.fixedGlass(scene.beat, profile.quality, scene.name === 's-curve', 'standard',
+                side, focus ? 192 : 120, false,
+                { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true,
+                  preset: scene.name === 'encore' ? 'encore-first' : undefined,
+                  image: trial === 0 && profile.id === '540-high' }), { id, scene, profile, trial, focus: scene === focus, side });
+            const { image, ...sample } = result;
+            if (image) await baselineImage(info, id, scene.name, image);
+            log('f4-p0-fixed', { volume: id, browser: browser.version(), profile, scene: scene.name, trial,
+              difficulty: 'impossible', seed: 0, dynamic: true, post: true, ...sample });
+            expect(result.trace.frame.n).toBeGreaterThan(100);
+            expect(result.glError).toBe(0);
+            if (scene.name === 'challenge') expect(result.route).toBe('challenge');
+          }
+        }
+        if (profile.id === '540-high') {
+          for (const [post, dynamic] of [[false, true], [true, false]] as const) {
+            for (let trial = 0; trial < 3; trial++) {
+              const sample = await page.evaluate(({ id, focus, post, dynamic }) => window.stability.fixedGlass(
+                focus.beat, 'high', focus.name === 's-curve', 'standard', 'center', 192, false,
+                { volumeId: id, difficulty: 'impossible', dynamic, post, useViewport: true }), { id, focus, post, dynamic });
+              log('f4-p0-fixed', { volume: id, browser: browser.version(), profile, scene: focus.name, trial,
+                difficulty: 'impossible', seed: 0, dynamic, post, ...sample });
+              expect(sample.glError).toBe(0);
+            }
+          }
+        }
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
+
+  test(`@f4-p0 cold and warm production startup · ${id}`, async ({ browser }) => {
+    for (let trial = 0; trial < 3; trial++) {
+      const startup = await productionStartup(browser, candidate.client + `/?vol=${id}&q=high&dbg=1`);
+      log('f4-p0-startup', { volume: id, browser: browser.version(), trial, startup });
+      expect(startup[0].jsTransferBytes).toBeGreaterThan(0);
+      expect(startup[1].jsTransferBytes).toBeLessThan(startup[0].jsTransferBytes);
+    }
+  });
+
+  test(`@f4-p0 audio-led complete Showcase · ${id}`, async ({ browser }) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page);
+      const init = await page.evaluate(id => window.stability.mount(id, 'auto', true), id);
+      const at = performance.now();
+      await page.getByRole('button', { name: 'Start with audio' }).click();
+      await page.waitForFunction(() => window.stability.state().phase === 'playing');
+      const startMs = performance.now() - at;
+      expect(await page.evaluate(() => window.stability.state().scheduler)).toBe(true);
+      await page.evaluate(() => window.stability.pause());
+      expect(await page.evaluate(() => window.stability.state())).toMatchObject({ phase: 'paused', scheduler: false });
+      await page.evaluate(() => window.stability.resume());
+      expect(await page.evaluate(() => window.stability.state())).toMatchObject({ phase: 'playing', scheduler: true });
+      const deadline = Math.ceil(volumeById(id).beats * 60_000 / volumeById(id).bpm) + 20_000;
+      const cdp = await page.context().newCDPSession(page);
+      const trends = [];
+      const capture = page.evaluate(deadline => window.stability.capture(deadline, true), deadline);
+      let complete = false;
+      const trace = capture.finally(() => { complete = true; });
+      while (!complete) {
+        const current = await page.evaluate(() => window.stability.metrics());
+        const { usedSize } = await cdp.send('Runtime.getHeapUsage');
+        trends.push({ beat: current.beat, station: current.station, usedSize, calls: current.calls,
+          geometries: current.geometries, textures: current.textures, programs: current.programs, orbit: current.orbit });
+        await Promise.race([trace, page.waitForTimeout(12_000)]);
+      }
+      const final = await page.evaluate(() => window.stability.metrics());
+      await page.waitForFunction(() => !window.stability.state().runBus, undefined, { timeout: 7000 });
+      const finished = await page.evaluate(() => window.stability.state());
+      await page.evaluate(() => window.stability.dispose());
+      await page.waitForFunction(() => window.stability.state().audio === 'closed');
+      const released = await page.evaluate(() => window.stability.state());
+      log('f4-p0-showcase', { volume: id, browser: browser.version(), startMs, init, final, finished, released, trends, trace: await trace });
+      expect(final.effectiveDifficulty).toBe('impossible');
+      expect(final.snapshot).toMatchObject({ phase: 'results', mode: 'showcase',
+        route: 'main', score: 0, result: { title: 'ESCAPED' } });
+      expect(final.hits).toBe(0);
+      expect(final.snapshot.gatesPassed).toBe(final.snapshot.gatesTotal);
+      expect(released).toMatchObject({ scheduler: false, runBus: false, raf: false, listenersReleased: true, inputReleased: true });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+test('@f4-p0 DAYBREAK exterior coverage and DPR', async ({ browser }, info) => {
+  for (const dpr of [1, 2]) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: dpr });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page);
+      for (const view of ['Look Up', 'Cloud Sea'] as const) {
+        for (let trial = 0; trial < 3; trial++) {
+          const { image, ...sample } = await page.evaluate(({ beat, view, image }) =>
+            window.stability.fixedGlass(beat, 'high', false, 'standard', 'center', 192, false,
+              { volumeId: 'daybreak', difficulty: 'impossible', dynamic: true, useViewport: true, image, view }),
+          { beat: baselineScenes.daybreak.sunburst, view, image: trial === 0 });
+          if (image) await baselineImage(info, 'daybreak', `${view.toLowerCase().replaceAll(' ', '-')}@${dpr}x`, image);
+          log('f4-p0-exterior', { view, deviceDpr: dpr, trial, ...sample });
+          expect(sample.metrics.exterior).toBeDefined();
+          expect(sample.glError).toBe(0);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('@f4-p0 repeats cross-volume and context transitions', async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  try {
+    await openHarness(page);
+    const initial = await page.evaluate(() => window.stability.mount('elsewhere', 'high'));
+    const cdp = await page.context().newCDPSession(page);
+    const samples = [];
+    for (let cycle = 0; cycle < 3; cycle++) {
+      for (const { id } of [...VOLUMES.slice(1), VOLUMES[0]]) {
+        const switched = await page.evaluate(id => window.stability.select(id), id);
+        expect(switched.metrics.renderedVolume).toBe(id);
+        const canvas = page.locator('canvas');
+        await expect(canvas).toHaveCount(1);
+        for (const quality of ['low', 'auto', 'high'] as const) {
+          await page.evaluate(quality => window.stability.quality(quality), quality);
+        }
+        await page.evaluate(() => window.stability.start());
+        await page.waitForFunction(() => window.stability.state().phase === 'playing');
+        if (cycle === 1) {
+          const context = await canvas.evaluateHandle((element: HTMLCanvasElement) =>
+            element.getContext('webgl2')!.getExtension('WEBGL_lose_context')!);
+          try {
+            await context.evaluate(ext => ext.loseContext());
+            await page.waitForFunction(() => window.stability.state().phase === 'paused');
+            await context.evaluate(ext => ext.restoreContext());
+            await page.waitForFunction(() => window.stability.state().phase === 'playing');
+          } finally { await context.dispose(); }
+        }
+        await page.evaluate(() => window.stability.menu());
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        const menu = await page.evaluate(() => ({ resources: window.stability.metrics(), active: window.stability.state() }));
+        expect(menu.active).toMatchObject({ phase: 'menu', scheduler: false, runBus: false, raf: true });
+        expect(menu.resources.glError).toBe(0);
+        samples.push({ cycle, volume: id, switched, menu });
+      }
+      await cdp.send('HeapProfiler.collectGarbage');
+      log('f4-p0-retained', { cycle, heap: await cdp.send('Runtime.getHeapUsage'), dom: await cdp.send('Memory.getDOMCounters') });
+    }
+    const last = page.locator('canvas');
+    const gl = await last.evaluateHandle((element: HTMLCanvasElement) => element.getContext('webgl2')!);
+    await page.evaluate(() => window.stability.dispose());
+    await expect(last).toHaveCount(0);
+    const contextReleased = await gl.evaluate(gl => gl.isContextLost());
+    await gl.dispose();
+    const released = await page.evaluate(() => window.stability.state());
+    log('f4-p0-lifecycle', { initial, samples, released, contextReleased });
+    expect(contextReleased).toBe(true);
+    expect(released).toMatchObject({ scheduler: false, runBus: false, raf: false, listenersReleased: true, inputReleased: true });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 
 test('benchmark production load, shader warmup and chunk construction', async ({ browser }) => {
   for (const [sample, build] of builds.entries()) {

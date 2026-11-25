@@ -1,5 +1,6 @@
 import type { Object3D, WebGLRenderer } from 'three';
 import { PMREMGenerator } from 'three';
+import type { AudioTransport } from '../../app/game/audio/transport.client';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { Difficulty, GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
 import type { RouteSide } from '../../app/game/core/branches';
@@ -8,14 +9,19 @@ import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import type { RunGate } from '../../app/game/core/simulation';
 import { makeOutroPlan } from '../../app/game/core/encore';
-import { OutroInspection } from '../../app/game/debug/outro-inspection';
+import { exteriorViews, OutroInspection } from '../../app/game/debug/outro-inspection';
+import type { ExteriorView, OutroPreset } from '../../app/game/debug/outro-inspection';
 import { BOOST_MULTIPLIER, cruiseTarget } from '../../app/game/core/reference-track';
 import { dynamicLightEnvelope, steadyLights } from '../../app/game/core/rhythmic-lights';
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateVisual } from '../../app/game/graphics/gates.client';
+import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
+import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.client';
+import { OrbitWorld } from '../../app/game/graphics/orbit-world.client';
 import { Path } from '../../app/game/graphics/path';
 import { PostFX } from '../../app/game/graphics/post.client';
 import { Graphics } from '../../app/game/graphics/scene.client';
+import type { SceneState } from '../../app/game/graphics/scene.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 
@@ -114,6 +120,10 @@ function instrumentRenderer(value: Graphics) {
   timing = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExtension | null;
   time(gl, 'compileShader', 'glCompile');
   time(gl, 'linkProgram', 'glLink');
+  for (const method of ['texImage2D', 'texStorage2D', 'texSubImage2D']) time(gl, method, 'glTexture');
+  for (const method of ['texImage3D', 'texStorage3D', 'texSubImage3D']) time(gl, method, 'glTexture3D');
+  for (const method of ['bufferData', 'bufferSubData']) time(gl, method, 'glBuffer');
+  for (const method of ['renderbufferStorage', 'renderbufferStorageMultisample']) time(gl, method, 'glRenderbuffer');
   wrap(renderer, 'render', (_self, [scene], call) => {
     const scope = pass ?? ((scene as Object3D & { overrideMaterial?: unknown }).overrideMaterial ? 'depth' : 'scene');
     if (!measuring) return call();
@@ -128,6 +138,14 @@ function instrumentRenderer(value: Graphics) {
 }
 
 time(FixedStepClock.prototype, 'consume', 'simulation');
+time(Simulation.prototype, 'step', 'simulationStep');
+time(DescentFacility.prototype, 'build', 'facilityBuild');
+time(DescentFacility.prototype, 'light', 'facilityLight');
+time(DaybreakExterior.prototype, 'update', 'daybreakExterior');
+time(OrbitWorld.prototype, 'update', 'orbitUpdate');
+time(OrbitWorld.prototype, 'stream', 'orbitStream');
+time(OrbitWorld.prototype, 'warmAstral', 'orbitWarmup');
+time(Graphics.prototype, 'warmSurface', 'warmSurface');
 time(Tunnel.prototype, '_buildChunk', 'chunk');
 time(Tunnel.prototype, 'buildDistant', 'farChunk');
 time(Tunnel.prototype, '_disposeChunk', 'chunkRelease');
@@ -156,6 +174,19 @@ wrap(PostFX.prototype, '_pass', (self, [material, target], call) => {
   try { return gpuTime(pass, call); }
   finally { pass = undefined; }
 });
+
+const scheduleInterval: Window['setInterval'] = window.setInterval.bind(window);
+// The transport registers a 25 ms timer. Match its handle before measuring its callback.
+const timedInterval: Window['setInterval'] = (handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+  if (typeof handler !== 'function' || delay !== 25) return scheduleInterval(handler, delay, ...args);
+  const timer = scheduleInterval(() => {
+    const transport = runtime && Reflect.get(runtime, 'audio') as AudioTransport | undefined;
+    if (transport && Reflect.get(transport, 'timer') === timer) elapsed('audioSchedule', () => handler(...args));
+    else handler(...args);
+  }, delay);
+  return timer;
+};
+Reflect.set(window, 'setInterval', timedInterval);
 
 function stats(samples: number[] = []) {
   const ordered = [...samples].sort((a, b) => a - b);
@@ -197,6 +228,7 @@ function end() {
       renderer: stats(cpu.rendererFrame), longTask: cpuStats.longTask ??
       (PerformanceObserver.supportedEntryTypes?.includes('longtask') ? stats() : null) },
     frame: frameStats, fps: frameStats.total ? 1000 * frames.length / frameStats.total : null,
+    over33ms: frames.filter(ms => ms > 33.34).length,
     over50ms: frames.filter(ms => ms > 50).length, playingFrames,
     gpuStatus: !timing || !gpu.frame?.length ? 'GPU_TIMING_UNAVAILABLE' : 'AVAILABLE',
     gpu: summarize(gpu), disjoint, unreadyQueries,
@@ -207,9 +239,13 @@ function metrics() {
   if (!runtime || !graphics) throw new Error('Mount the stability harness first');
   const gl = graphics.gl;
   const info = gl.getExtension('WEBGL_debug_renderer_info');
+  const sim = Reflect.get(runtime, 'simulation') as Simulation | undefined;
+  const audio = Reflect.get(runtime, 'audio') as AudioTransport;
   return {
     ...graphics.metrics(), snapshot: runtime.getSnapshot(),
-    beat: (Reflect.get(runtime, 'simulation') as { beat: number } | undefined)?.beat,
+    beat: sim?.beat, station: sim?.trackDistance, hits: sim?.hits, effectiveDifficulty: sim?.difficulty,
+    renderedVolume: sim?.volume.id,
+    audioDiagnostics: { ...audio.diagnostics },
     glError: gl.getError(),
     renderer: gl.getParameter(info?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) as string,
     webgl: gl.getParameter(gl.VERSION) as string,
@@ -227,7 +263,7 @@ function dispose() {
 }
 
 const stability = {
-  async mount(volumeId: VolumeId, quality: QualityTier) {
+  async mount(volumeId: VolumeId, quality: QualityTier, showcase = false) {
     dispose();
     closingAudio = undefined;
     canvas = document.createElement('canvas');
@@ -244,7 +280,9 @@ const stability = {
       return elapsed('frame', call);
     });
     const options: GameOptions = { ...initialSnapshot, volumeId, quality,
-      diagnostics: { fixedTime: null, autoplay: false, align: true, god: false, boost: false,
+      mode: showcase ? 'showcase' : 'standard', dynamicLights: showcase || initialSnapshot.dynamicLights,
+      runSeed: showcase ? 0 : undefined,
+      diagnostics: { fixedTime: null, autoplay: false, align: !showcase, god: false, boost: false,
         mobileQuality: false, post: true, record: false, debug: false } };
     begin();
     const at = performance.now();
@@ -257,26 +295,50 @@ const stability = {
   async select(id: VolumeId) {
     begin();
     const at = performance.now();
-    await runtime!.selectVolume(id);
-    const readyMs = performance.now() - at;
-    return { readyMs, trace: end(), metrics: metrics() };
+    const active = runtime!;
+    try {
+      await active.selectVolume(id);
+      // The selection updates the menu immediately. Graphics.load runs on the next game frame.
+      while ((Reflect.get(active, 'simulation') as Simulation | undefined)?.volume.id !== id) {
+        if (active.getSnapshot().phase !== 'menu' || performance.now() - at > 5000)
+          throw new Error(`Volume switch did not render ${id}`);
+        await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      }
+      const readyMs = performance.now() - at;
+      return { readyMs, trace: end(), metrics: metrics() };
+    } catch (error) {
+      if (measuring) end();
+      throw error;
+    }
   },
-  async capture(ms: number) {
+  async capture(ms: number, untilResults = false) {
     begin();
-    await new Promise(resolve => setTimeout(resolve, ms));
+    await new Promise<void>(resolve => {
+      if (!untilResults) { setTimeout(resolve, ms); return; }
+      const deadline = performance.now() + ms;
+      const check = setInterval(() => {
+        const phase = runtime?.getSnapshot().phase;
+        if ((phase === 'playing' || phase === 'crash') && performance.now() < deadline) return;
+        clearInterval(check);
+        resolve();
+      }, 100);
+    });
     measuring = false;
     await new Promise(resolve => setTimeout(resolve, 120));
     return end();
   },
   async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard',
     side: RouteSide = 'left', iterations = 480, animateLights = false,
-    sample?: { station: number; fly?: boolean; inspection?: boolean; difficulty?: Difficulty; dynamic?: boolean; volumeId?: VolumeId }) {
+    sample?: { station?: number; fly?: boolean; inspection?: boolean; preset?: OutroPreset; difficulty?: Difficulty;
+      dynamic?: boolean; volumeId?: VolumeId; useViewport?: boolean; post?: boolean; image?: boolean; view?: ExteriorView }) {
     const definition = volumeById(sample?.volumeId ?? 'elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
-      boost, mobileQuality: false, post: true, record: false, debug: false, branchSide: side };
+      boost, mobileQuality: false, post: sample?.post ?? true, record: false, debug: false, branchSide: side };
     const output = document.createElement('canvas');
     document.body.prepend(output);
-    const surface = new Graphics(output, quality, false, diagnostics);
+    const coldStarted = performance.now();
+    const surface = new Graphics(output, quality, !!sample?.useViewport && matchMedia('(pointer: coarse)').matches, diagnostics);
+    const createMs = performance.now() - coldStarted;
     const difficulty = sample?.difficulty ?? 'normal';
     const sim = new Simulation(definition, diagnostics, undefined, mode, difficulty);
     const started = performance.now();
@@ -285,9 +347,11 @@ const stability = {
       numericBytes: path.retainedFrameCount * 13 * 8 + path.segments.length * (2 + 12) * 8 + path.arcTableBytes };
     try {
       instrumentRenderer(surface);
-      surface.resize(960, 540, 1);
+      begin();
+      surface.resize(...(sample?.useViewport ? [innerWidth, innerHeight, devicePixelRatio] as const : [960, 540, 1] as const));
       surface.load(definition, path, mode);
       surface.prepare();
+      const preparation = end();
       const planStarted = performance.now();
       sim.start(difficulty, 0, undefined, mode);
       const runSetupMs = performance.now() - planStarted;
@@ -295,23 +359,34 @@ const stability = {
       if (sample && sim.outroPlan) for (let i = 0; i < 40; i++) makeOutroPlan(definition, mode, i, sim.outroPlan.mainLastStation, difficulty);
       const encorePlanMs = sample ? (performance.now() - planBuildStarted) / 40 : undefined;
       const inspectionStarted = performance.now();
-      const inspection = sample?.inspection ? new OutroInspection(mode, 0, 'main', path, difficulty, definition) : undefined;
+      const inspection = sample?.inspection || sample?.preset
+        ? new OutroInspection(mode, 0, 'main', path, difficulty, definition) : undefined;
       const inspectionBuildMs = inspection ? performance.now() - inspectionStarted : undefined;
-      const station = sample?.station ?? sim.reference.station(beat, mode);
+      const view = sample?.preset && inspection ? inspection.view(sample.preset, 'Boost') : undefined;
+      const station = view?.station ?? sample?.station ?? sim.reference.station(beat, mode);
+      beat = view?.musicBeat ?? beat;
       const input = boost ? { ...idleInput, boosting: true } : idleInput;
       if (!inspection) while (sim.phase === 'playing' && (boost || sample ? sim.trackDistance < station : sim.beat + 1e-9 < beat)) sim.step(STEP, input);
       if (sample && !inspection && !sample.fly) sim.beat = beat;
       const inspectionSpeed = inspection?.state(station, beat, 'Boost').speed ?? cruiseTarget(Infinity) * BOOST_MULTIPLIER;
       const inspect = (tick: number) => inspection?.state(station + (sample?.fly ? tick * STEP * inspectionSpeed : 0),
         beat + tick * STEP / sim.secondsPerBeat, 'Boost');
+      const dynamics = { ...steadyLights };
+      const camera = sample?.view && exteriorViews[sample.view];
+      const lightingFor = (state: SceneState) => sample?.dynamic || camera ? {
+        beat: state.beat,
+        dynamics: sample?.dynamic ? dynamicLightEnvelope(definition, state.beat * sim.secondsPerBeat, 1, false, dynamics) : undefined,
+        ...(camera ? { yaw: camera[0] * Math.PI / 180, pitch: camera[1] * Math.PI / 180, cameraLift: camera[2] } : {}),
+      } : undefined;
       begin();
       const initial = inspect(0);
       if (initial) surface.draw(initial, true);
-      else surface.warmSurface(sim, true);
-      const chunkBuild = end().cpu.chunk;
-      const frozenBeat = sim.beat;
+      else surface.warmSurface(sim, true, camera ? lightingFor(sim) : undefined);
+      const firstDraw = end();
+      const chunkBuild = firstDraw.cpu.chunk;
+      const frozenBeat = initial?.beat ?? sim.beat;
+      const startStation = initial?.trackDistance ?? sim.trackDistance;
       let tick = 0;
-      const dynamics = { ...steadyLights };
       const draw = () => new Promise<void>((resolve, reject) => requestAnimationFrame(now => {
         try {
           if (measuring && frameAt) frames.push(now - frameAt);
@@ -320,10 +395,7 @@ const stability = {
           else if (!inspection && animateLights) sim.beat = Math.min(definition.beats, frozenBeat + tick * STEP / sim.secondsPerBeat);
           elapsed('frame', () => {
             const state = inspect(tick++) ?? sim;
-            const lighting = sample?.dynamic
-              ? { beat: state.beat, dynamics: dynamicLightEnvelope(definition, state.beat * sim.secondsPerBeat, 1, false, dynamics) }
-              : undefined;
-            surface.draw(state, true, true, lighting);
+            surface.draw(state, true, true, lightingFor(state));
           });
           resolve();
         } catch (error) { reject(error); }
@@ -339,7 +411,15 @@ const stability = {
       const volume = Reflect.get(surface, 'volume') as { visuals: Map<RunGate, GateVisual> };
       const visible = Array.from(volume.visuals).filter(([, gate]) => gate.meshes[0].visible);
       const meshes = visible.flatMap(([, gate]) => gate.meshes);
-      return { beat: frozenBeat, speed: inspection ? inspectionSpeed : sim.speed, route: sim.route, phase: sim.phase, trace, pathBuild, chunkBuild, runSetupMs, encorePlanMs,
+      const image = sample?.image ? await new Promise<string>((resolve, reject) => requestAnimationFrame(() => {
+        try {
+          const state = inspect(0) ?? sim;
+          surface.draw(state, true, true, lightingFor(state));
+          resolve(output.toDataURL());
+        } catch (error) { reject(error); }
+      })) : undefined;
+      return { beat: frozenBeat, sampleStation: startStation, image, createMs, preparation, firstDraw,
+        speed: inspection ? inspectionSpeed : sim.speed, route: initial?.route ?? sim.route, phase: initial?.phase ?? sim.phase, trace, pathBuild, chunkBuild, runSetupMs, encorePlanMs,
         inspectionBuildMs, metrics: surface.metrics(),
         previewCount: initial ? initial.previewGates.length + initial.previewEncore.length : sim.previewGates.length + sim.previewEncore.length,
         pathLength: path.length,
