@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto';
 import { expect, test } from 'vitest';
 import { Vector3 } from 'three';
 import { playModes } from '../../app/game/contracts';
 import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { curveCurvature, curveOffset } from '../../app/game/core/corridor-composition';
 import { idleInput } from '../../app/game/core/input';
-import { circumference, corridorAt, helixPitch, makeLightingAtlas, perimeter, wallSpans, washCenter,
+import { circumference, corridorAt, helixPitch, makeAfterglowAtlas, makeLightingAtlas, perimeter, wallSpans, washCenter,
   washFaceProjection, washPitch, washStart, washWidth } from '../../app/game/core/lighting-atlas';
 import { BOOST_MULTIPLIER, cruiseTarget, modeScale, referenceFor } from '../../app/game/core/reference-track';
 import { Simulation } from '../../app/game/core/simulation';
@@ -211,6 +212,59 @@ test.each(playModes)('%s preserves the legacy split, merge and per-route arc map
     for (const side of ['left', 'center', 'right'] as const) {
       expect(composed.arcAt(s, side)).toBeCloseTo(legacy.arcAt(s, side), 7);
     }
+  }
+});
+
+test.each(playModes)('%s preserves the b7749a5 tunnel geometry through streaming and rebuilds', mode => {
+  const sim = new Simulation(volume);
+  sim.start('impossible', 0, undefined, mode);
+  const path = sim.path;
+  const library = new MaterialLibrary();
+  const tunnel = new Tunnel(library, path, volume.topology, makeLightingAtlas(volume, mode));
+  const hash = createHash('sha256');
+  const metadata = (value: unknown) => hash.update(JSON.stringify(value));
+  function snapshot() {
+    metadata(tunnel.continuity.near);
+    for (const { meshes } of tunnel.chunks) for (const { geometry, material, name, renderOrder } of meshes) {
+      geometry.computeBoundingBox();
+      geometry.computeBoundingSphere();
+      metadata([name, renderOrder, (Array.isArray(material) ? material : [material]).map(item => item.name), geometry.groups,
+        geometry.boundingBox!.min.toArray(), geometry.boundingBox!.max.toArray(),
+        geometry.boundingSphere!.center.toArray(), geometry.boundingSphere!.radius]);
+      for (const [key, attribute] of [...Object.entries(geometry.attributes), ['index', geometry.index!]] as const) {
+        const array = attribute.array;
+        metadata([key, attribute.itemSize, attribute.normalized, array.constructor.name, array.length]);
+        hash.update(Buffer.from(array.buffer, array.byteOffset, array.byteLength));
+      }
+    }
+  }
+  try {
+    for (const beat of [112, 208, 228, 248, 223]) {
+      tunnel.update(reference.station(beat, mode));
+      snapshot();
+    }
+    const branch = sim.junctionPath!;
+    tunnel.update(branch.start - 30);
+    tunnel.setJunction(branch);
+    for (const side of ['center', 'left', 'right'] as const) {
+      tunnel.update(branch.split + 20, false, branch, side);
+      snapshot();
+    }
+    tunnel.setJunction(undefined);
+    snapshot();
+    const plan = sim.outroPlan!;
+    tunnel.update(plan.afterglowStart - 60);
+    tunnel.setAfterglow(makeAfterglowAtlas(plan));
+    snapshot();
+    tunnel.update(plan.afterglowStart + 120);
+    snapshot();
+    expect(hash.digest('hex')).toBe({
+      standard: 'e7cf829ad4f4516cb3257769250cebb533f48e0a5291312e9160895db43f3812',
+      sightseeing: '54560a4fa099d7a4e5c77c3fa0abb860a30843f8b19a89184f881dea39e17356',
+    }[mode]);
+  } finally {
+    tunnel.dispose();
+    library.dispose();
   }
 });
 

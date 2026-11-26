@@ -16,8 +16,7 @@ import type { Path, PathFrame } from './path';
 import type { buildTextures } from './textures.client';
 import { MaterialLibrary } from './materials/library.client';
 import { surfacePresets } from './materials/presets';
-import type { SurfaceMaterialId } from './materials/presets';
-import { surfaceUV } from './materials/uv';
+import { buildTunnelPanels } from './tunnel-panels';
 
 interface GeometryData { pos: number[]; nor?: number[]; uv?: number[]; rgb?: number[]; idx: number[] }
 interface Chunk { s0: number; s1: number; meshes: THREE.Mesh[] }
@@ -263,7 +262,6 @@ export class Tunnel {
     for (let i = 0; i < rings.length; i++) this.path.sample(rings[i], ringFrames[i] ??= frame());
 
     const shell = { pos: [] as number[], nor: [] as number[], uv: [] as number[], idx: [] as number[] };
-    const shellGroups = [shell.idx, [] as number[], [] as number[]];
     const rib = { pos: [] as number[], nor: [] as number[], idx: [] as number[], uv: m0 ? [] as number[] : undefined };
     const rim = { pos: [] as number[], nor: [] as number[], idx: [] as number[], rgb: ringLight ? [] as number[] : undefined };
     const strip = { pos: [] as number[], idx: [] as number[], rgb: ringLight ? [] as number[] : undefined };
@@ -314,7 +312,7 @@ export class Tunnel {
     }
 
     /* ---- shell: quad strips between consecutive rings ---- */
-    for (let k = 0; k < rings.length - 1; k++) {
+    if (!m0) for (let k = 0; k < rings.length - 1; k++) {
       const sA = rings[k], sB = rings[k + 1];
       const A = ringFrames[k], B = ringFrames[k + 1];
       // absolute V, so the plating is continuous across chunk seams
@@ -342,7 +340,7 @@ export class Tunnel {
         const lp = (t: number) => this.canopyMat && t === 1 ? p1 :
           [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
 
-        const quad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number, ua: number, ub: number, va: number, vb: number, nf: THREE.Vector3, group = 0) => {
+        const quad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number, ua: number, ub: number, va: number, vb: number, nf: THREE.Vector3) => {
           const q0 = lp(t0), q1 = lp(t1);
           const base = shell.pos.length / 3;
           put(shell, fa, q0[0] * ka, shellHeight(q0[1], ka));
@@ -351,30 +349,13 @@ export class Tunnel {
           put(shell, fb, q0[0] * kb, shellHeight(q0[1], kb));
           for (let q = 0; q < 4; q++) shell.nor.push(nf.x, nf.y, nf.z);
           shell.uv.push(ua, va, ub, va, ub, vb, ua, vb);
-          shellGroups[group].push(base, base + 1, base + 2, base, base + 2, base + 3);
+          shell.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
         };
 
         nWall.copy(A.r).multiplyScalar(nx2).addScaledVector(A.u, ny2);
         const inner = 1 - DEPTH;
         const SEAM = 0.012;                 // half-width of the rib between plates
         const um = (u0 + u1) * 0.5;
-
-        if (m0) {
-          const panel = i === 0 ? 2 : i === 2 || i === 6 ? 1 : 0;
-          const mapQuad = (fa: PathFrame, ka: number, fb: PathFrame, kb: number, t0: number, t1: number,
-            sa: number, sb: number, group: number) => {
-            const id: SurfaceMaterialId = group === 2 ? 'floor-grip' : group === 1 ? 'panel-recessed' : 'alloy-satin-dark';
-            const [ua, va] = surfaceUV(id, perim[i], el, t0, sa);
-            const [ub, vb] = surfaceUV(id, perim[i], el, t1, sb);
-            quad(fa, ka, fb, kb, t0, t1, ua, ub, va, vb, nWall, group);
-          };
-          mapQuad(A, 1, C, inner, 0, 1, sA, sA + CH, panel);
-          mapQuad(C, inner, D, inner, 0, 0.5 - SEAM, sA + CH, sB - CH, panel);
-          mapQuad(C, 1, D, 1, 0.5 - SEAM, 0.5 + SEAM, sA + CH, sB - CH, panel);
-          mapQuad(C, inner, D, inner, 0.5 + SEAM, 1, sA + CH, sB - CH, panel);
-          mapQuad(D, inner, B, 1, 0, 1, sB - CH, sB, panel);
-          continue;
-        }
 
         // lower chamfer, full width
         quad(A, 1.0, C, inner, 0, 1, u0, u1, vA, vA + CH * 0.02, nWall);
@@ -518,18 +499,8 @@ export class Tunnel {
 
     if (this.canopyMat) add(geoOf(glass), this.canopyMat, 'canal-skyglass').renderOrder = 4;
     if (brace.pos.length) add(geoOf(brace), this.braceMat, 'tunnel-braces');
-    if (shell.pos.length) {
-      if (this.shellMaterials) shell.idx = shellGroups.flat();
-      const g = geoOf(shell);
-      if (this.shellMaterials) {
-        let start = 0;
-        for (const [i, indices] of shellGroups.entries()) {
-          g.addGroup(start, indices.length, i);
-          start += indices.length;
-        }
-      }
-      add(g, this.shellMaterials ?? this.shellMat, 'tunnel-shell');
-    }
+    if (this.shellMaterials) add(buildTunnelPanels(this.path, rings, ringFrames), this.shellMaterials, 'tunnel-shell');
+    else if (shell.pos.length) add(geoOf(shell), this.shellMat, 'tunnel-shell');
     add(geoOf(rib), this.ribMat, 'tunnel-ribs');
     add(geoOf(rim), this.rimMat, 'tunnel-rims');
 

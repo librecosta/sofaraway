@@ -47,6 +47,11 @@ let drawIndex = 0;
 let measuring = false;
 let rendererCpu = 0;
 let disjoint = 0;
+let traceTunnel = false;
+type TunnelBuild = { s0: number; s1: number; ms: number; bytes: number; meshes: number };
+let tunnelBuilds: TunnelBuild[] = [];
+let tunnelFrames: { station: number; lookahead: number; builds: TunnelBuild[]; submitMs: number; rafAfterMs?: number }[] = [];
+let lastBuildFrameAt = 0;
 const pending: { query: WebGLQuery; scope: GpuScope; frame: number }[] = [];
 const bloom = new Map<number, { count: number; ms: number }>();
 const scopes: GpuScope[] = ['frame', 'scene', 'depth', 'dof', 'bloom', 'composite'];
@@ -146,7 +151,23 @@ time(OrbitWorld.prototype, 'update', 'orbitUpdate');
 time(OrbitWorld.prototype, 'stream', 'orbitStream');
 time(OrbitWorld.prototype, 'warmAstral', 'orbitWarmup');
 time(Graphics.prototype, 'warmSurface', 'warmSurface');
-time(Tunnel.prototype, '_buildChunk', 'chunk');
+wrap(Tunnel.prototype, '_buildChunk', (_self, [s0, s1], call) => {
+  if (!measuring || !traceTunnel) return elapsed('chunk', call);
+  const at = performance.now();
+  const chunk = call() as ReturnType<Tunnel['_buildChunk']>;
+  const ms = performance.now() - at;
+  let bytes = 0;
+  for (const { geometry } of chunk.meshes) {
+    bytes += geometry.index?.array.byteLength ?? 0;
+    for (const attribute of Object.values(geometry.attributes)) bytes += attribute.array.byteLength;
+  }
+  tunnelBuilds.push({ s0: s0 as number, s1: s1 as number, ms, bytes, meshes: chunk.meshes.length });
+  add(cpu, 'chunk', ms);
+  return chunk;
+});
+time(Tunnel.prototype, 'update', 'tunnelUpdate');
+time(Tunnel.prototype, 'rebuildFrom', 'tunnelRebuild');
+time(Tunnel.prototype, 'setJunction', 'tunnelJunction');
 time(Tunnel.prototype, 'buildDistant', 'farChunk');
 time(Tunnel.prototype, '_disposeChunk', 'chunkRelease');
 time(Path.prototype, 'straight', 'pathStep');
@@ -160,14 +181,25 @@ wrap(Graphics.prototype, 'load', (self, _args, call) => {
   instrumentRenderer(self as Graphics);
   return elapsed('sceneLoad', call);
 });
-wrap(Graphics.prototype, 'draw', (_self, _args, call) => {
+wrap(Graphics.prototype, 'draw', (self, [state], call) => {
   if (!measuring) return call();
   drawIndex++;
   if (drawIndex % 4 === 0) pollGpu();
   sampleGpu = drawIndex % 4 === 0 ? scopes[Math.floor(drawIndex / 4) % scopes.length] : undefined;
   rendererCpu = 0;
+  const buildStart = tunnelBuilds.length;
   try { return elapsed('graphicsDraw', () => gpuTime('frame', call)); }
-  finally { add(cpu, 'rendererFrame', rendererCpu); sampleGpu = undefined; }
+  finally {
+    if (tunnelBuilds.length > buildStart) {
+      const tunnel = Reflect.get(Reflect.get(self as Graphics, 'volume'), 'tunnel') as Tunnel;
+      const station = (state as SceneState).trackDistance;
+      const front = Math.max(...tunnel.chunks.map(chunk => chunk.s1));
+      tunnelFrames.push({ station, lookahead: front - station, builds: tunnelBuilds.slice(buildStart), submitMs: rendererCpu });
+      lastBuildFrameAt = frameAt;
+    }
+    add(cpu, 'rendererFrame', rendererCpu);
+    sampleGpu = undefined;
+  }
 });
 wrap(PostFX.prototype, '_pass', (self, [material, target], call) => {
   pass = !target ? 'composite' : material === (self as PostFX).dofMat ? 'dof' : 'bloom';
@@ -203,6 +235,9 @@ function begin() {
   playingFrames = 0;
   drawIndex = 0;
   disjoint = 0;
+  tunnelBuilds = [];
+  tunnelFrames = [];
+  lastBuildFrameAt = 0;
   if (PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
     longTasks = new PerformanceObserver(list => {
       for (const entry of list.getEntries()) add(cpu, 'longTask', entry.duration);
@@ -232,7 +267,17 @@ function end() {
     over50ms: frames.filter(ms => ms > 50).length, playingFrames,
     gpuStatus: !timing || !gpu.frame?.length ? 'GPU_TIMING_UNAVAILABLE' : 'AVAILABLE',
     gpu: summarize(gpu), disjoint, unreadyQueries,
+    ...(traceTunnel ? { tunnelFrames } : {}),
   };
+}
+
+function frameInterval(now: number) {
+  if (measuring && frameAt) frames.push(now - frameAt);
+  if (lastBuildFrameAt) {
+    tunnelFrames.at(-1)!.rafAfterMs = now - lastBuildFrameAt;
+    lastBuildFrameAt = 0;
+  }
+  frameAt = now;
 }
 
 function metrics() {
@@ -263,8 +308,9 @@ function dispose() {
 }
 
 const stability = {
-  async mount(volumeId: VolumeId, quality: QualityTier, showcase = false) {
+  async mount(volumeId: VolumeId, quality: QualityTier, showcase = false, tunnelTrace = false) {
     dispose();
+    traceTunnel = tunnelTrace;
     closingAudio = undefined;
     canvas = document.createElement('canvas');
     canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh';
@@ -273,9 +319,7 @@ const stability = {
     runtime = new Runtime({ pointer() {}, flash() {}, debug() {} });
     wrap(runtime, 'frame', (_self, [now], call) => {
       if (!measuring) return call();
-      const at = now as number;
-      if (frameAt) frames.push(at - frameAt);
-      frameAt = at;
+      frameInterval(now as number);
       if (runtime?.getSnapshot().phase === 'playing') playingFrames++;
       return elapsed('frame', call);
     });
@@ -330,7 +374,9 @@ const stability = {
   async fixedGlass(beat: number, quality: QualityTier, boost = false, mode: PlayMode = 'standard',
     side: RouteSide = 'left', iterations = 480, animateLights = false,
     sample?: { station?: number; fly?: boolean; inspection?: boolean; preset?: OutroPreset; difficulty?: Difficulty;
-      dynamic?: boolean; volumeId?: VolumeId; useViewport?: boolean; post?: boolean; image?: boolean; view?: ExteriorView }) {
+      dynamic?: boolean; volumeId?: VolumeId; useViewport?: boolean; post?: boolean; image?: boolean; view?: ExteriorView;
+      tunnelTrace?: boolean }) {
+    traceTunnel = sample?.tunnelTrace ?? false;
     const definition = volumeById(sample?.volumeId ?? 'elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
       boost, mobileQuality: false, post: sample?.post ?? true, record: false, debug: false, branchSide: side };
@@ -389,8 +435,7 @@ const stability = {
       let tick = 0;
       const draw = () => new Promise<void>((resolve, reject) => requestAnimationFrame(now => {
         try {
-          if (measuring && frameAt) frames.push(now - frameAt);
-          frameAt = now;
+          frameInterval(now);
           if (!inspection && sample?.fly) sim.step(STEP, input);
           else if (!inspection && animateLights) sim.beat = Math.min(definition.beats, frozenBeat + tick * STEP / sim.secondsPerBeat);
           elapsed('frame', () => {

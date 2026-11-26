@@ -297,7 +297,9 @@ async function baselineImage(info: TestInfo, volume: VolumeId, scene: string, im
 }
 
 for (const { id } of VOLUMES) {
-  test(`@f4-p0 fixed rendering and visual baseline · ${id}`, async ({ browser }, info) => {
+  const comparison = id === 'elsewhere' && haveReference;
+  for (const build of comparison ? [reference, candidate] : [candidate]) test(
+    `@f4-p0 fixed rendering and visual baseline · ${id}${comparison ? ` · ${build.label}` : ''}`, async ({ browser }, info) => {
     const branch = gameplayFor(id).branch!;
     const challengeBeat = (branch.open.standard + branch.merge.standard) / 2;
     const scenes = [
@@ -311,7 +313,7 @@ for (const { id } of VOLUMES) {
         deviceScaleFactor: profile.dpr, hasTouch: touch, isMobile: touch });
       const errors = captureErrors(page);
       try {
-        await openHarness(page);
+        await openHarness(page, build);
         const selected = profile.id === '540-high' ? scenes : [focus];
         for (const scene of selected) {
           const runs = scene === focus ? 3 : 2;
@@ -322,10 +324,11 @@ for (const { id } of VOLUMES) {
                 side, focus ? 192 : 120, false,
                 { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true,
                   preset: scene.name === 'encore' ? 'encore-first' : undefined,
-                  image: trial === 0 && profile.id === '540-high' }), { id, scene, profile, trial, focus: scene === focus, side });
+                  image: trial === 0 && profile.id === '540-high', tunnelTrace: id === 'elsewhere' }),
+              { id, scene, profile, trial, focus: scene === focus, side });
             const { image, ...sample } = result;
             if (image) await baselineImage(info, id, scene.name, image);
-            log('f4-p0-fixed', { volume: id, browser: browser.version(), profile, scene: scene.name, trial,
+            log('f4-p0-fixed', { volume: id, build: build.label, browser: browser.version(), profile, scene: scene.name, trial,
               difficulty: 'impossible', seed: 0, dynamic: true, post: true, ...sample });
             expect(result.trace.frame.n).toBeGreaterThan(100);
             expect(result.glError).toBe(0);
@@ -338,7 +341,7 @@ for (const { id } of VOLUMES) {
               const sample = await page.evaluate(({ id, focus, post, dynamic }) => window.stability.fixedGlass(
                 focus.beat, 'high', focus.name === 's-curve', 'standard', 'center', 192, false,
                 { volumeId: id, difficulty: 'impossible', dynamic, post, useViewport: true }), { id, focus, post, dynamic });
-              log('f4-p0-fixed', { volume: id, browser: browser.version(), profile, scene: focus.name, trial,
+              log('f4-p0-fixed', { volume: id, build: build.label, browser: browser.version(), profile, scene: focus.name, trial,
                 difficulty: 'impossible', seed: 0, dynamic, post, ...sample });
               expect(sample.glError).toBe(0);
             }
@@ -358,12 +361,13 @@ for (const { id } of VOLUMES) {
     }
   });
 
-  test(`@f4-p0 audio-led complete Showcase · ${id}`, async ({ browser }) => {
+  for (const [sample, build] of (comparison ? builds : [candidate]).entries()) test(
+    `@f4-p0 audio-led complete Showcase · ${id}${comparison ? ` · ${build.label} ${sample}` : ''}`, async ({ browser }) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     const errors = captureErrors(page);
     try {
-      await openHarness(page);
-      const init = await page.evaluate(id => window.stability.mount(id, 'auto', true), id);
+      await openHarness(page, build);
+      const init = await page.evaluate(id => window.stability.mount(id, 'auto', true, id === 'elsewhere'), id);
       const at = performance.now();
       await page.getByRole('button', { name: 'Start with audio' }).click();
       await page.waitForFunction(() => window.stability.state().phase === 'playing');
@@ -392,7 +396,8 @@ for (const { id } of VOLUMES) {
       await page.evaluate(() => window.stability.dispose());
       await page.waitForFunction(() => window.stability.state().audio === 'closed');
       const released = await page.evaluate(() => window.stability.state());
-      log('f4-p0-showcase', { volume: id, browser: browser.version(), startMs, init, final, finished, released, trends, trace: await trace });
+      log('f4-p0-showcase', { volume: id, build: build.label, sample, browser: browser.version(), startMs,
+        init, final, finished, released, trends, trace: await trace });
       expect(final.effectiveDifficulty).toBe('impossible');
       expect(final.snapshot).toMatchObject({ phase: 'results', mode: 'showcase',
         route: 'main', score: 0, result: { title: 'ESCAPED' } });
