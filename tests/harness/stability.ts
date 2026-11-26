@@ -1,5 +1,5 @@
-import type { Object3D, WebGLRenderer } from 'three';
-import { PMREMGenerator } from 'three';
+import type { Material, Object3D, WebGLRenderer } from 'three';
+import { AdditiveBlending, FrontSide, Mesh, PMREMGenerator, RedFormat, UnsignedByteType } from 'three';
 import type { AudioTransport } from '../../app/game/audio/transport.client';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { Difficulty, GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
@@ -25,8 +25,11 @@ import type { SceneState } from '../../app/game/graphics/scene.client';
 import { Tunnel } from '../../app/game/graphics/tunnel.client';
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 
-type Pass = 'scene' | 'depth' | 'dof' | 'bloom' | 'composite';
+type Pass = 'scene' | 'depth' | 'dof' | 'bloom' | 'composite' | 'bright' | 'blur';
 type GpuScope = Pass | 'frame';
+type GpuProbe = 'baseline' | 'colour-only-resolve' | 'single-sample' | 'rgba8-colour'
+  | 'without-glass' | 'without-fixtures' | 'without-transparent' | 'without-opaque' | 'front-side-opaque'
+  | 'single-clear' | 'red-depth';
 type Values = Record<string, number[]>;
 interface TimerExtension { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }
 
@@ -47,6 +50,9 @@ let drawIndex = 0;
 let measuring = false;
 let rendererCpu = 0;
 let disjoint = 0;
+let gpuProbe: GpuProbe | undefined;
+let depthResolves = 0;
+let colourResolves = 0;
 let traceTunnel = false;
 type TunnelBuild = { s0: number; s1: number; ms: number; bytes: number; meshes: number };
 let tunnelBuilds: TunnelBuild[] = [];
@@ -55,6 +61,7 @@ let lastBuildFrameAt = 0;
 const pending: { query: WebGLQuery; scope: GpuScope; frame: number }[] = [];
 const bloom = new Map<number, { count: number; ms: number }>();
 const scopes: GpuScope[] = ['frame', 'scene', 'depth', 'dof', 'bloom', 'composite'];
+const probeScopes: GpuScope[] = ['frame', 'scene', 'depth', 'dof', 'bright', 'blur', 'composite'];
 const seenRenderers = new WeakSet<WebGLRenderer>();
 
 function add(values: Values, key: string, ms: number) {
@@ -90,11 +97,11 @@ function pollGpu(drop = false) {
     if (!drop && !invalid && !gl.getQueryParameter(query, gl.QUERY_RESULT_AVAILABLE)) continue;
     if (!drop && !invalid) {
       const ms = (gl.getQueryParameter(query, gl.QUERY_RESULT) as number) / 1e6;
-      if (scope === 'bloom') {
+      if (scope === 'bloom' || scope === 'blur') {
         const sum = bloom.get(frame) ?? { count: 0, ms: 0 };
         sum.count++;
         sum.ms += ms;
-        if (sum.count === 5) { add(gpu, scope, sum.ms); bloom.delete(frame); }
+        if (sum.count === (scope === 'blur' ? 4 : 5)) { add(gpu, scope, sum.ms); bloom.delete(frame); }
         else bloom.set(frame, sum);
       } else add(gpu, scope, ms);
     }
@@ -117,6 +124,34 @@ function gpuTime<T>(scope: GpuScope, call: () => T): T {
   }
 }
 
+function probeSceneColour(scene: Object3D, call: () => unknown) {
+  const probe = gpuProbe;
+  if (probe === 'front-side-opaque') {
+    const sides = new Map<Material, Material['side']>();
+    scene.traverseVisible(object => {
+      if (!(object instanceof Mesh)) return;
+      for (const mat of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (!mat.transparent && !sides.has(mat)) { sides.set(mat, mat.side); mat.side = FrontSide; }
+      }
+    });
+    try { return call(); }
+    finally { for (const [mat, side] of sides) mat.side = side; }
+  }
+  if (!probe?.startsWith('without-')) return call();
+  const hidden: Mesh[] = [];
+  scene.traverseVisible(object => {
+    if (!(object instanceof Mesh)) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    const hide = probe === 'without-glass' ? object.renderOrder === 6 && materials.some(mat => mat.blending === AdditiveBlending)
+      : probe === 'without-fixtures' ? object.name.startsWith('elsewhere-') && materials.some(mat => mat.blending === AdditiveBlending)
+      : probe === 'without-transparent' ? materials.every(mat => mat.transparent) : materials.every(mat => !mat.transparent);
+    if (hide) hidden.push(object);
+  });
+  for (const mesh of hidden) mesh.visible = false;
+  try { return call(); }
+  finally { for (const mesh of hidden) mesh.visible = true; }
+}
+
 function instrumentRenderer(value: Graphics) {
   graphics = value;
   const { renderer, gl } = value;
@@ -129,11 +164,25 @@ function instrumentRenderer(value: Graphics) {
   for (const method of ['texImage3D', 'texStorage3D', 'texSubImage3D']) time(gl, method, 'glTexture3D');
   for (const method of ['bufferData', 'bufferSubData']) time(gl, method, 'glBuffer');
   for (const method of ['renderbufferStorage', 'renderbufferStorageMultisample']) time(gl, method, 'glRenderbuffer');
+  wrap(gl, 'blitFramebuffer', (_self, args, call) => {
+    if (gpuProbe && measuring && renderer.getRenderTarget() === (Reflect.get(value, 'post') as PostFX)?.rtScene) {
+      const mask = args[8] as number;
+      if (mask & gl.DEPTH_BUFFER_BIT) depthResolves++;
+      if (mask & gl.COLOR_BUFFER_BIT) colourResolves++;
+    }
+    return call();
+  });
+  wrap(renderer, 'clear', (_self, args, call) => {
+    // Three's own clear supplies explicit masks. Only omit redundant no-argument calls in this probe.
+    if (gpuProbe === 'single-clear' && args.length === 0 && renderer.autoClear) return;
+    return call();
+  });
   wrap(renderer, 'render', (_self, [scene], call) => {
     const scope = pass ?? ((scene as Object3D & { overrideMaterial?: unknown }).overrideMaterial ? 'depth' : 'scene');
-    if (!measuring) return call();
+    const render = () => scope === 'scene' && gpuProbe ? probeSceneColour(scene as Object3D, call) : call();
+    if (!measuring) return render();
     const at = performance.now();
-    try { return pass ? call() : gpuTime(scope, call); }
+    try { return pass ? render() : gpuTime(scope, render); }
     finally {
       const ms = performance.now() - at;
       add(cpu, `renderer.${scope}`, ms);
@@ -185,7 +234,8 @@ wrap(Graphics.prototype, 'draw', (self, [state], call) => {
   if (!measuring) return call();
   drawIndex++;
   if (drawIndex % 4 === 0) pollGpu();
-  sampleGpu = drawIndex % 4 === 0 ? scopes[Math.floor(drawIndex / 4) % scopes.length] : undefined;
+  const round = gpuProbe ? probeScopes : scopes;
+  sampleGpu = drawIndex % 4 === 0 ? round[Math.floor(drawIndex / 4) % round.length] : undefined;
   rendererCpu = 0;
   const buildStart = tunnelBuilds.length;
   try { return elapsed('graphicsDraw', () => gpuTime('frame', call)); }
@@ -202,7 +252,8 @@ wrap(Graphics.prototype, 'draw', (self, [state], call) => {
   }
 });
 wrap(PostFX.prototype, '_pass', (self, [material, target], call) => {
-  pass = !target ? 'composite' : material === (self as PostFX).dofMat ? 'dof' : 'bloom';
+  pass = !target ? 'composite' : material === (self as PostFX).dofMat ? 'dof'
+    : gpuProbe ? material === Reflect.get(self as PostFX, 'brightMat') ? 'bright' : 'blur' : 'bloom';
   try { return gpuTime(pass, call); }
   finally { pass = undefined; }
 });
@@ -235,6 +286,8 @@ function begin() {
   playingFrames = 0;
   drawIndex = 0;
   disjoint = 0;
+  depthResolves = 0;
+  colourResolves = 0;
   tunnelBuilds = [];
   tunnelFrames = [];
   lastBuildFrameAt = 0;
@@ -267,6 +320,7 @@ function end() {
     over50ms: frames.filter(ms => ms > 50).length, playingFrames,
     gpuStatus: !timing || !gpu.frame?.length ? 'GPU_TIMING_UNAVAILABLE' : 'AVAILABLE',
     gpu: summarize(gpu), disjoint, unreadyQueries,
+    ...(gpuProbe ? { resolves: { colour: colourResolves, depth: depthResolves } } : {}),
     ...(traceTunnel ? { tunnelFrames } : {}),
   };
 }
@@ -375,7 +429,7 @@ const stability = {
     side: RouteSide = 'left', iterations = 480, animateLights = false,
     sample?: { station?: number; fly?: boolean; inspection?: boolean; preset?: OutroPreset; difficulty?: Difficulty;
       dynamic?: boolean; volumeId?: VolumeId; useViewport?: boolean; post?: boolean; image?: boolean; view?: ExteriorView;
-      tunnelTrace?: boolean }) {
+      tunnelTrace?: boolean; gpuProbe?: GpuProbe }) {
     traceTunnel = sample?.tunnelTrace ?? false;
     const definition = volumeById(sample?.volumeId ?? 'elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
@@ -392,10 +446,22 @@ const stability = {
     const pathBuild = { ms: performance.now() - started, frames: path.retainedFrameCount, segments: path.segments.length,
       numericBytes: path.retainedFrameCount * 13 * 8 + path.segments.length * (2 + 12) * 8 + path.arcTableBytes };
     try {
+      gpuProbe = sample?.gpuProbe;
       instrumentRenderer(surface);
       begin();
       surface.resize(...(sample?.useViewport ? [innerWidth, innerHeight, devicePixelRatio] as const : [960, 540, 1] as const));
       surface.load(definition, path, mode);
+      const post = Reflect.get(surface, 'post') as PostFX | undefined;
+      if (gpuProbe && !post) throw new Error('GPU pass probe requires PostFX');
+      if (gpuProbe === 'colour-only-resolve') post!.rtScene.resolveDepthBuffer = false;
+      if (gpuProbe === 'single-sample' || gpuProbe === 'rgba8-colour' || gpuProbe === 'red-depth') {
+        const target = gpuProbe === 'red-depth' ? post!.rtDepth : post!.rtScene;
+        target.dispose();
+        if (gpuProbe === 'single-sample') target.samples = 0;
+        if (gpuProbe === 'rgba8-colour') target.texture.type = UnsignedByteType;
+        if (gpuProbe === 'red-depth') target.texture.format = RedFormat;
+        if (!post!.hasCompleteTargets(surface.gl)) throw new Error('Incomplete GPU probe framebuffer');
+      }
       surface.prepare();
       const preparation = end();
       const planStarted = performance.now();
@@ -479,6 +545,7 @@ const stability = {
       surface.dispose();
       graphics = undefined;
       timing = null;
+      gpuProbe = undefined;
       output.remove();
     }
   },

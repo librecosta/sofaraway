@@ -222,7 +222,9 @@ export class PostFX {
       samples: quality.samples,
     };
 
-    this.rtScene = new THREE.WebGLRenderTarget(2, 2, rtOpts);
+    // Keep multisampled depth for scene occlusion. DOF reads the separate
+    // linear-depth pass, so the colour resolve only needs the colour buffer.
+    this.rtScene = new THREE.WebGLRenderTarget(2, 2, { ...rtOpts, resolveDepthBuffer: false });
     this.rtDof = new THREE.WebGLRenderTarget(2, 2, { ...rtOpts, depthBuffer: false, samples: 0 });
 
     const bw = { ...rtOpts, depthBuffer: false, samples: 0 };

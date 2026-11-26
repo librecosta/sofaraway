@@ -12,6 +12,7 @@ import { STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
 import { OutroInspection, outroView } from '../../app/game/debug/outro-inspection';
+import type { ExteriorView, OutroPreset } from '../../app/game/debug/outro-inspection';
 import type { QualityTier, VolumeId } from '../../app/game/contracts';
 import type {} from '../harness/stability';
 
@@ -289,11 +290,96 @@ const baselineScenes = {
 } as const;
 const baselineFocus = { elsewhere: 's-curve', daybreak: 'sunburst', descent: 'well', orbit: 'aurora' } as const;
 
+test('@p1b GPU attribution at 1080p High', async ({ browser }, info) => {
+  const probes = ['baseline', 'colour-only-resolve', 'single-sample', 'rgba8-colour', 'without-glass',
+    'without-fixtures', 'without-transparent', 'without-opaque', 'front-side-opaque', 'single-clear', 'red-depth'] as const;
+  for (let trial = 0; trial < 3; trial++) {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, haveReference ? reference : candidate);
+      const order = trial % 2 ? [...probes].reverse() : probes;
+      for (const gpuProbe of order) {
+        const { image, ...sample } = await page.evaluate(({ gpuProbe, beat, image }) =>
+          window.stability.fixedGlass(beat, 'high', true, 'standard', 'center', 336, false,
+            { difficulty: 'impossible', dynamic: true, useViewport: true, image, gpuProbe }),
+          { gpuProbe, beat: baselineScenes.elsewhere['s-curve'], image: trial === 0 });
+        if (image) await baselineImage(info, 'elsewhere', gpuProbe, image);
+        log('p1b-attribution', { gpuProbe, trial, browser: browser.version(), ...sample });
+        expect(sample.glError).toBe(0);
+        expect(sample.metrics.targets[0].slice(0, 2)).toEqual([1920, 1080]);
+        expect(sample.trace.frame.n).toBeGreaterThan(300);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
 async function baselineImage(info: TestInfo, volume: VolumeId, scene: string, image: string) {
   const png = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
   const path = info.outputPath(`${scene}.png`);
   await writeFile(path, png);
   log('f4-p0-image', { volume, scene, path, sha256: createHash('sha256').update(png).digest('hex') });
+}
+
+for (const { id } of VOLUMES) {
+  test(`@p1b paired GPU matrix · ${id}`, async ({ browser }, info) => {
+    const focus = baselineFocus[id];
+    const beat = Object.entries(baselineScenes[id]).find(([name]) => name === focus)![1];
+    const profiles = baselineProfiles.filter(profile => ['540-high', '720-auto', '1080-high'].includes(profile.id));
+    for (const [trial, build] of builds.entries()) {
+      for (const profile of profiles) {
+        const page = await browser.newPage({ viewport: { width: profile.width, height: profile.height }, deviceScaleFactor: 1 });
+        const errors = captureErrors(page);
+        try {
+          await openHarness(page, build);
+          const { image, ...sample } = await page.evaluate(({ id, beat, quality, image }) =>
+            window.stability.fixedGlass(beat, quality, id === 'elsewhere', 'standard', 'center', 336, false,
+              { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true, image, gpuProbe: 'baseline' }),
+            { id, beat, quality: profile.quality, image: trial < 2 && profile.id === '1080-high' });
+          if (image) await baselineImage(info, id, `${focus}-${build.label}-${trial}`, image);
+          log('p1b-matrix', { volume: id, trial, build: build.label, profile, browser: browser.version(), ...sample });
+          expect(sample.glError).toBe(0);
+          expect(sample.metrics.targets[0].slice(0, 2)).toEqual([profile.width, profile.height]);
+          expect(sample.metrics.dof).toBe(id !== 'orbit');
+          expect(sample.trace.frame.n).toBeGreaterThan(300);
+          expect(errors).toEqual([]);
+        } finally { await page.close(); }
+      }
+    }
+  });
+
+  test(`@p1b High visual fixtures · ${id}`, async ({ browser }, info) => {
+    const branch = gameplayFor(id).branch!;
+    const scenes: { name: string; beat: number; preset?: OutroPreset; view?: ExteriorView }[] = [
+      ...Object.entries(baselineScenes[id]).map(([name, beat]) => ({ name, beat })),
+      { name: 'challenge', beat: (branch.open.standard + branch.merge.standard) / 2 },
+      { name: 'encore', beat: volumeById(id).beats - 12, preset: 'encore-first' },
+      { name: 'afterglow', beat: volumeById(id).beats - 2, preset: 'afterglow-peak' },
+    ];
+    if (id === 'daybreak') scenes.push(
+      { name: 'look-up', beat: baselineScenes.daybreak.sunburst, view: 'Look Up' },
+      { name: 'cloud-sea', beat: baselineScenes.daybreak.sunburst, view: 'Cloud Sea' },
+    );
+    for (const build of haveReference ? [reference, candidate] : [candidate]) {
+      const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+      const errors = captureErrors(page);
+      try {
+        await openHarness(page, build);
+        for (const scene of scenes) {
+          const side = scene.name === 'challenge' ? sideForRoute(branchLayout(0), 'challenge') : 'center';
+          const sample = await page.evaluate(({ id, beat, name, preset, view, side }) =>
+            window.stability.fixedGlass(beat, 'high', name === 's-curve', 'standard', side, name === 's-curve' ? 192 : 120, false,
+              { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true, image: true, preset, view }),
+            { id, ...scene, side });
+          await baselineImage(info, id, `${scene.name}-${build.label}`, sample.image!);
+          expect(sample.glError).toBe(0);
+          if (scene.name === 'challenge') expect(sample.route).toBe('challenge');
+        }
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
 }
 
 for (const { id } of VOLUMES) {
@@ -452,6 +538,8 @@ test('@f4-p0 repeats cross-volume and context transitions', async ({ browser }) 
         await page.evaluate(() => window.stability.start());
         await page.waitForFunction(() => window.stability.state().phase === 'playing');
         if (cycle === 1) {
+          await page.setViewportSize({ width: 1280, height: 720 });
+          await expect.poll(async () => (await page.evaluate(() => window.stability.metrics())).canvas).toEqual([1280, 720]);
           const context = await canvas.evaluateHandle((element: HTMLCanvasElement) =>
             element.getContext('webgl2')!.getExtension('WEBGL_lose_context')!);
           try {
@@ -460,6 +548,8 @@ test('@f4-p0 repeats cross-volume and context transitions', async ({ browser }) 
             await context.evaluate(ext => ext.restoreContext());
             await page.waitForFunction(() => window.stability.state().phase === 'playing');
           } finally { await context.dispose(); }
+          await expect.poll(async () => (await page.evaluate(() => window.stability.metrics())).canvas).toEqual([1280, 720]);
+          await page.setViewportSize({ width: 960, height: 540 });
         }
         await page.evaluate(() => window.stability.menu());
         await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
