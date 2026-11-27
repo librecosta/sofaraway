@@ -1,0 +1,1104 @@
+import { devices, expect, test, webkit } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
+import type { TestInfo } from '@playwright/test';
+import { createHash } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import { VOLUMES, volumeById } from '../../app/game/core/volumes';
+import { branchLayout, sideForRoute } from '../../app/game/core/branches';
+import { gameplayFor } from '../../app/game/core/gameplay';
+import { orbitLandmarkBeats, orbitSceneBeats } from '../../app/game/core/orbit-setpieces';
+import { curveExamples, scenicExamples } from '../../app/game/debug/scenic-catalog';
+import { STEP } from '../../app/game/core/clock';
+import { idleInput } from '../../app/game/core/input';
+import { Simulation } from '../../app/game/core/simulation';
+import { OutroInspection, outroView } from '../../app/game/debug/outro-inspection';
+import type { ExteriorView, OutroPreset } from '../../app/game/debug/outro-inspection';
+import type { QualityTier, VolumeId } from '../../app/game/contracts';
+import type {} from '../harness/stability';
+
+const candidate = { label: 'candidate', client: 'http://127.0.0.1:8094', harness: 'http://127.0.0.1:8095' };
+const reference = { label: 'reference', client: 'http://127.0.0.1:8096', harness: 'http://127.0.0.1:8097' };
+const haveReference = !!process.env.STABILITY_REFERENCE_DIR;
+const builds = haveReference ? [reference, candidate, candidate, reference] : [candidate, candidate];
+const profiles: { volume: VolumeId; quality: QualityTier; width: number; height: number; dpr: number; mobile?: boolean }[] = [
+  { volume: 'elsewhere', quality: 'high', width: 960, height: 540, dpr: 1 },
+  { volume: 'elsewhere', quality: 'low', width: 960, height: 540, dpr: 1 },
+  { volume: 'elsewhere', quality: 'high', width: 1920, height: 1080, dpr: 1 },
+  { volume: 'descent', quality: 'high', width: 960, height: 540, dpr: 1 },
+  { volume: 'daybreak', quality: 'auto', width: 390, height: 664, dpr: 2, mobile: true },
+  { volume: 'daybreak', quality: 'auto', width: 390, height: 664, dpr: 3, mobile: true },
+];
+
+function log(scenario: string, fields: object) {
+  console.log('STABILITY ' + JSON.stringify({ scenario, ...fields }));
+}
+
+function captureErrors(page: Page) {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => {
+    if (message.type() === 'error') errors.push(`${message.location().url} ${message.text()}`);
+  });
+  return errors;
+}
+
+async function openHarness(page: Page, build = candidate) {
+  await page.goto(build.harness + '/?stability');
+  await page.waitForFunction(() => !!window.stability);
+}
+
+test('Encore and Afterglow frame budgets against the same baseline stations @outro-perf', async ({ browser }) => {
+  const standard = new OutroInspection('standard', 0, 'main');
+  const tour = new OutroInspection('sightseeing', 0, 'main');
+  const views = [
+    ['main-last', standard, 'main-last', false, false], ['encore-entry', standard, 'encore-first', false, false],
+    ['encore-middle', standard, 'encore-middle', false, false], ['encore-final', standard, 'encore-final', false, false],
+    ['afterglow', standard, 'afterglow-peak', false, false], ['sustained-boost', standard, 'encore-middle', true, false],
+    ['sightseeing', tour, 'afterglow-peak', false, false], ['debug-seek', standard, 'encore-final', false, true],
+    ['debug-flight', standard, 'encore-first', true, true],
+  ] as const;
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [name, adapter, preset, fly, inspect] of views) {
+        const { station } = outroView(adapter.plan, preset);
+        const result = await page.evaluate(([station, mode, fly, inspection]) => window.stability.fixedGlass(416, 'high', true,
+          mode, 'center', 240, !fly, { station, fly, inspection }), [station, adapter.plan.mode, fly, inspect && build === candidate] as const);
+        log('outro-frame', { name, build: build.label, sample, station, ...result });
+        expect(result.glError).toBe(0);
+        expect(result.phase).toBe('playing');
+        if (build === candidate) {
+          expect(result.metrics.encoreMeshes).toBeLessThanOrEqual(3);
+          expect(result.metrics.scenicLights!.fixtures).toBeLessThanOrEqual(280);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('Impossible streams dense and extended corridors within the existing resource budgets @impossible-perf', async ({ browser }) => {
+  const hard = new OutroInspection('standard', 0, 'main', undefined, 'hard');
+  const impossible = new OutroInspection('standard', 0, 'main', undefined, 'impossible');
+  const same = [161.5, 235, 423].map(beat => hard.sim.reference.station(beat, 'standard'));
+  const views = [
+    ['build', 161.5, same[0], same[0], false], ['drop', 235, same[1], same[1], false],
+    ['finale', 423, same[2], same[2], false],
+    ['encore-final', 416, hard.view('encore-final').station, impossible.view('encore-final').station, false],
+    ['afterglow', 416, hard.view('afterglow-peak').station, impossible.view('afterglow-peak').station, false],
+    ['studio-flight', 416, hard.view('encore-first').station, impossible.view('encore-first').station, true],
+  ] as const;
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [scene, beat, before, after, inspection] of views) {
+        const updated = build === candidate;
+        const station = updated ? after : before;
+        const result = await page.evaluate(({ station, beat, inspection, updated }) => window.stability.fixedGlass(beat, 'high', true,
+          'standard', 'center', 240, !inspection, { station, fly: inspection, inspection: updated && inspection,
+            difficulty: updated ? 'impossible' : 'hard' }), { station, beat, inspection, updated });
+        log('impossible-frame', { scene, build: build.label, sample, station, ...result });
+        expect(result.glError).toBe(0);
+        expect(result.metrics.chunks).toBeLessThanOrEqual(5);
+        expect(result.gateMeshes).toBeLessThanOrEqual(18);
+        if (updated) expect(result.metrics.encoreMeshes).toBeLessThanOrEqual(3);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('DESCENT streams Encore shutters and the open viaduct within the facility budget @descent-outro-perf', async ({ browser }) => {
+  const volume = VOLUMES[2];
+  const normal = new OutroInspection('standard', 0, 'main', undefined, 'normal', volume);
+  const impossible = new OutroInspection('standard', 0, 'main', undefined, 'impossible', volume);
+  const views = [['encore-middle', normal], ['afterglow-peak', impossible]] as const;
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [scene, inspection] of views) for (const quality of ['low', 'auto', 'high'] as const) {
+        const { station, musicBeat } = inspection.view(scene);
+        const result = await page.evaluate(({ station, beat, difficulty, quality }) =>
+          window.stability.fixedGlass(beat, quality, true, 'standard', 'center', 120, true,
+            { station, fly: true, difficulty, volumeId: 'descent', dynamic: true }),
+        { station, beat: musicBeat!, difficulty: inspection.sim.difficulty, quality });
+        log('descent-outro', { scene, quality, sample, build: build.label, station,
+          frame: result.trace.frame, cpu: result.trace.cpu.frame, gpu: result.trace.gpu.frame, gpuStatus: result.trace.gpuStatus,
+          fps: result.trace.fps, metrics: result.metrics, renderer: result.renderer, webgl: result.webgl });
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(120);
+        expect(result.metrics.chunks).toBeLessThanOrEqual(5);
+        if (build === candidate) {
+          if (scene === 'encore-middle') {
+            expect(result.metrics.encoreMeshes).toBeGreaterThan(0);
+            expect(result.metrics.encoreMeshes).toBeLessThanOrEqual(7);
+          } else {
+            expect(result.metrics.encoreMeshes).toBe(0);
+            expect(result.metrics.descentLighting!.afterglow).toBeGreaterThan(.6);
+          }
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('ending remains legible through the light cue and leaves the other volumes pixel-identical @outro-visual', async ({ browser }, info) => {
+  const page = await browser.newPage({ viewport: { width: 1100, height: 760 }, deviceScaleFactor: 1 });
+  const errors = captureErrors(page);
+  try {
+    await page.goto(candidate.client + '/debug/#outro');
+    const studio = page.locator('#outro');
+    await studio.getByRole('button', { name: 'Open live ending' }).click();
+    const canvas = studio.getByRole('img', { name: 'Live ELSEWHERE ending' });
+    const captures = [['Main Last Gate', 'main'], ['Transition', 'transition'], ['Encore First Gate', 'encore'],
+      ['Afterglow Entry', 'release'], ['Afterglow Peak', 'luminous'], ['Music End', 'closing']] as const;
+    for (const [label, name] of captures) {
+      await studio.getByRole('button', { name: label, exact: true }).click();
+      if (name === 'closing') await expect(canvas).toHaveAttribute('data-beat', '448.000');
+      if (['release', 'luminous', 'closing'].includes(name)) await expect(canvas).toHaveAttribute('data-afterglow', name);
+      const shot = await canvas.screenshot({ path: info.outputPath(`${name}.png`) });
+      const luma = await page.evaluate(async encoded => {
+        const bitmap = await createImageBitmap(await (await fetch('data:image/png;base64,' + encoded)).blob());
+        const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!;
+        context.drawImage(bitmap, 0, 0);
+        const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        bitmap.close();
+        let sum = 0, bright = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const y = .2126 * data[i] + .7152 * data[i + 1] + .0722 * data[i + 2];
+          sum += y;
+          if (y >= 235) bright++;
+        }
+        return { mean: sum / (data.length / 4), bright: bright / (data.length / 4) };
+      }, shot.toString('base64'));
+      log('outro-image', { name, ...luma });
+      expect(luma.mean).toBeGreaterThan(5);
+      expect(luma.bright).toBeLessThan(.04);
+    }
+    await studio.getByLabel('Play mode').selectOption('sightseeing');
+    await studio.getByRole('button', { name: 'Afterglow Peak' }).click();
+    await expect(canvas).toHaveAttribute('data-afterglow', 'luminous');
+    await canvas.screenshot({ path: info.outputPath('sightseeing.png') });
+    if (haveReference) for (const id of ['daybreak', 'descent']) {
+      const shots: Buffer[] = [];
+      for (const build of [reference, candidate]) {
+        await page.goto(`${build.client}/?vol=${id}&t=83&q=high&align=1&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox, #cursor { display:none; }' });
+        shots.push(await page.locator('#gl').screenshot());
+      }
+      expect(shots[0].equals(shots[1]), id).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+async function productionStartup(browser: Browser, url: string) {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  await page.addInitScript(() => {
+    const capture = { readyAt: 0, longTasks: [] as number[] };
+    Reflect.set(window, '__startupSample', capture);
+    const ready = new MutationObserver(() => {
+      if (document.querySelector('[data-act=start]:enabled')) {
+        capture.readyAt = performance.now();
+        ready.disconnect();
+      }
+    });
+    ready.observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] });
+    if (PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
+      new PerformanceObserver(list => {
+        capture.longTasks.push(...list.getEntries().map(entry => entry.duration));
+      }).observe({ type: 'longtask', buffered: true });
+    }
+  });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  try {
+    const samples = [];
+    for (const cache of ['cold', 'warm']) {
+      const target = new URL(url);
+      if (cache === 'warm') target.searchParams.set('benchmark', 'warm');
+      const before = await cdp.send('Performance.getMetrics');
+      const at = performance.now();
+      await page.goto(target.href, { waitUntil: 'commit' });
+      await expect(page.locator('[data-act=start]')).toBeEnabled();
+      const readyMs = performance.now() - at;
+      expect(await page.evaluate(() => typeof window.stability)).toBe('undefined');
+      const after = await cdp.send('Performance.getMetrics');
+      const engine = Object.fromEntries(['TaskDuration', 'ScriptDuration', 'V8CompileDuration'].map(name => {
+        const value = after.metrics.find(metric => metric.name === name)?.value;
+        return [name, value === undefined ? null : (value - (before.metrics.find(metric => metric.name === name)?.value ?? 0)) * 1000];
+      }));
+      const timing = await page.evaluate(() => {
+        const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+        const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+        const js = resources.filter(entry => entry.name.endsWith('.js'));
+        const runtime = js.find(entry => /GameRuntime\.client-/.test(entry.name));
+        const startup = Reflect.get(window, '__startupSample') as { readyAt: number; longTasks: number[] };
+        return { ...startup, responseEnd: nav.responseEnd, domInteractive: nav.domInteractive,
+          jsBytes: js.reduce((sum, entry) => sum + entry.encodedBodySize, 0),
+          jsTransferBytes: js.reduce((sum, entry) => sum + entry.transferSize, 0),
+          runtime: runtime && { start: runtime.startTime, end: runtime.responseEnd, bytes: runtime.decodedBodySize,
+            transfer: runtime.transferSize },
+          runtimeInitMs: Number(JSON.parse(document.querySelector('#errbox')?.textContent || '{}').initMs) };
+      });
+      samples.push({ cache, readyMs, ...engine, ...timing });
+    }
+    return samples;
+  } finally { await page.close(); }
+}
+
+const baselineProfiles = [
+  { id: '540-low', width: 960, height: 540, dpr: 1, quality: 'low' },
+  { id: '540-auto', width: 960, height: 540, dpr: 1, quality: 'auto' },
+  { id: '540-high', width: 960, height: 540, dpr: 1, quality: 'high' },
+  { id: '720-auto', width: 1280, height: 720, dpr: 1, quality: 'auto' },
+  { id: '1080-high', width: 1920, height: 1080, dpr: 1, quality: 'high' },
+  { id: '390-touch-auto', width: 390, height: 844, dpr: 2, quality: 'auto', touch: true },
+] as const satisfies readonly { id: string; width: number; height: number; dpr: number; quality: QualityTier; touch?: boolean }[];
+
+function chapterMiddle(id: VolumeId, name: string) {
+  let start = 0;
+  for (const section of volumeById(id).sections) {
+    if (section.name === name) return start + section.beats / 2;
+    start += section.beats;
+  }
+  throw new Error(`Unknown chapter ${id}/${name}`);
+}
+
+const baselineScenes = {
+  elsewhere: {
+    open: 5, ordinary: 112, 'scenic-lighting': scenicExamples.find(scene => scene.kind === 'raked-bands')!.beat,
+    's-curve': curveExamples[2].beat, dense: 256,
+  },
+  daybreak: {
+    open: 12, ordinary: chapterMiddle('daybreak', 'GLIDE'), cirrus: chapterMiddle('daybreak', 'LIFT'),
+    sunburst: chapterMiddle('daybreak', 'SUNBURST'), return: chapterMiddle('daybreak', 'RETURN'),
+  },
+  descent: { open: 16, ordinary: 70, transfer: 151, well: 201, core: 278, lockdown: 314, breach: 366 },
+  orbit: {
+    open: orbitSceneBeats[0], ordinary: orbitSceneBeats[1], ringbreak: orbitLandmarkBeats[2],
+    maelstrom: orbitSceneBeats[3], eclipse: orbitSceneBeats[4], aurora: orbitSceneBeats[5], aphelion: orbitSceneBeats[6],
+  },
+} as const;
+const baselineFocus = { elsewhere: 's-curve', daybreak: 'sunburst', descent: 'well', orbit: 'aurora' } as const;
+
+test('@p1b GPU attribution at 1080p High', async ({ browser }, info) => {
+  const probes = ['baseline', 'colour-only-resolve', 'single-sample', 'rgba8-colour', 'without-glass',
+    'without-fixtures', 'without-transparent', 'without-opaque', 'front-side-opaque', 'single-clear', 'red-depth'] as const;
+  for (let trial = 0; trial < 3; trial++) {
+    const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, haveReference ? reference : candidate);
+      const order = trial % 2 ? [...probes].reverse() : probes;
+      for (const gpuProbe of order) {
+        const { image, ...sample } = await page.evaluate(({ gpuProbe, beat, image }) =>
+          window.stability.fixedGlass(beat, 'high', true, 'standard', 'center', 336, false,
+            { difficulty: 'impossible', dynamic: true, useViewport: true, image, gpuProbe }),
+          { gpuProbe, beat: baselineScenes.elsewhere['s-curve'], image: trial === 0 });
+        if (image) await baselineImage(info, 'elsewhere', gpuProbe, image);
+        log('p1b-attribution', { gpuProbe, trial, browser: browser.version(), ...sample });
+        expect(sample.glError).toBe(0);
+        expect(sample.metrics.targets[0].slice(0, 2)).toEqual([1920, 1080]);
+        expect(sample.trace.frame.n).toBeGreaterThan(300);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+async function baselineImage(info: TestInfo, volume: VolumeId, scene: string, image: string) {
+  const png = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
+  const path = info.outputPath(`${scene}.png`);
+  await writeFile(path, png);
+  log('f4-p0-image', { volume, scene, path, sha256: createHash('sha256').update(png).digest('hex') });
+}
+
+for (const { id } of VOLUMES) {
+  test(`@p1b paired GPU matrix · ${id}`, async ({ browser }, info) => {
+    const focus = baselineFocus[id];
+    const beat = Object.entries(baselineScenes[id]).find(([name]) => name === focus)![1];
+    const profiles = baselineProfiles.filter(profile => ['540-high', '720-auto', '1080-high'].includes(profile.id));
+    for (const [trial, build] of builds.entries()) {
+      for (const profile of profiles) {
+        const page = await browser.newPage({ viewport: { width: profile.width, height: profile.height }, deviceScaleFactor: 1 });
+        const errors = captureErrors(page);
+        try {
+          await openHarness(page, build);
+          const { image, ...sample } = await page.evaluate(({ id, beat, quality, image }) =>
+            window.stability.fixedGlass(beat, quality, id === 'elsewhere', 'standard', 'center', 336, false,
+              { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true, image, gpuProbe: 'baseline' }),
+            { id, beat, quality: profile.quality, image: trial < 2 && profile.id === '1080-high' });
+          if (image) await baselineImage(info, id, `${focus}-${build.label}-${trial}`, image);
+          log('p1b-matrix', { volume: id, trial, build: build.label, profile, browser: browser.version(), ...sample });
+          expect(sample.glError).toBe(0);
+          expect(sample.metrics.targets[0].slice(0, 2)).toEqual([profile.width, profile.height]);
+          expect(sample.metrics.dof).toBe(id !== 'orbit');
+          expect(sample.trace.frame.n).toBeGreaterThan(300);
+          expect(errors).toEqual([]);
+        } finally { await page.close(); }
+      }
+    }
+  });
+
+  test(`@p1b High visual fixtures · ${id}`, async ({ browser }, info) => {
+    const branch = gameplayFor(id).branch!;
+    const scenes: { name: string; beat: number; preset?: OutroPreset; view?: ExteriorView }[] = [
+      ...Object.entries(baselineScenes[id]).map(([name, beat]) => ({ name, beat })),
+      { name: 'challenge', beat: (branch.open.standard + branch.merge.standard) / 2 },
+      { name: 'encore', beat: volumeById(id).beats - 12, preset: 'encore-first' },
+      { name: 'afterglow', beat: volumeById(id).beats - 2, preset: 'afterglow-peak' },
+    ];
+    if (id === 'daybreak') scenes.push(
+      { name: 'look-up', beat: baselineScenes.daybreak.sunburst, view: 'Look Up' },
+      { name: 'cloud-sea', beat: baselineScenes.daybreak.sunburst, view: 'Cloud Sea' },
+    );
+    for (const build of haveReference ? [reference, candidate] : [candidate]) {
+      const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+      const errors = captureErrors(page);
+      try {
+        await openHarness(page, build);
+        for (const scene of scenes) {
+          const side = scene.name === 'challenge' ? sideForRoute(branchLayout(0), 'challenge') : 'center';
+          const sample = await page.evaluate(({ id, beat, name, preset, view, side }) =>
+            window.stability.fixedGlass(beat, 'high', name === 's-curve', 'standard', side, name === 's-curve' ? 192 : 120, false,
+              { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true, image: true, preset, view }),
+            { id, ...scene, side });
+          await baselineImage(info, id, `${scene.name}-${build.label}`, sample.image!);
+          expect(sample.glError).toBe(0);
+          if (scene.name === 'challenge') expect(sample.route).toBe('challenge');
+        }
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
+}
+
+for (const { id } of VOLUMES) {
+  const comparison = id === 'elsewhere' && haveReference;
+  for (const build of comparison ? [reference, candidate] : [candidate]) test(
+    `@f4-p0 fixed rendering and visual baseline · ${id}${comparison ? ` · ${build.label}` : ''}`, async ({ browser }, info) => {
+    const branch = gameplayFor(id).branch!;
+    const challengeBeat = (branch.open.standard + branch.merge.standard) / 2;
+    const scenes = [
+      ...Object.entries(baselineScenes[id]).map(([name, beat]) => ({ name, beat })),
+      { name: 'challenge', beat: challengeBeat }, { name: 'encore', beat: volumeById(id).beats - 12 },
+    ];
+    const focus = scenes.find(scene => scene.name === baselineFocus[id])!;
+    for (const profile of baselineProfiles) {
+      const touch = 'touch' in profile;
+      const page = await browser.newPage({ viewport: { width: profile.width, height: profile.height },
+        deviceScaleFactor: profile.dpr, hasTouch: touch, isMobile: touch });
+      const errors = captureErrors(page);
+      try {
+        await openHarness(page, build);
+        const selected = profile.id === '540-high' ? scenes : [focus];
+        for (const scene of selected) {
+          const runs = scene === focus ? 3 : 2;
+          for (let trial = 0; trial < runs; trial++) {
+            const side = scene.name === 'challenge' ? sideForRoute(branchLayout(0), 'challenge') : 'center';
+            const result = await page.evaluate(({ id, scene, profile, trial, focus, side }) =>
+              window.stability.fixedGlass(scene.beat, profile.quality, scene.name === 's-curve', 'standard',
+                side, focus ? 192 : 120, false,
+                { volumeId: id, difficulty: 'impossible', dynamic: true, useViewport: true,
+                  preset: scene.name === 'encore' ? 'encore-first' : undefined,
+                  image: trial === 0 && profile.id === '540-high', tunnelTrace: id === 'elsewhere' }),
+              { id, scene, profile, trial, focus: scene === focus, side });
+            const { image, ...sample } = result;
+            if (image) await baselineImage(info, id, scene.name, image);
+            log('f4-p0-fixed', { volume: id, build: build.label, browser: browser.version(), profile, scene: scene.name, trial,
+              difficulty: 'impossible', seed: 0, dynamic: true, post: true, ...sample });
+            expect(result.trace.frame.n).toBeGreaterThan(100);
+            expect(result.glError).toBe(0);
+            if (scene.name === 'challenge') expect(result.route).toBe('challenge');
+          }
+        }
+        if (profile.id === '540-high') {
+          for (const [post, dynamic] of [[false, true], [true, false]] as const) {
+            for (let trial = 0; trial < 3; trial++) {
+              const sample = await page.evaluate(({ id, focus, post, dynamic }) => window.stability.fixedGlass(
+                focus.beat, 'high', focus.name === 's-curve', 'standard', 'center', 192, false,
+                { volumeId: id, difficulty: 'impossible', dynamic, post, useViewport: true }), { id, focus, post, dynamic });
+              log('f4-p0-fixed', { volume: id, build: build.label, browser: browser.version(), profile, scene: focus.name, trial,
+                difficulty: 'impossible', seed: 0, dynamic, post, ...sample });
+              expect(sample.glError).toBe(0);
+            }
+          }
+        }
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
+
+  test(`@f4-p0 cold and warm production startup · ${id}`, async ({ browser }) => {
+    const variants = haveReference && id === 'orbit' ? builds : [candidate, candidate, candidate];
+    for (const [trial, build] of variants.entries()) {
+      const startup = await productionStartup(browser, build.client + `/?vol=${id}&q=high&dbg=1`);
+      log('f4-p0-startup', { volume: id, browser: browser.version(), trial, build: build.label, startup });
+      expect(startup[0].jsTransferBytes).toBeGreaterThan(0);
+      expect(startup[1].jsTransferBytes).toBeLessThan(startup[0].jsTransferBytes);
+    }
+  });
+
+  const compareFlight = haveReference && id !== 'daybreak';
+  for (const [sample, build] of (compareFlight ? builds : [candidate]).entries()) test(
+    `@f4-p0 audio-led complete Showcase · ${id}${compareFlight ? ` · ${build.label} ${sample}` : ''}`, async ({ browser }) => {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      const init = await page.evaluate(id => window.stability.mount(id, 'auto', true, id === 'elsewhere' || id === 'descent'), id);
+      const at = performance.now();
+      await page.getByRole('button', { name: 'Start with audio' }).click();
+      await page.waitForFunction(() => window.stability.state().phase === 'playing');
+      const startMs = performance.now() - at;
+      expect(await page.evaluate(() => window.stability.state().scheduler)).toBe(true);
+      await page.evaluate(() => window.stability.pause());
+      expect(await page.evaluate(() => window.stability.state())).toMatchObject({ phase: 'paused', scheduler: false });
+      await page.evaluate(() => window.stability.resume());
+      expect(await page.evaluate(() => window.stability.state())).toMatchObject({ phase: 'playing', scheduler: true });
+      const deadline = Math.ceil(volumeById(id).beats * 60_000 / volumeById(id).bpm) + 20_000;
+      const cdp = await page.context().newCDPSession(page);
+      const trends = [];
+      const capture = page.evaluate(deadline => window.stability.capture(deadline, true), deadline);
+      let complete = false;
+      const trace = capture.finally(() => { complete = true; });
+      while (!complete) {
+        const current = await page.evaluate(() => window.stability.metrics());
+        const { usedSize } = await cdp.send('Runtime.getHeapUsage');
+        trends.push({ beat: current.beat, station: current.station, usedSize, calls: current.calls,
+          geometries: current.geometries, textures: current.textures, programs: current.programs, orbit: current.orbit });
+        await Promise.race([trace, page.waitForTimeout(12_000)]);
+      }
+      const final = await page.evaluate(() => window.stability.metrics());
+      await page.waitForFunction(() => !window.stability.state().runBus, undefined, { timeout: 7000 });
+      const finished = await page.evaluate(() => window.stability.state());
+      await page.evaluate(() => window.stability.dispose());
+      await page.waitForFunction(() => window.stability.state().audio === 'closed');
+      const released = await page.evaluate(() => window.stability.state());
+      log('f4-p0-showcase', { volume: id, build: build.label, sample, browser: browser.version(), startMs,
+        init, final, finished, released, trends, trace: await trace });
+      expect(final.effectiveDifficulty).toBe('impossible');
+      expect(final.snapshot).toMatchObject({ phase: 'results', mode: 'showcase',
+        route: 'main', score: 0, result: { title: 'ESCAPED' } });
+      expect(final.hits).toBe(0);
+      expect(final.snapshot.gatesPassed).toBe(final.snapshot.gatesTotal);
+      expect(released).toMatchObject({ scheduler: false, runBus: false, raf: false, listenersReleased: true, inputReleased: true });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+test('@f4-p0 DAYBREAK exterior coverage and DPR', async ({ browser }, info) => {
+  for (const dpr of [1, 2]) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: dpr });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page);
+      for (const view of ['Look Up', 'Cloud Sea'] as const) {
+        for (let trial = 0; trial < 3; trial++) {
+          const { image, ...sample } = await page.evaluate(({ beat, view, image }) =>
+            window.stability.fixedGlass(beat, 'high', false, 'standard', 'center', 192, false,
+              { volumeId: 'daybreak', difficulty: 'impossible', dynamic: true, useViewport: true, image, view }),
+          { beat: baselineScenes.daybreak.sunburst, view, image: trial === 0 });
+          if (image) await baselineImage(info, 'daybreak', `${view.toLowerCase().replaceAll(' ', '-')}@${dpr}x`, image);
+          log('f4-p0-exterior', { view, deviceDpr: dpr, trial, ...sample });
+          expect(sample.metrics.exterior).toBeDefined();
+          expect(sample.glError).toBe(0);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('@f4-p0 repeats cross-volume and context transitions', async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  try {
+    await openHarness(page);
+    const initial = await page.evaluate(() => window.stability.mount('elsewhere', 'high'));
+    const cdp = await page.context().newCDPSession(page);
+    const samples = [];
+    for (let cycle = 0; cycle < 3; cycle++) {
+      for (const { id } of [...VOLUMES.slice(1), VOLUMES[0]]) {
+        const switched = await page.evaluate(id => window.stability.select(id), id);
+        expect(switched.metrics.renderedVolume).toBe(id);
+        const canvas = page.locator('canvas');
+        await expect(canvas).toHaveCount(1);
+        for (const quality of ['low', 'auto', 'high'] as const) {
+          await page.evaluate(quality => window.stability.quality(quality), quality);
+        }
+        await page.evaluate(() => window.stability.start());
+        await page.waitForFunction(() => window.stability.state().phase === 'playing');
+        if (cycle === 1) {
+          await page.setViewportSize({ width: 1280, height: 720 });
+          await expect.poll(async () => (await page.evaluate(() => window.stability.metrics())).canvas).toEqual([1280, 720]);
+          const context = await canvas.evaluateHandle((element: HTMLCanvasElement) =>
+            element.getContext('webgl2')!.getExtension('WEBGL_lose_context')!);
+          try {
+            await context.evaluate(ext => ext.loseContext());
+            await page.waitForFunction(() => window.stability.state().phase === 'paused');
+            await context.evaluate(ext => ext.restoreContext());
+            await page.waitForFunction(() => window.stability.state().phase === 'playing');
+          } finally { await context.dispose(); }
+          await expect.poll(async () => (await page.evaluate(() => window.stability.metrics())).canvas).toEqual([1280, 720]);
+          await page.setViewportSize({ width: 960, height: 540 });
+        }
+        await page.evaluate(() => window.stability.menu());
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        const menu = await page.evaluate(() => ({ resources: window.stability.metrics(), active: window.stability.state() }));
+        expect(menu.active).toMatchObject({ phase: 'menu', scheduler: false, runBus: false, raf: true });
+        expect(menu.resources.glError).toBe(0);
+        samples.push({ cycle, volume: id, switched, menu });
+      }
+      await cdp.send('HeapProfiler.collectGarbage');
+      log('f4-p0-retained', { cycle, heap: await cdp.send('Runtime.getHeapUsage'), dom: await cdp.send('Memory.getDOMCounters') });
+    }
+    const last = page.locator('canvas');
+    const gl = await last.evaluateHandle((element: HTMLCanvasElement) => element.getContext('webgl2')!);
+    await page.evaluate(() => window.stability.dispose());
+    await expect(last).toHaveCount(0);
+    const contextReleased = await gl.evaluate(gl => gl.isContextLost());
+    await gl.dispose();
+    const released = await page.evaluate(() => window.stability.state());
+    log('f4-p0-lifecycle', { initial, samples, released, contextReleased });
+    expect(contextReleased).toBe(true);
+    expect(released).toMatchObject({ scheduler: false, runBus: false, raf: false, listenersReleased: true, inputReleased: true });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+test('benchmark production load, shader warmup and chunk construction', async ({ browser }) => {
+  for (const [sample, build] of builds.entries()) {
+    const startup = await productionStartup(browser, build.client + '/?vol=elsewhere&q=high&dbg=1');
+    log('startup', { browser: browser.version(), build: build.label, sample, startup });
+    expect(startup[0].jsTransferBytes).toBeGreaterThan(0);
+    expect(startup[1].jsTransferBytes).toBeLessThan(startup[0].jsTransferBytes);
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+    try {
+      await openHarness(page, build);
+      for (const { id } of VOLUMES) {
+        const result = await page.evaluate(id => window.stability.stream(id), id);
+        expect(result.resources.currentDisposals).toBe(result.resources.expectedDisposals);
+        expect(result.resources.remaining).toBe(0);
+        expect(result.trace.cpu.chunk.n).toBeGreaterThan(4);
+        log('chunks', { build: build.label, sample, volume: id, chunk: result.trace.cpu.chunk,
+          path: result.trace.cpu.pathStep, counts: result.resources.counts });
+      }
+    } finally { await page.close(); }
+  }
+});
+
+for (const profile of profiles) {
+  test(`benchmark ${profile.volume} ${profile.quality} ${profile.width}x${profile.height} DPR ${profile.dpr}`, async ({ browser }) => {
+    for (const [sample, build] of builds.entries()) {
+      const page = await browser.newPage({ viewport: { width: profile.width, height: profile.height },
+        deviceScaleFactor: profile.dpr, hasTouch: profile.mobile, isMobile: profile.mobile });
+      const errors = captureErrors(page);
+      try {
+        await openHarness(page, build);
+        const init = await page.evaluate(({ volume, quality }) => window.stability.mount(volume, quality), profile);
+        await page.evaluate(() => window.stability.start());
+        await page.waitForTimeout(1000);
+        const sampleMs = 5400;
+        const play = await page.evaluate(ms => window.stability.capture(ms), sampleMs);
+        const live = await page.evaluate(() => window.stability.metrics());
+        const heap = await (await page.context().newCDPSession(page)).send('Runtime.getHeapUsage');
+        await page.evaluate(() => window.stability.menu());
+        const next = VOLUMES[(VOLUMES.findIndex(v => v.id === profile.volume) + 1) % VOLUMES.length].id;
+        const switched = await page.evaluate(next => window.stability.select(next), next);
+        const software = /swiftshader|llvmpipe|software|warp/i.test(live.renderer);
+        log('frame', { ...profile, browser: browser.version(), build: build.label, sample, sampleMs,
+          rendererClass: software ? 'software' : 'hardware-or-unidentified', init, play, live, heap, switched });
+        expect(play.frame.n).toBeGreaterThan(0);
+        expect(live.snapshot.phase).toBe('playing');
+        expect(live.glError).toBe(0);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
+}
+
+test('benchmark WebKit mobile compositor at DPR 2 and 3', async () => {
+  const browser = await webkit.launch({ channel: undefined });
+  try {
+    for (const dpr of [2, 3]) {
+      for (const [sample, build] of builds.entries()) {
+        const page = await browser.newPage({ ...devices['iPhone 13'], deviceScaleFactor: dpr });
+        const errors = captureErrors(page);
+        try {
+          await openHarness(page, build);
+          const init = await page.evaluate(() => window.stability.mount('daybreak', 'auto'));
+          await page.evaluate(() => window.stability.start());
+          const play = await page.evaluate(() => window.stability.capture(3600));
+          const live = await page.evaluate(() => window.stability.metrics());
+          log('webkit', { browser: browser.version(), dpr, sample, build: build.label, init, play, live });
+          expect(play.frame.n).toBeGreaterThan(0);
+          expect(live.glError).toBe(0);
+          expect(errors).toEqual([]);
+          if (build === candidate) expect(live.snapshot.phase).toBe('playing');
+        } finally { await page.close(); }
+      }
+    }
+  } finally { await browser.close(); }
+});
+
+test('fixed-time visual comparison across the playable volumes @glass', async ({ browser }, info) => {
+  if (!haveReference) { log('visual', { status: 'REFERENCE_NOT_CONFIGURED' }); return; }
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  try {
+    for (const { id } of VOLUMES) {
+      const images = [];
+      // Compare ELSEWHERE during its original Iris-only section.
+      const seconds = id === 'elsewhere' ? 36 : 83;
+      for (const build of [reference, candidate]) {
+        await page.goto(`${build.client}/?vol=${id}&q=high&t=${seconds}&align=1&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        const path = id === 'elsewhere' ? info.outputPath(`iris-far-${build.label}.png`) : undefined;
+        images.push(await page.locator('#gl').screenshot({ path }));
+        if (path) await info.attach(`iris-far-${build.label}`, { path, contentType: 'image/png' });
+      }
+      const identical = images[1].equals(images[0]);
+      log('visual', { id, seconds, status: identical ? 'IDENTICAL' : 'CHANGED' });
+    }
+    for (const [name, beat] of [['iris-near', 79.1], ['square', 107.2], ['diamond', 168.2], ['score', 333.5]] as const) {
+      for (const build of [reference, candidate]) {
+        await page.goto(`${build.client}/?vol=elsewhere&q=high&t=${beat * 60 / 128}&route=left&align=1&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        if (name === 'score') await expect(page.locator('#hud-route')).toHaveText('BONUS');
+        const path = info.outputPath(`${name}-${build.label}.png`);
+        await page.locator('#gl').screenshot({ path });
+        await info.attach(`${name}-${build.label}`, { path, contentType: 'image/png' });
+      }
+    }
+    for (const build of [reference, candidate]) {
+      await page.goto(build.harness);
+      const result = await page.evaluate(() => window.b0Harness.inspectGlassOptics?.());
+      if (result?.readability) log('optical-readback', { build: build.label,
+        readability: result.readability, protectedPixels: result.protectedPixels, surface: result.surface });
+    }
+  } finally { await page.close(); }
+});
+
+test('ELSEWHERE material views and unaffected volumes @m0', async ({ browser }, info) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  try {
+    const cases = [
+      ['elsewhere', 'tunnel', '36', 'high', 'standard'],
+      ['elsewhere', 'floor', '45', 'low', 'sightseeing'],
+      ['elsewhere', 'junction', '156.328125', 'high', 'standard'],
+      ...(['daybreak', 'descent'] as const).map(id => [id, id, '83', 'high', 'standard']),
+    ];
+    for (const [id, name, time, quality, mode] of cases) {
+      const images: Buffer[] = [];
+      for (const build of haveReference ? [reference, candidate] : [candidate]) {
+        await page.goto(`${build.client}/?vol=${id}&t=${time}&q=${quality}&mode=${mode}&align=1&route=left&ui=0&dbg=1`);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        const path = id === 'elsewhere' ? info.outputPath(`${name}-${build.label}.png`) : undefined;
+        images.push(await page.locator('#gl').screenshot({ path }));
+        if (path) await info.attach(`${name}-${build.label}`, { path, contentType: 'image/png' });
+      }
+      const equal = images.length === 2 && images[0].equals(images[1]);
+      if (haveReference && id !== 'elsewhere') expect(equal, id).toBe(true);
+      log('m0-image', { id, name, time, quality, mode, equal });
+    }
+    for (const build of haveReference ? [reference, candidate] : [candidate]) {
+      const begin = performance.now();
+      const route = build === candidate ? '/debug/materials/' : '/debug/';
+      await page.goto(`${build.client}${route}`);
+      const target = page.locator('#materials');
+      const count = build === candidate ? 7 : 4;
+      await expect(target.locator('canvas[data-ready=true]')).toHaveCount(count);
+      log('m0-debug', { build: build.label, browser: browser.version(), readyMs: performance.now() - begin, count });
+      if (build === candidate) {
+        await expect(target.locator('canvas[data-mode=lit]')).toHaveCount(6);
+        await expect(page.locator('#effects canvas[data-mode=effect]')).toHaveCount(2);
+      }
+      for (const id of build === candidate ? ['materials', 'effects'] : ['materials']) {
+        const path = info.outputPath(`debug-${id}-${build.label}.png`);
+        await page.locator(`#${id}`).screenshot({ path });
+        await info.attach(`debug-${id}-${build.label}`, { path, contentType: 'image/png' });
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+test('ELSEWHERE material GPU cost @m0', async ({ browser }) => {
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [name, beat, quality, boost, mode] of [
+        ['cruise-high', 76.8, 'high', false, 'standard'], ['cruise-low', 76.8, 'low', false, 'standard'],
+        ['boost', 168, 'high', true, 'standard'], ['tour', 180, 'high', false, 'sightseeing'],
+        ['junction', 333.5, 'high', false, 'standard'],
+      ] as const) {
+        const result = await page.evaluate(([beat, quality, boost, mode]) => window.stability.fixedGlass(beat, quality, boost, mode),
+          [beat, quality, boost, mode] as const);
+        log('m0-frame', { name, sample, build: build.label, browser: browser.version(), ...result });
+        expect(result.phase).toBe('playing');
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(480);
+        if (name === 'junction') expect(result.route).toBe('score');
+        if (name === 'tour') expect(result.speed).toBeLessThan(12);
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+const scenicCases = [
+  ['pure-frame', 7, 'high', false, 'standard', 'center'],
+  ['helical-wash', 35, 'high', false, 'standard', 'center'],
+  ['helical-wash-boost', 38, 'high', true, 'standard', 'center'],
+  ['staggered-cells', 117, 'high', false, 'standard', 'center'],
+  ['triple-helix', 168, 'high', false, 'standard', 'center'],
+  ['connected-flow', 257, 'high', false, 'standard', 'center'],
+  ['raked-bands', 401, 'high', false, 'standard', 'center'],
+  ['raked-bands-boost', 405, 'high', true, 'standard', 'center'],
+  ['s-curve-entry', 208, 'high', false, 'standard', 'center'],
+  ['s-curve', 229.23, 'high', false, 'standard', 'center'],
+  ['boost', 229.23, 'high', true, 'standard', 'center'],
+  ['sightseeing-wash', 35, 'high', false, 'sightseeing', 'center'],
+  ['sightseeing', 168, 'high', false, 'sightseeing', 'center'],
+  ['sightseeing-curve', 226, 'high', false, 'sightseeing', 'center'],
+  ['junction-approach', 319.5, 'high', false, 'standard', 'center'],
+  ['main', 333.5, 'high', false, 'standard', 'center'],
+  ['challenge', 333.5, 'high', false, 'standard', 'right'],
+  ['bonus', 333.5, 'high', false, 'standard', 'left'],
+] as const;
+
+test('ELSEWHERE scenic score, routes and mode capacity across a full composition @scenic-perf', async ({ browser }) => {
+  const focus = process.env.STABILITY_SCENES?.split(',').map(name => name.trim()).filter(Boolean);
+  const scenes = focus?.length ? scenicCases.filter(([name]) => focus.includes(name)) : scenicCases;
+  const frames = Number(process.env.STABILITY_SCENIC_FRAMES ?? 240);
+  expect(Number.isInteger(frames) && frames >= 240 && frames <= 1200).toBe(true);
+  expect(scenes.length).toBeGreaterThan(0);
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [name, beat, quality, boost, mode, side] of scenes) {
+        const result = await page.evaluate(([beat, quality, boost, mode, side, frames]) =>
+          window.stability.fixedGlass(beat, quality, boost, mode, side, frames, true), [beat, quality, boost, mode, side, frames] as const);
+        log('scenic-frame', { name, sample, build: build.label, browser: browser.version(), ...result });
+        expect(result.phase).toBe('playing');
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(frames);
+        if (name === 'main' || name === 'challenge' || name === 'bonus') {
+          expect(result.route).toBe(name === 'bonus' ? 'score' : name);
+        }
+        if (build === candidate) {
+          expect(result.metrics.scenicLights?.point).toBe(3);
+          expect(result.metrics.scenicLights!.batches).toBeLessThanOrEqual(5);
+          expect(result.metrics.scenicLights!.fixtures).toBeLessThanOrEqual(280);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('fixed chapter frames preserve a low key, legible ELSEWHERE and other-volume pixels @scenic-visual', async ({ browser }, info) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  try {
+    const all = [...scenicCases.map(([name, beat, quality, boost, mode, side]) => {
+      let time = beat * 60 / 128;
+      if (boost) {
+        const sim = new Simulation(VOLUMES[0], { align: true, branchSide: side });
+        sim.start('normal', 0, undefined, mode);
+        const station = sim.reference.station(beat, mode);
+        while (sim.phase === 'playing' && sim.trackDistance < station) sim.step(STEP, { ...idleInput, boosting: true });
+        time = sim.time;
+      }
+      return ['elsewhere', name, time, quality, boost, mode, side] as const;
+    }),
+    ...(['daybreak', 'descent'] as const).map(id => [id, id, 83, 'high', false, 'standard', 'center'] as const)];
+    for (const [id, name, time, quality, boost, mode, side] of all) {
+      const captured: Buffer[] = [];
+      const brightness: { shadow: number; middle: number; glare: number; mean: number; total: number }[] = [];
+      for (const build of haveReference ? [reference, candidate] : [candidate]) {
+        const query = `/?vol=${id}&t=${time.toFixed(6)}&q=${quality}&mode=${mode}&boost=${Number(boost)}&route=${side}&align=1&ui=0&dbg=1`;
+        await page.goto(build.client + query);
+        await expect(page.locator('#errbox')).toContainText('"phase":"playing"');
+        await page.addStyleTag({ content: '#errbox, #cursor { display: none; }' });
+        const shot = await page.locator('#gl').screenshot({
+          path: id === 'elsewhere' ? info.outputPath(`${name}-${build.label}.png`) : undefined,
+        });
+        captured.push(shot);
+        if (id !== 'elsewhere') continue;
+        const sample = await page.evaluate(async png => {
+          const data = await (await fetch('data:image/png;base64,' + png)).blob();
+          const image = await createImageBitmap(data);
+          const canvas = new OffscreenCanvas(image.width, image.height);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(image, 0, 0);
+          const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          let shadow = 0, middle = 0, glare = 0, sum = 0, warm = 0, cool = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            const [r, g, b] = [pixels[i], pixels[i + 1], pixels[i + 2]];
+            const luma = r * .2126 + g * .7152 + b * .0722;
+            sum += luma;
+            if (luma < 12) shadow++;
+            if (luma >= 24 && luma < 150) middle++;
+            if (luma >= 210) glare++;
+            if (luma >= 20 && r > b * 1.07) warm++;
+            if (luma >= 20 && b > r * 1.07) cool++;
+          }
+          image.close();
+          return { shadow, middle, glare, warm, cool, mean: sum / (pixels.length / 4), total: pixels.length / 4 };
+        }, shot.toString('base64'));
+        brightness.push(sample);
+        log('scenic-image', { name, build: build.label, ...sample });
+      }
+      if (haveReference && id !== 'elsewhere') expect(captured[0].equals(captured[1]), id).toBe(true);
+      if (haveReference && (name === 'pure-frame' || name === 's-curve')) {
+        expect(brightness[1].mean - brightness[0].mean, name).toBeLessThan(4);
+        expect(brightness[1].shadow / brightness[1].total, name).toBeGreaterThan(
+          name === 'pure-frame' ? .68 : brightness[0].shadow / brightness[0].total - .06);
+        expect(brightness[1].glare / brightness[1].total, name).toBeLessThan(.03);
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+test('Score Boost and Sightseeing stay readable across pixel ratios @glass', async ({ browser }, info) => {
+  const sim = new Simulation(VOLUMES[0], { align: true, branchSide: 'left' });
+  sim.start('normal', 0);
+  const station = sim.reference.station(333.5, 'standard');
+  while (sim.phase === 'playing' && sim.trackDistance < station) sim.step(STEP, { ...idleInput, boosting: true });
+  for (const { name, seconds, mode, boost } of [
+    { name: 'score-boost', seconds: sim.time, mode: 'standard', boost: 1 },
+    { name: 'score-sightseeing', seconds: 333.5 * 60 / 128, mode: 'sightseeing', boost: 0 },
+  ]) for (const { dpr, quality } of [{ dpr: 1, quality: 'low' }, { dpr: 2, quality: 'high' }]) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: dpr });
+    try {
+      for (const build of haveReference ? [reference, candidate] : [candidate]) {
+        await page.goto(`${build.client}/?vol=elsewhere&q=${quality}&t=${seconds.toFixed(7)}&mode=${mode}&boost=${boost}&route=left&align=1&ui=0&dbg=1`);
+        const debug = page.locator('#errbox');
+        await expect(debug).toContainText('"phase":"playing"');
+        const { speed, canvas } = JSON.parse((await debug.textContent())!);
+        if (boost) expect(speed).toBeGreaterThan(43);
+        else expect(speed).toBeLessThan(12);
+        expect(canvas).toEqual(dpr === 1 ? [960, 540] : [1536, 864]);
+        await expect(page.locator('#hud-route')).toHaveText('BONUS');
+        await page.addStyleTag({ content: '#errbox { display: none; }' });
+        const path = info.outputPath(`${name}-${quality}-${build.label}.png`);
+        await page.locator('#gl').screenshot({ path });
+        await info.attach(`${name}-${quality}-${build.label}`, { path, contentType: 'image/png' });
+        log('visual-motion', { name, seconds, dpr, quality, build: build.label, speed, canvas });
+      }
+    } finally { await page.close(); }
+  }
+});
+
+test('fixed ELSEWHERE frames and dense Score gates @glass', async ({ browser }) => {
+  for (const [sample, build] of builds.entries()) {
+    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 });
+    const errors = captureErrors(page);
+    try {
+      await openHarness(page, build);
+      for (const [beat, quality, boost] of [[76.8, 'high', false], [333.5, 'high', false], [333.5, 'low', false], [333.5, 'high', true]] as const) {
+        const result = await page.evaluate(([beat, quality, boost]) => window.stability.fixedGlass(beat, quality, boost),
+          [beat, quality, boost] as const);
+        log('glass', { sample, build: build.label, browser: browser.version(), quality, boost, ...result });
+        expect(result.phase).toBe('playing');
+        expect(result.glError).toBe(0);
+        expect(result.trace.cpu.frame.n).toBe(480);
+        if (beat === 333.5) {
+          expect(result.route).toBe('score');
+          expect(result.gateCount).toBeGreaterThanOrEqual(10);
+          expect(new Set(result.gateKinds)).toEqual(new Set(['square', 'diamond']));
+        }
+        if (boost) expect(result.speed).toBeGreaterThan(43);
+        if (build === candidate) {
+          expect(result.gateMeshes).toBe(result.gateCount);
+          expect(result.gateGeometries).toBeLessThanOrEqual(8);
+        }
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+test('repeated volume prewarming releases every compiled shader handle', async ({ page }) => {
+  await page.addInitScript(() => {
+    const proto = WebGL2RenderingContext.prototype;
+    const create = proto.createShader;
+    const release = proto.deleteShader;
+    const live = new WeakSet<WebGLShader>();
+    const counts = { created: 0, deleted: 0 };
+    Reflect.set(window, '__shaderHandles', counts);
+    proto.createShader = function (kind) {
+      const shader = create.call(this, kind);
+      if (shader) { live.add(shader); counts.created++; }
+      return shader;
+    };
+    proto.deleteShader = function (shader) {
+      if (shader && live.delete(shader)) counts.deleted++;
+      release.call(this, shader);
+    };
+  });
+  await openHarness(page);
+  const result = await page.evaluate(async ids => {
+    await window.stability.mount('daybreak', 'low');
+    for (let repeat = 0; repeat < 2; repeat++) {
+      for (const id of ids) await window.stability.select(id);
+    }
+    return Reflect.get(window, '__shaderHandles') as { created: number; deleted: number };
+  }, VOLUMES.map(volume => volume.id));
+  log('shader-handles', result);
+  expect(result.created).toBeGreaterThan(0);
+  expect(result.deleted).toBe(result.created);
+});
+
+test('switching away from mixed gates keeps GPU resource counts bounded', async ({ page }) => {
+  const errors = captureErrors(page);
+  await openHarness(page);
+  const samples = await page.evaluate(async () => {
+    const game = window.b0Harness;
+    const counts = () => {
+      const { geometries, textures, programs } = JSON.parse(game.metrics()!);
+      return { phase: game.snapshot().phase, geometries, textures, programs };
+    };
+    try {
+      // Warm the renderer's sky geometry and shader before comparing counts.
+      await game.mount({ volumeId: 'daybreak', quality: 'high', diagnostics: {
+        fixedTime: 113, autoplay: false, god: false, align: true, boost: false,
+        mobileQuality: false, post: true, record: false, debug: true,
+      } });
+      game.returnToMenu();
+      // At 113 s the DROP preview includes Iris, Square and Diamond.
+      await game.select('elsewhere');
+      const result = [counts()];
+      for (let repeat = 0; repeat < 3; repeat++) {
+        game.returnToMenu();
+        await game.select('daybreak');
+        game.returnToMenu();
+        await game.select('elsewhere');
+        result.push(counts());
+      }
+      return result;
+    } finally { game.dispose(); }
+  });
+  expect(samples[0].phase).toBe('playing');
+  expect(samples.slice(1)).toEqual(Array(3).fill(samples[0]));
+  expect(errors).toEqual([]);
+  log('mixed-gate-resources', { samples });
+});
+
+test('soak 20 lifecycles and a full song on the longest volume', async ({ browser }) => {
+  const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
+  const errors = captureErrors(page);
+  const cdp = await page.context().newCDPSession(page);
+  const warmed = new Map<VolumeId, { geometries: number; textures: number; programs: number }>();
+  try {
+    await openHarness(page);
+    await page.evaluate(() => window.stability.mount('elsewhere', 'low'));
+    const start = page.getByRole('button', { name: 'Start with audio' });
+    const phase = () => page.evaluate(() => window.stability.state().phase);
+    for (let round = 0; round < 20; round++) {
+      const volume = VOLUMES[round % VOLUMES.length].id;
+      await page.evaluate(async id => {
+        const h = window.stability;
+        await h.select(id);
+        await h.quality('high');
+      }, volume);
+      await page.setViewportSize({ width: 1024, height: 576 });
+      await start.click();
+      await expect.poll(phase).toBe('playing');
+      const transition = await page.evaluate(async () => {
+        const h = window.stability;
+        h.pause();
+        const paused = h.state().phase;
+        await h.resume();
+        const resumed = h.state().phase;
+        h.menu();
+        return { paused, resumed };
+      });
+      expect(transition).toEqual({ paused: 'paused', resumed: 'playing' });
+      await start.click();
+      await expect.poll(phase).toBe('playing');
+      await page.evaluate(async () => {
+        const h = window.stability;
+        h.menu();
+        await h.quality('low');
+      });
+      await page.setViewportSize({ width: 960, height: 540 });
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const metrics = await page.evaluate(() => window.stability.metrics());
+      const active = await page.evaluate(() => window.stability.state());
+      expect(metrics.glError).toBe(0);
+      expect(active).toMatchObject({ phase: 'menu', scheduler: false, runBus: false, raf: true });
+      expect(metrics.chunks).toBeLessThanOrEqual(5);
+      if (round >= VOLUMES.length) {
+        const prior = warmed.get(volume);
+        if (!prior) warmed.set(volume, metrics);
+        else for (const key of ['geometries', 'textures', 'programs'] as const) {
+          expect(metrics[key], `${volume} ${key} after round ${round + 1}`).toBeLessThanOrEqual(prior[key] + 2);
+        }
+      }
+      const heap = await cdp.send('Runtime.getHeapUsage');
+      log('cycle', { round: round + 1, volume, metrics, active, heap });
+      if ((round + 1) % VOLUMES.length === 0) {
+        // Let old, already disconnected reverb and scheduled nodes drain before sampling retention.
+        await page.waitForTimeout(2200);
+        await cdp.send('HeapProfiler.collectGarbage');
+        log('retained', { round: round + 1, heap: await cdp.send('Runtime.getHeapUsage'),
+          dom: await cdp.send('Memory.getDOMCounters') });
+      }
+    }
+
+    await page.evaluate(() => window.stability.dispose());
+    await expect.poll(() => page.evaluate(() => window.stability.state())).toEqual({ phase: 'disposed',
+      scheduler: false, runBus: false, audio: 'closed', raf: false, listenersReleased: true, inputReleased: true });
+    const longest = VOLUMES.reduce((a, b) => a.beats / a.bpm > b.beats / b.bpm ? a : b);
+    await page.evaluate(id => window.stability.mount(id, 'low'), longest.id);
+    const began = performance.now();
+    await start.click();
+    await expect.poll(phase).toBe('playing');
+    const wallLimit = longest.beats * 60_000 / longest.bpm + 25_000;
+    for (let sample = 0; performance.now() - began < wallLimit; sample++) {
+      const trace = await page.evaluate(() => window.stability.capture(4600));
+      const metrics = await page.evaluate(() => window.stability.metrics());
+      expect(metrics.glError).toBe(0);
+      log('song', { sample, elapsedMs: performance.now() - began, trace, metrics,
+        heap: await cdp.send('Runtime.getHeapUsage') });
+      if (metrics.snapshot.phase === 'results') {
+        expect(metrics.snapshot.result?.title).toBe('ESCAPED');
+        expect(metrics.snapshot.gatesPassed + metrics.snapshot.result!.neutralized).toBe(metrics.snapshot.gatesTotal);
+        expect(metrics.beat).toBe(longest.beats);
+        break;
+      }
+      if (metrics.snapshot.phase === 'crash') {
+        // The sampling window can end during the successful run's results transition.
+        expect(metrics.snapshot.result?.title).toBe('ESCAPED');
+        expect(metrics.beat).toBe(longest.beats);
+      } else expect(metrics.snapshot.phase).toBe('playing');
+    }
+    expect(await phase()).toBe('results');
+    expect(errors).toEqual([]);
+    log('soak-complete', { volume: longest.id, wallMs: performance.now() - began });
+    await page.evaluate(() => window.stability.dispose());
+    await expect.poll(() => page.evaluate(() => window.stability.state())).toMatchObject({ phase: 'disposed',
+      scheduler: false, runBus: false, audio: 'closed', raf: false, listenersReleased: true, inputReleased: true });
+  } finally { await page.close(); }
+});

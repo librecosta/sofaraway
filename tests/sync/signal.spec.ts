@@ -1,0 +1,74 @@
+import { expect, test } from '@playwright/test';
+import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
+import { starwakeEvents } from '../../app/game/core/orbit-score';
+import { openSync, report } from './support';
+
+// Voice calls include the absolute step, instrument, and arguments from the C0-B score.
+const scoreDigests = [
+  'd6c5c906813db9ed1c3ec07297baab4ecf63ad21cb1cf636300e03c157855f51',
+  null,
+  null,
+  null,
+];
+
+for (const [index, volume] of VOLUMES.entries()) {
+  test(`${volume.id} offline section boundaries, voices and ending`, async ({ page }, info) => {
+    const errors = await openSync(page);
+    const data = await page.evaluate(id => window.syncHarness.score(id), volume.id);
+    report('score', { engine: info.project.name, volume: volume.id, ...data });
+    if (volume.music === 'breakbeat') {
+      expect(data.sectionVoices.map(section => section.counts._kick).every(count => count > 0)).toBe(true);
+      expect(data.sectionVoices[4].counts._snare).toBeGreaterThan(data.sectionVoices[3].counts._snare);
+    } else if (volume.music === 'control') {
+      const hold = data.sectionVoices.find(section => section.section === 'HOLD')!;
+      const lockdown = data.sectionVoices.find(section => section.section === 'LOCKDOWN')!;
+      expect(hold.counts._signal).toBe(9);
+      expect(hold.counts._kick).toBeLessThan(8);
+      expect(lockdown.counts._kick).toBeGreaterThan(hold.counts._kick);
+      expect(data.levels.at(-1)?.tail?.rms).toBeGreaterThan(.001);
+    } else if (volume.music === 'starwake') {
+      expect(data.events).toBe(starwakeEvents.length);
+      for (const section of data.sectionVoices) for (const voice of ['kick', 'snare', 'pad', 'pluck', 'lead'] as const) {
+        expect(section.counts[`_${voice}`]).toBe(starwakeEvents.filter(event => event.section === section.section && event.voice === voice).length);
+      }
+      expect(data.levels.at(-1)?.tail?.rms).toBeGreaterThan(.001);
+    } else expect(data.digest).toBe(scoreDigests[index]);
+    expect(data.levels.map(level => level.section)).toEqual([...volume.sections.map(section => section.name), 'tail']);
+    for (const level of data.levels) {
+      expect(level.sectionSignal.rms, level.section).toBeGreaterThan(0.001);
+      for (const sample of [level.before, level.after, level.sectionSignal, level.tail]) {
+        if (!sample) continue;
+        expect(sample.nonFinite, level.section).toBe(0);
+        expect(sample.clipped, level.section).toBe(0);
+        expect(sample.peak, level.section).toBeLessThan(1);
+      }
+    }
+    let beat = 0;
+    const transitions = [];
+    for (const [i, section] of volume.sections.entries()) {
+      if (!hasAuthoredAudio(volume) && i > 0 && section.energy > volume.sections[i - 1].energy + 0.05) {
+        transitions.push({ beat: beat - 4, voice: '_riser' }, { beat, voice: '_impact' });
+      }
+      beat += section.beats;
+    }
+    expect(beat).toBe(volume.beats);
+    expect(data.transitions).toEqual(transitions);
+    expect(data.last?.step).toBeLessThan(beat * 4);
+    expect(errors).toEqual([]);
+  });
+}
+
+test('offline stop isolates queued dry sound and reverb from the next run', async ({ page }, info) => {
+  const errors = await openSync(page);
+  if (!await page.evaluate(() => typeof OfflineAudioContext.prototype.suspend === 'function' &&
+    typeof OfflineAudioContext.prototype.resume === 'function')) {
+    report('offline-stop', { engine: info.project.name, status: 'BLOCKED', reason: 'OfflineAudioContext suspend/resume unavailable' });
+    return;
+  }
+  const [before, gap, after] = await page.evaluate(() => window.b0Harness.stoppedRunSignal());
+  expect(before.rms).toBeGreaterThan(0.001);
+  expect(gap).toEqual({ rms: 0, peak: 0, nonFinite: 0, clipped: 0 });
+  expect(after.rms).toBeGreaterThan(0.001);
+  report('offline-stop', { engine: info.project.name, status: 'PASS', before, gap, after });
+  expect(errors).toEqual([]);
+});

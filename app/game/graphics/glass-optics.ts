@@ -1,0 +1,261 @@
+import { DIAMOND_EXTENT, HUB_R, SECTION, SQUARE_HALF } from '../core/collision';
+import { laserBandPitch, laserBeamRadius, matrixCell, matrixSubdivisions, weaveCrossPitch } from '../core/descent-gates';
+
+export const GLASS_RIM_SEGMENTS = 8;
+export const GLASS_SEAM_SEGMENTS = 16;
+
+export function glassMicroContrast(speed: number) {
+  const t = Math.max(0, Math.min(1, (speed - 28) / (43 - 28)));
+  return 1 - 0.20 * t * t * (3 - 2 * t);
+}
+
+export const GLASS_VERT = /* glsl */`
+attribute float aWall;
+varying vec2 vLocal;
+varying float vDepth;
+varying float vWall;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vLocal = position.xy;
+  vDepth = -mv.z;
+  vWall = aWall;
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+export const GLASS_FRAG = /* glsl */`
+precision highp float;
+varying vec2 vLocal;
+varying float vDepth;
+varying float vWall;
+uniform vec3 uColor;
+uniform float uTime;
+uniform float uHit;
+uniform float uFade;
+uniform float uStyle; // 0: Iris, 1: Square, 2: Diamond, 3: authored polygon / aperture
+#ifdef ORBIT_GLASS
+uniform vec4 uOrbitApertures[3];
+uniform int uOrbitApertureCount;
+#endif
+uniform float uOpen;
+uniform float uMicroContrast;
+uniform vec4 uOpeningEdges[${GLASS_RIM_SEGMENTS}];
+uniform vec4 uPaneSeams[${GLASS_SEAM_SEGMENTS}];
+uniform int uOpeningEdgeCount;
+uniform int uPaneSeamCount;
+#ifdef DESCENT_GLASS
+uniform vec4 uDescentOpening;
+uniform vec2 uDescentNormal;
+uniform vec3 uDescentRimDelta;
+#endif
+
+const float A = ${SECTION.a};
+const float B = ${SECTION.b};
+const float CHAMFER = ${SECTION.ch.toFixed(2)};
+const float HUB = ${HUB_R};
+const float STEP = ${Math.PI / 4};
+const float WEDGE = ${Math.PI / 8};
+const float TAU = ${Math.PI * 2};
+const float INV_SQRT2 = ${Math.SQRT1_2};
+
+float segmentDistance(vec2 p, vec2 a, vec2 b) {
+  vec2 d = b - a;
+  return length(p - a - d * clamp(dot(p - a, d) / dot(d, d), 0.0, 1.0));
+}
+
+float boxSdf(vec2 p, float halfSize) {
+  vec2 d = abs(p) - halfSize;
+  return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+}
+
+float hullDistance(vec2 p) {
+  vec2 q = abs(p);
+  vec2 shoulder = vec2(A, B - CHAMFER);
+  vec2 crown = vec2(A - CHAMFER, B);
+  return min(segmentDistance(q, shoulder, crown), min(
+    segmentDistance(q, vec2(A, 0.0), shoulder), segmentDistance(q, crown, vec2(0.0, B))));
+}
+
+vec2 direction(float angle) { return vec2(cos(angle), sin(angle)); }
+
+float radialEdge(vec2 p, vec2 ray) {
+  vec2 q = abs(ray);
+  float end = min(min(A / max(q.x, 1e-6), B / max(q.y, 1e-6)), (A + B - CHAMFER) / (q.x + q.y));
+  return segmentDistance(p, ray * HUB, ray * end);
+}
+
+// Convolve with a Gaussian approximation of the pixel footprint, retaining
+// the line's integrated energy as the bright core becomes subpixel.
+float coverage(float d, float sigma, float pixel) {
+  float spread = sqrt(sigma * sigma + pixel * pixel / 12.0);
+  float x = d / spread;
+  return (sigma / spread) * exp(-0.5 * x * x);
+}
+
+vec2 glow(float d, float core, float halo, float pixel) {
+  return vec2(coverage(d, core, pixel), coverage(d, halo, pixel));
+}
+
+// Integral of a periodic pulse with duty 0.18. Average over the pixel and
+// smoothly remove the remaining contrast as the period becomes unresolved.
+float lineIntegral(float x) { return floor(x) * 0.18 + min(fract(x), 0.18); }
+
+// Slow value noise in the pane's own coordinates, independent of time.
+float surfaceVariation(vec2 p) {
+  vec2 cell = p * 0.85 + vec2(3.27, 8.19);
+  vec2 f = fract(cell);
+  f = f * f * (3.0 - 2.0 * f);
+  vec4 h = fract((dot(floor(cell), vec2(17.0, 59.0)) + vec4(0.0, 17.0, 59.0, 76.0)) * 0.1031);
+  h *= h + 33.33;
+  h = fract(2.0 * h * h);
+  return mix(mix(h.x, h.y, f.x), mix(h.z, h.w, f.x), f.y);
+}
+
+#ifdef DESCENT_GLASS
+// The volume's existing collision has relief slots inside the main panes.
+// Keep those slots clear at resolved scale and filter them as they become subpixel.
+float periodicDistance(float value, float period) {
+  return abs(fract(value / period + 0.5) - 0.5) * period;
+}
+
+vec4 descentGlass(vec2 p, float pixel, float outer) {
+  vec2 delta = p - uDescentOpening.xy;
+  float across = abs(dot(delta, uDescentNormal)) - uDescentOpening.z;
+  bool matrix = uStyle < 4.5;
+  float boundary = matrix ? max(across, abs(delta.y) - uDescentOpening.w) : across;
+  const float outlineWidth = ${laserBeamRadius.outline};
+  float wall = min(min(A - abs(p.x), B - abs(p.y)),
+    (A + B - CHAMFER - abs(p.x) - abs(p.y)) * INV_SQRT2);
+  float divider = 10.0;
+  float relief;
+  float averageInk;
+  if (matrix) {
+    const vec2 cell = vec2(${matrixCell[0]}, ${matrixCell[1]});
+    const vec2 pitch = cell / ${matrixSubdivisions}.0;
+    vec2 major = abs(abs(p) - cell * 0.5);
+    divider = min(major.x, major.y);
+    relief = min(periodicDistance(p.x + A, pitch.x), periodicDistance(p.y + B, pitch.y)) - ${laserBeamRadius.matrix};
+    averageInk = 0.16;
+  } else {
+    relief = periodicDistance(across - ${laserBandPitch / 2}, ${laserBandPitch}) - ${laserBeamRadius.bank};
+    if (uStyle > 5.5) {
+      float along = dot(p, vec2(-uDescentNormal.y, uDescentNormal.x));
+      relief = min(relief, periodicDistance(along - ${weaveCrossPitch / 2}, ${weaveCrossPitch}) - ${laserBeamRadius.weaveCross});
+    }
+    averageInk = 0.28;
+  }
+  if (boundary < -0.00002) discard;
+  float contour = min(wall, matrix ? divider : boundary);
+  float footprint = max(pixel * 0.5, 0.0001);
+  float fine = 1.0 - smoothstep(-footprint, footprint, relief);
+  fine = mix(fine, averageInk, smoothstep(0.085, 0.34, pixel));
+  float coverageMask = max(fine, 1.0 - smoothstep(-footprint, footprint, contour - outlineWidth));
+  vec2 rimGlow = glow(max(boundary, 0.0), 0.023, 0.075, pixel);
+  vec2 shellGlow = glow(outer, 0.015, 0.056, pixel);
+  vec2 join = glow(divider, 0.014, 0.041, pixel) * (1.0 - rimGlow.y);
+  float edge = dot(rimGlow, vec2(0.88, 0.26)) + dot(join, vec2(0.58, 0.16)) + dot(shellGlow, vec2(0.66, 0.18));
+  // The optical film ties the panel together at flight scale. At inspection
+  // scale the clear channels have only the faint film, with no glass body.
+  float laminate = smoothstep(0.0025, 0.027, pixel);
+  float haze = 0.71 + 0.14 * surfaceVariation(p) + 0.15 * clamp(0.5 + p.y / (2.0 * B), 0.0, 1.0);
+  vec3 tint = mix(uColor, vec3(0.95, 0.41, 0.34), uHit * 0.42);
+  float litEdge = edge + vWall * 0.20;
+  vec3 color = tint * (haze + litEdge) + uDescentRimDelta * litEdge + vec3(0.08) * rimGlow.x;
+  float film = mix(0.023, 0.136, laminate);
+  float body = coverageMask * (mix(0.145, 0.032, laminate) + 0.055 * vWall);
+  float alpha = (film + body + coverageMask * 0.092 * edge) * uFade;
+  return vec4(color, clamp(alpha, 0.0, 1.0));
+}
+#endif
+
+void main() {
+  vec2 p = vLocal;
+  float pixel = max(fwidth(p.x), fwidth(p.y));
+#ifdef DESCENT_GLASS
+  if (vDepth < 0.5) discard;
+  gl_FragColor = descentGlass(p, pixel, hullDistance(p));
+#else
+  vec2 q = abs(p);
+  float phase = p.y / 0.055 - uTime * 0.65;
+  float footprint = max(fwidth(phase), 0.001);
+  float halfPixel = 0.5 * footprint;
+  float line = (lineIntegral(phase + halfPixel) - lineIntegral(phase - halfPixel)) / footprint;
+  float micro = (line - 0.18) * (1.0 - smoothstep(0.50, 0.95, footprint));
+
+  float outer = hullDistance(p);
+  float rim, seam;
+  bool opening;
+  bool hub = false;
+  float seamMask = 1.0;
+  if (uStyle < 0.5) {
+    float r = length(p);
+    float angle = p.x == 0.0 ? sign(p.y) * TAU * 0.25 : atan(p.y, p.x);
+    float center = uOpen * STEP;
+    float fromCenter = mod(angle - center + TAU * 1.5, TAU) - TAU * 0.5;
+    float sector = mod(floor(mod(angle + TAU + WEDGE, TAU) / STEP), 8.0);
+    hub = r < HUB;
+    opening = !hub && sector == uOpen;
+    float arc = length(p - HUB * direction(center + clamp(fromCenter, -WEDGE, WEDGE)));
+    rim = min(arc, min(radialEdge(p, direction(center - WEDGE)), radialEdge(p, direction(center + WEDGE))));
+    vec2 nearestSpoke = direction((floor(angle / STEP) + 0.5) * STEP);
+    seam = min(radialEdge(p, nearestSpoke), abs(r - HUB));
+    // This mask applies to the entire seam contribution, including its halo.
+    // The exposed portion of the hub boundary belongs to L1 above.
+    seamMask = step(HUB, r);
+  } else if (uStyle < 2.5) {
+    bool diamond = uStyle > 1.5;
+    vec2 pane = diamond ? vec2(p.x + p.y, p.x - p.y) * INV_SQRT2 : p;
+    rim = boxSdf(pane, diamond ? ${DIAMOND_EXTENT} * INV_SQRT2 : ${SQUARE_HALF});
+    // Match the CPU's strict inequalities before distance normalization.
+    opening = diamond ? q.x + q.y < ${DIAMOND_EXTENT} : max(q.x, q.y) < ${SQUARE_HALF};
+    seam = diamond ? min(q.x, q.y) : abs(q.x - q.y) * INV_SQRT2;
+  } else {
+    // Polygon meshes already bound the aperture, including the bevel.
+    opening = false;
+    rim = 100.0;
+    seam = 100.0;
+#ifdef ORBIT_GLASS
+    for (int i = 0; i < 3; i++) {
+      if (i >= uOrbitApertureCount) break;
+      vec4 hole = uOrbitApertures[i];
+      vec2 local = abs(p - hole.xy);
+      float edge = hole.w < .5 ? length(local) - hole.z : hole.w < 1.5
+        ? boxSdf(local, hole.z) : (local.x + local.y - hole.z) * INV_SQRT2;
+      rim = min(rim, abs(edge));
+    }
+#else
+    for (int i = 0; i < ${GLASS_RIM_SEGMENTS}; i++) {
+      if (i >= uOpeningEdgeCount) break;
+      vec4 edge = uOpeningEdges[i];
+      rim = min(rim, segmentDistance(p, edge.xy, edge.zw));
+    }
+    for (int i = 0; i < ${GLASS_SEAM_SEGMENTS}; i++) {
+      if (i >= uPaneSeamCount) break;
+      vec4 edge = uPaneSeams[i];
+      seam = min(seam, segmentDistance(p, edge.xy, edge.zw));
+    }
+#endif
+  }
+  // The wall vertices are already clipped by the aperture profile. A
+  // coplanar radial wall must survive rounding on the half-open sector edge.
+  if (vDepth < 0.5 || (opening && vWall < 0.5)) discard;
+
+  vec2 l1 = glow(abs(rim), 0.012, 0.055, pixel);
+  vec2 l2 = glow(seam, 0.009, 0.033, pixel) * seamMask * (1.0 - smoothstep(0.05, 0.7, l1.y));
+  vec2 l3 = glow(outer, 0.007, 0.022, pixel);
+  float emission = dot(l1, vec2(1.65, 0.48)) + dot(l2, vec2(0.58, 0.16)) + dot(l3, vec2(0.31, 0.09));
+  float energy = dot(l1, vec2(0.34, 0.12)) + dot(l2, vec2(0.14, 0.04)) + dot(l3, vec2(0.08, 0.025));
+  // Only the zero-mean fine lines in the pane body are modulated. Preserve
+  // the existing line response within the bright rim, seams and halo.
+  float bodyWeight = 1.0 - smoothstep(0.005, 0.035, energy);
+  float surface = 1.0 + 0.06 * (2.0 * surfaceVariation(p) - 1.0);
+  micro *= mix(1.0, surface * uMicroContrast, bodyWeight);
+  float paneLight = mix(0.63, 1.05, clamp(p.y / (2.0 * B) + 0.5, 0.0, 1.0));
+  float pane = paneLight * (hub ? 0.55 : 0.76) + micro * (hub ? 0.09 : 0.29);
+  vec3 col = uColor * (pane + emission + vWall * 0.12) + vec3(0.09) * l1.x;
+  col = mix(col, vec3(1.0, 0.5, 0.5), uHit * 0.8);
+  float alpha = (hub ? 0.18 : 0.14) + micro * 0.043 + energy + vWall * 0.065;
+  gl_FragColor = vec4(col, clamp(alpha * uFade, 0.0, 1.0));
+#endif
+}
+`;

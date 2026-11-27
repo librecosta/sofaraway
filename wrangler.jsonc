@@ -1,0 +1,9 @@
+{
+  "name": "sofaraway",
+  "compatibility_date": "2026-11-11",
+  "assets": {
+    "directory": "./build/client",
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  }
+}

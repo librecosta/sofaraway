@@ -1,0 +1,91 @@
+import { expect, test } from 'vitest';
+import { beatPulse, breath, colorScore, hueDistance, lightBeat, lightCues,
+  lightingState, mixHue, routeTone, scoreHue, scoreTone } from '../../app/game/core/lighting-score';
+import { SPLIT_BEAT } from '../../app/game/core/branches';
+import { Simulation } from '../../app/game/core/simulation';
+import { STEP } from '../../app/game/core/clock';
+import { idleInput } from '../../app/game/core/input';
+import { volumeById } from '../../app/game/core/volumes';
+
+test('the pulse is smooth at the beat and the four- and eight-beat breaths are continuous', () => {
+  expect(lightBeat(15, 128)).toBe(32);
+  expect(lightBeat(15, 120)).toBe(30);
+  expect(beatPulse(8)).toBe(1);
+  expect(beatPulse(8.5)).toBeLessThan(.0001);
+  expect(beatPulse(8 - .012)).toBeCloseTo(beatPulse(8 + .012), 12);
+  expect(beatPulse(80 - 1e-6)).toBeCloseTo(beatPulse(80 + 1e-6), 12);
+  for (const period of [4, 8] as const) {
+    expect(breath(0, period)).toBe(0);
+    expect(breath(period / 2, period)).toBe(1);
+    expect(breath(period + 2.35, period)).toBeCloseTo(breath(2.35, period), 10);
+  }
+  for (const cue of lightCues.slice(1)) {
+    expect(lightingState(cue.start - 1e-7).rim).toBeCloseTo(lightingState(cue.start + 1e-7).rim, 6);
+  }
+  const relativePulse = (beat: number) => lightingState(beat).rim - lightingState(beat + .5).rim;
+  expect(relativePulse(202)).toBeGreaterThan(relativePulse(8) * 3);
+  expect(lightingState(202, true).pulse).toBe(0);
+  expect(lightingState(202, true).rim).toBe(lightingState(8.3, true).rim);
+});
+
+test('authored hue cues use pale blue in the quiet phrases and follow the short circular arc', () => {
+  expect(colorScore.length).toBeGreaterThan(Math.ceil(448 / 32) * 2);
+  for (const anchor of [.78, .92, .57, .09, .66]) expect(colorScore.some(c => c.hue === anchor)).toBe(true);
+  for (const beat of [0, 16, 128, 144, 288, 312, 444]) {
+    const tone = scoreTone(beat);
+    expect(tone.hue).toBeGreaterThan(.57);
+    expect(tone.hue).toBeLessThan(.62);
+    expect(tone.saturation).toBeLessThan(.65);
+    expect(lightingState(beat, true).saturation).toBe(tone.saturation);
+  }
+  expect(hueDistance(.92, .04)).toBeCloseTo(.12, 12);
+  expect(mixHue(.92, .04, .5)).toBeCloseTo(.98, 12);
+  expect(scoreHue(200)).toBeCloseTo(.98, 12);
+  for (const { beat, hue, transitionBeats } of colorScore.slice(1)) {
+    expect(Math.abs(hueDistance(scoreHue(beat), hue))).toBeLessThan(1e-8);
+    for (const edge of [beat - transitionBeats, beat]) {
+      expect(Math.abs(hueDistance(scoreHue(edge - 1e-5), scoreHue(edge + 1e-5)))).toBeLessThan(1e-7);
+    }
+  }
+});
+
+test('junction colors cycle continuously in a distinct range for each route', () => {
+  const routes = ['main', 'challenge', 'score'] as const;
+  for (const route of routes) {
+    const tones = [0, 8, 16].map(offset => routeTone(route, SPLIT_BEAT + offset));
+    expect(new Set(tones.map(tone => tone.hue)).size).toBe(3);
+    for (const [i, tone] of tones.entries()) {
+      expect(tone.saturation).toBeLessThan(.8);
+      if (route === 'main') {
+        expect(tone.saturation).toBeLessThan(.4);
+        expect(tone.hue).toBeGreaterThan(.45);
+      } else if (route === 'challenge') {
+        expect(Math.abs(hueDistance(0, tone.hue))).toBeLessThan(.06);
+      } else {
+        expect(tone.hue).toBeGreaterThan(.06);
+        expect(tone.hue).toBeLessThan(.23);
+      }
+      expect(routeTone(route, SPLIT_BEAT + 24 + i * 8)).toEqual(tone);
+      const edge = SPLIT_BEAT + i * 8;
+      const before = routeTone(route, edge - 1e-5), after = routeTone(route, edge + 1e-5);
+      expect(hueDistance(before.hue, after.hue)).toBeCloseTo(0, 10);
+      expect(before.saturation).toBeCloseTo(after.saturation, 10);
+    }
+  }
+});
+
+test('the silent fixed-step timeline freezes the cue phase and Boost only changes the station', () => {
+  const volume = volumeById('elsewhere');
+  const cruise = new Simulation(volume, { align: true }), boost = new Simulation(volume, { align: true });
+  cruise.start('normal', 7); boost.start('normal', 18);
+  for (let i = 0; i < 600; i++) {
+    cruise.step(STEP, idleInput); boost.step(STEP, { ...idleInput, boosting: true });
+  }
+  expect(boost.trackDistance).toBeGreaterThan(cruise.trackDistance + 50);
+  expect(lightingState(boost.beat)).toEqual(lightingState(cruise.beat));
+  const frozen = lightingState(cruise.beat);
+  expect(lightingState(cruise.beat)).toEqual(frozen);
+  cruise.step(STEP, idleInput);
+  expect(lightingState(cruise.beat).pulse).not.toBe(frozen.pulse);
+  expect(cruise.beat).toBeCloseTo(lightBeat(cruise.time, volume.bpm), 8);
+});

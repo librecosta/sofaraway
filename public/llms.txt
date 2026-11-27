@@ -1,0 +1,15 @@
+# SoFarAway
+
+> A hypnotic browser rhythm runner. Thread the gates, ride the beat.
+
+SoFarAway is an English-language game by LibreCosta. WebGL2 renders four procedural worlds and Web Audio synthesizes their soundtracks in the browser.
+
+## Play and explore
+
+- [Play SoFarAway](https://sofaraway.librecosta.com/): Fly ELSEWHERE, DAYBREAK, DESCENT and ORBIT in Standard, Sightseeing or Showcase mode.
+- [Technical Explorer](https://sofaraway.librecosta.com/debug/): Inspect the production worlds, gates, lighting, materials, gameplay, endings, music and interface.
+
+## Source
+
+- [Repository](https://github.com/librecosta/sofaraway): Source code, controls, build instructions and project history.
+- [BSD 3-Clause license](https://sofaraway.librecosta.com/licenses/SoFaraway.txt): Project terms.

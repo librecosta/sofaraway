@@ -1,0 +1,101 @@
+import { createHash } from 'node:crypto';
+import { describe, expect, test } from 'vitest';
+import { difficulties } from '../../app/game/contracts';
+import { chartFor } from '../../app/game/core/chart';
+import { FixedStepClock, STEP } from '../../app/game/core/clock';
+import { canPass, lanePoint, opening } from '../../app/game/core/collision';
+import { idleInput } from '../../app/game/core/input';
+import { corridorLength, Simulation } from '../../app/game/core/simulation';
+import { sectionAt, VOLUMES } from '../../app/game/core/volumes';
+
+// Digests of the original legacy charts.
+const baselines = [
+  [143, 144, 144, '8eec49a9d209522f2a4ef00e78973486e46a677315eb0eb0a0f63a2b05265eda', 'a9a1d88caf0fdaea8b23f5d82f6f003fb4164e03b27a5008a56a28955ff40461', 'c8d761bb72e16f4cf5b7d222208c339a25fc24ba70c6376afb6d14def874dd2b'],
+  null,
+  null,
+] as const;
+
+describe.each(VOLUMES.flatMap((volume, index) => {
+  const baseline = baselines[index];
+  return baseline ? [{ volume, baseline }] : [];
+}))('$volume.id', ({ volume, baseline }) => {
+  test.each(difficulties)('%s chart and a full run with collision enabled', difficulty => {
+    const i = difficulties.indexOf(difficulty);
+    const chart = chartFor(volume, difficulty);
+    const [easy, normal, hard] = baseline;
+    expect(chart).toHaveLength([easy, normal, hard][i]);
+    const originalFields = chart.map(({ beat, sector, section }) => ({ beat, sector, section }));
+    expect(createHash('sha256').update(JSON.stringify(originalFields)).digest('hex')).toBe(baseline[3 + i]);
+    if (volume.id !== 'elsewhere') expect(new Set(chart.map(gate => gate.kind))).toEqual(new Set([volume.obstacle]));
+    for (const gate of chart) expect(sectionAt(volume, gate.beat)?.name).toBe(gate.section);
+    const sim = new Simulation(volume, { align: true });
+    sim.start(difficulty);
+    const frames = Math.ceil((volume.beats * sim.secondsPerBeat + 0.8) / STEP);
+    for (let n = 0; n < frames; n++) sim.step(STEP, idleInput);
+    expect(sim.phase).toBe('results');
+    const count = volume.id === 'elsewhere' ? chart.length - 3 : chart.length;
+    expect([sim.gatesPassed, sim.gatesJudged, sim.maxCombo, sim.hits, sim.lives]).toEqual([
+      count, count, count, 0, volume.lives[difficulty],
+    ]);
+    expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, rank: 'S', unreached: 0,
+      ...(volume.id === 'elsewhere' ? { route: 'main' } : {}) });
+    expect(sim.distance + 420).toBeLessThan(corridorLength(volume));
+  });
+});
+
+test('point collision respects the gate opening boundaries', () => {
+  expect(canPass('iris', 0, 0, 1, 0)).toBe(false);
+  expect(canPass('iris', 0, 0, 1.02, 0)).toBe(true);
+  expect(canPass('daybreak-horizontal', 0, 0, 1.5, 0)).toBe(true);
+  expect(canPass('daybreak-vertical', 0, 0, 1.5, 0)).toBe(false);
+  expect(canPass('daybreak-vertical', 0, 0, ...lanePoint('daybreak-vertical', 0, 0))).toBe(true);
+});
+
+test('a hard run can terminate once, settle, and restart cleanly', () => {
+  const sim = new Simulation(VOLUMES[0]);
+  expect(sim.start('hard')).toBe(true);
+  expect(sim.start('hard')).toBe(false);
+  for (let i = 0; i < 8 / STEP; i++) sim.step(STEP, idleInput);
+  expect(sim.phase).toBe('crash');
+  expect(sim.hits).toBe(1);
+  expect(sim.gatesJudged).toBe(1);
+  expect(sim.beat).toBeCloseTo(16, 8);
+  const score = sim.score;
+  for (let i = 0; i < 43; i++) sim.step(STEP, idleInput);
+  expect(sim.phase).toBe('results');
+  expect(sim.score).toBe(score);
+  expect(sim.result).toMatchObject({ title: 'TERMINATED', accuracy: 0, rank: 'C', encountered: 1, unreached: 140 });
+  expect(sim.start('easy')).toBe(true);
+  expect([sim.gatesJudged, sim.hits, sim.lives, sim.combo, sim.score, sim.beat]).toEqual([0, 0, 3, 0, 0, 0]);
+});
+
+test('fixed steps yield the same result at 20, 60, 120, and 144 Hz', () => {
+  function run(hz: number) {
+    const sim = new Simulation(VOLUMES[2], { align: true });
+    const clock = new FixedStepClock();
+    sim.start('hard');
+    for (let frame = 1; frame <= hz * 100; frame++) {
+      expect(clock.consume(frame / hz, () => {
+        sim.step(STEP, { ...idleInput, boosting: clock.elapsed > 30 });
+      })).toBe('ok');
+    }
+    return [sim.beat, sim.camera, sim.score, sim.lives, sim.gatesJudged, sim.distance];
+  }
+  expect(run(20)).toEqual(run(60));
+  expect(run(60)).toEqual(run(120));
+  expect(run(60)).toEqual(run(144));
+});
+
+test('a five-second gap carries debt into subsequent frames', () => {
+  const clock = new FixedStepClock();
+  const sim = new Simulation(VOLUMES[0]);
+  sim.start('hard');
+  const step = () => sim.step(STEP, idleInput);
+  expect(clock.consume(5 * STEP, step)).toBe('ok');
+  expect(clock.consume(5, step)).toBe('catching-up');
+  expect(clock.elapsed).toBeCloseTo(17 * STEP);
+  while (clock.consume(5, step) === 'catching-up') { /* RAF batches */ }
+  expect(clock.elapsed).toBe(5);
+  expect(sim.beat).toBeCloseTo(5 / sim.secondsPerBeat);
+  expect(sim.lives).toBe(1);
+});

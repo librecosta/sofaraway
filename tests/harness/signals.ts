@@ -1,0 +1,209 @@
+import * as THREE from 'three';
+import { createBuffers, createMaster, Synthesizer } from '../../app/game/audio/synthesizer.client';
+import { canPass, lanePoint, opening } from '../../app/game/core/collision';
+import type { Axis, Point } from '../../app/game/core/collision';
+import { daybreakGateKinds, daybreakGates, daybreakProfile } from '../../app/game/core/daybreak-gates';
+import { descentGateKinds, isDescentGate, laserBandPitch, laserBeamRadius, laserClearance, laserOpening,
+  matrixCell, matrixSubdivisions, weaveCrossPitch } from '../../app/game/core/descent-gates';
+import { descentExamples } from '../../app/game/debug/catalog';
+import { SECTION, SECTION_OUTLINE } from '../../app/game/core/section';
+import { apertureAnchors, apertureContour, orbitClearanceAt, orbitGateKinds, orbitPresets } from '../../app/game/core/orbit-gates';
+import { volumeById } from '../../app/game/core/volumes';
+import type { GateKind } from '../../app/game/core/volumes';
+import type { VolumeId } from '../../app/game/contracts';
+import { GateGeometries, GateVisual } from '../../app/game/graphics/gates.client';
+
+export function shaderMismatches(id: VolumeId) {
+  const { obstacle } = volumeById(id);
+  const renderer = new THREE.WebGLRenderer();
+  const target = new THREE.WebGLRenderTarget(3, 3);
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-0.001, 0.001, 0.001, -0.001, 0.1, 30);
+  const geometries = new GateGeometries();
+  const pixel = new Uint8Array(4);
+  const mismatches: { kind: GateKind; axis: Axis; open: number; x: number; y: number }[] = [];
+  function check(kind: GateKind, open: number, axis: Axis, points: Point[]) {
+    const gate = new GateVisual(geometries, kind, open, axis);
+    scene.add(gate.meshes[0]);
+    for (const [x, y] of points) {
+      const [a, b, diagonal] = id === 'daybreak' || id === 'descent' || id === 'orbit'
+        ? [SECTION.a, SECTION.b, SECTION.a + SECTION.b - SECTION.ch] : [3.4, 2.6, 4.85];
+      if (Math.abs(x) >= a || Math.abs(y) >= b || Math.abs(x) + Math.abs(y) >= diagonal) continue;
+      // A finite pixel footprint blurs the exact analytical edge. Sample both sides outside that footprint.
+      if (isDescentGate(kind) && Math.abs(laserClearance(kind, open, axis, x, y)) < .001) continue;
+      if (id === 'orbit' && Math.abs(orbitClearanceAt(kind as typeof orbitGateKinds[number], open, x, y)) < .003) continue;
+      camera.position.set(x, y, 3);
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      renderer.readRenderTargetPixels(target, 1, 1, 1, 1, pixel);
+      // The linear target excludes post-processing. Sample the laminate body beyond its antialiased edge.
+      const visible = id === 'descent' ? Math.max(pixel[0], pixel[1], pixel[2]) >= 29 : pixel[0] + pixel[1] + pixel[2] > 0;
+      if (visible === canPass(kind, open, axis, x, y)) mismatches.push({ kind, axis, open, x, y });
+    }
+    scene.remove(gate.meshes[0]);
+    gate.dispose();
+  }
+  if (id === 'orbit') {
+    for (const kind of orbitGateKinds) for (const [open, preset] of orbitPresets[kind].entries()) {
+      const points: Point[] = [[0, 0]];
+      for (let x = -3.5; x < 3.6; x += .49) for (let y = -2.7; y < 2.8; y += .413) points.push([x, y]);
+      for (const hole of preset.holes) {
+        const [cx, cy] = apertureAnchors[hole.anchor];
+        points.push([cx, cy]);
+        for (const [x, y] of apertureContour(hole)) for (const scale of [.97, 1.03]) {
+          points.push([cx + (x - cx) * scale, cy + (y - cy) * scale]);
+        }
+      }
+      check(kind, open, 0, points);
+    }
+  } else if (id === 'daybreak') {
+    const nearShell = SECTION_OUTLINE.flatMap(([x, y], index) => {
+      const [qx, qy] = SECTION_OUTLINE[(index + 1) % SECTION_OUTLINE.length];
+      return [.15, .5, .85].map((t): Point => [(.998 * (x + (qx - x) * t)), (.998 * (y + (qy - y) * t))]);
+    });
+    for (const kind of daybreakGateKinds) for (const open of daybreakGates[kind].openings.keys()) {
+      const { rim, target } = daybreakProfile(kind, open);
+      const points: Point[] = [[...target], [0, 0], ...nearShell];
+      for (let x = -3.15; x <= 3.2; x += .70) for (let y = -2.35; y <= 2.4; y += .58) points.push([x, y]);
+      for (const [[x, y], [qx, qy]] of rim) {
+        const dx = qx - x, dy = qy - y, length = Math.hypot(dx, dy);
+        for (const t of [.15, .5, .85]) for (const offset of [-.045, -.004, .004, .045]) {
+          points.push([x + dx * t - dy / length * offset, y + dy * t + dx / length * offset]);
+        }
+      }
+      check(kind, open, 0, points);
+    }
+  } else if (id === 'descent') {
+    for (const kind of descentGateKinds) for (const { open, axis } of descentExamples[kind]) {
+      const { target: [x, y], extent, normal: [nx, ny] } = laserOpening(kind, open, axis);
+      const points: Point[] = [[x, y], [0, 0]];
+      for (let a = -3.2; a < 3.4; a += .43) for (let b = -2.45; b < 2.58; b += .381) points.push([a, b]);
+      for (const sign of [-1, 1]) for (const delta of [-.022, -.004, .004, .022]) {
+        const edge = sign * (extent[0] + delta);
+        points.push([x + nx * edge, y + ny * edge]);
+        if (extent[1] !== null) points.push([x, y + sign * (extent[1] + delta)]);
+      }
+      if (kind === 'laser-matrix') {
+        const [w, h] = matrixCell.map(size => size / matrixSubdivisions);
+        const cells = matrixSubdivisions ** 2;
+        for (let col = 0; col < cells; col++) for (let row = 0; row < cells; row++) {
+          const left = -SECTION.a + col * w, bottom = -SECTION.b + row * h;
+          points.push([left + w / 2, bottom + h / 2]);
+          if (col % matrixSubdivisions !== 0) for (const d of [-.004, .004]) {
+            points.push([left + laserBeamRadius.matrix + d, bottom + h / 2]);
+          }
+        }
+      } else {
+        for (const sign of [-1, 1]) for (const d of [-.004, .004]) {
+          const line = sign * (extent[0] + laserBandPitch / 2 + laserBeamRadius.bank + d);
+          points.push([x + nx * line, y + ny * line]);
+          if (kind === 'laser-weave') {
+            const across = sign * (extent[0] + laserBandPitch);
+            const cross = weaveCrossPitch / 2 + x * ny - y * nx + laserBeamRadius.weaveCross + d;
+            points.push([x + nx * across - ny * cross, y + ny * across + nx * cross]);
+          }
+        }
+      }
+      check(kind, open, axis, points);
+    }
+  } else for (const axis of [0, 1] as const) {
+    for (let sector = 0; sector < 9; sector++) {
+      const open = opening(obstacle, sector);
+      const [cx, cy] = lanePoint(obstacle, open, axis);
+      const points: Point[] = [[0, 0], [cx, cy], [1, 0], [1.05, 0], [0.95, 0], [1.25, 0],
+        [1.27, 0], [-1.27, 0], [0, 1], [0, -1], [0, 2], [0, -2], [cx + 0.94, cy], [cx + 0.96, cy]];
+      if (obstacle === 'iris' && sector < 8) {
+        const angle = sector * Math.PI / 4;
+        for (const offset of [-0.396, -0.389, 0.389, 0.396]) {
+          points.push([2 * Math.cos(angle + offset), 2 * Math.sin(angle + offset)]);
+        }
+        for (const radius of [1.015, 1.0195, 1.0205, 1.025]) {
+          for (const offset of [-0.21, 0, 0.21]) {
+            points.push([radius * Math.cos(angle + offset), radius * Math.sin(angle + offset)]);
+          }
+        }
+      }
+      check(obstacle, open, axis, points);
+    }
+  }
+  if (id === 'elsewhere') {
+    const square: Point[] = [[0, 0]];
+    const diamond: Point[] = [[0, 0]];
+    for (const sign of [-1, 1]) {
+      for (const edge of [1.344, 1.347, 1.353, 1.356]) {
+        square.push([sign * edge, 0.4], [0.4, sign * edge]);
+      }
+      for (const tip of [1.904, 1.907, 1.913, 1.916]) {
+        diamond.push([sign * tip, 0], [0, sign * tip]);
+      }
+      for (const otherSign of [-1, 1]) {
+        for (const edge of [0.950, 0.953, 0.957, 0.960]) {
+          diamond.push([sign * edge, otherSign * edge]);
+        }
+      }
+    }
+    check('square', 0, 0, square);
+    check('diamond', 0, 0, diamond);
+  }
+  const glError = renderer.getContext().getError();
+  renderer.setRenderTarget(null);
+  target.dispose();
+  geometries.dispose();
+  renderer.dispose();
+  renderer.forceContextLoss();
+  return { mismatches, glError };
+}
+
+export function signal(buffer: AudioBuffer, from: number, to: number) {
+  let squares = 0, peak = 0, count = 0, nonFinite = 0, clipped = 0;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+    const samples = buffer.getChannelData(channel);
+    for (let index = Math.floor(from * buffer.sampleRate); index < Math.min(samples.length, to * buffer.sampleRate); index++) {
+      const value = samples[index];
+      if (!Number.isFinite(value)) { nonFinite++; continue; }
+      if (Math.abs(value) >= 1) clipped++;
+      squares += value ** 2;
+      peak = Math.max(peak, Math.abs(value));
+      count++;
+    }
+  }
+  return { rms: Math.sqrt(squares / count), peak, nonFinite, clipped };
+}
+
+export async function sectionSignals(id: VolumeId) {
+  const volume = volumeById(id);
+  const lead = 0.12;
+  const beatSeconds = 60 / volume.bpm;
+  const duration = 8 * beatSeconds;
+  const rate = 16_000;
+  const levels = [];
+  let beat = 0;
+  for (const section of volume.sections) {
+    const context = new OfflineAudioContext(2, Math.ceil((lead + duration) * rate), rate);
+    const synth = new Synthesizer(context, volume, createMaster(context, 1), createBuffers(context));
+    for (let offset = 0; offset < 32; offset++) {
+      synth.playStep(beat * 4 + offset, lead + offset * beatSeconds / 4);
+    }
+    const buffer = await context.startRendering();
+    levels.push({ section: section.name, ...signal(buffer, lead, lead + duration) });
+    beat += section.beats;
+  }
+  return levels;
+}
+
+export async function stoppedRunSignal() {
+  const context = new OfflineAudioContext(2, 48_000, 16_000);
+  const volume = volumeById('elsewhere');
+  const master = createMaster(context, 0.8);
+  const buffers = createBuffers(context);
+  const old = new Synthesizer(context, volume, master, buffers);
+  for (let step = 0; step < 16; step++) old.playStep(192 + step, 0.12 + step * 0.1);
+  const stop = context.suspend(0.5).then(async () => {
+    old.dispose();
+    const next = new Synthesizer(context, volume, master, buffers);
+    for (let step = 0; step < 8; step++) next.playStep(192 + step, 2 + step * 0.1);
+    await context.resume();
+  });
+  const [buffer] = await Promise.all([context.startRendering(), stop]);
+  return [signal(buffer, 0.12, 0.45), signal(buffer, 0.65, 1.95), signal(buffer, 2.05, 2.85)];
+}

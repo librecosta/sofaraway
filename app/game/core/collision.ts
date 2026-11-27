@@ -1,0 +1,67 @@
+import type { GateKind } from './volumes';
+import { daybreakGates, daybreakOpening, daybreakProfile, isDaybreakGate } from './daybreak-gates';
+import { isDescentGate, laserClearance, laserOpening } from './descent-gates';
+import { isOrbitGate, orbitClearanceAt, orbitPresets, orbitTarget } from './orbit-gates';
+import { SECTION } from './section';
+
+export { SECTION } from './section';
+export const WALL = { w: SECTION.a * 2 + 0.20, h: SECTION.b * 2 + 0.20 };
+export const HUB_R = 1.02;
+export const SQUARE_HALF = 1.35;
+export const DIAMOND_EXTENT = 1.91;
+export const RANGE_X = SECTION.a - 0.32;
+export const RANGE_Y = SECTION.b - 0.32;
+export type Axis = 0 | 1;
+export type Point = [x: number, y: number];
+
+export function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function clampSection(x: number, y: number, margin: number, extraWidth = 0): Point {
+  const ax = SECTION.a - margin + extraWidth;
+  const ay = SECTION.b - margin;
+  const diagonal = SECTION.a + extraWidth + SECTION.b - SECTION.ch - margin * 1.9;
+  const px = clamp(x, -ax, ax);
+  const py = clamp(y, -ay, ay);
+  const d = Math.abs(px) + Math.abs(py);
+  return d > diagonal ? [px * diagonal / d, py * diagonal / d] : [px, py];
+}
+
+/** Optical camera center, also used for decorative swept contacts. */
+export const playerViewOffset = (x: number, y: number, extraWidth = 0) =>
+  clampSection(x * 0.88, y * 0.88, 0.62, extraWidth);
+
+export function opening(obstacle: GateKind, sector: number) {
+  if (obstacle === 'square' || obstacle === 'diamond') return 0;
+  const lanes = isOrbitGate(obstacle) ? orbitPresets[obstacle].length : isDaybreakGate(obstacle) ? daybreakGates[obstacle].openings.length : 8;
+  return ((sector % lanes) + lanes) % lanes;
+}
+
+export function lanePoint(obstacle: GateKind, index: number, axis: Axis): Point {
+  if (isOrbitGate(obstacle)) return orbitTarget(obstacle, index, axis === 1);
+  if (isDaybreakGate(obstacle)) return [...daybreakProfile(obstacle, index).target];
+  if (isDescentGate(obstacle)) return [...laserOpening(obstacle, index, axis).target];
+  if (obstacle === 'square' || obstacle === 'diamond') return [0, 0];
+  const angle = index * Math.PI / 4;
+  return [Math.cos(angle) * 2.15, Math.sin(angle) * 2.15];
+}
+
+/** The shader clips to the same octagonal section. Inputs are clamped inside it. */
+export function canPass(obstacle: GateKind, open: number, axis: Axis, x: number, y: number) {
+  if (isOrbitGate(obstacle)) return orbitClearanceAt(obstacle, open, x, y) > 0;
+  if (isDaybreakGate(obstacle)) return daybreakOpening(obstacle, open, x, y);
+  if (isDescentGate(obstacle)) return laserClearance(obstacle, open, axis, x, y) > 0;
+  switch (obstacle) {
+    case 'square':
+      return Math.abs(x) < SQUARE_HALF && Math.abs(y) < SQUARE_HALF;
+    case 'diamond':
+      return Math.abs(x) + Math.abs(y) < DIAMOND_EXTENT;
+    case 'iris': {
+      if (Math.hypot(x, y) < HUB_R) return false;
+      const turn = Math.PI * 2;
+      const angle = ((Math.atan2(y, x) + turn + Math.PI / 8) % turn + turn) % turn;
+      return Math.floor(angle / (Math.PI / 4)) % 8 === open;
+    }
+  }
+}

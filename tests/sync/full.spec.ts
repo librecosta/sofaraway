@@ -1,0 +1,134 @@
+import { expect, test } from '@playwright/test';
+import { STEP } from '../../app/game/core/clock';
+import { onsetLead } from '../../app/game/core/daybreak-score';
+import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
+import { mount, openSync, phase, report, state, trace } from './support';
+
+const normalScores = { elsewhere: 105326, daybreak: 89395, descent: 120915, orbit: undefined };
+const gateCounts = { elsewhere: 141, daybreak: 120, descent: 161, orbit: 81 };
+
+test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
+  const volume = VOLUMES[1];
+  const duration = volume.beats * 60 / volume.bpm;
+  test.setTimeout((duration + 45) * 1000);
+  const errors = await openSync(page);
+  await mount(page, volume.id, 'sightseeing');
+  await page.locator('#start').click();
+  await phase(page, 'playing');
+  await page.waitForFunction(() => ['paused', 'crash', 'results', 'error'].includes(window.b0Harness.snapshot().phase),
+    undefined, { timeout: (duration + 8) * 1000, polling: 200 });
+  await phase(page, 'results');
+  const result = await state(page);
+  const { firstBeforeAnchor, steps, sections, end } = await trace(page);
+  expect(firstBeforeAnchor).toMatchObject({ beat: 0, elapsed: 0 });
+  expect(steps.map(step => [step.run, step.step])).toEqual(Array.from({ length: volume.beats * 4 }, (_, i) => [1, i]));
+  expect(Math.max(...steps.map(({ at, step }) => Math.abs(at - steps[0].at - step * 15 / volume.bpm)))).toBeLessThan(1e-9);
+  expect(sections.map(section => section.section)).toEqual(volume.sections.map(section => section.name));
+  expect(end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: false });
+  expect(end!.elapsed).toBeCloseTo(duration, 5);
+  expect(end!.wall - firstBeforeAnchor!.wall).toBeGreaterThanOrEqual((duration - 0.15) * 1000);
+  if (!end || !('contextTime' in end.output)) throw new Error('DAYBREAK ended without a live audio clock');
+  expect(end.output.contextTime - end.anchor).toBeCloseTo(duration, 1);
+  expect(result).toMatchObject({ lives: 5, passed: result.total, judged: result.total });
+  expect(await page.evaluate(() => window.b0Harness.snapshot().result?.title)).toBe('ESCAPED');
+  expect(errors).toEqual([]);
+  report('sightseeing-full', { volume: volume.id, duration, elapsed: end!.elapsed,
+    wallSeconds: (end!.wall - firstBeforeAnchor!.wall) / 1000, steps: steps.length, gates: result.total, lives: result.lives });
+});
+
+for (const difficulty of ['normal', 'impossible'] as const) test(`ELSEWHERE ${difficulty} sustains Boost through Encore and Afterglow on the original audio clock`, async ({ page }) => {
+  test.setTimeout(255_000);
+  const errors = await openSync(page);
+  await mount(page, 'elsewhere', 'standard', difficulty);
+  await page.locator('#start').click();
+  await phase(page, 'playing');
+  await page.keyboard.down('Shift');
+  try {
+    await page.waitForFunction(() => window.b0Harness.snapshot().outroPhase === 'afterglow', undefined,
+      { timeout: 205_000, polling: 250 });
+    const tail = await page.evaluate(() => window.b0Harness.snapshot());
+    const count = difficulty === 'impossible' ? 36 : 24;
+    const main = difficulty === 'impossible' ? 184 : 141;
+    expect(tail.encore).toMatchObject({ encountered: count, passed: count, clean: count, bonusScore: count * 300 });
+    await page.waitForFunction(() => window.b0Harness.snapshot().phase === 'results', undefined, { timeout: 24_000, polling: 200 });
+    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), stored: localStorage.getItem('sofaraway.records.v1') }));
+    const data = await trace(page);
+    expect(data.end).toMatchObject({ elapsed: 210, beat: 448, scheduler: false, runBus: false });
+    expect(data.steps).toHaveLength(1792);
+    expect(run.snapshot.result).toMatchObject({ title: 'ESCAPED', route: 'main', rank: 'S', accuracy: 1,
+      planned: main, passed: main, encore: { bonusScore: count * 300 } });
+    expect(run.snapshot.localRecord).toEqual({ best: null, last: null });
+    expect(run.stored).toBeNull();
+    expect(errors).toEqual([]);
+    report('encore-full', { difficulty, enteredAt: tail.progress * 210, end: data.end, steps: data.steps.length,
+      score: run.snapshot.score, encore: run.snapshot.result?.encore });
+  } finally { await page.keyboard.up('Shift'); }
+});
+
+const fullRuns = [...VOLUMES.map(volume => ({ volume, count: gateCounts[volume.id], score: normalScores[volume.id], boost: false })),
+  { volume: VOLUMES[2], count: 189, score: undefined, boost: true }];
+for (const { volume, count, score, boost } of fullRuns) {
+  test(`${volume.id} completes the full song on real audio time${boost ? ' under full Impossible Boost' : ''}`, async ({ page, browser }) => {
+    const duration = volume.beats * 60 / volume.bpm;
+    test.setTimeout((duration + 45) * 1000);
+    const errors = await openSync(page);
+    await mount(page, volume.id, 'standard', boost ? 'impossible' : 'normal', volume.id === 'daybreak' || boost ? 0 : undefined);
+    await page.locator('#start').click();
+    await phase(page, 'playing');
+    if (boost) await page.keyboard.down('Shift');
+    await page.waitForFunction(() => ['paused', 'crash', 'results', 'error'].includes(window.b0Harness.snapshot().phase),
+      undefined, { timeout: (duration + 8) * 1000, polling: 200 });
+    const transition = await state(page);
+    expect(transition.phase, JSON.stringify(transition)).not.toBe('paused');
+    await phase(page, 'results');
+    if (volume.soundtrack?.tail) await expect.poll(async () => (await state(page)).runBus).toBe(false);
+    const result = await state(page);
+    const data = await trace(page);
+    const first = data.steps[0];
+    const last = data.steps.at(-1);
+    const stepTime = 15 / volume.bpm;
+    const gridError = Math.max(...data.steps.map(item => Math.abs(item.at - first.at - item.step * stepTime)));
+    const leads = data.steps.map(item => item.at - item.trigger);
+    report('full', { volume: volume.id, browser: browser.version(), duration, first, last, gridError,
+      leadRange: [Math.min(...leads), Math.max(...leads)], count: data.steps.length,
+      ...Object.fromEntries(Object.entries(data).filter(([key]) => key !== 'steps')), result });
+    expect(data.steps.map(item => [item.run, item.step])).toEqual(Array.from({ length: volume.beats * 4 }, (_, i) => [first.run, i]));
+    expect(gridError).toBeLessThan(1e-9);
+    // Every DAYBREAK onset follows the grid tick by at least onsetLead.
+    const earliestOnset = volume.music === 'breakbeat' ? onsetLead : 0;
+    expect(Math.min(...leads) + earliestOnset).toBeGreaterThanOrEqual(-1e-9);
+    const lookahead = hasAuthoredAudio(volume) ? .22 : .12;
+    expect(Math.max(...leads)).toBeLessThanOrEqual(lookahead + 1e-9);
+    expect(data.firstBeforeAnchor).toMatchObject({ beat: 0, elapsed: 0, simTime: 0 });
+    expect(data.firstTick?.elapsed).toBeGreaterThanOrEqual(STEP);
+    expect(data.minQuantization).toBeGreaterThanOrEqual(-1e-9);
+    expect(data.maxQuantization).toBeLessThanOrEqual(STEP + 1e-9);
+    expect(data.sections.map(frame => frame.section)).toEqual(volume.sections.map(section => section.name));
+    let boundary = 0;
+    for (const [index, section] of volume.sections.entries()) {
+      expect(data.sections[index].beat - boundary).toBeGreaterThanOrEqual(-1e-8);
+      // Authored music samples the device clock in audio quanta. A render can first
+      // observe the new section after the clock has committed several ticks.
+      const observation = hasAuthoredAudio(volume) ? .15 : STEP;
+      expect(data.sections[index].beat - boundary).toBeLessThanOrEqual(observation * volume.bpm / 60 + 1e-8);
+      boundary += section.beats;
+    }
+    expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeGreaterThanOrEqual(-1e-8);
+    expect(data.lastGate!.simTime - data.lastGate!.lastGateCrossedAt!).toBeLessThanOrEqual(STEP + 1e-8);
+    expect(data.end).toMatchObject({ beat: volume.beats, scheduler: false, runBus: !!volume.soundtrack?.tail });
+    if (volume.id === 'descent') {
+      expect(result.simTime - data.end!.simTime).toBeGreaterThanOrEqual(volume.soundtrack!.tail - STEP);
+    }
+    expect(result).toMatchObject({ beat: volume.beats, passed: count, judged: count, total: count,
+      ...(score === undefined ? {} : { score }), lives: boost ? 1 : volume.lives.normal, scheduler: false, runBus: false });
+    const summary = await page.evaluate(() => window.b0Harness.snapshot().result);
+    expect(summary).toMatchObject({
+      title: 'ESCAPED', rank: 'S', accuracy: 1, neutralized: 0, unreached: 0, ...(volume.id === 'elsewhere' ? { route: 'main' } : {}),
+    });
+    if (boost) {
+      expect(summary?.encore).toMatchObject({ encountered: 23, passed: 23, missed: 0, bonusScore: 6900 });
+      await page.keyboard.up('Shift');
+    }
+    expect(errors).toEqual([]);
+  });
+}

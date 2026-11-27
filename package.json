@@ -1,0 +1,66 @@
+{
+  "name": "@librecosta/sofaraway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A hypnotic browser rhythm runner. Thread the gates, ride the beat.",
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "author": "librecosta",
+  "homepage": "https://sofaraway.librecosta.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/librecosta/sofaraway.git"
+  },
+  "keywords": [
+    "webgl",
+    "webgl2",
+    "three.js",
+    "web-audio",
+    "rhythm-game",
+    "endless-runner",
+    "procedural-generation",
+    "procedural-music",
+    "generative-music",
+    "browser-game",
+    "shader"
+  ],
+  "scripts": {
+    "start": "node tools/serve-static.mjs",
+    "serve": "npm start",
+    "test": "npm run test:unit && npm run build && npm run build:harness && npm run test:b0",
+    "test:perf": "npm run build && npm run build:harness && playwright test --config playwright.b0.config.ts --grep @perf",
+    "test:compat": "npm run build && npm run build:harness && playwright test --config playwright.compat.config.ts",
+    "test:stability": "npm run build && npm run build:harness && playwright test --config playwright.stability.config.ts",
+    "test:sync": "vitest run tests/core/transport.test.ts && npm run build:harness && playwright test --config playwright.sync.config.ts",
+    "test:release": "npm run typecheck && npm run build && playwright test --config playwright.release.config.ts",
+    "test:a0": "playwright test --config playwright.config.js --grep-invert @perf",
+    "test:a0:perf": "playwright test --config playwright.config.js --grep @perf",
+    "dev": "react-router dev",
+    "build": "react-router build && node tools/build-static.mjs",
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "test:unit": "vitest run",
+    "build:harness": "vite build tests/harness --outDir ../../build/harness --emptyOutDir",
+    "test:b0": "playwright test --config playwright.b0.config.ts --grep-invert @perf"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@react-router/dev": "8.5.1",
+    "@types/node": "24.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.187.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "isbot": "5.2.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "8.5.1",
+    "three": "0.187.0"
+  }
+}
