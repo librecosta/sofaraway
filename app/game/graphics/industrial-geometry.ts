@@ -14,6 +14,9 @@ export class IndustrialGeometry {
   private readonly indices: number[] = [];
   private readonly normal = new THREE.Vector3();
   private readonly tangent = new THREE.Vector3();
+  private readonly beamSide = new THREE.Vector3();
+  private readonly beamDepth = new THREE.Vector3();
+  private readonly beamCorners = Array.from({ length: 8 }, () => new THREE.Vector3());
   private readonly normalValues: number[] = [];
   private readonly surfaceValues: number[] = [];
   private readonly lightValues: number[] = [];
@@ -38,11 +41,11 @@ export class IndustrialGeometry {
     surface = IndustrialSurface.Cast, stations?: readonly [number, number], trim = IndustrialTrim.None) {
     const index = this.positions.length / 3;
     this.normal.subVectors(b, a).cross(this.tangent.subVectors(c, a)).normalize();
-    for (const point of [a, b, c, d]) {
-      this.positions.push(point.x, point.y, point.z);
-      this.normalValues.push(this.normal.x, this.normal.y, this.normal.z);
-      this.colors.push(color.r, color.g, color.b);
-    }
+    const { x, y, z } = this.normal;
+    const { r: red, g: green, b: blue } = color;
+    this.positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z, d.x, d.y, d.z);
+    this.normalValues.push(x, y, z, x, y, z, x, y, z, x, y, z);
+    this.colors.push(red, green, blue, red, green, blue, red, green, blue, red, green, blue);
     if (this.workSpill) {
       const start = stations ? stations[0] % industrialSurfacePeriod : 0;
       const end = start + (stations ? stations[1] - stations[0] : a.distanceTo(d));
@@ -70,19 +73,23 @@ export class IndustrialGeometry {
 
   beam(a: THREE.Vector3, b: THREE.Vector3, forward: THREE.Vector3, halfWidth: number, halfDepth: number, color: THREE.Color,
     surface = IndustrialSurface.Cast) {
-    const side = new THREE.Vector3().subVectors(b, a).cross(forward).normalize().multiplyScalar(halfWidth);
-    const depth = forward.clone().multiplyScalar(halfDepth);
-    const corners = [a, b].map(point => [
-      point.clone().add(side).add(depth), point.clone().sub(side).add(depth),
-      point.clone().sub(side).sub(depth), point.clone().add(side).sub(depth),
-    ]);
-    const [first, last] = corners;
+    const side = this.beamSide.subVectors(b, a).cross(forward).normalize().multiplyScalar(halfWidth);
+    const depth = this.beamDepth.copy(forward).multiplyScalar(halfDepth);
+    const corners = this.beamCorners;
+    corners[0].copy(a).add(side).add(depth);
+    corners[1].copy(a).sub(side).add(depth);
+    corners[2].copy(a).sub(side).sub(depth);
+    corners[3].copy(a).add(side).sub(depth);
+    corners[4].copy(b).add(side).add(depth);
+    corners[5].copy(b).sub(side).add(depth);
+    corners[6].copy(b).sub(side).sub(depth);
+    corners[7].copy(b).add(side).sub(depth);
     for (let i = 0; i < 4; i++) {
       const next = (i + 1) % 4;
-      this.quad(first[i], last[i], last[next], first[next], color, surface);
+      this.quad(corners[i], corners[i + 4], corners[next + 4], corners[next], color, surface);
     }
-    this.quad(first[0], first[1], first[2], first[3], color, surface);
-    this.quad(last[3], last[2], last[1], last[0], color, surface);
+    this.quad(corners[0], corners[1], corners[2], corners[3], color, surface);
+    this.quad(corners[7], corners[6], corners[5], corners[4], color, surface);
   }
 
   build() {

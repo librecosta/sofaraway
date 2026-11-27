@@ -447,13 +447,14 @@ for (const { id } of VOLUMES) {
     }
   });
 
-  for (const [sample, build] of (comparison ? builds : [candidate]).entries()) test(
-    `@f4-p0 audio-led complete Showcase · ${id}${comparison ? ` · ${build.label} ${sample}` : ''}`, async ({ browser }) => {
+  const compareFlight = haveReference && (id === 'elsewhere' || id === 'descent');
+  for (const [sample, build] of (compareFlight ? builds : [candidate]).entries()) test(
+    `@f4-p0 audio-led complete Showcase · ${id}${compareFlight ? ` · ${build.label} ${sample}` : ''}`, async ({ browser }) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     const errors = captureErrors(page);
     try {
       await openHarness(page, build);
-      const init = await page.evaluate(id => window.stability.mount(id, 'auto', true, id === 'elsewhere'), id);
+      const init = await page.evaluate(id => window.stability.mount(id, 'auto', true, id === 'elsewhere' || id === 'descent'), id);
       const at = performance.now();
       await page.getByRole('button', { name: 'Start with audio' }).click();
       await page.waitForFunction(() => window.stability.state().phase === 'playing');

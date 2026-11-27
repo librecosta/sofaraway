@@ -16,6 +16,9 @@ import { dynamicLightEnvelope, steadyLights } from '../../app/game/core/rhythmic
 import { volumeById } from '../../app/game/core/volumes';
 import type { GateVisual } from '../../app/game/graphics/gates.client';
 import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
+import { facilityZones } from '../../app/game/core/descent-facility';
+import { FacilityInstallations } from '../../app/game/graphics/descent-installations.client';
+import { IndustrialGeometry } from '../../app/game/graphics/industrial-geometry';
 import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.client';
 import { makeDaybreakCloudField } from '../../app/game/graphics/daybreak-cloud-field';
 import { makeDaybreakCirrusField } from '../../app/game/graphics/daybreak-cirrus';
@@ -31,7 +34,7 @@ type Pass = 'scene' | 'depth' | 'dof' | 'bloom' | 'composite' | 'bright' | 'blur
 type GpuScope = Pass | 'frame' | 'exterior';
 type GpuProbe = 'baseline' | 'colour-only-resolve' | 'single-sample' | 'rgba8-colour'
   | 'without-glass' | 'without-fixtures' | 'without-transparent' | 'without-opaque' | 'front-side-opaque'
-  | 'single-clear' | 'red-depth';
+  | 'single-clear' | 'red-depth' | 'without-facility-structure' | 'without-facility-lenses' | 'without-laser-panes';
 type ExteriorProbe = 'full' | 'without-exterior' | 'flat-sky' | 'sky-only' | 'without-cirrus' | 'without-clouds'
   | 'without-relief' | 'without-swells' | 'without-canopy' | 'without-gate-glass';
 type Values = Record<string, number[]>;
@@ -60,9 +63,14 @@ let exteriorFields: DataTexture[] = [];
 let depthResolves = 0;
 let colourResolves = 0;
 let traceTunnel = false;
-type TunnelBuild = { s0: number; s1: number; ms: number; bytes: number; meshes: number };
+type FacilityBuild = { stage: string; vertices: number; instances: number; ms: number; range: [number, number] };
+type TunnelBuild = { s0: number; s1: number; ms: number; bytes: number; meshes: number; facility: FacilityBuild[] };
 let tunnelBuilds: TunnelBuild[] = [];
-let tunnelFrames: { station: number; lookahead: number; builds: TunnelBuild[]; submitMs: number; rafAfterMs?: number }[] = [];
+let facilityBuilds: FacilityBuild[] = [];
+let tunnelFrames: { station: number; phase: SceneState['phase']; lookahead: number; builds: TunnelBuild[]; submitMs: number;
+  frameAt: number; updateMs?: number; uploadBytes?: number; rafBeforeMs?: number; rafAfterMs?: number; rebuild: boolean }[] = [];
+let taskWindows: { start: number; duration: number }[] = [];
+let submittedBufferBytes = 0;
 let lastBuildFrameAt = 0;
 const pending: { query: WebGLQuery; scope: GpuScope; frame: number }[] = [];
 const bloom = new Map<number, { count: number; ms: number }>();
@@ -151,6 +159,10 @@ function probeSceneColour(scene: Object3D, call: () => unknown) {
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     const hide = probe === 'without-glass' ? object.renderOrder === 6 && materials.some(mat => mat.blending === AdditiveBlending)
       : probe === 'without-fixtures' ? object.name.startsWith('elsewhere-') && materials.some(mat => mat.blending === AdditiveBlending)
+      : probe === 'without-facility-structure' ? ['facility-structure', 'descent-transfer-chamber'].includes(object.name)
+      : probe === 'without-facility-lenses' ? ['facility-installations', 'facility-fixtures', 'facility-security',
+        'descent-transfer-guideways', 'descent-transfer-chase'].includes(object.name)
+      : probe === 'without-laser-panes' ? object.name.startsWith('laser-')
       : probe === 'without-transparent' ? materials.every(mat => mat.transparent) : materials.every(mat => !mat.transparent);
     if (hide) hidden.push(object);
   });
@@ -211,7 +223,13 @@ function instrumentRenderer(value: Graphics) {
     return field ? elapsed(`mipmap.${field}`, call) : call();
   });
   for (const method of ['texImage3D', 'texStorage3D', 'texSubImage3D']) time(gl, method, 'glTexture3D');
-  for (const method of ['bufferData', 'bufferSubData']) time(gl, method, 'glBuffer');
+  for (const method of ['bufferData', 'bufferSubData']) wrap(gl, method, (_self, args, call) => {
+    if (measuring && traceTunnel) {
+      const data = args[method === 'bufferData' ? 1 : 2];
+      if (ArrayBuffer.isView(data)) submittedBufferBytes += data.byteLength;
+    }
+    return elapsed('glBuffer', call);
+  });
   for (const method of ['renderbufferStorage', 'renderbufferStorageMultisample']) time(gl, method, 'glRenderbuffer');
   wrap(gl, 'blitFramebuffer', (_self, args, call) => {
     if (gpuProbe && measuring && renderer.getRenderTarget() === (Reflect.get(value, 'post') as PostFX)?.rtScene) {
@@ -251,7 +269,20 @@ function instrumentRenderer(value: Graphics) {
 
 time(FixedStepClock.prototype, 'consume', 'simulation');
 time(Simulation.prototype, 'step', 'simulationStep');
-time(DescentFacility.prototype, 'build', 'facilityBuild');
+wrap(DescentFacility.prototype, 'build', (self, [from, to], call) => {
+  if (!measuring || !traceTunnel) return elapsed('facilityBuild', call);
+  const at = performance.now();
+  const meshes = call() as ReturnType<DescentFacility['build']>;
+  const ms = performance.now() - at;
+  const instance = meshes.find(mesh => mesh.name === 'facility-installations') as import('three').InstancedMesh | undefined;
+  facilityBuilds.push({ stage: (self as DescentFacility).zoneAt(((from as number) + (to as number)) / 2).section,
+    vertices: meshes[0].geometry.getAttribute('position').count, instances: instance?.count ?? 0,
+    ms, range: [from as number, to as number] });
+  add(cpu, 'facilityBuild', ms);
+  return meshes;
+});
+time(IndustrialGeometry.prototype, 'build', 'industrialBuffers');
+time(FacilityInstallations.prototype, 'build', 'installationBuffers');
 time(DescentFacility.prototype, 'light', 'facilityLight');
 time(DaybreakExterior.prototype, 'update', 'daybreakExterior');
 time(OrbitWorld.prototype, 'update', 'orbitUpdate');
@@ -261,6 +292,7 @@ time(Graphics.prototype, 'warmSurface', 'warmSurface');
 wrap(Tunnel.prototype, '_buildChunk', (_self, [s0, s1], call) => {
   if (!measuring || !traceTunnel) return elapsed('chunk', call);
   const at = performance.now();
+  const facilityStart = facilityBuilds.length;
   const chunk = call() as ReturnType<Tunnel['_buildChunk']>;
   const ms = performance.now() - at;
   let bytes = 0;
@@ -268,7 +300,10 @@ wrap(Tunnel.prototype, '_buildChunk', (_self, [s0, s1], call) => {
     bytes += geometry.index?.array.byteLength ?? 0;
     for (const attribute of Object.values(geometry.attributes)) bytes += attribute.array.byteLength;
   }
-  tunnelBuilds.push({ s0: s0 as number, s1: s1 as number, ms, bytes, meshes: chunk.meshes.length });
+  for (const mesh of chunk.meshes) {
+    bytes += (mesh as Partial<import('three').InstancedMesh>).instanceMatrix?.array.byteLength ?? 0;
+  }
+  tunnelBuilds.push({ s0: s0 as number, s1: s1 as number, ms, bytes, meshes: chunk.meshes.length, facility: facilityBuilds.slice(facilityStart) });
   add(cpu, 'chunk', ms);
   return chunk;
 });
@@ -296,13 +331,18 @@ wrap(Graphics.prototype, 'draw', (self, [state], call) => {
   sampleGpu = drawIndex % 4 === 0 ? round[Math.floor(drawIndex / 4) % round.length] : undefined;
   rendererCpu = 0;
   const buildStart = tunnelBuilds.length;
+  const uploadStart = submittedBufferBytes;
+  const rebuildStart = (cpu.tunnelRebuild?.length ?? 0) + (cpu.tunnelJunction?.length ?? 0);
   try { return elapsed('graphicsDraw', () => gpuTime('frame', call)); }
   finally {
     if (tunnelBuilds.length > buildStart) {
       const tunnel = Reflect.get(Reflect.get(self as Graphics, 'volume'), 'tunnel') as Tunnel;
-      const station = (state as SceneState).trackDistance;
+      const { trackDistance: station, phase } = state as SceneState;
       const front = Math.max(...tunnel.chunks.map(chunk => chunk.s1));
-      tunnelFrames.push({ station, lookahead: front - station, builds: tunnelBuilds.slice(buildStart), submitMs: rendererCpu });
+      tunnelFrames.push({ station, phase, lookahead: front - station, builds: tunnelBuilds.slice(buildStart),
+        submitMs: rendererCpu, frameAt, updateMs: cpu.graphicsUpdate?.at(-1), rafBeforeMs: frames.at(-1),
+        uploadBytes: submittedBufferBytes - uploadStart,
+        rebuild: (cpu.tunnelRebuild?.length ?? 0) + (cpu.tunnelJunction?.length ?? 0) > rebuildStart });
       lastBuildFrameAt = frameAt;
     }
     add(cpu, 'rendererFrame', rendererCpu);
@@ -347,15 +387,23 @@ function begin() {
   depthResolves = 0;
   colourResolves = 0;
   tunnelBuilds = [];
+  facilityBuilds = [];
   tunnelFrames = [];
+  taskWindows = [];
+  submittedBufferBytes = 0;
   lastBuildFrameAt = 0;
   if (PerformanceObserver.supportedEntryTypes?.includes('longtask')) {
     longTasks = new PerformanceObserver(list => {
-      for (const entry of list.getEntries()) add(cpu, 'longTask', entry.duration);
+      for (const entry of list.getEntries()) recordTask(entry);
     });
     longTasks.observe({ type: 'longtask' });
   }
   measuring = true;
+}
+
+function recordTask(entry: PerformanceEntry) {
+  add(cpu, 'longTask', entry.duration);
+  if (traceTunnel) taskWindows.push({ start: entry.startTime, duration: entry.duration });
 }
 
 function end() {
@@ -363,7 +411,7 @@ function end() {
   pollGpu();
   const unreadyQueries = pending.length;
   pollGpu(true);
-  for (const entry of longTasks?.takeRecords() ?? []) add(cpu, 'longTask', entry.duration);
+  for (const entry of longTasks?.takeRecords() ?? []) recordTask(entry);
   longTasks?.disconnect();
   longTasks = undefined;
   const summarize = (data: Values) => Object.fromEntries(Object.entries(data).map(([key, samples]) => [key, stats(samples)]));
@@ -379,7 +427,7 @@ function end() {
     gpuStatus: !timing || !gpu.frame?.length ? 'GPU_TIMING_UNAVAILABLE' : 'AVAILABLE',
     gpu: summarize(gpu), disjoint, unreadyQueries,
     ...(gpuProbe ? { resolves: { colour: colourResolves, depth: depthResolves } } : {}),
-    ...(traceTunnel ? { tunnelFrames } : {}),
+    ...(traceTunnel ? { tunnelFrames, taskWindows } : {}),
   };
 }
 
@@ -629,6 +677,28 @@ const stability = {
       results.push({ field, samples, hashes });
     }
     return results;
+  },
+  descentConstruction(repeats: number) {
+    const definition = volumeById('descent');
+    const sim = new Simulation(definition, {}, undefined, 'standard', 'impossible');
+    sim.start('impossible', 0);
+    const zones = facilityZones(definition, 'standard', sim.reference);
+    const facility = new DescentFacility(sim.path, zones);
+    const ranges = zones.map(zone => {
+      const midpoint = (zone.start + zone.finish) / 2;
+      return { section: zone.section, start: Math.floor(midpoint / 210) * 210 };
+    });
+    try {
+      for (const { start } of ranges) for (const mesh of facility.build(start, start + 210)) mesh.geometry.dispose();
+      return ranges.map(({ section, start }) => {
+        begin();
+        for (let i = 0; i < repeats; i++) {
+          for (const mesh of facility.build(start, start + 210)) elapsed('facilityMeshDispose', () => mesh.geometry.dispose());
+        }
+        const facilityBuild = stats(cpu.facilityBuild);
+        return { section, start, ...end().cpu, facilityBuild };
+      });
+    } finally { facility.dispose(); }
   },
   stream(id: VolumeId) {
     begin();

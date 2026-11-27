@@ -274,7 +274,8 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
   const housing = new THREE.Color();
   const nextHousing = new THREE.Color();
   const sources: { station: number; extent: number; origin: THREE.Vector3; toEnd: THREE.Vector3;
-    inverseLength: number; reachSq: number; group: ControlLamp; gain: number }[] = [];
+    inverseLength: number; reachSq: number; group: ControlLamp; gain: number;
+    minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }[] = [];
   for (const [i, zone] of zones.entries()) {
     const first = bayAtOrAfter(zone, from - workPadding);
     const limit = Math.min(zone.end, to + workPadding);
@@ -298,8 +299,15 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
           }
           fixtures.beam(origin, end, frame.f, halfWidth, halfDepth, surface ? housing : lamp);
         }
+        // The segment's expanded bounds enclose every point that can receive spill.
+        const pad = reach + 1e-8;
+        const bounds = {
+          minX: Math.min(origin.x, end.x) - pad, maxX: Math.max(origin.x, end.x) + pad,
+          minY: Math.min(origin.y, end.y) - pad, maxY: Math.max(origin.y, end.y) + pad,
+          minZ: Math.min(origin.z, end.z) - pad, maxZ: Math.max(origin.z, end.z) + pad,
+        };
         const toEnd = end.sub(origin);
-        sources.push({ station: s + offset, extent: reach + 5, origin, toEnd,
+        sources.push({ station: s + offset, extent: reach + 5, origin, toEnd, ...bounds,
           inverseLength: 1 / toEnd.lengthSq(), reachSq: reach ** 2, group, gain: spillOnly ? .28 : 1 });
       };
       if (hasFlightCollar(zone, bay, s)) {
@@ -345,17 +353,19 @@ function buildWorkLights(path: Path, zones: readonly Zone[], from: number, to: n
     }
   }
   let nearby: typeof sources = [];
-  const towardLight = new THREE.Vector3();
   const structure = new IndustrialGeometry((vertex, normal, target) => {
     let irradiance = 0, strongest = 0;
-    for (const { origin, toEnd, inverseLength, reachSq, group, gain, station } of nearby) {
-      towardLight.subVectors(origin, vertex);
-      const t = THREE.MathUtils.clamp(-towardLight.dot(toEnd) * inverseLength, 0, 1);
-      towardLight.addScaledVector(toEnd, t);
-      const distSq = towardLight.lengthSq();
+    const { x, y, z } = vertex;
+    for (const light of nearby) {
+      if (x < light.minX || x > light.maxX || y < light.minY || y > light.maxY || z < light.minZ || z > light.maxZ) continue;
+      const { origin, toEnd, inverseLength, reachSq, group, gain, station } = light;
+      const dx = origin.x - x, dy = origin.y - y, dz = origin.z - z;
+      const t = THREE.MathUtils.clamp(-(dx * toEnd.x + dy * toEnd.y + dz * toEnd.z) * inverseLength, 0, 1);
+      const lx = dx + toEnd.x * t, ly = dy + toEnd.y * t, lz = dz + toEnd.z * t;
+      const distSq = lx * lx + ly * ly + lz * lz;
       if (distSq >= reachSq) continue;
       // The strips light the double-sided plates, with weaker spill along grazing faces.
-      const incidence = Math.abs(normal.dot(towardLight)) / Math.sqrt(Math.max(distSq, .25));
+      const incidence = Math.abs(normal.x * lx + normal.y * ly + normal.z * lz) / Math.sqrt(Math.max(distSq, .25));
       const falloff = 1 - distSq / reachSq;
       const strength = gain * falloff ** 3 * (.16 + .84 * incidence);
       irradiance += strength;
