@@ -1,5 +1,5 @@
 import { initialSnapshot } from '../contracts';
-import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, ExperienceMode, PauseReason, QualityTier, VolumeId } from '../contracts';
+import type { GameError, GameOptions, GameRuntime, GameSnapshot, Difficulty, ExperienceMode, PauseReason, PlayerMessage, QualityTier, VolumeId } from '../contracts';
 import type { RouteKind } from '../core/branches';
 import { FixedStepClock, MAX_STEPS, RECOVERY_GAP, RunTimeline, STEP } from '../core/clock';
 import { clamp } from '../core/collision';
@@ -32,8 +32,9 @@ export interface RuntimeView {
 }
 
 const audioError: GameError = Object.freeze({
-  kind: 'audio', message: 'Audio could not start. Try again or play with sound off.',
+  kind: 'audio', message: 'audioStartFailed',
 });
+const recoveringNotice: PlayerMessage = Object.freeze({ id: 'recoveringFlight' });
 
 export class Runtime implements GameRuntime {
   private snapshot = initialSnapshot;
@@ -73,7 +74,7 @@ export class Runtime implements GameRuntime {
   private cached = false;
   private initMs = 0;
   private switchMs = 0;
-  private notice = '';
+  private notice: PlayerMessage | null = null;
   private noticeUntil = 0;
   private lightAmount = 0;
   private lightStamp = 0;
@@ -104,6 +105,7 @@ export class Runtime implements GameRuntime {
       quality: options.quality, volume: options.volume, muted: options.muted,
       dynamicLights: !!options.dynamicLights,
       immersiveMouse: options.immersiveMouse ?? initialSnapshot.immersiveMouse,
+      autoBoost: options.autoBoost === true,
       localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
@@ -374,6 +376,10 @@ export class Runtime implements GameRuntime {
     this.publish({ immersiveMouse: value });
   }
 
+  setAutoBoost(value: boolean) {
+    if (this.snapshot.phase === 'menu' || this.snapshot.phase === 'results') this.publish({ autoBoost: value });
+  }
+
   private requestImmersiveMouse(gesture?: Event) {
     const flags = this.options?.diagnostics;
     if (this.snapshot.immersiveMouse && this.snapshot.mode !== 'showcase' && flags?.fixedTime === null && !flags.autoplay) {
@@ -402,7 +408,7 @@ export class Runtime implements GameRuntime {
     return this.lightInput;
   }
 
-  showMessage(message: string) {
+  showMessage(message: PlayerMessage) {
     this.notice = message;
     this.noticeUntil = performance.now() + 1500;
     this.publish({ message });
@@ -437,8 +443,11 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase === 'disposed') return;
     this.generation++;
     this.release();
-    this.publish({ phase: error instanceof UnsupportedGraphics ? 'unsupported' : 'error',
-      error: Object.freeze({ kind, stage, message: error instanceof Error ? error.message : 'Could not load the game.' }) });
+    const unsupported = error instanceof UnsupportedGraphics;
+    const message = unsupported ? error.reason
+      : stage === 'recovery' ? 'contextFailed' : kind === 'graphics' ? 'graphicsInitFailed' : 'gameLoadFailed';
+    if (this.options?.diagnostics.debug) this.view.debug(String(error));
+    this.publish({ phase: unsupported ? 'unsupported' : 'error', error: Object.freeze({ kind, stage, message }) });
   }
 
   private menuRecord(id: VolumeId, difficulty: Difficulty, mode: ExperienceMode) {
@@ -607,8 +616,9 @@ export class Runtime implements GameRuntime {
 
   private step(sim: Simulation, neutralize = false) {
     const pilot = this.showcasePilot;
-    const input = pilot ? (sim.phase === 'playing' ? pilot.input(sim) : idleInput)
+    let input = pilot ? (sim.phase === 'playing' ? pilot.input(sim) : idleInput)
       : neutralize ? this.lastInput : this.input?.read() ?? idleInput;
+    if (sim.phase === 'playing' && this.activeRun?.policy.autoBoost && !input.boosting) input = { ...input, boosting: true };
     if (!pilot && !neutralize) this.lastInput = { ...input, target: null, dragX: 0, dragY: 0 };
     const { lives, pickup, branch, gatesNeutralized, encore } = sim;
     sim.step(STEP, input, !pilot && neutralize);
@@ -618,7 +628,7 @@ export class Runtime implements GameRuntime {
       this.pendingPickupDraw = false;
     }
     if (sim.gatesNeutralized > gatesNeutralized) {
-      this.showMessage(sim.mode === 'standard' ? 'RECOVERY · BEST INELIGIBLE' : 'GATE NEUTRALIZED DURING RECOVERY');
+      this.showMessage({ id: sim.mode === 'standard' ? 'recoveryBestIneligible' : 'gateNeutralized' });
     }
     if (lives !== sim.lives || pickup !== sim.pickup || branch !== sim.branch || encore !== sim.encore ||
       sim.routeGuide !== this.snapshot.routeHint) this.publishRun();
@@ -757,7 +767,7 @@ export class Runtime implements GameRuntime {
       this.surfaceChanged();
       // Detach Three's disposal callbacks before the restored context owns new GL handles.
       this.graphics?.releaseSurface();
-      this.publish({ error: Object.freeze({ kind: 'graphics', message: 'Graphics were interrupted. Waiting for WebGL to recover.' }) });
+      this.publish({ error: Object.freeze({ kind: 'graphics', message: 'contextPending' }) });
       clearTimeout(this.contextRecoveryTimer);
       this.contextRecoveryTimer = setTimeout(() => {
         if (this.contextLost) this.fail(new Error('WebGL did not recover. Try again to start a new run.'), 'graphics', 'recovery');
@@ -834,7 +844,7 @@ export class Runtime implements GameRuntime {
         return true;
       }
       this.setMuted(!this.snapshot.muted);
-      this.showMessage(this.snapshot.muted ? 'MUTED' : 'SOUND ON');
+      this.showMessage({ id: this.snapshot.muted ? 'mutedNotice' : 'soundOn' });
       return true;
     } else if (key === 'r') {
       if (event.shiftKey) this.recorder?.download();
@@ -854,7 +864,7 @@ export class Runtime implements GameRuntime {
       boosting: this.snapshot.phase === 'playing' && sim.boosting,
       shield: sim.shield, resonance: sim.resonance,
       route: sim.route, routeHint: sim.routeGuide,
-      message: this.recovering ? 'RECOVERING FLIGHT' : performance.now() < this.noticeUntil ? this.notice : sim.message,
+      message: this.recovering ? recoveringNotice : performance.now() < this.noticeUntil ? this.notice : sim.message,
       hint: this.snapshot.phase === 'playing' && sim.beat < 15, ...patch });
   }
 

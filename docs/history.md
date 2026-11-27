@@ -24,6 +24,7 @@
 - [F5 release preparation](audits/F5-release-readiness.md)
 - [F5-F1 fullscreen and Immersive Mouse](audits/F5-F1-fullscreen-immersive-input.md). Immersive Mouse is opt-in by default in the current code.
 - [F6-M1 mobile orientation](audits/F6-M1-mobile-orientation.md) and [F6-B1 regional artifact isolation](https://github.com/librecosta/sofaraway/commit/5aafe3c). Use the [current hosting guide](verification.md#hosting-the-production-build) for Web release checks.
+- [T1-A bilingual player UI and Auto Boost](audits/T1-A-shared-localization.md).
 
 ## Proposals
 

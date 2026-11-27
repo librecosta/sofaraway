@@ -9,17 +9,19 @@ const CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*+-=?';
 export function DecodeButton({ label, children, disabled, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   const [active, setActive] = useState(false);
   const [elapsed, setElapsed] = useState(DURATION);
+  const revealOnly = /\p{Script=Han}/u.test(label);
+  const duration = revealOnly ? 250 : DURATION;
   useEffect(() => {
     if (!active || disabled) return;
     const start = performance.now();
     setElapsed(0);
     const timer = window.setInterval(() => {
-      const time = Math.min(DURATION, performance.now() - start);
+      const time = Math.min(duration, performance.now() - start);
       setElapsed(time);
-      if (time === DURATION) window.clearInterval(timer);
+      if (time === duration) window.clearInterval(timer);
     }, 25);
     return () => window.clearInterval(timer);
-  }, [active, disabled, label]);
+  }, [active, disabled, label, duration]);
 
   function play() {
     if (!disabled && !matchMedia('(prefers-reduced-motion: reduce)').matches) setActive(true);
@@ -31,7 +33,7 @@ export function DecodeButton({ label, children, disabled, ...props }: ButtonHTML
   }
 
   const glyphs = Array.from(label);
-  const revealed = Math.floor(elapsed / DURATION * glyphs.length);
+  const revealed = Math.floor(elapsed / duration * glyphs.length);
   const variation = Math.floor(elapsed / FLIP_DELAY);
   return (
     <button type="button" aria-label={label} {...props} disabled={disabled}
@@ -43,9 +45,9 @@ export function DecodeButton({ label, children, disabled, ...props }: ButtonHTML
         {glyphs.map((glyph, index) => {
           const encrypted = active && !disabled && index >= revealed && /\S/.test(glyph);
           const noise = CHARACTERS[(index * 13 + variation * (17 + index)) % CHARACTERS.length];
-          return <span className={c('decode-cell', encrypted && 'encrypted')} key={index}>
+          return <span className={c('decode-cell', encrypted && 'encrypted', encrypted && revealOnly && 'decode-reveal')} key={index}>
             <span className={c('decode-original')}>{glyph}</span>
-            {encrypted && <span className={c('decode-noise')}>{noise}</span>}
+            {encrypted && !revealOnly && <span className={c('decode-noise')}>{noise}</span>}
           </span>;
         })}
       </span>

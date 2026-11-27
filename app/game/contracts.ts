@@ -16,6 +16,15 @@ export type OrientationPreference = 'landscape' | 'portrait';
 export type GamePhase = 'uninitialized' | 'initializing' | 'menu' | 'starting' | 'playing'
   | 'paused' | 'crash' | 'results' | 'unsupported' | 'error' | 'disposed';
 
+export type FlightMessage =
+  | { readonly id: 'mainComplete' | 'mainCompleteEncore' | 'prismShield' }
+  | { readonly id: 'resonance' | 'clean'; readonly count: number }
+  | { readonly id: 'lumen' | 'encorePassed' | 'encoreClean'; readonly points: number };
+
+export type PlayerMessage = FlightMessage |
+  { readonly id: 'fullscreenUnavailableNotice' | 'recoveringFlight' | 'recoveryBestIneligible' |
+    'gateNeutralized' | 'mutedNotice' | 'soundOn' };
+
 export interface RunResult {
   readonly title: 'ESCAPED' | 'TERMINATED';
   readonly accuracy: number;
@@ -32,7 +41,8 @@ export interface RunResult {
 export interface GameError {
   readonly kind: 'audio' | 'graphics' | 'runtime';
   readonly stage?: 'recovery';
-  readonly message: string;
+  readonly message: 'audioStartFailed' | 'gameLoadFailed' | 'graphicsInitFailed' | 'contextPending' |
+    'contextFailed' | 'webglUnavailable' | 'webglLimits' | 'graphicsUnsupportedDetail';
 }
 
 export interface LastRun {
@@ -67,6 +77,7 @@ export interface GameSnapshot {
   readonly muted: boolean;
   readonly dynamicLights: boolean;
   readonly immersiveMouse: boolean;
+  readonly autoBoost: boolean;
   readonly error: GameError | null;
   readonly pauseReason: PauseReason | null;
   readonly result: RunResult | null;
@@ -79,7 +90,7 @@ export interface GameSnapshot {
   readonly route: RouteKind | null;
   readonly routeHint: BranchLayout | null;
   readonly hint: boolean;
-  readonly message: string;
+  readonly message: PlayerMessage | null;
   readonly soundUnavailable: boolean;
   readonly outroPhase?: OutroPhase;
   readonly encore?: EncoreResult;
@@ -96,6 +107,7 @@ export interface GameOptions {
   muted: boolean;
   dynamicLights?: boolean;
   immersiveMouse?: boolean;
+  autoBoost?: boolean;
   compactViewport?: boolean;
   saveRecords?: boolean;
   runSeed?: number;
@@ -133,6 +145,7 @@ export interface GameRuntime {
   setMuted(value: boolean): void;
   setDynamicLights(value: boolean): void;
   setImmersiveMouse(value: boolean): void;
+  setAutoBoost(value: boolean): void;
   getSnapshot(): GameSnapshot;
   subscribe(listener: () => void): () => void;
   dispose(): void;
@@ -158,6 +171,7 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   muted: false,
   dynamicLights: false,
   immersiveMouse: false,
+  autoBoost: false,
   error: null,
   pauseReason: null,
   result: null,
@@ -170,6 +184,6 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   route: null,
   routeHint: null,
   hint: false,
-  message: '',
+  message: null,
   soundUnavailable: false,
 });

@@ -1,18 +1,20 @@
 import type { VolumeId } from '../game/contracts';
+import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { GameDialog } from './GameDialog';
 import { NavigationButton } from './NavigationButton';
 
 export function CreditsPanel({ volume, close, preview }: { volume: VolumeId; close(): void; preview?: boolean }) {
-  return <GameDialog id="panel" title="Credits" dismiss={close} preview={preview}>
+  const { text: { t } } = usePlayerText();
+  return <GameDialog id="panel" title={t('creditsDialog')} dismiss={close} preview={preview}>
     <div className={c('panel', 'credits-panel')}>
-      <h2 className={c('panel-head')}>CREDITS</h2>
+      <h2 className={c('panel-head')}>{t('credits')}</h2>
       <div id="panel-body">
-        <p><b>SoFarAway</b> — a browser rhythm runner.<br />Thread the gates, ride the beat.</p>
-        <p>Made by <NavigationButton className={c('credit-link')} to="https://librecosta.com" newTab preview={preview}>librecosta</NavigationButton>.<br />
-          Every material, shader, texture and note is generated at runtime.</p>
-        <p><b>INSPIRATION</b><br />Inspired by <NavigationButton className={c('credit-link')} to="https://helloenjoy.itch.io/hellorun" newTab preview={preview}>HelloRun</NavigationButton> (HelloEnjoy, 2013).</p>
+        <p><b>SoFarAway</b><br />{t('creditsIntro')}</p>
+        <p>{t('madeBy')} <NavigationButton className={c('credit-link')} to="https://librecosta.com" newTab preview={preview}>librecosta</NavigationButton><br />
+          {t('generated')}</p>
+        <p><b>{t('inspiration')}</b><br />{t('inspiredBy')} <NavigationButton className={c('credit-link')} to="https://helloenjoy.itch.io/hellorun" newTab preview={preview}>HelloRun</NavigationButton> (HelloEnjoy, 2013)</p>
         <p><NavigationButton to={`/debug/?vol=${volume}`} preview={preview}>Technical Explorer</NavigationButton></p>
         <hr className={c('credits-divider')} />
         <NavigationButton className={c('credit-link', 'credits-contact')} to="mailto:contact@librecosta.com" preview={preview}>
@@ -23,7 +25,7 @@ export function CreditsPanel({ volume, close, preview }: { volume: VolumeId; clo
           contact@librecosta.com
         </NavigationButton>
       </div>
-      <DecodeButton className={c('panel-close')} data-act="closepanel" onClick={close} label="CLOSE" />
+      <DecodeButton className={c('panel-close')} data-act="closepanel" onClick={close} label={t('close')} />
     </div>
   </GameDialog>;
 }

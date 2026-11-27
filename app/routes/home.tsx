@@ -1,4 +1,5 @@
 import { GameViewport } from '../components/GameViewport';
+import { ChinaRegistration } from '../components/ChinaRegistration';
 
 const title = 'SoFarAway — A Procedural Rhythm Runner';
 const description = 'Four worlds. Four soundtracks. Thread the gates and ride the beat in a browser rhythm runner with entirely runtime-generated graphics and music. By LibreCosta.';
@@ -30,5 +31,5 @@ export const meta = () => [
 export const links = () => [{ rel: 'canonical', href: canonical }];
 
 export default function Home() {
-  return <GameViewport />;
+  return <GameViewport compliance={import.meta.env.VITE_REGION === 'cn' ? <ChinaRegistration /> : undefined} />;
 }

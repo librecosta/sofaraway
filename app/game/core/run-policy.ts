@@ -9,6 +9,7 @@ interface RunSelection {
   readonly mode: unknown;
   readonly difficulty: unknown;
   readonly showcaseRoute?: unknown;
+  readonly autoBoost?: boolean;
 }
 
 function validSeed(seed: number | undefined) {
@@ -29,6 +30,8 @@ export function resolveRunPolicy(selection: RunSelection, settings: RunSettings,
     scoring: !showcase,
     showcaseRoute: showcase ? route === 'challenge' || route === 'score' ? route : 'main' : null,
     allowSimulationDiagnostics: !showcase,
+    autoBoost: purpose === 'run' && fixedTime === null && !autoplay && !showcase &&
+      mode === 'standard' && selection.autoBoost === true,
     captureBoost: purpose === 'capture' && boost,
     recordsEligible: purpose === 'run' && !!settings.saveRecords && !showcase &&
       fixedTime === null && !autoplay && !god && !align && !debug && !record,

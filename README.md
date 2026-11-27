@@ -85,6 +85,14 @@ release and performance checks.
 | `P` / touch Pause button | Pause or resume |
 | `Esc` | Back to menu |
 
+**Auto Boost** in Settings maintains Boost throughout Standard flights on
+desktop and touch devices. It is off by default and takes effect at the next
+Start or Retry. Standard scores remain eligible for local records.
+
+Settings also lets you switch between English and Simplified Chinese. The
+international site starts in English and the China site starts in Simplified
+Chinese. The browser remembers your choice.
+
 **Immersive Mouse** is off by default. Enable it in Settings on a supported
 mouse-capable device to capture the mouse when you start, retry or resume a
 flight. Press `Esc` to release the mouse and pause. Settings also offers Enter

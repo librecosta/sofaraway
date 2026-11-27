@@ -1,9 +1,12 @@
 import { useLayoutEffect, useRef } from 'react';
+import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 
 export function HorizontalSelector<T extends string>({ label, options, value, choose, disabled, labelFor }: {
-  label: string; options: readonly T[]; value: T; choose(value: T): void; disabled: boolean; labelFor?(value: T): string;
+  label: string; options: readonly T[]; value: T; choose(value: T): void; disabled: boolean; labelFor(value: T): string;
 }) {
+  const { text } = usePlayerText();
+  const option = label.toLocaleLowerCase(text.locale);
   const track = useRef<HTMLDivElement>(null);
   const direction = useRef(1);
   const last = useRef(value);
@@ -39,11 +42,11 @@ export function HorizontalSelector<T extends string>({ label, options, value, ch
     event.stopPropagation();
     step(event.key === 'ArrowLeft' ? -1 : 1);
   }}>
-    <button type="button" aria-label={`Previous ${label.toLowerCase()}`} disabled={disabled} onClick={() => step(-1)}>‹</button>
+    <button type="button" aria-label={text.t('previousOption', { option })} disabled={disabled} onClick={() => step(-1)}>‹</button>
     <div ref={track} className={c('selector-track')} aria-live="polite">
       {options.map(option => <span key={option} data-choice={option} data-selected={option === value}
-        aria-hidden={option !== value || undefined}>{labelFor ? labelFor(option) : option.toUpperCase()}</span>)}
+        aria-hidden={option !== value || undefined}>{labelFor(option)}</span>)}
     </div>
-    <button type="button" aria-label={`Next ${label.toLowerCase()}`} disabled={disabled} onClick={() => step(1)}>›</button>
+    <button type="button" aria-label={text.t('nextOption', { option })} disabled={disabled} onClick={() => step(1)}>›</button>
   </div>;
 }

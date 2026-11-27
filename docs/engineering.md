@@ -21,6 +21,11 @@ Use [contracts](contracts/) for design constraints and [milestone history](histo
 - **Graphics** owns the visual scene and reads simulation state. Volume-owned materials, textures and reusable templates outlive streamed chunks. Chunks dispose their own geometry. Debug previews use the runtime generators with their own resource owners. ELSEWHERE-specific art belongs in its own paths and presets.
 - **Audio** owns Web Audio activation, the per-run output bus, scheduling and synthesis. Runtime aligns its anchor to the same run timeline as simulation. Audio callbacks have no authority over scoring or crossings.
 
+The player dictionaries format UI copy, numbers and structured game messages.
+Web prerenders the player route in its distribution default and applies the saved locale after hydration.
+Locale changes update the React UI and document language while the same runtime owns the run.
+The Web home route supplies the CN compliance footer independently of the selected language. [Player dictionaries](../app/i18n/player-text.ts)
+
 The Explorer's [preview surface](../app/game/debug/preview-surface.client.ts) owns one `Graphics` instance, the canvas context listeners and its resize observer. Scenic scenes, endings, the Interface backdrop and ORBIT flights use it to roll back failed setup and dispose on exit. Each preview retains its scene and redraw state. ORBIT retains its own restoration, flight frames, input and audio transport.
 
 The application and Explorer may drive the engine through their own adapters. The engine reads production game data and stays independent of React Router, Explorer pages and test harnesses. [Web diagnostics](verification.md#web-diagnostics) are a distinct entry path through the viewport and runtime.
@@ -40,6 +45,10 @@ Showcase runs Standard Impossible at cruise speed with scoring disabled. The [pi
 The [record store](../app/game/runtime/records.client.ts) saves completed run intents under one origin-scoped exclusive Web Lock. It reads and writes the original V1 localStorage document while holding the lock. One IndexedDB row hands the last successful document to the next lock holder because a different renderer can still read a stale localStorage cache. The handoff is consulted only during commits. Last follows successful commit order, and failed intents can be retried on the next completion in the same runtime. When either coordination API is unavailable, the remaining localStorage path is best effort. Coordination covers clients using the same lock protocol.
 
 ## Compatibility contracts
+
+Auto Boost is a run preference that defaults to off.
+Start and Retry freeze it for the flight. Runtime merges it with manual Boost in the same input frame before each playable Standard step.
+Ordinary record eligibility applies. Fixed-time captures use their existing diagnostic flag. [Run policy](../app/game/core/run-policy.ts)
 
 | Surface | Authoritative artifact and expected behavior |
 | --- | --- |

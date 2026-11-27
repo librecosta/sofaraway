@@ -1,19 +1,18 @@
-import type { MouseEventHandler } from 'react';
+import type { MouseEventHandler, ReactNode } from 'react';
 import { experienceModes } from '../game/contracts';
 import type { Difficulty, ExperienceMode, GameSnapshot, VolumeId } from '../game/contracts';
-import { ROUTE_LABELS } from '../game/core/branches';
 import type { RouteKind } from '../game/core/branches';
 import { difficultySettings } from '../game/core/chart';
 import { difficultiesFor } from '../game/core/difficulty';
 import { SIGHTSEEING_LIVES } from '../game/core/sightseeing';
 import { volumeById } from '../game/core/volumes';
 import { totalRunScore } from '../game/runtime/records.client';
+import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { HorizontalSelector } from './HorizontalSelector';
 import { VolumeWheel } from './VolumeWheel';
 import { MusicInfo, SocialLinks } from './MenuUtilities';
-import publicSecurityBadge from './china-public-security.png?inline';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -32,12 +31,14 @@ interface Props {
   fullscreenActive: boolean;
   musicInitiallyOpen?: boolean;
   preview?: boolean;
+  compliance?: ReactNode;
 }
 
-const score = (n: number | null | undefined) => n?.toLocaleString('en-US') ?? '—';
 const showcaseRoutes = ['main', 'challenge', 'score'] as const;
 
 export function MainMenu(props: Props) {
+  const { text } = usePlayerText();
+  const { t } = text;
   const { snapshot } = props;
   const volume = volumeById(snapshot.volumeId);
   const { best, last } = snapshot.localRecord;
@@ -46,13 +47,13 @@ export function MainMenu(props: Props) {
   const standard = snapshot.mode === 'standard';
   const ready = snapshot.phase === 'menu' && snapshot.error?.kind !== 'graphics';
   const lives = difficultySettings(volume, snapshot.difficulty).lives;
-  const status = snapshot.phase === 'starting' ? 'STARTING' : 'INITIALIZING';
+  const status = t(snapshot.phase === 'starting' ? 'starting' : 'initializing');
   return (
     <section id="menu" className={c('screen', 'menu-screen', !props.visible && 'hidden')}>
       <div className={c('top')}>
         <div className={c('menu-tools')}>
-          <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label="CREDITS" />
-          <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label="SHARE" />
+          <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label={t('credits')} />
+          <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label={t('share')} />
         </div>
         <div className={c('menu-tools')}>
           <SocialLinks preview={props.preview} />
@@ -62,45 +63,41 @@ export function MainMenu(props: Props) {
       </div>
       <div className={c('center', 'menu-center')}>
         <header className={c('menu-brand')}>
-          <div className={c('eyebrow')}>PROCEDURAL RUNNER</div>
+          <div className={c('eyebrow')}>{t('proceduralRunner')}</div>
           <h1 className={c('wordmark')}>SoFarAway</h1>
-          <div className={c('tagline')}>MUSIC IN MOTION</div>
+          <div className={c('tagline')}>{t('tagline')}</div>
         </header>
-        <noscript><p>Enable JavaScript and use a WebGL2-capable browser to play.</p></noscript>
+        <noscript><p>{t('noScript')}</p></noscript>
         <VolumeWheel value={snapshot.volumeId} choose={props.chooseVolume} disabled={!ready} onTarget={props.onVolumeTarget} />
         <div className={c('menu-options')}>
-          <HorizontalSelector label="Play mode" options={experienceModes} value={snapshot.mode} choose={props.chooseMode} disabled={!ready} />
+          <HorizontalSelector label={t('playMode')} options={experienceModes} value={snapshot.mode}
+            choose={props.chooseMode} labelFor={text.mode} disabled={!ready} />
           <div className={c('menu-difficulty')} id="diff" data-collapsed={!standard} inert={!standard} aria-hidden={!standard || undefined}>
-            <div><HorizontalSelector label="Difficulty" options={difficultiesFor(volume.id)} value={snapshot.difficulty}
-              choose={props.chooseDifficulty} disabled={!ready || !standard} /></div>
+            <div><HorizontalSelector label={t('difficulty')} options={difficultiesFor(volume.id)} value={snapshot.difficulty}
+              choose={props.chooseDifficulty} labelFor={text.difficulty} disabled={!ready || !standard} /></div>
           </div>
-          {showcase && <HorizontalSelector label="Showcase route" options={showcaseRoutes} value={snapshot.showcaseRoute}
-            choose={props.chooseShowcaseRoute} labelFor={value => ROUTE_LABELS[value]} disabled={!ready} />}
-          <div className={c('mode-details')}>{showcase ? 'AUTO PILOT · IMPOSSIBLE COURSE · NO SCORE'
-            : sightseeing ? `${SIGHTSEEING_LIVES} LIVES · ⅓ SPEED` : `${lives} ${lives === 1 ? 'LIFE' : 'LIVES'}`}</div>
-          {!showcase && <div className={c('local-records', 'record-grid')} role="group" aria-label="Local records">
-            {!sightseeing && <div><span>BEST SCORE</span><b>{score(best)}</b></div>}
-            <div><span>{sightseeing ? 'LAST VISIT' : 'LAST RUN'}</span>
-              <b>{score(last && (sightseeing ? last.score : totalRunScore(last)))}</b>
-              <small>{last?.outcome}{last?.recovery && ' · RECOVERY'}</small></div>
+          {showcase && <HorizontalSelector label={t('showcaseRoute')} options={showcaseRoutes} value={snapshot.showcaseRoute}
+            choose={props.chooseShowcaseRoute} labelFor={text.route} disabled={!ready} />}
+          <div className={c('mode-details')}>{showcase ? t('showcaseDetail')
+            : sightseeing ? t('sightseeingDetail', { count: SIGHTSEEING_LIVES })
+              : t(lives === 1 ? 'oneLife' : 'lives', { count: lives })}</div>
+          {!showcase && <div className={c('local-records', 'record-grid')} role="group" aria-label={t('localRecords')}>
+            {!sightseeing && <div><span>{t('bestScore')}</span><b>{text.score(best)}</b></div>}
+            <div><span>{t(sightseeing ? 'lastVisit' : 'lastRun')}</span>
+              <b>{text.score(last && (sightseeing ? last.score : totalRunScore(last)))}</b>
+              <small>{last && text.outcome(last.outcome)}{last?.recovery && ` · ${t('recovery')}`}</small></div>
           </div>}
         </div>
       </div>
       <div className={c('bottom')}>
-        <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label="SETTINGS" />
+        <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label={t('settings')} />
         <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}
-          aria-keyshortcuts="X" label={ready ? (showcase ? 'START SHOWCASE' : 'START · PRESS X') : status} />
+          aria-keyshortcuts="X" label={ready ? t(showcase ? 'startShowcase' : 'start') : status} />
         <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen}
-          label={props.fullscreenActive ? 'EXIT FULL SCREEN' : 'FULL SCREEN'} />
-        {import.meta.env.VITE_REGION === 'cn' && props.visible && !props.preview &&
-          <footer className={c('menu-compliance')} lang="zh-CN" aria-label="China registration">
-            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">蜀ICP备2025158691号-3</a>
-            <a href="https://beian.mps.gov.cn/#/query/webSearch?code=51010702045043" target="_blank" rel="noreferrer">
-              <img src={publicSecurityBadge} width={13} height={14} alt="" />川公网安备51010702045043号
-            </a>
-          </footer>}
+          label={t(props.fullscreenActive ? 'exitFullScreen' : 'fullScreen')} />
+        {props.visible && !props.preview && props.compliance}
       </div>
-      <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
+      <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{text.message(snapshot.message)}</div>
     </section>
   );
 }
