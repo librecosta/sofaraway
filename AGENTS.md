@@ -1,6 +1,6 @@
-# Working on SoFaraway
+# Working on SoFarAway
 
-SoFaraway is a static browser rhythm runner with four procedurally generated volumes. The soundtrack drives the visual score and gate spacing. Player travel determines when crossings occur.
+SoFarAway is a static browser rhythm runner with four procedurally generated volumes. The soundtrack drives the visual score and gate spacing. Player travel determines when crossings occur.
 
 | Change | Start here |
 | --- | --- |
@@ -16,3 +16,4 @@ SoFaraway is a static browser rhythm runner with four procedurally generated vol
 - Write repository documentation, code comments and user-facing copy in English. Keep BSD-3-Clause and third-party notices intact.
 - Develop against `dev`. Check the worktree first, preserve existing edits and keep diffs scoped. Follow the task's authorization for commits, pushes and releases. Protect `main` and avoid force pushes.
 - On Node 24, the default verification is `npm run typecheck && npm test`. Add focused checks for the affected systems. In a handoff, name the touched areas, the checks actually run, and any remaining validation or environment limits.
+- Keep local captures and logs in ignored directories. Report security issues through [the private contact](SECURITY.md).

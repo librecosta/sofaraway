@@ -1,10 +1,12 @@
-# SoFaraway
+# SoFarAway
 
 > **A hypnotic browser rhythm runner. Thread the gates, ride the beat.**
 
-Vol. I–IV · runtime procedural graphics and music · WebGL2
+Vol. I–IV · runtime procedural graphics and music · WebGL2 and Web Audio
 
-![Menu](shots/menu.png)
+[Play SoFarAway](https://sofaraway.librecosta.com/) · [Technical Explorer](https://sofaraway.librecosta.com/debug/)
+
+![Purple gates and asteroids in ORBIT's blue and magenta AURORA nebula](public/social/orbit-aurora.jpg)
 
 ---
 
@@ -33,7 +35,18 @@ Your flight speed determines when you cross each gate.
 
 ## Play
 
-Use Node 24 LTS and run:
+Play in a browser with WebGL2 and JavaScript enabled. Start a run to hear its
+soundtrack. Standard offers Easy, Normal, Hard and Impossible. The menu keeps
+Best and Last by volume and difficulty in this browser, including Encore
+bonuses in both totals. Sightseeing keeps a Last Visit for each volume.
+
+Showcase flies the selected route through the real Impossible course at cruise
+speed. The pilot steers through the openings while the soundtrack and scene
+play, with the flight HUD, scoring and record writes disabled.
+
+## Run from source
+
+Use Node 24 LTS:
 
 ```sh
 npm ci
@@ -45,14 +58,6 @@ For a production preview, run `npm run build` and `npm start`, then open
 Configure the host to return `404.html` with status 404 for unknown paths.
 See the [verification and hosting guide](docs/verification.md) for the static
 artifact and hosting requirements.
-
-Standard offers Impossible in all four volumes. The menu keeps Best and Last by
-volume and difficulty in this browser, including Encore bonuses in both totals.
-Sightseeing shows Last Visit per volume.
-
-Showcase flies the selected route through the real Impossible course at cruise
-speed. The pilot steers through the openings while the soundtrack and scene
-play, without the flight HUD, scoring or record writes.
 
 ### Tests
 
@@ -80,10 +85,10 @@ browser matrix, audio, benchmarks and original A0 baseline.
 
 ## How it is built
 
-React Router prerenders the site. The browser loads a Three.js runtime and
-synthesizes the soundtrack with Web Audio. Start with the [contributor guide](AGENTS.md)
-or read the [engineering architecture](docs/engineering.md) for runtime boundaries,
-timing, spatial crossings and resource ownership.
+React and TypeScript implement the interface, and React Router prerenders the
+static site. Three.js and WebGL2 render geometry, materials and textures generated
+by the game. Web Audio synthesizes the soundtracks in the browser.
+See the [contributor guide](AGENTS.md) and [engineering architecture](docs/engineering.md).
 
 ## Technical Explorer
 
@@ -120,26 +125,26 @@ Fixed captures also accept `diff`, `mode`, and `route` for difficulty, play
 mode and ELSEWHERE branch side. The game also accepts `boost`, `cur`, `post`,
 `dof`, `panel`, `auto`, and `q=mobile` diagnostics.
 
-## Status
+## Project status
 
-`dev` is the development branch. Milestone decisions, superseded contracts
-and previous validation reports are indexed in [milestone history](docs/history.md).
-Screenshots in `shots/` are for documentation.
+`dev` is the development branch. The [release preparation report](docs/audits/F5-release-readiness.md)
+tracks the proposed first public release. [Milestone history](docs/history.md)
+indexes the technical contracts and validation evidence. `shots/` preserves
+documentation captures from earlier revisions.
 
 ## Credits
 
-Made by **[librecosta](https://github.com/librecosta)**.
-
-Built with [three.js](https://threejs.org). The game generates its materials,
-geometry, textures and notes at runtime.
+Made by **[LibreCosta](https://github.com/librecosta)**.
 
 **Inspiration.** The mechanic is inspired by **HelloRun** (HelloEnjoy, 2013), a
 browser game that proved WebGL could be this hypnotic. No code, assets or audio from
-it are used here. SoFaraway is an independent work that borrows a design idea and
+it are used here. SoFarAway is an independent work that borrows a design idea and
 takes it somewhere else.
 
-## License
+## License and security
 
 SoFarAway is licensed under the [BSD 3-Clause License](LICENSE).
 The static build includes the project license, the fonts' SIL Open Font
 License notices, and the bundled dependencies' third-party notices.
+
+For security reporting, see the [private disclosure contact](SECURITY.md).

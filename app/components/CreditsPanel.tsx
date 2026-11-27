@@ -9,7 +9,7 @@ export function CreditsPanel({ volume, close, preview }: { volume: VolumeId; clo
     <div className={c('panel', 'credits-panel')}>
       <h2 className={c('panel-head')}>CREDITS</h2>
       <div id="panel-body">
-        <p><b>SoFaraway</b> — a browser rhythm runner.<br />Thread the gates, ride the beat.</p>
+        <p><b>SoFarAway</b> — a browser rhythm runner.<br />Thread the gates, ride the beat.</p>
         <p>Made by <NavigationButton className={c('credit-link')} to="https://librecosta.com" newTab preview={preview}>librecosta</NavigationButton>.<br />
           Every material, shader, texture and note is generated at runtime.</p>
         <p><b>INSPIRATION</b><br />Inspired by <NavigationButton className={c('credit-link')} to="https://helloenjoy.itch.io/hellorun" newTab preview={preview}>HelloRun</NavigationButton> (HelloEnjoy, 2013).</p>

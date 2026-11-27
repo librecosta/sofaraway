@@ -9,7 +9,7 @@ import { inspectorScore } from '../game/debug/audio/track-adapter';
 import s from '../styles/audio-inspector.module.css';
 
 export const meta = () => [
-  { title: 'SoFaraway / Audio Inspector' },
+  { title: 'SoFarAway / Audio Inspector' },
   { name: 'robots', content: 'noindex' },
 ];
 

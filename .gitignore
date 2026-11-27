@@ -17,10 +17,17 @@ desktop.ini
 node_modules/
 .react-router/
 .wrangler/
+.edgeone/
+.local/
 build/
 test-results/
 playwright-report/
 *.log
+
+# Local build and hosting environment
+.env
+.env.*
+!.env.example
 
 # Local DAYBREAK soundtrack renders
 /scratch/daybreak-m1/exports/

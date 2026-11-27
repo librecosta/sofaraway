@@ -60,7 +60,7 @@ export function MainMenu(props: Props) {
       <div className={c('center', 'menu-center')}>
         <header className={c('menu-brand')}>
           <div className={c('eyebrow')}>PROCEDURAL RUNNER</div>
-          <h1 className={c('wordmark')}>SOFARAWAY</h1>
+          <h1 className={c('wordmark')}>SoFarAway</h1>
           <div className={c('tagline')}>MUSIC IN MOTION</div>
         </header>
         <noscript><p>Enable JavaScript and use a WebGL2-capable browser to play.</p></noscript>

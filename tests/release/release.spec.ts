@@ -6,6 +6,10 @@ import { explorerTopics } from '../../app/components/explorer/explorer-paths';
 const start = '[data-act=start]';
 const runtimeChunk = '**/assets/GameRuntime.client-*.js';
 const canonical = 'https://sofaraway.librecosta.com/';
+const title = 'SoFarAway — A Procedural Rhythm Runner';
+const description = 'Four worlds. Four soundtracks. Thread the gates and ride the beat in a browser rhythm runner with entirely runtime-generated graphics and music. By LibreCosta.';
+const socialImage = 'social/orbit-aurora.jpg';
+const discovery = ['robots.txt', 'sitemap.xml', 'llms.txt', '.well-known/security.txt', socialImage];
 
 test('static artifact, real 404, MIME and cache validators', async ({ request }) => {
   const html = await request.get('/?vol=orbit');
@@ -24,7 +28,7 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
   expect(await (await request.get('/debug/')).text()).toContain('name="robots" content="noindex"');
   const inspector = await request.get('/debug/audio');
   expect(inspector.status()).toBe(200);
-  expect(await inspector.text()).toContain('SoFaraway / Audio Inspector');
+  expect(await inspector.text()).toContain('SoFarAway / Audio Inspector');
   expect(await html.text()).not.toMatch(/<link[^>]+rel="modulepreload"[^>]+debug\.audio/);
 
   for (const topic of [...explorerTopics, 'audio', 'legacy']) {
@@ -43,7 +47,7 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
     expect(response.headers()['content-type'], path).toContain('text/html');
     const body = await response.text();
     expect(body).toContain('Page not found');
-    expect(body).toContain('<a href="/">Back to SoFaraway</a>');
+    expect(body).toContain('<a href="/">Back to SoFarAway</a>');
     expect(response.headers()['cache-control'], path).toContain('max-age=0');
   }
 
@@ -51,41 +55,80 @@ test('static artifact, real 404, MIME and cache validators', async ({ request })
     .filter(file => file.isFile())
     .map(file => relative('build/client', file.parentPath + '/' + file.name).replaceAll('\\', '/'));
   expect(files).toEqual(expect.arrayContaining(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'debug/audio/index.html', 'tools/render-audio.html',
-    'THIRD-PARTY-NOTICES.txt', 'licenses/SoFaraway.txt', 'licenses/OFL-Chakra-Petch.txt', 'licenses/OFL-Rajdhani.txt']));
+    'THIRD-PARTY-NOTICES.txt', 'licenses/SoFaraway.txt', 'licenses/OFL-Chakra-Petch.txt', 'licenses/OFL-Rajdhani.txt', ...discovery]));
   expect(await readFile('build/client/licenses/SoFaraway.txt', 'utf8')).toBe(await readFile('LICENSE', 'utf8'));
   const fingerprinted = /^assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
   const metadata = new Set(['index.html', '404.html', 'favicon.svg', 'debug/index.html', 'debug/audio/index.html', 'tools/render-audio.html',
     'THIRD-PARTY-NOTICES.txt', 'licenses/SoFaraway.txt', 'licenses/OFL-Chakra-Petch.txt', 'licenses/OFL-Rajdhani.txt',
     ...[...explorerTopics, 'legacy'].map(topic => `debug/${topic}/index.html`),
-    ...['elsewhere', 'daybreak', 'descent', 'orbit'].map(volume => `explorer/${volume}.webp`), '_headers', 'edgeone.json']);
+    ...['elsewhere', 'daybreak', 'descent', 'orbit'].map(volume => `explorer/${volume}.webp`), '_headers', 'edgeone.json', ...discovery]);
   expect(files.filter(path => !fingerprinted.test(path) && !metadata.has(path))).toEqual([]);
   const assets = files.filter(path => fingerprinted.test(path)).map(path => '/' + path).sort();
-  const cache = 'public, max-age=31536000, immutable';
+  const immutable = 'public, max-age=31536000, immutable';
+  const revalidate = 'public, max-age=0, must-revalidate';
+  const mutable = [
+    '/', '/index.html', '/404.html', '/404', '/debug', '/debug/*',
+    '/explorer/*', '/licenses/*', '/tools/*', '/social/*',
+    '/favicon.svg', '/robots.txt', '/sitemap.xml', '/llms.txt', '/.well-known/security.txt', '/THIRD-PARTY-NOTICES.txt',
+  ];
+  expect(assets.length + mutable.length).toBeLessThanOrEqual(100);
   expect(await readFile('build/client/_headers', 'utf8')).toBe(
-    assets.map(path => `${path}\n  Cache-Control: ${cache}\n`).join(''));
+    [...mutable.map(path => `${path}\n  Cache-Control: ${revalidate}\n`),
+      ...assets.map(path => `${path}\n  Cache-Control: ${immutable}\n`)].join(''));
   expect(JSON.parse(await readFile('build/client/edgeone.json', 'utf8'))).toEqual({
-    headers: assets.map(source => ({ source, headers: [{ key: 'Cache-Control', value: cache }] })),
+    headers: mutable.map(source => ({ source, headers: [{ key: 'Cache-Control', value: revalidate }] })),
   });
-  const mime = { js: /javascript/, css: /text\/css/, woff2: /font\/woff2/, html: /text\/html/, svg: /image\/svg\+xml/, webp: /image\/webp/, txt: /text\/plain/ };
+  expect(mutable.length).toBeLessThanOrEqual(30);
+  const mime = { js: /javascript/, css: /text\/css/, woff2: /font\/woff2/, html: /text\/html/, svg: /image\/svg\+xml/,
+    webp: /image\/webp/, jpg: /image\/jpeg/, txt: /text\/plain/, xml: /application\/xml/ };
   for (const path of files) {
     if (path === '_headers' || path === 'edgeone.json') continue;
     const ext = path.split('.').at(-1) as keyof typeof mime;
     const response = await request.head('/' + path);
     expect(response.status(), path).toBe(200);
     expect(response.headers()['content-type'], path).toMatch(mime[ext]);
-    expect(response.headers()['cache-control'], path).toContain(fingerprinted.test(path) ? 'immutable' : 'max-age=0');
+    expect(response.headers()['cache-control'], path).toBe(fingerprinted.test(path) ? immutable : revalidate);
     if (ext === 'js') expect(await readFile('build/client/' + path, 'utf8')).not.toMatch(
       /window\.(?:b0Harness|stability|syncHarness)|__shaderHandles|__startupSample/);
   }
+});
+
+test('crawl directives and public disclosure files match the indexable routes', async ({ request }) => {
+  const robots = await (await request.get('/robots.txt')).text();
+  expect(robots).toMatch(/^User-agent: \*$/m);
+  expect(robots).toMatch(/^Disallow:[ \t]*$/m);
+  expect(robots).not.toMatch(/^Disallow:[ \t]*\S/m);
+  expect(robots).toContain(`Sitemap: ${canonical}sitemap.xml`);
+
+  const sitemap = await (await request.get('/sitemap.xml')).text();
+  expect(sitemap).toContain('xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"');
+  expect(Array.from(sitemap.matchAll(/<loc>(.*?)<\/loc>/g), ([, loc]) => loc)).toEqual([canonical]);
+  const homepage = await (await request.get('/')).text();
+  expect(homepage).not.toMatch(/<meta[^>]*name="robots"[^>]*noindex/);
+
+  const llms = await (await request.get('/llms.txt')).text();
+  expect(llms).toMatch(/^# SoFarAway\r?\n/);
+  expect(llms).toContain(`[Play SoFarAway](${canonical})`);
+  expect(llms).toContain(`[Technical Explorer](${canonical}debug/)`);
+
+  const security = await request.get('/.well-known/security.txt');
+  expect(security.status()).toBe(200);
+  expect(security.headers()['content-type']).toContain('text/plain');
+  const report = await security.text();
+  expect(report).toMatch(/^Contact: mailto:contact@librecosta\.com\r?$/m);
+  const expiry = /^Expires: (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\r?$/gm;
+  const dates = Array.from(report.matchAll(expiry), ([, date]) => date);
+  expect(dates).toHaveLength(1);
+  expect(Date.parse(dates[0])).toBeGreaterThan(Date.now());
 });
 
 test('prerendered metadata and visible fallback without scripting', async ({ browser, baseURL }) => {
   const page = await browser.newPage({ baseURL, javaScriptEnabled: false });
   try {
     await page.goto('/?vol=orbit');
-    await expect(page).toHaveTitle('SoFaraway — a rhythm runner');
+    await expect(page).toHaveTitle(title);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.getByRole('heading', { name: 'SOFARAWAY' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'SoFarAway' })).toBeVisible();
     await expect(page.getByText('PROCEDURAL RUNNER', { exact: true })).toBeVisible();
     await expect(page.getByText('MUSIC IN MOTION', { exact: true })).toBeVisible();
     await expect(page.getByText(/enable JavaScript/i)).toBeVisible();
@@ -93,12 +136,19 @@ test('prerendered metadata and visible fallback without scripting', async ({ bro
     await expect(page.locator('link[rel=canonical]')).toHaveAttribute('href', canonical);
     await expect(page.locator('link[rel=icon]')).toHaveAttribute('href', '/favicon.svg');
     for (const [attribute, key, value] of [
-      ['name', 'description', /four procedural worlds/i],
+      ['name', 'description', description],
       ['property', 'og:url', canonical], ['property', 'og:type', 'website'],
-      ['property', 'og:title', /SoFaraway/], ['property', 'og:description', /LibreCosta/],
-      ['name', 'twitter:card', 'summary'], ['name', 'twitter:title', /SoFaraway/],
-      ['name', 'twitter:description', /LibreCosta/],
+      ['property', 'og:title', title], ['property', 'og:description', description],
+      ['property', 'og:site_name', 'SoFarAway'], ['property', 'og:image', canonical + socialImage],
+      ['property', 'og:image:type', 'image/jpeg'], ['property', 'og:image:width', '1200'],
+      ['property', 'og:image:height', '630'], ['property', 'og:image:alt', /AURORA/],
+      ['name', 'twitter:card', 'summary_large_image'], ['name', 'twitter:title', title],
+      ['name', 'twitter:description', description], ['name', 'twitter:image', canonical + socialImage],
+      ['name', 'twitter:image:alt', /AURORA/],
     ] as const) await expect(page.locator(`meta[${attribute}="${key}"]`)).toHaveAttribute('content', value);
+    await page.goto('/' + socialImage);
+    const size = await page.locator('img').evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight]);
+    expect(size).toEqual([1200, 630]);
   } finally { await page.close(); }
 });
 

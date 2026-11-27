@@ -19,7 +19,7 @@ test('UI State Studio renders production states, stays scrollable and never writ
   expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
   await expect(frame.getByText('PROCEDURAL RUNNER')).toBeVisible();
   await expect(frame.getByText('MUSIC IN MOTION')).toBeVisible();
-  await frame.getByRole('link', { name: 'SoFaraway on GitHub' }).click();
+  await frame.getByRole('link', { name: 'SoFarAway on GitHub' }).click();
   expect(page.context().pages()).toHaveLength(1);
   await scenario.focus();
   await expect(frame.locator('#menu')).toHaveCSS('font-family', /Rajdhani/);

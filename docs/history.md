@@ -16,6 +16,13 @@
 | The shared player UI uses borderless controls, an optional score-driven lighting layer and isolated Debug fixtures | [Interface and UI State Studio](contracts/D0-C1-borderless-interface-motion-state-studio.md) | [C1 validation](audits/D0-C1-validation.md) |
 | BSD-3-Clause applies to the project. Static hosting serves the prerendered artifact. | [License](../LICENSE), [Hosting](verification.md#hosting-the-production-build) | [D0-A1 license reconciliation](https://github.com/librecosta/sofaraway/blob/d98cbcaf5d720258f2d6192e71e82ef62acf0929/docs/audits/D0-A1-gameplay-report.md), [C0-D release audit](https://github.com/librecosta/sofaraway/blob/d98cbcaf5d720258f2d6192e71e82ef62acf0929/docs/audits/C0-D-release-readiness-report.md) |
 
+## Recent milestones
+
+- [F3 Technical Explorer acceptance](audits/F3-D-explorer-acceptance.md)
+- [F4 cross-volume architecture audit](audits/F4-A-cross-volume-architecture-audit.md) and [four-volume performance baseline](audits/F4-P0-performance-baseline.md)
+- F4 performance results for [ELSEWHERE streaming](audits/F4-P1-A-elsewhere-streaming-optimization.md), [shared PostFX](audits/F4-P1-B-elsewhere-gpu-postfx-optimization.md), [DAYBREAK](audits/F4-P2-daybreak-atmosphere-optimization.md), [DESCENT](audits/F4-P3-descent-facility-optimization.md) and [ORBIT](audits/F4-P4-orbit-procedural-cosmic-optimization.md)
+- [F5 release preparation](audits/F5-release-readiness.md)
+
 ## Archive index
 
 The original milestone files are preserved at commit [`d98cbca`](https://github.com/librecosta/sofaraway/tree/d98cbcaf5d720258f2d6192e71e82ef62acf0929/docs). The links pin the original language, formulas, baselines and measured results. To read an original locally, use `git show d98cbcaf5d720258f2d6192e71e82ef62acf0929:<repository-relative-path>`.

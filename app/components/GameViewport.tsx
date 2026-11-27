@@ -105,7 +105,7 @@ export function GameViewport() {
     const element = host.current!;
     const canvas = document.createElement('canvas');
     canvas.id = 'gl';
-    canvas.setAttribute('aria-label', 'SoFaraway game viewport');
+    canvas.setAttribute('aria-label', 'SoFarAway game viewport');
     element.append(canvas);
     const params = new URLSearchParams(location.search);
     setHideUi(params.get('ui') === '0');

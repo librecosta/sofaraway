@@ -76,7 +76,7 @@ test('Credits, Settings and menu controls keep readable sizes in a narrow viewpo
   await expect(page.locator('[data-act=start]')).toBeEnabled();
   for (const [name, href] of [
     ['LibreCosta on X', 'https://x.com/LibreCostaHQ'],
-    ['SoFaraway on GitHub', 'https://github.com/librecosta/sofaraway'],
+    ['SoFarAway on GitHub', 'https://github.com/librecosta/sofaraway'],
   ]) {
     const link = page.getByRole('link', { name });
     await expect(link).not.toHaveAttribute('href');

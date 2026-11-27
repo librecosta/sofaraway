@@ -4,7 +4,7 @@ test('prerenders the page and hydrates one client canvas', async ({ request, pag
   const html = await (await request.get('/?vol=orbit')).text();
   expect(html).toContain('LibreCosta');
   expect(html).toContain('og:title');
-  expect(html).toContain('SOFARAWAY');
+  expect(html).toMatch(/<h1[^>]*>SoFarAway<\/h1>/);
   expect(html).not.toContain('<canvas');
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

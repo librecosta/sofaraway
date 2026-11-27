@@ -33,7 +33,7 @@ test('prerender, playable volume switching, a live run and restart', async ({ br
   });
   const html = await (await request.get('/?vol=orbit')).text();
   expect(html).toContain('og:title');
-  expect(html).toContain('SOFARAWAY');
+  expect(html).toMatch(/<h1[^>]*>SoFarAway<\/h1>/);
   expect(html).not.toContain('<canvas');
   const playable = await ready(page, info, '/?q=auto&dbg=1');
   const graphics = await page.evaluate(() => {
