@@ -138,6 +138,7 @@ test('WebGL context loss stops rendering and resumes the same run', async ({ pag
 
 test('audio suspension and restart preserve progress with one scheduler', async ({ page }, info) => {
   await page.addInitScript(() => {
+    localStorage.setItem('sofaraway.immersiveMouse', 'false');
     const Context = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Context) return;
     let active: AudioContext | undefined;

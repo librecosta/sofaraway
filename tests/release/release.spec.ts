@@ -153,6 +153,7 @@ test('prerendered metadata and visible fallback without scripting', async ({ bro
 });
 
 test('hydration loads the game on demand and keeps volume history working', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sofaraway.immersiveMouse', 'false'));
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });

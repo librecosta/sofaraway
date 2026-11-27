@@ -582,6 +582,7 @@ for (const difficulty of ['normal', 'hard', 'impossible'] as const) {
 }
 
 test('the production DESCENT Impossible run shows its result and restarts with one life', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sofaraway.immersiveMouse', 'false'));
   await page.goto('/?vol=descent&q=low');
   const next = page.getByRole('button', { name: 'Next difficulty' });
   await next.click();

@@ -102,7 +102,7 @@ export class Runtime implements GameRuntime {
       mode: options.mode, showcaseRoute: options.showcaseRoute ?? 'main',
       quality: options.quality, volume: options.volume, muted: options.muted,
       dynamicLights: !!options.dynamicLights,
-      immersiveMouse: !!options.immersiveMouse,
+      immersiveMouse: options.immersiveMouse ?? initialSnapshot.immersiveMouse,
       localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {

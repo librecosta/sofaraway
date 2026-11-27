@@ -70,6 +70,7 @@ test('development StrictMode effect replay initializes a single WebGL canvas', a
 });
 
 test('volume navigation and preferences work without replacing the document or canvas', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sofaraway.immersiveMouse', 'false'));
   await page.goto('/?vol=elsewhere&q=low');
   const start = page.locator('[data-act=start]');
   await expect(start).toBeEnabled();

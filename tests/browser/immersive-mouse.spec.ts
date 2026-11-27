@@ -50,12 +50,6 @@ async function openSettings(page: Page) {
   return page.getByRole('dialog', { name: 'Settings' });
 }
 
-async function enablePreference(page: Page) {
-  const settings = await openSettings(page);
-  await settings.getByRole('switch', { name: 'IMMERSIVE MOUSE' }).check();
-  await settings.getByRole('button', { name: 'CLOSE' }).click();
-}
-
 async function movement(page: Page, x: number, y: number) {
   await page.locator('canvas#gl').evaluate((canvas, [movementX, movementY]) => {
     const event = { movementX, movementY, clientX: 1, clientY: 1, bubbles: true };
@@ -71,23 +65,15 @@ function cursor(page: Page) {
   });
 }
 
-test('the default is off, and a denied lock preserves the preference and absolute mouse steering', async ({ page }) => {
+test('the default is on, and a denied lock preserves the preference and absolute mouse steering', async ({ page }) => {
   await mockPointerLock(page, 'deny');
   await page.goto('/?q=low&dbg=1');
   const settings = await openSettings(page);
   const toggle = settings.getByRole('switch', { name: 'IMMERSIVE MOUSE' });
-  await expect(toggle).not.toBeChecked();
+  await expect(toggle).toBeChecked();
   await expect(toggle).toHaveAccessibleDescription(/Press Esc/);
   expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBeNull();
-  await settings.getByRole('button', { name: 'CLOSE' }).click();
-  await page.locator(start).click();
-  await expect(page.locator('#hud')).toBeVisible();
   expect(await lockRequests(page)).toBeNull();
-  await page.keyboard.press('Escape');
-  await enablePreference(page);
-  await page.reload();
-  await expect(await openSettings(page)).toBeVisible();
-  await expect(toggle).toBeChecked();
   await settings.getByRole('button', { name: 'CLOSE' }).click();
   await page.keyboard.press('x');
   await expect(page.locator('#hud')).toBeVisible();
@@ -95,7 +81,18 @@ test('the default is off, and a denied lock preserves the preference and absolut
   expect(await owned(page)).toBeNull();
   await page.mouse.move(70, 180);
   await expect.poll(async () => (await readMetrics(page)).camera.tx).toBeLessThan(-1);
-  expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBe('true');
+  await page.keyboard.press('Escape');
+  await openSettings(page);
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await page.reload();
+  await expect(await openSettings(page)).toBeVisible();
+  await expect(toggle).not.toBeChecked();
+  expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBe('false');
+  await settings.getByRole('button', { name: 'CLOSE' }).click();
+  await page.locator(start).click();
+  await expect(page.locator('#hud')).toBeVisible();
+  expect(await lockRequests(page)).toBeNull();
 });
 
 test('a missing Pointer Lock API hides the mouse setting and keeps the game playable', async ({ page }) => {
@@ -116,7 +113,6 @@ test('a missing Pointer Lock API hides the mouse setting and keeps the game play
 test('relative mouse uses the shared steering map once, clamps and resizes its cursor, and keeps both Boost inputs', async ({ page }) => {
   await mockPointerLock(page, 'grant');
   await page.goto('/?q=low&dbg=1&god=1');
-  await enablePreference(page);
   await page.locator(start).click();
   await expect.poll(() => owned(page)).toBe('gl');
   await expect(page.locator('#hud')).toBeVisible();
@@ -163,7 +159,6 @@ test('relative mouse uses the shared steering map once, clamps and resizes its c
 test('legacy late success is released after a rapid pause/resume and runtime disposal', async ({ page }) => {
   await mockPointerLock(page, 'legacy-pending');
   await page.goto('/?q=low&god=1');
-  await enablePreference(page);
   await page.locator(start).click();
   await expect(page.locator('#hud')).toBeVisible();
   await page.keyboard.press('p');
@@ -191,7 +186,6 @@ test('legacy late success is released after a rapid pause/resume and runtime dis
 test('context recovery and background recovery resume without lock, and results offer an explicit retry', async ({ page }) => {
   await mockPointerLock(page, 'grant');
   await page.goto('/?q=low&dbg=1');
-  await enablePreference(page);
   await page.getByRole('button', { name: 'Next difficulty' }).click();
   await page.locator(start).click();
   await expect(page.locator('#hud')).toBeVisible();
@@ -260,7 +254,6 @@ test('Showcase, fixed captures and automatic starts do not request Pointer Lock'
 test('headed Chromium acquires native Pointer Lock from trusted Start and Resume gestures', async ({ page }) => {
   test.skip(process.env.F5_HEADED_POINTER_LOCK !== '1', 'Run explicitly in a headed Chromium session.');
   await page.goto('/?q=low&god=1&dbg=1');
-  await enablePreference(page);
   await page.locator(start).click();
   await expect.poll(() => owned(page)).toBe('gl');
   await expect(page.locator('#hud')).toBeVisible();

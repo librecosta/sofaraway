@@ -1,4 +1,4 @@
-import { experienceModes, qualities } from '../contracts';
+import { experienceModes, initialSnapshot, qualities } from '../contracts';
 import type { ExperienceMode, GameOptions, QualityTier } from '../contracts';
 import { clamp } from '../core/collision';
 import { resolveDifficulty } from '../core/difficulty';
@@ -26,6 +26,7 @@ export function readOptions(params: URLSearchParams): GameOptions {
     ? Number(seed) : undefined;
   const quality = params.get('q') ?? read('quality');
   const volume = Number(read('volume') ?? 80);
+  const immersiveMouse = read('immersiveMouse');
   const pair = (name: string) => params.get(name)?.split(',').map(Number) ?? [];
   const [x, y] = pair('cur');
   const [aperture, blur] = pair('dof');
@@ -41,7 +42,7 @@ export function readOptions(params: URLSearchParams): GameOptions {
     volume: Number.isFinite(volume) ? clamp(volume / 100, 0, 1) : 0.8,
     muted: read('muted') === 'true',
     dynamicLights: (fixedTime !== null ? params.get('lights') ?? read('dynamicLights') : read('dynamicLights')) === 'true',
-    immersiveMouse: read('immersiveMouse') === 'true',
+    immersiveMouse: immersiveMouse === 'true' || (immersiveMouse !== 'false' && initialSnapshot.immersiveMouse),
     diagnostics: {
       fixedTime, autoplay: params.get('auto') === '1', align: params.get('align') === '1',
       god: params.get('god') === '1' || (fixedTime !== null && !params.has('god')),

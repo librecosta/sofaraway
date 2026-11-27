@@ -24,6 +24,7 @@ test('material lab renders lit specimens or clearly exposes raw channels', async
 });
 
 test('prerender, playable volume switching, a live run and restart', async ({ browser, page, request, hasTouch }, info) => {
+  await page.addInitScript(() => localStorage.setItem('sofaraway.immersiveMouse', 'false'));
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {

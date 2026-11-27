@@ -155,7 +155,7 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   volume: 0.8,
   muted: false,
   dynamicLights: false,
-  immersiveMouse: false,
+  immersiveMouse: true,
   error: null,
   pauseReason: null,
   result: null,

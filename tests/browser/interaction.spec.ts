@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { readMetrics } from './diagnostics';
 
-test('desktop input, focus loss, termination and restart', async ({ page }) => {
+test('unlocked desktop input, focus loss, termination and restart', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sofaraway.immersiveMouse', 'false'));
   await page.goto('/?q=low&dbg=1');
   await page.getByRole('button', { name: 'Next difficulty' }).click();
   await expect(page.locator('#diff [data-selected=true]')).toHaveText('HARD');

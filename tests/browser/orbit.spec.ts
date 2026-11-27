@@ -63,6 +63,7 @@ test('ORBIT streams stable landmarks through cruise, Boost and mixed input acros
 
 test('the public ORBIT run recovers WebGL, judges a Hard collision and retries on the same canvas', async ({ page }) => {
   await page.addInitScript(() => {
+    localStorage.setItem('sofaraway.immersiveMouse', 'false');
     const key = 'sofaraway.records.v1';
     if (!localStorage.getItem(key)) localStorage.setItem(key,
       JSON.stringify({ version: 1, standard: { orbit: { normal: { best: 91, last: { score: 91, outcome: 'ESCAPED' } } } } }));
