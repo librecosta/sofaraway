@@ -86,8 +86,8 @@ test('UI State Studio renders production states, stays scrollable and never writ
   await frame.getByRole('button', { name: 'SETTINGS' }).click();
   await expect(frame.getByRole('switch', { name: 'DYNAMIC LIGHTS' })).toBeChecked();
   const immersiveMouse = frame.getByRole('switch', { name: 'IMMERSIVE MOUSE' });
-  await expect(immersiveMouse).toBeChecked();
-  await immersiveMouse.uncheck();
+  await expect(immersiveMouse).not.toBeChecked();
+  await immersiveMouse.check();
   await frame.getByRole('button', { name: 'ENTER FULLSCREEN' }).click();
   await expect(frame.getByRole('button', { name: 'EXIT FULLSCREEN' })).toBeVisible();
   expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
