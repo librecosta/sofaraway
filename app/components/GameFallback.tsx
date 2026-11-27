@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import type { GameSnapshot } from '../game/contracts';
+import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { GameDialog } from './GameDialog';
@@ -11,6 +12,7 @@ interface Props {
   menu(): void;
   settings(): void;
   preview?: boolean;
+  previewMessage?: string;
 }
 
 export function isBlockingFallback({ phase, error }: GameSnapshot) {
@@ -19,36 +21,35 @@ export function isBlockingFallback({ phase, error }: GameSnapshot) {
   return phase === 'paused' || !!error;
 }
 
-export function GameFallback({ snapshot, retry, startSilent, menu, settings, preview }: Props) {
+export function GameFallback({ snapshot, retry, startSilent, menu, settings, preview, previewMessage }: Props) {
+  const { text } = usePlayerText();
+  const { t } = text;
   const { phase, error, pauseReason } = snapshot;
   const blocking = isBlockingFallback(snapshot);
   if (!blocking) {
     if (error?.kind !== 'graphics') return null;
-    return <div className={c('system-status')} role="status">{error.message}</div>;
+    return <div className={c('system-status')} role="status">{t(error.message)}</div>;
   }
-  const title = phase === 'unsupported' ? 'GRAPHICS UNSUPPORTED'
-    : error?.kind === 'audio' ? 'AUDIO UNAVAILABLE'
-    : error?.kind === 'runtime' ? 'GAME UNAVAILABLE'
-    : error?.stage === 'recovery' ? 'GRAPHICS RECOVERY FAILED'
-    : error?.kind === 'graphics' ? 'GRAPHICS UNAVAILABLE' : 'PAUSED';
-  const message = error?.message ?? (pauseReason === 'background' ? 'The run paused when the page left the foreground.'
-    : pauseReason === 'context' ? 'Graphics were interrupted. Resume when you are ready.'
-    : pauseReason === 'orientation' ? 'Screen orientation changed. Resume when you are ready.'
-    : pauseReason === 'pointer-lock' ? 'Mouse released. Resume when you are ready.' : 'Your run is paused.');
+  const title = phase === 'unsupported' ? 'graphicsUnsupported'
+    : error?.kind === 'audio' ? 'audioUnavailable'
+    : error?.kind === 'runtime' ? 'gameUnavailable'
+    : error?.stage === 'recovery' ? 'graphicsRecoveryFailed'
+    : error?.kind === 'graphics' ? 'graphicsUnavailable' : 'paused';
+  const message = previewMessage ?? (error ? t(error.message) : text.pause(pauseReason ?? 'user'));
   const dismiss = phase === 'paused' && !error && pauseReason !== 'pointer-lock' && pauseReason !== 'orientation'
     ? (snapshot.mode === 'showcase' ? menu : retry)
     : error?.kind === 'audio' ? menu : undefined;
   return (
-    <GameDialog title={title} dismiss={dismiss} preview={preview}>
+    <GameDialog title={t(title)} focusKey={title} dismiss={dismiss} preview={preview}>
       <div className={c('panel', 'fallback-panel')}>
-        <h2 className={c('panel-head')}>{title}</h2>
+        <h2 className={c('panel-head')}>{t(title)}</h2>
         <p role={error ? 'alert' : 'status'}>{message}</p>
         <div className={c('fallback-actions')}>
-          <DecodeButton className={c('btn', 'tiny')} onClick={retry} label={phase === 'paused' ? 'RESUME' : 'TRY AGAIN'} />
-          {error?.kind === 'audio' && <DecodeButton className={c('btn', 'tiny')} onClick={startSilent} label="PLAY WITH SOUND OFF" />}
-          {phase === 'paused' && <DecodeButton className={c('btn', 'tiny')} onClick={settings} label="SETTINGS" />}
+          <DecodeButton className={c('btn', 'tiny')} onClick={retry} label={t(phase === 'paused' ? 'resume' : 'tryAgain')} />
+          {error?.kind === 'audio' && <DecodeButton className={c('btn', 'tiny')} onClick={startSilent} label={t('playSilent')} />}
+          {phase === 'paused' && <DecodeButton className={c('btn', 'tiny')} onClick={settings} label={t('settings')} />}
           {['paused', 'playing', 'crash', 'results'].includes(phase) &&
-            <DecodeButton className={c('btn', 'tiny')} onClick={menu} label="BACK TO MENU" />}
+            <DecodeButton className={c('btn', 'tiny')} onClick={menu} label={t('menu')} />}
         </div>
       </div>
     </GameDialog>

@@ -7,6 +7,8 @@ import { resolveDifficulty } from '../game/core/difficulty';
 import { studioGroups, studioSizes, uiStates } from '../game/debug/ui-state-catalog';
 import type { UIState } from '../game/debug/ui-state-catalog';
 import type { UIBackdrop } from '../game/debug/ui-backdrop.client';
+import { PlayerLocaleProvider } from '../i18n/PlayerLocale';
+import type { Locale } from '../i18n/player-text';
 import { classes as c } from '../styles/classes';
 import s from '../styles/explorer-lab.module.css';
 import { explorerVolumeIds } from './explorer/explorer-catalog';
@@ -22,6 +24,7 @@ const frameHtml = '<!doctype html><html lang="en"><head><meta charset="utf-8"><m
 
 export function UIStateStudio({ volume }: { volume: VolumeId }) {
   const [query, setQuery] = useSearchParams();
+  const previewLocale = query.get('locale') === 'zh-CN' ? 'zh-CN' : 'en';
   const requested = query.get('state');
   const state = uiStates.find(item => item.id === requested && !explorerVolumeIds.includes(item.id as VolumeId))
     ?? uiStates.find(item => item.id === volume)!;
@@ -53,6 +56,17 @@ export function UIStateStudio({ volume }: { volume: VolumeId }) {
 
   // The static document may finish loading before React hydrates the iframe handler.
   useEffect(() => { if (open) connect(); }, [open]);
+
+  useEffect(() => {
+    if (frame) frame.ownerDocument.documentElement.lang = previewLocale;
+  }, [frame, previewLocale]);
+
+  function choosePreviewLocale(locale: Locale) {
+    const next = new URLSearchParams(query);
+    if (locale === 'en') next.delete('locale');
+    else next.set('locale', locale);
+    setQuery(next, { replace: true, preventScrollReset: true });
+  }
 
   useEffect(() => {
     const node = stage.current;
@@ -109,8 +123,9 @@ export function UIStateStudio({ volume }: { volume: VolumeId }) {
         <iframe ref={viewport} title="Game UI preview" srcDoc={frameHtml} width={width} height={height} onLoad={connect}
           style={{ transform: `scale(${scale})` }} />
       </div>
-      {frame && createPortal(<StudioFrame selected={selected} revision={revision} real={real}
-        onBackdrop={setReady} />, frame)}
+      {frame && createPortal(<PlayerLocaleProvider locale={previewLocale} chooseLocale={choosePreviewLocale}>
+        <StudioFrame selected={selected} revision={revision} real={real} onBackdrop={setReady} />
+      </PlayerLocaleProvider>, frame)}
     </div>}
   </section>;
 }
@@ -203,11 +218,12 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
     <div id="shade" />
     {!panel && <GameFallback snapshot={snapshot} retry={snapshot.phase === 'paused' ? play : menu}
       startSilent={() => patch({ phase: 'playing', error: null, pauseReason: null, soundUnavailable: true })}
-      menu={menu} settings={() => setPanel('settings')} preview />}
+      menu={menu} settings={() => setPanel('settings')} preview previewMessage={selected.previewMessage} />}
     {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} preview />}
     {panel === 'settings' && <SettingsPanel snapshot={snapshot} close={() => setPanel(null)}
       chooseQuality={quality => patch({ quality })} setVolume={volume => patch({ volume })}
       setMuted={muted => patch({ muted })} setDynamicLights={dynamicLights => patch({ dynamicLights })}
+      setAutoBoost={autoBoost => patch({ autoBoost })}
       immersiveMouseAvailable setImmersiveMouse={immersiveMouse => patch({ immersiveMouse })}
       fullscreen={{ active: fullscreen, available: true, toggle: toggleFullscreen }} preview />}
     <ShareToast notice={notice} />

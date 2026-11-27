@@ -1,4 +1,4 @@
-import type { Difficulty, PlayMode, RunResult } from '../contracts';
+import type { Difficulty, FlightMessage, PlayMode, RunResult } from '../contracts';
 import { branchLayout, BRANCH_SIDE_THRESHOLD, ROUTE_GATE_MULTIPLIERS, routeSides, selectSide } from './branches';
 import type { BranchRun, RouteKind, RouteSide } from './branches';
 import { difficultySettings } from './chart';
@@ -53,7 +53,7 @@ export class Simulation {
   maxLives = 0;
   boosting = false;
   boostLens = 0;
-  message = '';
+  message: FlightMessage | null = null;
   result: RunResult | null = null;
   hitTime = -Infinity;
   pickup: RunPickup | null = null;
@@ -234,7 +234,7 @@ export class Simulation {
     this.boostLens = 0;
     this.settleSpeed = 3;
     this.hitTime = -Infinity;
-    this.message = '';
+    this.message = null;
     this.result = null;
     this.camera = { x: 0, y: 0, tx: 0, ty: 0, roll: 0 };
     this.preloadGates();
@@ -261,12 +261,12 @@ export class Simulation {
     this.authored = [];
     this.junctionPath = undefined;
     this.suffixBySide = undefined;
-    this.message = '';
+    this.message = null;
   }
 
   step(dt: number, input: InputFrame, neutralize = false) {
     this.time += dt;
-    if (this.time >= this.messageUntil) this.message = '';
+    if (this.time >= this.messageUntil) this.message = null;
     const camera = this.camera;
     if (this.phase === 'menu') {
       this.distance += 2.6 * dt;
@@ -370,7 +370,7 @@ export class Simulation {
       this.judged++;
       this.judge(gate, localX, localY, tickStart + elapsed * fraction, neutralize);
       if (this.outroPlan && this.mainComplete && this.beat + 1e-9 < this.volume.beats) {
-        this.message = this.outroPlan.gates.length ? 'MAIN COMPLETE · ENCORE AHEAD' : 'MAIN COMPLETE';
+        this.message = { id: this.outroPlan.gates.length ? 'mainCompleteEncore' : 'mainComplete' };
         this.messageUntil = this.time + 1.3;
       }
       if (this.lives === 0) {
@@ -424,14 +424,14 @@ export class Simulation {
     this.pickupTime = this.time;
     if (pickup.kind === 'shield') {
       this.shield = true;
-      this.message = 'PRISM SHIELD';
+      this.message = { id: 'prismShield' };
     } else if (pickup.kind === 'resonance') {
       this.resonance = RESONANCE_CHARGES;
-      this.message = 'RESONANCE ×' + this.resonance;
+      this.message = { id: 'resonance', count: this.resonance };
     } else if (this.scoring) {
       const points = LUMEN_POINTS[this.difficulty];
       this.score += points;
-      this.message = 'LUMEN +' + points;
+      this.message = { id: 'lumen', points };
     }
     this.messageUntil = this.time + 1.1;
   }
@@ -457,7 +457,7 @@ export class Simulation {
     gate.clean = gate.passed && Math.hypot(x - lx, y - ly) < CLEAN_RADIUS;
     this.encore = recordEncore(gate, this.encore, this.scoring);
     if (this.scoring && gate.passed) {
-      this.message = gate.clean ? 'ENCORE CLEAN +300' : 'ENCORE +200';
+      this.message = gate.clean ? { id: 'encoreClean', points: 300 } : { id: 'encorePassed', points: 200 };
       this.messageUntil = this.time + .65;
     }
   }
@@ -484,7 +484,7 @@ export class Simulation {
         cleanPoints = 150 * this.mult * routeMult;
         if (this.scoring) {
           this.score += cleanPoints;
-          this.message = 'CLEAN ×' + this.combo;
+          this.message = { id: 'clean', count: this.combo };
           this.messageUntil = this.time + 0.6;
         }
       }

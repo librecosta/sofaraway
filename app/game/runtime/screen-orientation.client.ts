@@ -24,7 +24,6 @@ export function observeScreenOrientation(change: (orientation: OrientationPrefer
   window.addEventListener('resize', update, { signal });
   window.addEventListener('pageshow', update, { signal });
   document.addEventListener('visibilitychange', update, { signal });
-  return orientation;
 }
 
 type LockApi = ScreenOrientation & { lock?(value: OrientationPreference): Promise<void> };
@@ -35,11 +34,6 @@ export class FullscreenOrientation {
   private owner?: LockApi;
 
   constructor(private readonly root: HTMLElement, private preference: OrientationPreference) {}
-
-  get supported() {
-    const api: LockApi | undefined = screen.orientation;
-    return typeof api?.lock === 'function' && typeof api.unlock === 'function';
-  }
 
   choose(preference: OrientationPreference) {
     this.preference = preference;

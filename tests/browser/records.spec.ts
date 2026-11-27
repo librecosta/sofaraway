@@ -150,6 +150,7 @@ test('the production result transition saves once, skips abandoned and diagnosti
       live.returnToMenu();
       const abandoned = saved();
       live.setDifficulty('impossible');
+      live.setAutoBoost(true);
       await live.start(true);
       firstGate();
       const fail = await settle();
@@ -172,7 +173,8 @@ test('the production result transition saves once, skips abandoned and diagnosti
     } finally { Storage.prototype.setItem = setItem; }
   }, key);
   expect(observed.abandoned).toBeNull();
-  expect(observed.fail).toMatchObject({ phase: 'results', difficulty: 'impossible', newBest: true, result: { title: 'TERMINATED' } });
+  expect(observed.fail).toMatchObject({ phase: 'results', difficulty: 'impossible', autoBoost: true, newBest: true,
+    result: { title: 'TERMINATED' } });
   expect(observed.original.standard.elsewhere.impossible).toEqual({ best: observed.fail.score,
     last: { score: observed.fail.score, outcome: 'TERMINATED' } });
   expect(observed.writesAfterFail).toBe(1);

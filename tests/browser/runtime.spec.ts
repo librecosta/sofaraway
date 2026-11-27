@@ -71,10 +71,11 @@ test('context recovery and cached navigation preserve progress and a single fram
   const snapshot = () => page.evaluate(() => window.b0Harness.snapshot());
   await page.goto('http://127.0.0.1:8090/');
   await page.evaluate(async () => {
-    await window.b0Harness.mount({ quality: 'low' });
+    await window.b0Harness.mount({ quality: 'low', autoBoost: true });
     await window.b0Harness.start(true);
   });
   await expect.poll(async () => (await snapshot()).progress).toBeGreaterThan(0);
+  await expect.poll(async () => (await snapshot()).boosting).toBe(true);
   const corridor = await page.evaluateHandle(() => window.b0Harness.corridor());
   const supported = await page.evaluate(() => {
     const context = document.querySelector('canvas')!.getContext('webgl2')!;
@@ -91,6 +92,7 @@ test('context recovery and cached navigation preserve progress and a single fram
   await page.evaluate(() => window.dispatchEvent(new Event('b0:restore-webgl')));
   await expect.poll(async () => (await snapshot()).phase).toBe('playing');
   await expect.poll(async () => (await snapshot()).progress).toBeGreaterThan(lost.progress);
+  await expect.poll(async () => (await snapshot()).boosting).toBe(true);
   expect(await page.evaluate(path => path === window.b0Harness.corridor(), corridor)).toBe(true);
   await corridor.dispose();
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
@@ -99,6 +101,7 @@ test('context recovery and cached navigation preserve progress and a single fram
   expect((await counts()).active).toBe(0);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
   await expect.poll(async () => (await snapshot()).progress).toBeGreaterThan(cached.progress);
+  await expect.poll(async () => (await snapshot()).boosting).toBe(true);
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false })));
   expect((await snapshot()).phase).toBe('disposed');
   const closed = await counts();

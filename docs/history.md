@@ -1,6 +1,6 @@
 # Milestone history
 
-[Engineering architecture](engineering.md) and [Verification](verification.md) describe the current repository. Milestone documents capture the decisions, measurements and open issues of the revision they tested. Use the pinned originals when comparing a new build to those results.
+[Engineering architecture](engineering.md) and [verification](verification.md) describe the current repository. The [collaboration playbook](../.agents/playbook.md) covers the contribution workflow. Milestone documents capture the decisions, measurements and open issues of the revision they tested. Use the pinned originals when comparing a new build to those results.
 
 ## Decisions that shape current work
 
@@ -22,6 +22,17 @@
 - [F4 cross-volume architecture audit](audits/F4-A-cross-volume-architecture-audit.md) and [four-volume performance baseline](audits/F4-P0-performance-baseline.md)
 - F4 performance results for [ELSEWHERE streaming](audits/F4-P1-A-elsewhere-streaming-optimization.md), [shared PostFX](audits/F4-P1-B-elsewhere-gpu-postfx-optimization.md), [DAYBREAK](audits/F4-P2-daybreak-atmosphere-optimization.md), [DESCENT](audits/F4-P3-descent-facility-optimization.md) and [ORBIT](audits/F4-P4-orbit-procedural-cosmic-optimization.md)
 - [F5 release preparation](audits/F5-release-readiness.md)
+- [F5-F1 fullscreen and Immersive Mouse](audits/F5-F1-fullscreen-immersive-input.md). Immersive Mouse is opt-in by default in the current code.
+- [F6-M1 mobile orientation](audits/F6-M1-mobile-orientation.md) and [F6-B1 regional artifact isolation](https://github.com/librecosta/sofaraway/commit/5aafe3c). Use the [current hosting guide](verification.md#hosting-the-production-build) for Web release checks.
+- [T1-A bilingual player UI and Auto Boost](audits/T1-A-shared-localization.md).
+
+## Proposals
+
+- T0 evaluated a third distribution for Bilibili Toy. The [compatibility audit](audits/T0-toy-platform-compatibility.md) records the local probe and remaining host checks. The [distribution and localization design](contracts/T0-distribution-localization-proposal.md) and [player features design](contracts/T0-toy-player-features-proposal.md) are proposals. The production build described by the hosting guide covers the two Web regions.
+
+## Reproducing the original A0 comparison
+
+Use the historical browser suite when comparing against the old static prototype. From the current worktree, run `git worktree add --detach ../sofaraway-a0 88a4adb533e2c5ec6f8e77a166ca11e75794be58`. Set `A0_APP_ROOT` to the reference worktree's absolute path and run `npm run test:a0` or `npm run test:a0:perf` from the current worktree. Install Playwright Chromium first. Today's browser regression suite uses the production and harness builds in the [verification guide](verification.md).
 
 ## Archive index
 

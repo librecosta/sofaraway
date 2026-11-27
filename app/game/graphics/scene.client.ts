@@ -49,7 +49,12 @@ export type SceneState = Pick<Simulation, 'camera' | 'trackDistance' | 'distance
   'previewGates' | 'previewEncore' | 'outroPlan' | 'speed' | 'boostLens' | 'boosting' | 'hitTime' |
   'pickup' | 'pickupVisible' | 'pickupStation' | 'pickupPreviewStation'> & { escapeWhite?: number };
 
-export class UnsupportedGraphics extends Error {}
+export class UnsupportedGraphics extends Error {
+  constructor(readonly reason: 'webglUnavailable' | 'webglLimits' | 'graphicsUnsupportedDetail',
+    message: string, options?: ErrorOptions) {
+    super(message, options);
+  }
+}
 
 class ShaderFailure extends Error {}
 
@@ -476,7 +481,7 @@ export class Graphics {
       powerPreference: 'high-performance',
       stencil: false,
     });
-    if (!gl) throw new UnsupportedGraphics('This browser could not start WebGL2.');
+    if (!gl) throw new UnsupportedGraphics('webglUnavailable', 'This browser could not start WebGL2.');
     this.gl = gl;
     this.quality = tier;
     this.mobile = mobile;
@@ -648,7 +653,7 @@ export class Graphics {
     try {
       return action();
     } catch (error) {
-      if (error instanceof ShaderFailure) throw new UnsupportedGraphics(error.message, { cause: error });
+      if (error instanceof ShaderFailure) throw new UnsupportedGraphics('graphicsUnsupportedDetail', error.message, { cause: error });
       throw error;
     }
   }
@@ -663,7 +668,7 @@ export class Graphics {
   private readDeviceCapabilities() {
     const capabilities = readCapabilities(this.gl);
     if (capabilities.maxTextureSize < 1024 || capabilities.maxSize < 2) {
-      throw new UnsupportedGraphics('WebGL2 limits are too low for the procedural scene.');
+      throw new UnsupportedGraphics('webglLimits', 'WebGL2 limits are too low for the procedural scene.');
     }
     return capabilities;
   }

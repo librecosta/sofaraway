@@ -2,6 +2,8 @@ import { useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import { qualities } from '../game/contracts';
 import type { GameSnapshot, OrientationPreference, QualityTier } from '../game/contracts';
+import { usePlayerText } from '../i18n/PlayerLocale';
+import { locales } from '../i18n/player-text';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { GameDialog } from './GameDialog';
@@ -21,18 +23,19 @@ interface Props {
   setVolume(value: number): void;
   setMuted(value: boolean): void;
   setDynamicLights(value: boolean): void;
+  setAutoBoost(value: boolean): void;
   immersiveMouseAvailable: boolean;
   setImmersiveMouse(value: boolean): void;
   orientation?: { value: OrientationPreference; choose(value: OrientationPreference): void };
-  fullscreen: { available: boolean; active: boolean; toggle(): void; message?: string };
+  fullscreen: { available: boolean; active: boolean; toggle(): void; failed?: boolean };
   preview?: boolean;
 }
 
-function Toggle({ id, label, checked, change, description }: {
-  id: string; label: string; checked: boolean; change(value: boolean): void; description?: string;
+function Toggle({ id, label, checked, change, description, disabled }: {
+  id: string; label: string; checked: boolean; change(value: boolean): void; description?: string; disabled?: boolean;
 }) {
   return <label className={c('panel-row', 'switch-row')} htmlFor={id}>
-    <span>{label}</span><input id={id} type="checkbox" role="switch" checked={checked}
+    <span>{label}</span><input id={id} type="checkbox" role="switch" checked={checked} disabled={disabled}
       aria-label={label} aria-describedby={description ? `${id}-description` : undefined}
       onChange={event => change(event.target.checked)} />
     <span className={c('switch-track')} aria-hidden="true" />
@@ -41,59 +44,79 @@ function Toggle({ id, label, checked, change, description }: {
 }
 
 export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights,
-  immersiveMouseAvailable, setImmersiveMouse, orientation, fullscreen, preview }: Props) {
+  immersiveMouseAvailable, setImmersiveMouse, setAutoBoost, orientation, fullscreen, preview }: Props) {
+  const { text, chooseLocale } = usePlayerText();
+  const { t } = text;
   const quality = qualities.indexOf(snapshot.quality);
   const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
+  const boostLocked = snapshot.phase !== 'menu';
   return (
-    <GameDialog id="settings" title="Settings" dismiss={close} preview={preview}>
-      <div className={c('panel')}>
-        <h2 className={c('panel-head')}>SETTINGS</h2>
-        <div className={c('panel-row')}>
-          <span>QUALITY</span>
-          <div className={c('seg')} id="seg-quality" role="group" aria-label="Quality"
-            style={{ '--segment-index': quality } as CSSProperties} onKeyDown={event => {
-              const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
-              if (!direction || snapshot.phase === 'paused') return;
-              event.preventDefault();
-              event.stopPropagation();
-              const next = (quality + direction + qualities.length) % qualities.length;
-              chooseQuality(qualities[next]);
-              event.currentTarget.querySelectorAll('button')[next]?.focus();
-            }}>
-            {qualities.map(item => (
-              <button type="button" key={item} data-q={item} aria-pressed={item === snapshot.quality}
-                disabled={snapshot.phase === 'paused'} onClick={() => chooseQuality(item)}>{item.toUpperCase()}</button>
-            ))}
+    <GameDialog id="settings" title={t('settingsDialog')} dismiss={close} preview={preview}>
+      <div className={c('panel', 'settings-panel')}>
+        <h2 className={c('panel-head')}>{t('settings')}</h2>
+        <div className={c('settings-controls')}>
+          <div className={c('panel-row')}>
+            <span>{t('quality')}</span>
+            <div className={c('seg')} id="seg-quality" role="group" aria-label={t('qualityGroup')}
+              style={{ '--segment-index': quality } as CSSProperties} onKeyDown={event => {
+                const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
+                if (!direction || snapshot.phase === 'paused') return;
+                event.preventDefault();
+                event.stopPropagation();
+                const next = (quality + direction + qualities.length) % qualities.length;
+                chooseQuality(qualities[next]);
+                event.currentTarget.querySelectorAll('button')[next]?.focus();
+              }}>
+              {qualities.map(item => (
+                <button type="button" key={item} data-q={item} aria-pressed={item === snapshot.quality}
+                  disabled={snapshot.phase === 'paused'} onClick={() => chooseQuality(item)}>{text.quality(item)}</button>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className={c('panel-row')}>
-          <label htmlFor="set-volume">VOLUME</label>
-          <input id="set-volume" type="range" min="0" max="100" value={Math.round(snapshot.volume * 100)}
-            style={{ '--volume-fill': `${snapshot.volume * 100}%` } as CSSProperties}
-            onChange={event => setVolume(event.target.valueAsNumber / 100)} />
-        </div>
-        <Toggle id="set-muted" label="MUTE" checked={snapshot.muted} change={setMuted} />
-        <Toggle id="set-dynamic-lights" label="DYNAMIC LIGHTS" checked={snapshot.dynamicLights} change={setDynamicLights}
-          description={reduced ? 'Beat effects paused by your system’s Reduced Motion setting.'
-            : 'Corridor lights dim between beats and peak on drums.'} />
-        {immersiveMouseAvailable && <Toggle id="set-immersive-mouse" label="IMMERSIVE MOUSE"
-          checked={snapshot.immersiveMouse} change={setImmersiveMouse}
-          description="Capture the mouse during flight. Press Esc to release the mouse and pause." />}
-        {orientation && <div className={c('panel-row', 'orientation-row')}>
-          <span>ORIENTATION</span>
-          <div className={c('seg', 'orientation-options')} role="group" aria-label="Orientation"
-            style={{ '--segment-index': Number(orientation.value === 'portrait') } as CSSProperties}>
-            {(['landscape', 'portrait'] as const).map(value => <button type="button" key={value}
-              aria-pressed={orientation.value === value} onClick={() => orientation.choose(value)}>{value.toUpperCase()}</button>)}
+          <div className={c('panel-row')}>
+            <span>{t('language')}</span>
+            <div className={c('seg', 'orientation-options')} role="group" aria-label={t('language')}
+              style={{ '--segment-index': locales.indexOf(text.locale) } as CSSProperties}>
+              {locales.map(locale => <button type="button" key={locale} lang={locale} data-language={locale}
+                aria-pressed={text.locale === locale} onClick={() => chooseLocale(locale)}>
+                {locale === 'zh-CN' ? '简体中文' : 'English'}
+              </button>)}
+            </div>
           </div>
-        </div>}
-        <div className={c('panel-row')}>
-          <span>FULLSCREEN</span>
-          <DecodeButton className={c('panel-close')} disabled={!fullscreen.available}
-            onClick={fullscreen.toggle} label={fullscreen.active ? 'EXIT FULLSCREEN' : 'ENTER FULLSCREEN'} />
+          <div className={c('panel-row')}>
+            <label htmlFor="set-volume">{t('volume')}</label>
+            <input id="set-volume" type="range" min="0" max="100" value={Math.round(snapshot.volume * 100)}
+              style={{ '--volume-fill': `${snapshot.volume * 100}%` } as CSSProperties}
+              onChange={event => setVolume(event.target.valueAsNumber / 100)} />
+          </div>
+          <Toggle id="set-muted" label={t('mute')} checked={snapshot.muted} change={setMuted} />
+          <Toggle id="set-auto-boost" label={t('autoBoost')} checked={snapshot.autoBoost} change={setAutoBoost}
+            disabled={boostLocked} description={boostLocked ? t('autoBoostLocked') : t('autoBoostHelp')} />
+          <Toggle id="set-dynamic-lights" label={t('dynamicLights')} checked={snapshot.dynamicLights} change={setDynamicLights}
+            description={t(reduced ? 'reducedLights' : 'lightsHelp')} />
+          {immersiveMouseAvailable && <Toggle id="set-immersive-mouse" label={t('immersiveMouse')}
+            checked={snapshot.immersiveMouse} change={setImmersiveMouse}
+            description={t('immersiveHelp')} />}
+          {orientation && <div className={c('panel-row', 'orientation-row')}>
+            <span>{t('orientationLabel')}</span>
+            <div className={c('seg', 'orientation-options')} role="group" aria-label={t('orientation')}
+              style={{ '--segment-index': Number(orientation.value === 'portrait') } as CSSProperties}>
+              {(['landscape', 'portrait'] as const).map(value => <button type="button" key={value}
+                aria-pressed={orientation.value === value} onClick={() => orientation.choose(value)}>{text.orientation(value)}</button>)}
+            </div>
+          </div>}
+          <div className={c('panel-row')}>
+            <span>{t('fullscreen')}</span>
+            <DecodeButton className={c('panel-close')} disabled={!fullscreen.available}
+              onClick={fullscreen.toggle} label={t(fullscreen.active ? 'exitFullscreen' : 'enterFullscreen')} />
+          </div>
+          {fullscreen.failed && <small className={c('switch-description')} role="status">{t('fullscreenUnavailable')}</small>}
+          <details className={c('controls-help')}>
+            <summary>{t('controls')}</summary>
+            <ul><li>{t('steerHelp')}</li><li>{t('boostHelp')}</li><li>{t('shortcutsHelp')}</li></ul>
+          </details>
         </div>
-        {fullscreen.message && <small className={c('switch-description')} role="status">{fullscreen.message}</small>}
-        <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label="CLOSE" />
+        <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label={t('close')} />
       </div>
     </GameDialog>
   );

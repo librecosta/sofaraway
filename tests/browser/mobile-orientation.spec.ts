@@ -4,7 +4,6 @@ import { readMetrics, type Metrics } from './diagnostics';
 const preference = 'sofaraway.orientation';
 const portrait = { width: 390, height: 844 };
 const landscape = { width: 844, height: 390 };
-const guide = (page: Page) => page.getByRole('dialog', { name: 'ROTATE YOUR DEVICE' });
 const paused = (page: Page) => page.getByRole('dialog', { name: 'PAUSED' });
 const start = (page: Page) => page.locator('[data-act=start]');
 const fullscreen = (page: Page) => page.evaluate(() => document.fullscreenElement?.tagName ?? null);
@@ -63,43 +62,45 @@ const flight = async (page: Page) => await readMetrics(page) as Flight;
 test.describe('compact touch', () => {
   test.use({ viewport: portrait, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 
-  test('landscape defaults on compact touch and the portrait opt-in persists', async ({ page }, info) => {
+  test('a portrait visit can start immediately and Settings remembers the fullscreen preference', async ({ page }, info) => {
     await mockOrientation(page, 'unsupported');
     await page.goto('/?q=low');
-    await expect(guide(page)).toContainText('SoFarAway is best experienced in landscape.');
-    await expect(guide(page).getByRole('button', { name: 'ENTER FULLSCREEN' })).toHaveCount(0);
-    await expect(guide(page).getByRole('button', { name: 'SWITCH TO PORTRAIT' })).toBeFocused();
+    await expect(start(page)).toBeEnabled();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(await fullscreen(page)).toBeNull();
     expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBeNull();
-    await capture(page, info, '390x844-rotate-guidance');
-    await guide(page).getByRole('button', { name: 'SWITCH TO PORTRAIT' }).tap();
-    await expect(guide(page)).toHaveCount(0);
-    await expect(start(page)).toBeEnabled();
+    await capture(page, info, '390x844-first-visit');
+    await start(page).tap();
+    await expect(page.locator('#hud')).toBeVisible();
+    expect(await fullscreen(page)).toBeNull();
+    expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBeNull();
+
     await page.reload();
     await expect(start(page)).toBeEnabled();
-    await expect(guide(page)).toHaveCount(0);
-    expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBe('portrait');
     const panel = await settings(page);
-    await expect(panel.getByRole('button', { name: 'PORTRAIT' })).toHaveAttribute('aria-pressed', 'true');
-    await panel.getByRole('button', { name: 'CLOSE' }).tap();
+    await expect(panel.getByRole('button', { name: 'LANDSCAPE' })).toHaveAttribute('aria-pressed', 'true');
+    await panel.getByRole('button', { name: 'PORTRAIT' }).tap();
+    await page.reload();
+    await expect(start(page)).toBeEnabled();
+    expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBe('portrait');
     await page.setViewportSize(landscape);
-    await expect(guide(page)).toContainText('Portrait is your selected orientation.');
-    await guide(page).getByRole('button', { name: 'SWITCH TO LANDSCAPE' }).tap();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     const rotated = await settings(page);
-    await expect(rotated.getByRole('button', { name: 'LANDSCAPE' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(rotated.getByRole('button', { name: 'PORTRAIT' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('html')).not.toHaveAttribute('data-lock-requests', /.+/);
   });
 
   test('native lock follows a fullscreen gesture and applies new preferences in fullscreen', async ({ page }) => {
     await mockOrientation(page, 'grant');
     await page.goto('/?q=low');
-    await expect(guide(page)).toBeVisible();
+    await expect(start(page)).toBeEnabled();
+    expect(await fullscreen(page)).toBeNull();
     await expect(page.locator('html')).not.toHaveAttribute('data-lock-requests', /.+/);
-    await guide(page).getByRole('button', { name: 'ENTER FULLSCREEN' }).tap();
+    await page.locator('[data-act=fullscreen]').tap();
     await expect.poll(() => fullscreen(page)).toBe('MAIN');
     await expect(page.locator('html')).toHaveAttribute('data-lock-requests', 'landscape');
     await page.setViewportSize(landscape);
-    await expect(guide(page)).toHaveCount(0);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     const panel = await settings(page);
     await panel.getByRole('button', { name: 'PORTRAIT' }).tap();
     await expect(page.locator('html')).toHaveAttribute('data-lock-requests', 'landscape,portrait');
@@ -107,16 +108,16 @@ test.describe('compact touch', () => {
     await expect.poll(() => fullscreen(page)).toBeNull();
     await expect(page.locator('html')).toHaveAttribute('data-unlocks', '1');
     await panel.getByRole('button', { name: 'CLOSE' }).tap();
-    await expect(guide(page).getByRole('button', { name: 'SWITCH TO LANDSCAPE' })).toBeEnabled();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(start(page)).toBeEnabled();
   });
 
-  test('denied locks keep the guidance and late locks are released after fullscreen exits', async ({ page, context }) => {
+  test('denied locks leave the menu usable and late locks are released after fullscreen exits', async ({ page, context }) => {
     await mockOrientation(page, 'deny');
     await page.goto('/?q=low');
-    await guide(page).getByRole('button', { name: 'ENTER FULLSCREEN' }).tap();
+    await page.locator('[data-act=fullscreen]').tap();
     await expect(page.locator('html')).toHaveAttribute('data-lock-requests', 'landscape');
-    await expect(guide(page)).toBeVisible();
-    await guide(page).getByRole('button', { name: 'SWITCH TO PORTRAIT' }).tap();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(start(page)).toBeEnabled();
 
     const late = await context.newPage();
@@ -124,6 +125,7 @@ test.describe('compact touch', () => {
     await late.goto('/?q=low');
     await expect(start(late)).toBeEnabled();
     const panel = await settings(late);
+    await panel.getByRole('button', { name: 'PORTRAIT' }).tap();
     await panel.getByRole('button', { name: 'ENTER FULLSCREEN' }).tap();
     await expect(late.locator('html')).toHaveAttribute('data-lock-requests', 'portrait');
     await panel.getByRole('button', { name: 'EXIT FULLSCREEN' }).tap();
@@ -153,7 +155,7 @@ test.describe('compact touch', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 310, y: 190 }] });
     await expect.poll(async () => (await flight(page)).camera.tx).toBeGreaterThan(.25);
     await page.setViewportSize(portrait);
-    await expect(guide(page)).toBeVisible();
+    await expect(paused(page)).toContainText('Screen orientation changed.');
     await expect.poll(async () => (await flight(page)).phase).toBe('paused');
     const frozen = await flight(page);
     const score = await page.locator('#hud-score').textContent();
@@ -163,8 +165,6 @@ test.describe('compact touch', () => {
     await expect.poll(async () => (await flight(page)).targets[0]?.slice(0, 2)).toEqual([390, 844]);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 45, y: 300 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await guide(page).getByRole('button', { name: 'SWITCH TO PORTRAIT' }).tap();
-    await expect(paused(page)).toContainText('Screen orientation changed.');
     expect(await flight(page)).toMatchObject({ phase: 'paused', beat: frozen.beat, distance: frozen.distance,
       branch: frozen.branch, camera: frozen.camera, audio: { resumes: 0 } });
     await expect(page.locator('#hud-score')).toHaveText(score!);
@@ -173,11 +173,10 @@ test.describe('compact touch', () => {
 
     // A second rotation while paused keeps the same run frozen.
     await page.setViewportSize(landscape);
-    await guide(page).getByRole('button', { name: 'SWITCH TO LANDSCAPE' }).tap();
     await expect(paused(page)).toContainText('Screen orientation changed.');
     expect((await flight(page)).distance).toBe(frozen.distance);
     await page.setViewportSize(portrait);
-    await guide(page).getByRole('button', { name: 'SWITCH TO PORTRAIT' }).tap();
+    expect(await page.evaluate(key => localStorage.getItem(key), preference)).toBeNull();
     await paused(page).getByRole('button', { name: 'RESUME' }).tap();
     await expect.poll(async () => (await flight(page)).beat).toBeGreaterThan(frozen.beat);
     await expect.poll(async () => (await flight(page)).audio.resumes).toBe(1);
@@ -194,11 +193,8 @@ test.describe('compact touch', () => {
     await page.goto('/?q=low');
     for (const [width, height] of [[640, 360], [740, 360], [844, 390], [932, 430], [360, 640], [390, 844], [430, 932]]) {
       await page.setViewportSize({ width, height });
-      await page.evaluate(({ key, value }) => localStorage.setItem(key, value),
-        { key: preference, value: width > height ? 'landscape' : 'portrait' });
-      await page.reload();
       await expect(start(page)).toBeEnabled();
-      await expect(guide(page)).toHaveCount(0);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       for (const control of [start(page), page.locator('#vols'), page.getByRole('group', { name: 'Difficulty' }), page.locator('[data-act=settings]')]) {
         await expect(control, `${width}×${height}`).toBeInViewport({ ratio: .99 });
       }
@@ -226,7 +222,7 @@ test('a narrow desktop and a narrow tablet window retain the regular responsive 
   await page.setViewportSize(portrait);
   await page.goto('/?q=low');
   await expect(start(page)).toBeEnabled();
-  await expect(guide(page)).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.locator('[data-act=settings]').click();
   await expect(page.getByRole('group', { name: 'Orientation' })).toHaveCount(0);
   await expect(page.getByRole('switch', { name: 'IMMERSIVE MOUSE' })).toBeVisible();
@@ -234,7 +230,7 @@ test('a narrow desktop and a narrow tablet window retain the regular responsive 
   try {
     await tablet.goto('/?q=low');
     await expect(start(tablet)).toBeEnabled();
-    await expect(guide(tablet)).toHaveCount(0);
+    await expect(tablet.getByRole('dialog')).toHaveCount(0);
     await expect((await settings(tablet)).getByRole('group', { name: 'Orientation' })).toHaveCount(0);
   } finally { await tablet.close(); }
 });

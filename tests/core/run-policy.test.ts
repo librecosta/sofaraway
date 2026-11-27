@@ -61,3 +61,22 @@ test('invalid input resolves to a playable mode, difficulty, route and seed', ()
   expect(resolveRunPolicy({ volumeId: 'orbit', mode: 'showcase', difficulty: 'invalid', showcaseRoute: 'invalid' }, settings, 'run'))
     .toMatchObject({ difficulty: 'impossible', seed: CAPTURE_RUN_SEED, showcaseRoute: 'main' });
 });
+
+test('Auto Boost is a Standard run preference and has no effect on record eligibility or capture overrides', () => {
+  const selection = { volumeId: 'elsewhere', mode: 'standard', difficulty: 'normal' } as const;
+  const settings = { diagnostics, saveRecords: true };
+  expect(resolveRunPolicy(selection, settings, 'run').autoBoost).toBe(false);
+  const enabled = { ...selection, autoBoost: true };
+  expect(resolveRunPolicy(enabled, settings, 'run')).toMatchObject({
+    autoBoost: true, captureBoost: false, recordsEligible: true,
+  });
+  for (const mode of ['sightseeing', 'showcase']) {
+    expect(resolveRunPolicy({ ...enabled, mode }, settings, 'run').autoBoost).toBe(false);
+  }
+  expect(resolveRunPolicy(enabled, settings, 'menu').autoBoost).toBe(false);
+  expect(resolveRunPolicy(enabled, { diagnostics: { ...diagnostics, autoplay: true } }, 'run').autoBoost).toBe(false);
+  const capture = { diagnostics: { ...diagnostics, fixedTime: 4 } };
+  expect(resolveRunPolicy(enabled, capture, 'capture')).toMatchObject({ autoBoost: false, captureBoost: false });
+  expect(resolveRunPolicy(selection, { diagnostics: { ...capture.diagnostics, boost: true } }, 'capture'))
+    .toMatchObject({ autoBoost: false, captureBoost: true });
+});

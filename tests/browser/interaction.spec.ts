@@ -38,7 +38,6 @@ test.describe('mobile', () => {
   test.use({ viewport: { width: 393, height: 720 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 
   test('touch movement and cancellation do not engage desktop Boost', async ({ page, context }) => {
-    await page.addInitScript(() => localStorage.setItem('sofaraway.orientation', 'portrait'));
     await page.goto('/?q=low&dbg=1&vol=daybreak');
     await page.locator('[data-act=start]').tap();
     await expect(page.locator('#hud')).toBeVisible();

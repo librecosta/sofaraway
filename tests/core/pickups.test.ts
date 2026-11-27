@@ -125,7 +125,7 @@ test('Shield saves one life, breaks Combo, counts the misses and starts normal i
   const run = start('shield');
   const { sim, flags, input } = run;
   collect(run);
-  expect(sim.message).toBe('PRISM SHIELD');
+  expect(sim.message).toEqual({ id: 'prismShield' });
   expect(sim.shield).toBe(true);
   flags.align = true;
   const chart = chartFor(volume, 'normal');
@@ -191,7 +191,7 @@ test('Resonance adds 25% to eight successful gate awards, including Boost and CL
   const chart = chartFor(volume, 'normal');
   const mult = difficultySettings(volume, 'normal').mult;
   collect(run);
-  expect(sim.message).toBe('RESONANCE ×8');
+  expect(sim.message).toEqual({ id: 'resonance', count: 8 });
   expect(sim.resonance).toBe(8);
   const first = chart.find(gate => gate.beat === nextGate)!;
   const [x, y] = lanePoint(first.kind, first.sector, 0);
@@ -231,7 +231,7 @@ test.each([...difficulties, 'impossible'] as const)('%s Lumen awards exactly the
   const { sim, input } = run;
   const { score, distance, combo, lives, gatesJudged } = sim;
   collect(run);
-  expect(sim.message).toBe(`LUMEN +${lumen[difficulty]}`);
+  expect(sim.message).toEqual({ id: 'lumen', points: lumen[difficulty] });
   expect([sim.combo, sim.lives, sim.gatesJudged]).toEqual([combo, lives, gatesJudged]);
   advance(sim, PICKUP_BEAT + 1, input);
   expect(sim.score - score - (sim.distance - distance) * 0.35).toBeCloseTo(lumen[difficulty], 8);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent } from 'react';
 import type { VolumeId } from '../game/contracts';
 import { VOLUMES } from '../game/core/volumes';
+import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 
 const count = VOLUMES.length;
@@ -12,6 +13,7 @@ const nearest = (index: number, position: number) => index + count * Math.round(
 export function VolumeWheel({ value, choose, disabled, onTarget }: {
   value: VolumeId; choose(id: VolumeId): void; disabled: boolean; onTarget?(id: VolumeId): void;
 }) {
+  const { text: { t } } = usePlayerText();
   const selected = VOLUMES.findIndex(volume => volume.id === value);
   const [position, setPosition] = useState(selected);
   const [moving, setMoving] = useState(false);
@@ -127,7 +129,7 @@ export function VolumeWheel({ value, choose, disabled, onTarget }: {
     settle(Math.round(m.position + coast));
   }
 
-  return <div ref={host} id="vols" className={c('volume-wheel')} role="group" aria-label="Volume selector"
+  return <div ref={host} id="vols" className={c('volume-wheel')} role="group" aria-label={t('volumeSelector')}
     tabIndex={disabled ? -1 : 0} data-moving={moving} onKeyDown={event => {
       if (disabled || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
       event.preventDefault();
@@ -149,7 +151,7 @@ export function VolumeWheel({ value, choose, disabled, onTarget }: {
       const adjacent = nearest(index, selected) - selected;
       return <button type="button" key={volume.id} id={index === selected ? 'vol-name' : undefined}
         data-vol-step={Math.abs(adjacent) === 1 ? adjacent : undefined} aria-current={index === selected ? 'true' : undefined}
-        aria-label={adjacent === -1 ? 'Previous volume' : adjacent === 1 ? 'Next volume' : undefined}
+        aria-label={adjacent === -1 ? t('previousVolume') : adjacent === 1 ? t('nextVolume') : undefined}
         aria-description={Math.abs(adjacent) === 1 ? volume.name : undefined}
         aria-hidden={depth > 1.55 || undefined} disabled={disabled} tabIndex={-1} className={c('wheel-track')}
         style={{ '--wheel-y': offset * 43 + 'px', '--wheel-z': -depth * 29 + 'px',
