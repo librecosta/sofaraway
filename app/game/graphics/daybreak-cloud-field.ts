@@ -7,7 +7,8 @@ export const CLOUD_FIELD_PERIOD = 12288;
 export function makeDaybreakCloudField(seed = 0x271060) {
   const random = mulberry(seed);
   const size = CLOUD_FIELD_SIZE;
-  const wrap = (i: number, length: number) => (i % length + length) % length;
+  // The warp moves at most .026 of a tile and slope lookups move one texel.
+  const wrap = (i: number, length: number) => i < 0 ? i + length : i >= length ? i - length : i;
   const interpolate = (t: number) => t * t * (3 - 2 * t);
   const octave = (columns: number, rows = columns) => {
     const grid = Float32Array.from({ length: columns * rows }, random);

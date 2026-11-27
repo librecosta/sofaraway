@@ -11,11 +11,17 @@ const tau = Math.PI * 2;
 // Angles are relative to world -Z. Positive tilt rises toward +X.
 const azimuth = degToRad(-18), elevation = degToRad(27), tilt = degToRad(8);
 const halfWidth = degToRad(6.4), bend = degToRad(9);
+const meanWidth = .97, widthWave2 = .17, widthWave3 = .11;
 const branches = [
   { offset: -10.5, halfWidth: 4.25, density: .44, phase: .52, fringeReach: 7.3, fringeStrength: .18 },
   { offset: 14, halfWidth: 3, density: .29, phase: -.9, fringeReach: 6, fringeStrength: .24 },
 ].map(branch => ({ ...branch, offset: degToRad(branch.offset), halfWidth: degToRad(branch.halfWidth),
   fringeReach: degToRad(branch.fringeReach) }));
+// Beyond this latitude every band's body and fringe are zero, even at maximum bend and width.
+const maxWidth = meanWidth + widthWave2 + widthWave3;
+const maxBandExtent = Math.max(halfWidth * maxWidth, ...branches.map(branch =>
+  Math.abs(branch.offset) + Math.max(branch.halfWidth * maxWidth, branch.fringeReach)));
+const sideLimit = Math.min(.62, Math.sin(bend + maxBandExtent + 1e-6));
 
 function flowNoise(lon: number, across: number, cells: number, seed: number) {
   const along = lon * cells / tau;
@@ -61,11 +67,11 @@ export function makeDaybreakCirrusField(seed = 0x2d5f31) {
       const [front, east] = headings[col];
       const up = ce * height - se * radius * front;
       const side = ct * up - st * radius * east;
-      if (Math.abs(side) > .62) continue;
+      if (Math.abs(side) > sideLimit) continue;
       const lon = Math.atan2(ct * radius * east + st * up, ce * radius * front + se * height);
       const spine = bend * (.67 * Math.sin(2 * lon - 1.1) + .33 * Math.sin(3 * lon + .6));
       const across = Math.asin(clamp(side, -1, 1)) - spine;
-      const width = .97 + .17 * Math.cos(2 * lon - .8) + .11 * Math.sin(3 * lon + .2);
+      const width = meanWidth + widthWave2 * Math.cos(2 * lon - .8) + widthWave3 * Math.sin(3 * lon + .2);
       const light = altitudeFade * (.34 + .66 * smoothstep(Math.cos(lon + .32), -.25, .94));
       const span = halfWidth * width;
       const body = .70 + .30 * smoothstep(Math.cos(lon + .47), .13, .93);

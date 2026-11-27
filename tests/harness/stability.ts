@@ -1,9 +1,9 @@
-import type { Material, Object3D, WebGLRenderer } from 'three';
+import type { DataTexture, Material, Object3D, WebGLRenderer } from 'three';
 import { AdditiveBlending, FrontSide, Mesh, PMREMGenerator, RedFormat, UnsignedByteType } from 'three';
 import type { AudioTransport } from '../../app/game/audio/transport.client';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { Difficulty, GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
-import type { RouteSide } from '../../app/game/core/branches';
+import type { RouteKind, RouteSide } from '../../app/game/core/branches';
 import { FixedStepClock, STEP } from '../../app/game/core/clock';
 import { idleInput } from '../../app/game/core/input';
 import { Simulation } from '../../app/game/core/simulation';
@@ -17,6 +17,8 @@ import { volumeById } from '../../app/game/core/volumes';
 import type { GateVisual } from '../../app/game/graphics/gates.client';
 import { DescentFacility } from '../../app/game/graphics/descent-facility.client';
 import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.client';
+import { makeDaybreakCloudField } from '../../app/game/graphics/daybreak-cloud-field';
+import { makeDaybreakCirrusField } from '../../app/game/graphics/daybreak-cirrus';
 import { OrbitWorld } from '../../app/game/graphics/orbit-world.client';
 import { Path } from '../../app/game/graphics/path';
 import { PostFX } from '../../app/game/graphics/post.client';
@@ -26,10 +28,12 @@ import { Tunnel } from '../../app/game/graphics/tunnel.client';
 import { Runtime } from '../../app/game/runtime/GameRuntime.client';
 
 type Pass = 'scene' | 'depth' | 'dof' | 'bloom' | 'composite' | 'bright' | 'blur';
-type GpuScope = Pass | 'frame';
+type GpuScope = Pass | 'frame' | 'exterior';
 type GpuProbe = 'baseline' | 'colour-only-resolve' | 'single-sample' | 'rgba8-colour'
   | 'without-glass' | 'without-fixtures' | 'without-transparent' | 'without-opaque' | 'front-side-opaque'
   | 'single-clear' | 'red-depth';
+type ExteriorProbe = 'full' | 'without-exterior' | 'flat-sky' | 'sky-only' | 'without-cirrus' | 'without-clouds'
+  | 'without-relief' | 'without-swells' | 'without-canopy' | 'without-gate-glass';
 type Values = Record<string, number[]>;
 interface TimerExtension { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number }
 
@@ -51,6 +55,8 @@ let measuring = false;
 let rendererCpu = 0;
 let disjoint = 0;
 let gpuProbe: GpuProbe | undefined;
+let exteriorProbe: ExteriorProbe | undefined;
+let exteriorFields: DataTexture[] = [];
 let depthResolves = 0;
 let colourResolves = 0;
 let traceTunnel = false;
@@ -62,6 +68,7 @@ const pending: { query: WebGLQuery; scope: GpuScope; frame: number }[] = [];
 const bloom = new Map<number, { count: number; ms: number }>();
 const scopes: GpuScope[] = ['frame', 'scene', 'depth', 'dof', 'bloom', 'composite'];
 const probeScopes: GpuScope[] = ['frame', 'scene', 'depth', 'dof', 'bright', 'blur', 'composite'];
+const exteriorScopes: GpuScope[] = ['frame', 'scene', 'exterior', 'depth', 'dof', 'bloom', 'composite'];
 const seenRenderers = new WeakSet<WebGLRenderer>();
 
 function add(values: Values, key: string, ms: number) {
@@ -152,15 +159,57 @@ function probeSceneColour(scene: Object3D, call: () => unknown) {
   finally { for (const mesh of hidden) mesh.visible = true; }
 }
 
+function prepareExteriorProbe(exterior: DaybreakExterior, probe: ExteriorProbe) {
+  const material = exterior.mesh.material;
+  exteriorFields = [material.uniforms.cloudField.value, material.uniforms.cirrusField.value];
+  let fragment = material.fragmentShader;
+  const replace = (from: string | RegExp, to: string) => {
+    const revised = fragment.replace(from, to);
+    if (revised === fragment) throw new Error(`Missing DAYBREAK probe anchor: ${from}`);
+    fragment = revised;
+  };
+  // These probes are applied to a single harness-owned material before compilation.
+  if (probe === 'without-cirrus' || probe === 'sky-only') replace('if (height > .10 && height < .965)', 'if (false)');
+  if (probe === 'without-clouds' || probe === 'sky-only') replace('if (ray.y < 0.0)', 'if (false)');
+  if (probe === 'without-relief') replace(/\(textureLod\(cloudField, projected, lod\)\.r - \.5\) \* relief/, '0.0');
+  if (probe === 'without-swells') replace('if (reach < 330.0)', 'if (false)');
+  if (probe === 'flat-sky') {
+    replace(/vec3 horizon = [\s\S]+?(?=float glow)/, 'vec3 sky = vec3(.53, .77, .95);\n          ');
+    replace(/sky = mix\(sky, vec3\(1\.12[^;]+;/, '');
+  }
+  material.fragmentShader = fragment;
+}
+
 function instrumentRenderer(value: Graphics) {
   graphics = value;
   const { renderer, gl } = value;
   if (seenRenderers.has(renderer)) return;
   seenRenderers.add(renderer);
   timing = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExtension | null;
+  renderer.domElement.addEventListener('webglcontextlost', () => {
+    if (graphics !== value) return;
+    timing = null;
+    pending.length = 0;
+    bloom.clear();
+  });
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    if (graphics === value) timing = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerExtension | null;
+  });
   time(gl, 'compileShader', 'glCompile');
   time(gl, 'linkProgram', 'glLink');
-  for (const method of ['texImage2D', 'texStorage2D', 'texSubImage2D']) time(gl, method, 'glTexture');
+  const fieldHandles = new WeakMap<WebGLTexture, string>();
+  for (const method of ['texImage2D', 'texStorage2D', 'texSubImage2D']) wrap(gl, method, (_self, args, call) => {
+    const field = measuring && exteriorFields.find(texture => args.includes(texture.image.data));
+    if (!field) return elapsed('glTexture', call);
+    const handle = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture;
+    fieldHandles.set(handle, field.name);
+    return elapsed('glTexture', () => elapsed(`upload.${field.name}`, call));
+  });
+  wrap(gl, 'generateMipmap', (_self, [target], call) => {
+    const field = measuring && exteriorFields.length && target === gl.TEXTURE_2D
+      && fieldHandles.get(gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture);
+    return field ? elapsed(`mipmap.${field}`, call) : call();
+  });
   for (const method of ['texImage3D', 'texStorage3D', 'texSubImage3D']) time(gl, method, 'glTexture3D');
   for (const method of ['bufferData', 'bufferSubData']) time(gl, method, 'glBuffer');
   for (const method of ['renderbufferStorage', 'renderbufferStorageMultisample']) time(gl, method, 'glRenderbuffer');
@@ -175,6 +224,15 @@ function instrumentRenderer(value: Graphics) {
   wrap(renderer, 'clear', (_self, args, call) => {
     // Three's own clear supplies explicit masks. Only omit redundant no-argument calls in this probe.
     if (gpuProbe === 'single-clear' && args.length === 0 && renderer.autoClear) return;
+    return call();
+  });
+  wrap(renderer, 'renderBufferDirect', (_self, [, , , drawnMaterial, drawnObject], call) => {
+    if (!exteriorProbe || pass || !(drawnObject instanceof Mesh) || drawnObject.material !== drawnMaterial) return call();
+    if (drawnObject.name === 'daybreak-exterior')
+      return exteriorProbe === 'without-exterior' ? undefined : gpuTime('exterior', call);
+    const material = drawnMaterial as Material;
+    if (exteriorProbe === 'without-canopy' && Reflect.get(material, 'uniforms')?.skyTint) return;
+    if (exteriorProbe === 'without-gate-glass' && drawnObject.renderOrder === 6 && material.blending === AdditiveBlending) return;
     return call();
   });
   wrap(renderer, 'render', (_self, [scene], call) => {
@@ -234,7 +292,7 @@ wrap(Graphics.prototype, 'draw', (self, [state], call) => {
   if (!measuring) return call();
   drawIndex++;
   if (drawIndex % 4 === 0) pollGpu();
-  const round = gpuProbe ? probeScopes : scopes;
+  const round = exteriorProbe ? exteriorScopes : gpuProbe ? probeScopes : scopes;
   sampleGpu = drawIndex % 4 === 0 ? round[Math.floor(drawIndex / 4) % round.length] : undefined;
   rendererCpu = 0;
   const buildStart = tunnelBuilds.length;
@@ -362,7 +420,7 @@ function dispose() {
 }
 
 const stability = {
-  async mount(volumeId: VolumeId, quality: QualityTier, showcase = false, tunnelTrace = false) {
+  async mount(volumeId: VolumeId, quality: QualityTier, showcase = false, tunnelTrace = false, showcaseRoute: RouteKind = 'main') {
     dispose();
     traceTunnel = tunnelTrace;
     closingAudio = undefined;
@@ -378,7 +436,7 @@ const stability = {
       return elapsed('frame', call);
     });
     const options: GameOptions = { ...initialSnapshot, volumeId, quality,
-      mode: showcase ? 'showcase' : 'standard', dynamicLights: showcase || initialSnapshot.dynamicLights,
+      mode: showcase ? 'showcase' : 'standard', showcaseRoute, dynamicLights: showcase || initialSnapshot.dynamicLights,
       runSeed: showcase ? 0 : undefined,
       diagnostics: { fixedTime: null, autoplay: false, align: !showcase, god: false, boost: false,
         mobileQuality: false, post: true, record: false, debug: false } };
@@ -429,7 +487,7 @@ const stability = {
     side: RouteSide = 'left', iterations = 480, animateLights = false,
     sample?: { station?: number; fly?: boolean; inspection?: boolean; preset?: OutroPreset; difficulty?: Difficulty;
       dynamic?: boolean; volumeId?: VolumeId; useViewport?: boolean; post?: boolean; image?: boolean; view?: ExteriorView;
-      tunnelTrace?: boolean; gpuProbe?: GpuProbe }) {
+      tunnelTrace?: boolean; gpuProbe?: GpuProbe; exteriorProbe?: ExteriorProbe }) {
     traceTunnel = sample?.tunnelTrace ?? false;
     const definition = volumeById(sample?.volumeId ?? 'elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
@@ -447,10 +505,15 @@ const stability = {
       numericBytes: path.retainedFrameCount * 13 * 8 + path.segments.length * (2 + 12) * 8 + path.arcTableBytes };
     try {
       gpuProbe = sample?.gpuProbe;
+      exteriorProbe = sample?.exteriorProbe;
       instrumentRenderer(surface);
       begin();
       surface.resize(...(sample?.useViewport ? [innerWidth, innerHeight, devicePixelRatio] as const : [960, 540, 1] as const));
       surface.load(definition, path, mode);
+      if (exteriorProbe) {
+        const exterior = Reflect.get(Reflect.get(surface, 'volume'), 'exterior') as DaybreakExterior;
+        prepareExteriorProbe(exterior, exteriorProbe);
+      }
       const post = Reflect.get(surface, 'post') as PostFX | undefined;
       if (gpuProbe && !post) throw new Error('GPU pass probe requires PostFX');
       if (gpuProbe === 'colour-only-resolve') post!.rtScene.resolveDepthBuffer = false;
@@ -546,8 +609,26 @@ const stability = {
       graphics = undefined;
       timing = null;
       gpuProbe = undefined;
+      exteriorProbe = undefined;
+      exteriorFields = [];
       output.remove();
     }
+  },
+  async daybreakFieldBake() {
+    const results = [];
+    for (const [field, bake] of [['cloud', makeDaybreakCloudField], ['cirrus', makeDaybreakCirrusField]] as const) {
+      const samples = [];
+      const hashes = [];
+      for (let i = 0; i < 6; i++) {
+        const at = performance.now();
+        const bytes = bake();
+        samples.push(performance.now() - at);
+        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>));
+        hashes.push(Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''));
+      }
+      results.push({ field, samples, hashes });
+    }
+    return results;
   },
   stream(id: VolumeId) {
     begin();

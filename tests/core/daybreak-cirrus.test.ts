@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { createHash } from 'node:crypto';
 import { CIRRUS_HEIGHT, CIRRUS_WIDTH, makeDaybreakCirrusField } from '../../app/game/graphics/daybreak-cirrus';
 
 const field = makeDaybreakCirrusField();
@@ -6,6 +7,8 @@ const sample = (column: number, row: number, channel: number) => field[(row * CI
 const column = (x: number, channel: number) => Array.from({ length: CIRRUS_HEIGHT }, (_, y) => sample(x, y, channel));
 
 test('cirrus seeds vary fibers and leave the main and secondary geometry independently inspectable', () => {
+  expect(createHash('sha256').update(field).digest('hex'))
+    .toBe('cc8ea99010f9b61c91d3f028564ab9dd3d1cbf9ffebe6b11730ce4a5abcbdaa4');
   expect(Buffer.compare(field, makeDaybreakCirrusField())).toBe(0);
   const other = makeDaybreakCirrusField(51);
   expect(Buffer.compare(field, other)).not.toBe(0);
