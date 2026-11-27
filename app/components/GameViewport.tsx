@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
-import type { Difficulty, ExperienceMode, GameRuntime, GameSnapshot, OrientationPreference, QualityTier, VolumeId } from '../game/contracts';
-import { volumeById } from '../game/core/volumes';
+import type { Difficulty, ExperienceMode, GameOptions, GameRuntime, GameSnapshot, OrientationPreference, QualityTier, VolumeId } from '../game/contracts';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import { immersiveMouseSupported, subscribeImmersiveMouseSupport } from '../game/runtime/immersive-mouse.client';
 import { FullscreenOrientation, isCompactTouchDevice } from '../game/runtime/screen-orientation.client';
-import { readOptions, readOrientationPreference, saveSetting } from '../game/runtime/settings.client';
+import { readOrientationPreference } from '../game/runtime/settings.client';
+import type { PlayerSettings } from '../game/runtime/settings.client';
 import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 import { CreditsPanel } from './CreditsPanel';
@@ -16,7 +15,6 @@ import { GameHUD } from './GameHUD';
 import { MainMenu } from './MainMenu';
 import { ResultsScreen } from './ResultsScreen';
 import { SettingsPanel } from './SettingsPanel';
-import { ShareToast, useShareToast } from './MenuUtilities';
 
 const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
@@ -35,16 +33,26 @@ function useMenuSnapshot(runtime: GameRuntime | null) {
   }, getInitialSnapshot);
 }
 
-export function GameViewport({ compliance }: { compliance?: ReactNode }) {
+interface Props {
+  settings: PlayerSettings;
+  volume: VolumeId;
+  chooseVolume(volume: VolumeId): void;
+  launch(): { options: GameOptions; hideUi?: boolean; openSettings?: boolean };
+  onQualityChanged?(quality: QualityTier): void;
+  renderCredits?(volume: VolumeId, close: () => void): ReactNode;
+  share?(): void;
+  shareNotice?: ReactNode;
+  socialLinks?: ReactNode;
+  compliance?: ReactNode;
+  diagnostics?: { output: ReactNode; write(text: string): void; launchFailed(error: unknown): void };
+}
+
+export function GameViewport({ settings, volume: requested, chooseVolume, launch, onQualityChanged, renderCredits,
+  share, shareNotice, socialLinks, compliance, diagnostics }: Props) {
   const { text } = usePlayerText();
   const canvasLabel = text.t('canvasLabel');
   const currentCanvasLabel = useRef(canvasLabel);
   currentCanvasLabel.current = canvasLabel;
-  const [search, setSearch] = useSearchParams();
-  const { pathname, hash } = useLocation();
-  const navigate = useNavigate();
-  const rawVolume = search.get('vol');
-  const requested = volumeById(rawVolume).id;
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [mount, setMount] = useState(0);
   const [panel, setPanel] = useState<'settings' | 'credits' | null>(null);
@@ -54,33 +62,16 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
   const [orientation, setOrientation] = useState<OrientationPreference | null>(null);
   const orientationLock = useRef<FullscreenOrientation | null>(null);
   const immersiveMouseAvailable = useSyncExternalStore(subscribeImmersiveMouseSupport, mouseSupported, unsupportedOnServer);
-  const { notice, showNotice } = useShareToast();
-  const shareRequest = useRef(0);
   const snapshot = useMenuSnapshot(runtime);
   const host = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLElement>(null);
   const cursor = useRef<HTMLDivElement>(null);
   const flash = useRef<HTMLDivElement>(null);
-  const debug = useRef<HTMLPreElement>(null);
   const panelReturnFocus = useRef<HTMLElement | null>(null);
   const runReturnFocus = useRef(false);
   const volumeTarget = useRef<VolumeId | null>(null);
   const previousRequest = useRef<VolumeId | null>(null);
   const keys = useRef<(key: string, event: KeyboardEvent) => boolean>(() => false);
-
-  useEffect(() => {
-    if (rawVolume !== 'drift') return;
-    const params = new URLSearchParams(search);
-    params.set('vol', requested);
-    void navigate({ pathname, search: `?${params.toString()}`, hash }, { replace: true, preventScrollReset: true });
-  }, [hash, navigate, pathname, rawVolume, requested, search]);
-
-  function chooseVolume(id: VolumeId) {
-    if (search.get('vol') === id) return;
-    const params = new URLSearchParams(search);
-    params.set('vol', id);
-    setSearch(params, { preventScrollReset: true });
-  }
 
   function openPanel(value: 'settings' | 'credits') {
     const focused = document.activeElement;
@@ -114,12 +105,10 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
     };
   });
 
-  useEffect(() => () => { shareRequest.current++; }, []);
-
   useEffect(() => {
     const root = viewport.current;
     if (!root || !isCompactTouchDevice()) return;
-    const preference = readOrientationPreference();
+    const preference = readOrientationPreference(settings);
     const events = new AbortController();
     const lock = new FullscreenOrientation(root, preference);
     orientationLock.current = lock;
@@ -154,10 +143,9 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
     canvas.id = 'gl';
     canvas.setAttribute('aria-label', currentCanvasLabel.current);
     element.append(canvas);
-    const params = new URLSearchParams(location.search);
-    setHideUi(params.get('ui') === '0');
-    if (params.get('panel') === '1') setPanel('settings');
-    const options = readOptions(params);
+    const { options, hideUi, openSettings } = launch();
+    setHideUi(!!hideUi);
+    if (openSettings) setPanel('settings');
     let stale = false;
     let engine: Runtime | undefined;
     void import('../game/runtime/GameRuntime.client').then(({ Runtime }) => {
@@ -176,15 +164,15 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
           const styles = flash.current.parentElement?.style;
           if (styles && Number(styles.getPropertyValue('--escape-white')) !== daylight) styles.setProperty('--escape-white', String(daylight));
         },
-        debug(text) { if (debug.current) debug.current.textContent = text; },
+        debug: diagnostics?.write,
         key: (key, event) => keys.current(key, event),
-        muted: value => saveSetting('muted', value),
-      });
+        muted: value => settings.save('muted', value),
+      }, settings.namespace);
       setRuntime(engine);
       return engine.initialize(canvas, { ...options, compactViewport: orientationLock.current !== null, saveRecords: true });
     }).catch(error => {
       if (!stale) {
-        if (params.get('dbg') === '1' && debug.current) debug.current.textContent = String(error);
+        diagnostics?.launchFailed(error);
         setImportError(true);
       }
     });
@@ -241,45 +229,41 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
 
   function setDifficulty(value: Difficulty) {
     runtime?.setDifficulty(value);
-    if (runtime?.getSnapshot().difficulty === value) saveSetting('difficulty', value);
+    if (runtime?.getSnapshot().difficulty === value) settings.save('difficulty', value);
   }
 
   function setMode(value: ExperienceMode) {
     runtime?.setMode(value);
-    if (runtime?.getSnapshot().mode === value) saveSetting('mode', value);
+    if (runtime?.getSnapshot().mode === value) settings.save('mode', value);
   }
 
   function setDynamicLights(value: boolean) {
     runtime?.setDynamicLights(value);
-    if (runtime?.getSnapshot().dynamicLights === value) saveSetting('dynamicLights', value);
+    if (runtime?.getSnapshot().dynamicLights === value) settings.save('dynamicLights', value);
   }
 
   function setImmersiveMouse(value: boolean) {
     runtime?.setImmersiveMouse(value);
-    if (runtime?.getSnapshot().immersiveMouse === value) saveSetting('immersiveMouse', value);
+    if (runtime?.getSnapshot().immersiveMouse === value) settings.save('immersiveMouse', value);
   }
 
   function setAutoBoost(value: boolean) {
     if (!runtime || snapshot.phase !== 'menu') return;
     runtime.setAutoBoost(value);
-    if (runtime.getSnapshot().autoBoost === value) saveSetting('autoBoost', value);
+    if (runtime.getSnapshot().autoBoost === value) settings.save('autoBoost', value);
   }
 
   function chooseOrientation(value: OrientationPreference) {
     setOrientation(value);
-    saveSetting('orientation', value);
+    settings.save('orientation', value);
     orientationLock.current?.choose(value);
   }
 
   async function setQuality(value: QualityTier) {
     await runtime?.setQuality(value);
     if (runtime?.getSnapshot().quality !== value) return;
-    saveSetting('quality', value);
-    if (search.has('q')) {
-      const params = new URLSearchParams(search);
-      params.set('q', value);
-      setSearch(params, { replace: true, preventScrollReset: true });
-    }
+    settings.save('quality', value);
+    onQualityChanged?.(value);
   }
 
   function tryAgain(event?: MouseEvent<HTMLButtonElement>) {
@@ -290,17 +274,6 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
       setMount(value => value + 1);
     } else if (viewSnapshot.phase === 'paused') void runtime?.resume(undefined, event?.nativeEvent);
     else void runtime?.start(false, event?.nativeEvent);
-  }
-
-  async function share() {
-    const url = new URL(location.pathname, location.origin).href;
-    const request = ++shareRequest.current;
-    try {
-      await navigator.clipboard.writeText(url);
-      if (request === shareRequest.current) showNotice(true);
-    } catch {
-      if (request === shareRequest.current) showNotice(false);
-    }
   }
 
   async function fullscreen() {
@@ -358,7 +331,7 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
               if (!value) runtime?.playUiCue('press');
             }} onVolumeTarget={id => { volumeTarget.current = id; }}
             start={event => startSelected(event.nativeEvent)} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
-            share={() => void share()} fullscreen={fullscreen} fullscreenActive={fullscreenState.active} compliance={compliance} />
+            share={share} socialLinks={socialLinks} fullscreen={fullscreen} fullscreenActive={fullscreenState.active} compliance={compliance} />
           {!showcase && <GameHUD runtime={runtime} />}
           <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu} />
         </div>
@@ -369,13 +342,15 @@ export function GameViewport({ compliance }: { compliance?: ReactNode }) {
             if (snapshot.phase === 'paused') void runtime?.resume(true, event.nativeEvent);
             else void runtime?.start(true, event.nativeEvent);
           }} />}
-        {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} />}
-        <ShareToast notice={notice} />
+        {panel === 'credits' && (renderCredits
+          ? renderCredits(snapshot.volumeId, () => setPanel(null))
+          : <CreditsPanel close={() => setPanel(null)} />)}
+        {shareNotice}
       </div>
-      <pre id="errbox" ref={debug} />
+      {diagnostics?.output}
       {panel === 'settings' && <SettingsPanel snapshot={snapshot} close={() => setPanel(null)}
         chooseQuality={value => void setQuality(value)}
-        setVolume={value => { runtime?.setVolume(value); saveSetting('volume', Math.round(value * 100)); }}
+        setVolume={value => { runtime?.setVolume(value); settings.save('volume', Math.round(value * 100)); }}
         setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
         immersiveMouseAvailable={immersiveMouseAvailable} setImmersiveMouse={setImmersiveMouse} setAutoBoost={setAutoBoost}
         orientation={orientation !== null ? { value: orientation, choose: chooseOrientation } : undefined}

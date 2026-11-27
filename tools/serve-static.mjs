@@ -11,6 +11,10 @@ const stability = argument === '--stability-client' ? 'client' : argument === '-
 const root = stability ? resolve(process.env.STABILITY_REFERENCE_DIR, stability)
   : resolve(argument === '--a0' ? process.env.A0_APP_ROOT : argument ?? 'build/client');
 const port = Number(process.argv[3] ?? 8080);
+const mount = process.argv[4] ?? '/';
+if (!/^\/(?:[\w.-]+\/)*$/.test(mount) || mount.split('/').some(part => part === '.' || part === '..')) {
+  throw new Error('The static mount must be an absolute URL path ending in /.');
+}
 const types = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -31,7 +35,9 @@ const fingerprinted = /^\/assets\/[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/;
 createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
-    const pathname = decodeURIComponent(url.pathname);
+    const requestPath = decodeURIComponent(url.pathname);
+    if (!requestPath.startsWith(mount)) throw new Error('Not found');
+    const pathname = '/' + requestPath.slice(mount.length);
     const file = resolve(root, '.' + (pathname.endsWith('/') ? pathname + 'index.html' : pathname));
     if (!file.startsWith(root + sep)) throw new Error('Not found');
     const body = await readFile(file).catch(async error => {
@@ -58,4 +64,4 @@ createServer(async (request, response) => {
     response.writeHead(404, { 'Content-Type': page ? types['.html'] : types['.txt'], 'Cache-Control': revalidate });
     response.end(request.method === 'HEAD' ? undefined : page ?? 'Not found');
   }
-}).listen(port, '127.0.0.1', () => console.log(`Serving ${root} on http://127.0.0.1:${port}`));
+}).listen(port, '127.0.0.1', () => console.log(`Serving ${root} on http://127.0.0.1:${port}${mount}`));

@@ -21,20 +21,23 @@ export function resolveRunPolicy(selection: RunSelection, settings: RunSettings,
   const showcase = selection.mode === 'showcase';
   const mode: PlayMode = selection.mode === 'sightseeing' ? 'sightseeing' : 'standard';
   const difficulty = showcase ? 'impossible' : mode === 'sightseeing' ? 'normal' : resolveDifficulty(volumeId, selection.difficulty);
-  const { fixedTime, autoplay, god, align, debug, record, boost } = settings.diagnostics;
+  const diagnostics = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? settings.diagnostics : undefined;
+  const ordinary = diagnostics?.fixedTime == null && !diagnostics?.autoplay;
+  const runSeed = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? settings.runSeed : undefined;
+  const showcaseSeed = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? settings.showcaseSeed : undefined;
   return {
     volumeId, mode, difficulty,
     referenceDifficulty: purpose === 'menu' && !showcase ? 'normal' : difficulty,
-    seed: validSeed(settings.runSeed) ?? (showcase ? validSeed(settings.showcaseSeed) ?? CAPTURE_RUN_SEED
+    seed: validSeed(runSeed) ?? (showcase ? validSeed(showcaseSeed) ?? CAPTURE_RUN_SEED
       : purpose === 'capture' ? CAPTURE_RUN_SEED : undefined),
     scoring: !showcase,
     showcaseRoute: showcase ? route === 'challenge' || route === 'score' ? route : 'main' : null,
-    allowSimulationDiagnostics: !showcase,
-    autoBoost: purpose === 'run' && fixedTime === null && !autoplay && !showcase &&
+    allowSimulationDiagnostics: !!diagnostics && !showcase,
+    autoBoost: purpose === 'run' && ordinary && !showcase &&
       mode === 'standard' && selection.autoBoost === true,
-    captureBoost: purpose === 'capture' && boost,
+    captureBoost: purpose === 'capture' && diagnostics?.boost === true,
     recordsEligible: purpose === 'run' && !!settings.saveRecords && !showcase &&
-      fixedTime === null && !autoplay && !god && !align && !debug && !record,
+      ordinary && !diagnostics?.god && !diagnostics?.align && !diagnostics?.debug && !diagnostics?.record,
   } as const;
 }
 

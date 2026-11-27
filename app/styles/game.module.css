@@ -37,6 +37,10 @@
 }
 
 :root{
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
   --ui:      #dceef8;
   --ui-dim:  rgba(220,238,248,.42);
   --line:    rgba(220,238,248,.16);
@@ -243,7 +247,7 @@ html:has(.viewport), body:has(.viewport){
   white-space:nowrap;
 }
 .center-msg.show{ opacity:1; }
-.restore-audio{ position:absolute; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); pointer-events:auto; }
+.restore-audio{ position:absolute; left:50%; bottom:max(22px, var(--safe-area-bottom)); transform:translateX(-50%); pointer-events:auto; }
 
 /* ================================================================== *
    GAME OVER
@@ -294,20 +298,6 @@ html:has(.viewport), body:has(.viewport){
   display:flex; flex-wrap:wrap; justify-content:center; gap:8px 14px; margin-top:24px;
 }
 .fallback-actions .btn{ margin-top:0; }
-
-/* ================================================================== *
-   RUNTIME ERROR READOUT
- * ================================================================== */
-:global(#errbox){
-  position:fixed; inset:0 0 auto 0; z-index:99999;
-  margin:0; padding:8px 10px;
-  color:#ff5f5f; background:rgba(0,0,0,.88);
-  font:11px/1.5 ui-monospace, Consolas, monospace;
-  white-space:pre-wrap; max-height:100vh; overflow:auto;
-  pointer-events:none;
-}
-:global(#errbox):empty{ display:none; }
-
 
 /* ================================================================== *
    HUD CENTRE
@@ -409,16 +399,16 @@ html:has(.viewport), body:has(.viewport){
 }
 
 @media (pointer:coarse) {
-  .hud-tl{ top:max(4vw, env(safe-area-inset-top)); left:max(4vw, env(safe-area-inset-left)); }
-  .hud-tc{ top:max(4vw, env(safe-area-inset-top)); }
-  .hud-br{ bottom:max(5vw, env(safe-area-inset-bottom)); right:max(4vw, env(safe-area-inset-right)); }
+  .hud-tl{ top:max(4vw, var(--safe-area-top)); left:max(4vw, var(--safe-area-left)); }
+  .hud-tc{ top:max(4vw, var(--safe-area-top)); }
+  .hud-br{ bottom:max(5vw, var(--safe-area-bottom)); right:max(4vw, var(--safe-area-right)); }
 }
 @media (pointer:coarse) and (max-width:900px), (pointer:coarse) and (max-aspect-ratio:3/4) {
-  .hud-tr{ bottom:max(5vw, env(safe-area-inset-bottom)); left:max(4vw, env(safe-area-inset-left)); }
+  .hud-tr{ bottom:max(5vw, var(--safe-area-bottom)); left:max(4vw, var(--safe-area-left)); }
 }
 @media (pointer:coarse) and (min-width:901px) and (min-aspect-ratio:3/4) {
-  .hud-tr{ top:calc(max(3.6vh, env(safe-area-inset-top)) + 48px); right:max(3.6vw, env(safe-area-inset-right)); }
-  .hud-bl{ bottom:max(4vh, env(safe-area-inset-bottom)); left:max(3.6vw, env(safe-area-inset-left)); }
+  .hud-tr{ top:calc(max(3.6vh, var(--safe-area-top)) + 48px); right:max(3.6vw, var(--safe-area-right)); }
+  .hud-bl{ bottom:max(4vh, var(--safe-area-bottom)); left:max(3.6vw, var(--safe-area-left)); }
 }
 
 /* Player motion tokens. Selectors use the same 420 ms in their WAAPI transitions. */
@@ -438,8 +428,8 @@ html:has(.viewport), body:has(.viewport){
 }
 .compact-touch :is(:global(#gl), :global(#ui)) { position:absolute; }
 .compact-touch :global(#over) {
-  padding:max(3.6vh,env(safe-area-inset-top)) max(3.6vw,env(safe-area-inset-right))
-    max(3.6vh,env(safe-area-inset-bottom)) max(3.6vw,env(safe-area-inset-left));
+  padding:max(3.6vh,var(--safe-area-top)) max(3.6vw,var(--safe-area-right))
+    max(3.6vh,var(--safe-area-bottom)) max(3.6vw,var(--safe-area-left));
 }
 .viewport button { cursor:pointer; }
 .viewport button:disabled { cursor:default; opacity:.46; }
@@ -451,10 +441,10 @@ html:has(.viewport), body:has(.viewport){
 :global(#menu).menu-screen {
   color:var(--ui); gap:clamp(5px,2vh,22px); overflow:auto; pointer-events:none;
   scrollbar-width:thin; scrollbar-color:#485a62 transparent;
-  padding:max(clamp(10px,3vh,40px),env(safe-area-inset-top))
-    max(clamp(12px,3vw,58px),env(safe-area-inset-right))
-    max(clamp(10px,3vh,40px),env(safe-area-inset-bottom))
-    max(clamp(12px,3vw,58px),env(safe-area-inset-left));
+  padding:max(clamp(10px,3vh,40px),var(--safe-area-top))
+    max(clamp(12px,3vw,58px),var(--safe-area-right))
+    max(clamp(10px,3vh,40px),var(--safe-area-bottom))
+    max(clamp(12px,3vw,58px),var(--safe-area-left));
 }
 :global(#menu).hidden { pointer-events:none; }
 .menu-center { gap:clamp(8px,2.1vh,26px); flex:1 0 auto; }
@@ -553,7 +543,7 @@ html:has(.viewport), body:has(.viewport){
 .music-sheet small { color:#c0d2da; font-size:.67rem; letter-spacing:.16em; }
 
 .toast-region {
-  z-index:9; pointer-events:none; position:fixed; top:max(14px,env(safe-area-inset-top));
+  z-index:9; pointer-events:none; position:fixed; top:max(14px,var(--safe-area-top));
   left:50%; transform:translateX(-50%); max-width:calc(100% - 24px);
 }
 .share-toast {
@@ -564,8 +554,8 @@ html:has(.viewport), body:has(.viewport){
 @keyframes toast-in { from { opacity:0; transform:translateY(-8px); } }
 
 .modal {
-  z-index:5; pointer-events:auto; padding:max(8px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))
-    max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));
+  z-index:5; pointer-events:auto; padding:max(8px,var(--safe-area-top)) max(10px,var(--safe-area-right))
+    max(8px,var(--safe-area-bottom)) max(10px,var(--safe-area-left));
   background:#03070bb8; backdrop-filter:none;
 }
 .panel {
@@ -644,7 +634,7 @@ html:has(.viewport), body:has(.viewport){
 .credits-panel p,.fallback-panel p { margin:0 0 .65em; overflow-wrap:anywhere; line-height:1.45; }
 .fallback-actions { margin:0; gap:0 12px; }
 .system-status {
-  position:absolute; left:50%; top:max(16px,env(safe-area-inset-top)); transform:translateX(-50%);
+  position:absolute; left:50%; top:max(16px,var(--safe-area-top)); transform:translateX(-50%);
   background:#10191eea; padding:.65rem 1rem; border-radius:8px;
   max-width:calc(100vw - 24px); color:#e5f6fd; text-align:center;
 }
@@ -678,7 +668,7 @@ html:has(.viewport), body:has(.viewport){
 .stats span { letter-spacing:.2em; opacity:.75; }
 .touch-pause { display:none; }
 @media (pointer:coarse) {
-  .touch-pause { display:block; position:absolute; top:max(3.6vh,env(safe-area-inset-top)); right:max(3.6vw,env(safe-area-inset-right)); min-width:44px; }
+  .touch-pause { display:block; position:absolute; top:max(3.6vh,var(--safe-area-top)); right:max(3.6vw,var(--safe-area-right)); min-width:44px; }
 }
 @media (max-width:560px) {
   .menu-screen .bottom { grid-template-columns:1fr 1fr; }
@@ -744,8 +734,8 @@ html:has(.viewport), body:has(.viewport){
   :global(#menu).menu-screen:not(.hidden) { pointer-events:auto; }
 }
 .compact-touch :global(#menu).menu-screen {
-  padding-top:max(clamp(10px,3vh,40px),env(safe-area-inset-top));
-  padding-bottom:max(clamp(10px,3vh,40px),env(safe-area-inset-bottom));
+  padding-top:max(clamp(10px,3vh,40px),var(--safe-area-top));
+  padding-bottom:max(clamp(10px,3vh,40px),var(--safe-area-bottom));
 }
 .hint .touch-steer { display:none; }
 @media (pointer:coarse) {

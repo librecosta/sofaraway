@@ -12,11 +12,11 @@ import type { Locale } from '../i18n/player-text';
 import { classes as c } from '../styles/classes';
 import s from '../styles/explorer-lab.module.css';
 import { explorerVolumeIds } from './explorer/explorer-catalog';
-import { CreditsPanel } from './CreditsPanel';
+import { WebCreditsPanel } from '../web/WebCreditsPanel';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { HUDView } from './GameHUD';
 import { MainMenu } from './MainMenu';
-import { ShareToast, useShareToast } from './MenuUtilities';
+import { ShareToast, SocialLinks, useShareToast } from '../web/WebMenuUtilities';
 import { ResultsScreen } from './ResultsScreen';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -209,7 +209,7 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
         chooseShowcaseRoute={showcaseRoute => patch({ showcaseRoute })}
         setMuted={muted => patch({ muted })}
         start={play} settings={() => setPanel('settings')} credits={() => setPanel('credits')}
-        share={share} fullscreen={toggleFullscreen} fullscreenActive={fullscreen} />
+        share={share} socialLinks={<SocialLinks preview />} fullscreen={toggleFullscreen} fullscreenActive={fullscreen} />
       {snapshot.mode !== 'showcase' && <HUDView snapshot={snapshot}
         pause={() => patch({ phase: 'paused', pauseReason: 'user' })}
         enableAudio={() => patch({ soundUnavailable: false })} />}
@@ -219,7 +219,7 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
     {!panel && <GameFallback snapshot={snapshot} retry={snapshot.phase === 'paused' ? play : menu}
       startSilent={() => patch({ phase: 'playing', error: null, pauseReason: null, soundUnavailable: true })}
       menu={menu} settings={() => setPanel('settings')} preview previewMessage={selected.previewMessage} />}
-    {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} preview />}
+    {panel === 'credits' && <WebCreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} preview />}
     {panel === 'settings' && <SettingsPanel snapshot={snapshot} close={() => setPanel(null)}
       chooseQuality={quality => patch({ quality })} setVolume={volume => patch({ volume })}
       setMuted={muted => patch({ muted })} setDynamicLights={dynamicLights => patch({ dynamicLights })}

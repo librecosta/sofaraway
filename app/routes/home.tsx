@@ -1,4 +1,4 @@
-import { GameViewport } from '../components/GameViewport';
+import { WebGame } from '../web/WebGame';
 import { ChinaRegistration } from '../components/ChinaRegistration';
 
 const title = 'SoFarAway — A Procedural Rhythm Runner';
@@ -31,5 +31,5 @@ export const meta = () => [
 export const links = () => [{ rel: 'canonical', href: canonical }];
 
 export default function Home() {
-  return <GameViewport compliance={import.meta.env.VITE_REGION === 'cn' ? <ChinaRegistration /> : undefined} />;
+  return <WebGame compliance={import.meta.env.VITE_REGION === 'cn' ? <ChinaRegistration /> : undefined} />;
 }

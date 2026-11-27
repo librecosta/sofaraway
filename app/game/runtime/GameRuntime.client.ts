@@ -20,13 +20,13 @@ import { Recorder } from '../debug/recorder.client';
 import { InputController } from './input.client';
 import type { PointerView } from './input.client';
 import { ImmersiveMouse } from './immersive-mouse.client';
-import { readRecords, recordFor, RunRecordStore } from './records.client';
+import { recordFor, RunRecordStore } from './records.client';
 import { observeScreenOrientation } from './screen-orientation.client';
 
 export interface RuntimeView {
   pointer(view: PointerView): void;
   flash(opacity: number, color: string, daylight?: number): void;
-  debug(text: string): void;
+  debug?(text: string): void;
   key?(key: string, event: KeyboardEvent): boolean;
   muted?(value: boolean): void;
 }
@@ -51,9 +51,9 @@ export class Runtime implements GameRuntime {
   private loadedWithDiagnostics = false;
   private input?: InputController;
   private immersiveMouse?: ImmersiveMouse;
-  private recorder?: Recorder;
+  #recorder?: Recorder;
   private options?: GameOptions;
-  private readonly recordStore = new RunRecordStore();
+  private readonly recordStore: RunRecordStore;
   private activeRun?: { readonly policy: RunPolicy; submitted: boolean };
   private raf = 0;
   private generation = 0;
@@ -67,13 +67,13 @@ export class Runtime implements GameRuntime {
   private lastFrame = 0;
   private visualDebt = 0;
   private nextPublish = 0;
-  private nextDebug = 0;
+  #nextDebug = 0;
   private frameTimes: number[] = [];
   private contextLost = false;
   private contextRecoveryTimer?: ReturnType<typeof setTimeout>;
   private cached = false;
-  private initMs = 0;
-  private switchMs = 0;
+  #initMs = 0;
+  #switchMs = 0;
   private notice: PlayerMessage | null = null;
   private noticeUntil = 0;
   private lightAmount = 0;
@@ -82,7 +82,13 @@ export class Runtime implements GameRuntime {
   private readonly lightInput = { beat: 0, rhythmBeat: 0, orbitAmount: 0, reducedMotion: false, dynamics: { ...steadyLights } };
   private lightTime = 0;
 
-  constructor(private readonly view: RuntimeView) {}
+  constructor(private readonly view: RuntimeView, namespace?: string) {
+    this.recordStore = new RunRecordStore(namespace);
+  }
+
+  private get captureTime() {
+    return typeof __PLAYER_ONLY_TOY__ === 'undefined' ? this.options?.diagnostics?.fixedTime ?? null : null;
+  }
 
   getSnapshot = () => this.snapshot;
 
@@ -94,7 +100,7 @@ export class Runtime implements GameRuntime {
 
   async initialize(canvas: HTMLCanvasElement, options: GameOptions) {
     if (this.snapshot.phase !== 'uninitialized') return;
-    const begin = performance.now();
+    const begin = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? performance.now() : 0;
     const generation = this.generation;
     this.options = options;
     this.lightAmount = Number(!!options.dynamicLights);
@@ -109,22 +115,25 @@ export class Runtime implements GameRuntime {
       localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
-      this.graphics = new Graphics(canvas, options.quality, this.mobile(), options.diagnostics);
+      const diagnostics = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? options.diagnostics : undefined;
+      this.graphics = new Graphics(canvas, options.quality, this.mobile(), diagnostics);
       this.input = new InputController(canvas, () => this.snapshot.phase === 'playing' && this.snapshot.mode !== 'showcase', this.keydown,
-        options.diagnostics.cursor, options.compactViewport);
+        diagnostics?.cursor, options.compactViewport);
       this.immersiveMouse = new ImmersiveMouse(canvas, active => {
         this.input?.setImmersive(active);
         if (active && this.snapshot.phase === 'playing') this.alignImmersiveReticle();
       }, () => this.pause('pointer-lock'));
-      if (options.diagnostics.record) this.toggleRecorder();
+      if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && diagnostics?.record) this.#toggleRecorder();
       this.attach(canvas);
       this.resizeGraphics();
       this.audio.setLevel(options.volume, options.muted);
       this.loadVolume();
-      this.initMs = performance.now() - begin;
+      if (typeof __PLAYER_ONLY_TOY__ === 'undefined') this.#initMs = performance.now() - begin;
       this.publish({ phase: 'menu', section: this.simulation!.section });
-      if (options.diagnostics.fixedTime !== null) this.capture(options.diagnostics.fixedTime);
-      else if (options.diagnostics.autoplay) void this.start(!navigator.userActivation?.hasBeenActive);
+      if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && diagnostics) {
+        if (diagnostics.fixedTime !== null) this.#capture(diagnostics.fixedTime);
+        else if (diagnostics.autoplay) void this.start(!navigator.userActivation?.hasBeenActive);
+      }
       this.schedule();
     } catch (error) {
       this.fail(error);
@@ -296,20 +305,21 @@ export class Runtime implements GameRuntime {
 
   async selectVolume(id: VolumeId) {
     if (!this.canConfigure() || this.contextLost || this.cached || id === this.snapshot.volumeId) return;
-    const begin = performance.now();
+    const begin = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? performance.now() : 0;
     if (this.snapshot.phase === 'results') this.returnToMenu();
     const { mode } = this.snapshot;
     const difficulty = resolveDifficulty(id, this.snapshot.difficulty);
     this.publish({ volumeId: id, difficulty, error: null, newBest: false,
       localRecord: this.menuRecord(id, difficulty, mode) });
-    this.switchMs = performance.now() - begin;
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined') this.#switchMs = performance.now() - begin;
     // Fixed-time diagnostics render the requested volume immediately.
-    if (this.options?.diagnostics.fixedTime == null) return;
-    try {
-      this.loadVolume();
-      this.capture(this.options.diagnostics.fixedTime);
-    } catch (error) {
-      this.fail(error);
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.captureTime !== null) {
+      try {
+        this.loadVolume();
+        this.#capture(this.captureTime);
+      } catch (error) {
+        this.fail(error);
+      }
     }
   }
 
@@ -332,9 +342,10 @@ export class Runtime implements GameRuntime {
 
   async setQuality(value: QualityTier) {
     if (!this.canConfigure() || this.unavailable() || !this.graphics) return;
-    if (this.snapshot.quality === value && !this.options?.diagnostics.mobileQuality) return;
+    const forcedMobile = typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options?.diagnostics?.mobileQuality;
+    if (this.snapshot.quality === value && !forcedMobile) return;
     try {
-      if (this.options) this.options.diagnostics.mobileQuality = false;
+      if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options?.diagnostics) this.options.diagnostics.mobileQuality = false;
       this.graphics.configure(value, this.mobile());
       this.frameTimes = [];
       this.publish({ quality: value });
@@ -381,8 +392,9 @@ export class Runtime implements GameRuntime {
   }
 
   private requestImmersiveMouse(gesture?: Event) {
-    const flags = this.options?.diagnostics;
-    if (this.snapshot.immersiveMouse && this.snapshot.mode !== 'showcase' && flags?.fixedTime === null && !flags.autoplay) {
+    const diagnosticRun = typeof __PLAYER_ONLY_TOY__ === 'undefined' &&
+      (this.captureTime !== null || this.options?.diagnostics?.autoplay);
+    if (this.snapshot.immersiveMouse && this.snapshot.mode !== 'showcase' && !diagnosticRun) {
       this.immersiveMouse?.request(gesture);
     }
   }
@@ -435,8 +447,10 @@ export class Runtime implements GameRuntime {
     this.graphics?.dispose();
     this.graphics = undefined;
     this.audio.dispose();
-    this.recorder?.canvas.remove();
-    this.recorder = undefined;
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined') {
+      this.#recorder?.canvas.remove();
+      this.#recorder = undefined;
+    }
   }
 
   private fail(error: unknown, kind: GameError['kind'] = 'graphics', stage?: GameError['stage']) {
@@ -446,25 +460,26 @@ export class Runtime implements GameRuntime {
     const unsupported = error instanceof UnsupportedGraphics;
     const message = unsupported ? error.reason
       : stage === 'recovery' ? 'contextFailed' : kind === 'graphics' ? 'graphicsInitFailed' : 'gameLoadFailed';
-    if (this.options?.diagnostics.debug) this.view.debug(String(error));
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options?.diagnostics?.debug) this.view.debug?.(String(error));
     this.publish({ phase: unsupported ? 'unsupported' : 'error', error: Object.freeze({ kind, stage, message }) });
   }
 
   private menuRecord(id: VolumeId, difficulty: Difficulty, mode: ExperienceMode) {
     return mode === 'showcase' || !this.options?.saveRecords ? initialSnapshot.localRecord
-      : recordFor(readRecords(), id, difficulty, mode);
+      : recordFor(this.recordStore.read(), id, difficulty, mode);
   }
 
   private loadVolume(policy = resolveRunPolicy(this.snapshot, this.options!,
-    this.options!.diagnostics.fixedTime === null ? 'menu' : 'capture')) {
-    const flags = this.options!.diagnostics;
+    this.captureTime === null ? 'menu' : 'capture')) {
     const volume = volumeById(policy.volumeId);
     const graphics = this.graphics!;
-    const sim = this.simulation = new Simulation(volume, policy.allowSimulationDiagnostics ? flags : undefined,
+    const diagnostics = typeof __PLAYER_ONLY_TOY__ === 'undefined' && policy.allowSimulationDiagnostics
+      ? this.options!.diagnostics : undefined;
+    const sim = this.simulation = new Simulation(volume, diagnostics,
       undefined, policy.mode, policy.referenceDifficulty);
     this.loadedWithDiagnostics = policy.allowSimulationDiagnostics;
     graphics.load(volume, sim.path, policy.mode);
-    if (flags.fixedTime === null) {
+    if (this.captureTime === null) {
       this.draw(this.simulation, performance.now());
       graphics.prepare();
     }
@@ -472,7 +487,8 @@ export class Runtime implements GameRuntime {
     this.lastFrame = 0;
   }
 
-  private capture(seconds: number) {
+  #capture(seconds: number) {
+    if (typeof __PLAYER_ONLY_TOY__ !== 'undefined') return;
     const sim = this.simulation!;
     const graphics = this.graphics!;
     const policy = resolveRunPolicy(this.snapshot, this.options!, 'capture');
@@ -499,7 +515,8 @@ export class Runtime implements GameRuntime {
   private unavailable() { return document.hidden || this.contextLost || this.cached; }
 
   private mobile() {
-    return !!this.options?.diagnostics.mobileQuality || window.innerWidth < 860 || matchMedia('(pointer: coarse)').matches;
+    return (typeof __PLAYER_ONLY_TOY__ === 'undefined' && !!this.options?.diagnostics?.mobileQuality) ||
+      window.innerWidth < 860 || matchMedia('(pointer: coarse)').matches;
   }
 
   private anchorRun(offset: number) {
@@ -529,7 +546,7 @@ export class Runtime implements GameRuntime {
   }
 
   private schedule() {
-    if (this.raf || !this.graphics || this.unavailable() || this.options?.diagnostics.fixedTime != null) return;
+    if (this.raf || !this.graphics || this.unavailable() || this.captureTime !== null) return;
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -540,12 +557,12 @@ export class Runtime implements GameRuntime {
     const hadFrame = this.lastFrame !== 0;
     const dt = hadFrame ? (now - this.lastFrame) / 1000 : 0;
     this.lastFrame = now;
-    const fixed = this.options?.diagnostics.fixedTime != null;
+    const fixed = this.captureTime !== null;
     try {
       if (!fixed) {
         if (this.snapshot.phase === 'menu' && sim.volume.id !== this.snapshot.volumeId) {
           this.loadVolume();
-          this.switchMs = performance.now() - now;
+          if (typeof __PLAYER_ONLY_TOY__ === 'undefined') this.#switchMs = performance.now() - now;
           this.schedule();
           return;
         }
@@ -637,7 +654,7 @@ export class Runtime implements GameRuntime {
   private draw(sim: Simulation, now: number, updateScene = true) {
     const graphics = this.graphics;
     if (!graphics || this.contextLost) return;
-    const fixed = this.options?.diagnostics.fixedTime != null;
+    const fixed = this.captureTime !== null;
     // Leave the last frame in place behind the pause UI; keep servicing the pointer.
     const paused = this.snapshot.phase === 'paused';
     const dt = this.lightStamp ? Math.min(50, Math.max(0, now - this.lightStamp)) : 0;
@@ -672,20 +689,20 @@ export class Runtime implements GameRuntime {
           hit ? '#ff5a5a' : pickup > flash ? '#74ffdc' : '#fff', daylight ? end : undefined);
       }
     }
-    if (this.recorder && graphics.camera) {
-      this.recorder.sample(now / 1000, graphics.camera, sim, sim.camera);
-      this.recorder.draw();
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.#recorder && graphics.camera) {
+      this.#recorder.sample(now / 1000, graphics.camera, sim, sim.camera);
+      this.#recorder.draw();
     }
-    if (this.options?.diagnostics.debug && (fixed || now >= this.nextDebug)) {
-      this.nextDebug = now + 80;
-      this.view.debug(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options?.diagnostics?.debug && (fixed || now >= this.#nextDebug)) {
+      this.#nextDebug = now + 80;
+      this.view.debug?.(JSON.stringify({ ...graphics.metrics(), phase: this.snapshot.phase, beat: sim.beat,
         distance: sim.distance, camera: sim.camera, speed: sim.speed, hitCount: sim.hits, pickup: sim.pickup,
         experience: this.snapshot.mode, difficulty: sim.difficulty, gatesPassed: sim.gatesPassed, gatesTotal: sim.gatesTotal,
         branch: sim.branch, trackDistance: sim.trackDistance, neutralized: sim.gatesNeutralized,
         outroPhase: sim.outroPlan && sim.outroPhase, encore: sim.encore,
         rhythmGain: this.lightInput.dynamics.fixtureGain, dynamics: this.lightInput.dynamics, lightTime: this.lightTime,
         audio: this.audio.diagnostics,
-        initMs: this.initMs, switchMs: this.switchMs, renderedVolume: sim.volume.id, renderedMode: sim.mode }));
+        initMs: this.#initMs, switchMs: this.#switchMs, renderedVolume: sim.volume.id, renderedMode: sim.mode }));
     }
   }
 
@@ -708,7 +725,7 @@ export class Runtime implements GameRuntime {
     }
     if (this.contextLost) return;
     this.graphics?.resize(width, height, window.devicePixelRatio || 1);
-    if (this.simulation && this.options?.diagnostics.fixedTime != null) this.draw(this.simulation, performance.now());
+    if (this.simulation && this.captureTime !== null) this.draw(this.simulation, performance.now());
   }
 
   private resize = () => {
@@ -781,7 +798,7 @@ export class Runtime implements GameRuntime {
         this.graphics?.restore(sim.volume);
         this.contextLost = false;
         this.resizeGraphics();
-        this.graphics?.warmSurface(sim, this.options?.diagnostics.fixedTime != null, this.lighting(sim));
+        this.graphics?.warmSurface(sim, this.captureTime !== null, this.lighting(sim));
         this.publish({ error: null });
         this.surfaceChanged();
       } catch (error) {
@@ -812,10 +829,10 @@ export class Runtime implements GameRuntime {
     this.resize();
   };
 
-  private toggleRecorder() {
-    if (!this.graphics) return;
-    this.recorder ??= new Recorder(this.graphics.renderer.domElement.parentElement ?? document.body);
-    this.recorder.toggle();
+  #toggleRecorder() {
+    if (typeof __PLAYER_ONLY_TOY__ !== 'undefined' || !this.graphics) return;
+    this.#recorder ??= new Recorder(this.graphics.renderer.domElement.parentElement ?? document.body);
+    this.#recorder.toggle();
   }
 
   private keydown = (key: string, event: KeyboardEvent) => {
@@ -846,9 +863,9 @@ export class Runtime implements GameRuntime {
       this.setMuted(!this.snapshot.muted);
       this.showMessage({ id: this.snapshot.muted ? 'mutedNotice' : 'soundOn' });
       return true;
-    } else if (key === 'r') {
-      if (event.shiftKey) this.recorder?.download();
-      else this.toggleRecorder();
+    } else if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && key === 'r') {
+      if (event.shiftKey) this.#recorder?.download();
+      else this.#toggleRecorder();
       return true;
     }
     return false;

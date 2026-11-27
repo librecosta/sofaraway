@@ -1,0 +1,13 @@
+:root { font: 15px/1.5 system-ui, sans-serif; color: #e5f1f6; background: #10141c; color-scheme: dark; }
+body { margin: 0; }
+.toy-development { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+.toy-development aside { padding: 18px; background: #19202c; }
+.toy-development h1 { margin: 0; font-size: 20px; }
+.toy-development fieldset { margin: 14px 0; }
+.toy-development label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; }
+.toy-development label:has(input[type="checkbox"]) { justify-content: start; }
+.toy-development :is(input, select, button) { font: inherit; }
+.toy-development input[type="number"] { width: 74px; }
+.toy-container { display: flex; align-items: flex-start; padding: 20px; overflow: auto; }
+.toy-container iframe { display: block; flex: none; width: 100%; height: calc(100vh - 40px); border: 0; outline: 5px solid #354155; background: #000; }
+.toy-container.immersive iframe { outline: 0; }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Group, Mesh, MeshBasicMaterial } from 'three';
-import type { GameOptions } from '../../app/game/contracts';
+import type { WebGameOptions } from '../../app/web/launch.client';
 import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import { descentCargo } from '../../app/game/core/descent-routes';
@@ -48,7 +48,7 @@ for (const { kind, boost, feedback, badge } of cases) {
       const start = RuntimeClass.prototype.start;
       RuntimeClass.prototype.start = function () {
         active = this;
-        const options: GameOptions = Reflect.get(this, 'options');
+        const options: WebGameOptions = Reflect.get(this, 'options');
         options.runSeed = seed;
         return start.call(this, true);
       };
@@ -61,7 +61,7 @@ for (const { kind, boost, feedback, badge } of cases) {
       const runtime = active;
       const sim: Simulation = Reflect.get(runtime, 'simulation');
       const clock: FixedStepClock = Reflect.get(runtime, 'clock');
-      const { diagnostics }: GameOptions = Reflect.get(runtime, 'options');
+      const { diagnostics }: WebGameOptions = Reflect.get(runtime, 'options');
       const graphics: Graphics = Reflect.get(runtime, 'graphics');
       const scene = Reflect.get(graphics, 'volume') as {
         scene: import('three').Scene;

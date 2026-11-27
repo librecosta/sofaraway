@@ -12,7 +12,7 @@ import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { HorizontalSelector } from './HorizontalSelector';
 import { VolumeWheel } from './VolumeWheel';
-import { MusicInfo, SocialLinks } from './MenuUtilities';
+import { MusicInfo } from './MenuUtilities';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -26,7 +26,8 @@ interface Props {
   start: MouseEventHandler<HTMLButtonElement>;
   settings(): void;
   credits(): void;
-  share(): void;
+  share?(): void;
+  socialLinks?: ReactNode;
   fullscreen(): void;
   fullscreenActive: boolean;
   musicInitiallyOpen?: boolean;
@@ -53,10 +54,10 @@ export function MainMenu(props: Props) {
       <div className={c('top')}>
         <div className={c('menu-tools')}>
           <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label={t('credits')} />
-          <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label={t('share')} />
+          {props.share && <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label={t('share')} />}
         </div>
         <div className={c('menu-tools')}>
-          <SocialLinks preview={props.preview} />
+          {props.socialLinks}
           <MusicInfo volume={volume} muted={snapshot.muted} setMuted={props.setMuted}
             initiallyOpen={props.musicInitiallyOpen} />
         </div>

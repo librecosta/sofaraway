@@ -94,11 +94,13 @@ export function parseRecords(raw: string | null): RecordsV1 {
   return records;
 }
 
-export function readRecords(fallback = emptyRecords()) {
+function readRecordDocument(key: string, fallback = emptyRecords()) {
   try {
-    return parseRecords(localStorage.getItem(RECORDS_KEY));
+    return parseRecords(localStorage.getItem(key));
   } catch { return fallback; }
 }
+
+export function readRecords(fallback = emptyRecords()) { return readRecordDocument(RECORDS_KEY, fallback); }
 
 export function recordFor(records: RecordsV1, volume: VolumeId, difficulty: Difficulty, mode: PlayMode): LocalRecord {
   if (mode === 'sightseeing') return { best: null, last: records.sightseeing[recordId(volume)]?.last ?? null };
@@ -141,10 +143,10 @@ function mergeHandoff(records: RecordsV1, raw: string) {
   Object.assign(records.sightseeing, handoff.sightseeing);
 }
 
-function openHandoff(): Promise<IDBDatabase | null> {
+function openHandoff(name: string): Promise<IDBDatabase | null> {
   return new Promise(resolve => {
     try {
-      const request = indexedDB.open(RECORDS_LOCK, 1);
+      const request = indexedDB.open(name, 1);
       request.onupgradeneeded = () => { request.result.createObjectStore(handoffStore); };
       let blocked = false;
       request.onblocked = () => { blocked = true; resolve(null); };
@@ -159,15 +161,15 @@ function openHandoff(): Promise<IDBDatabase | null> {
 
 // Web Locks serialize the callbacks, but a renderer may still see a stale localStorage cache.
 // Carry the last successful V1 write across lock holders via a single IndexedDB row.
-function withHandoff<T>(database: IDBDatabase, write: (previous?: string, publish?: (value: string) => void) => T): Promise<T> {
+function withHandoff<T>(database: IDBDatabase, key: string, write: (previous?: string, publish?: (value: string) => void) => T): Promise<T> {
   return new Promise(resolve => {
     const transaction = database.transaction(handoffStore, 'readwrite');
     const store = transaction.objectStore(handoffStore);
-    const request = store.get(RECORDS_KEY);
+    const request = store.get(key);
     let result: { value: T } | undefined;
     request.onsuccess = () => {
       const previous = typeof request.result === 'string' ? request.result : undefined;
-      result = { value: write(previous, value => store.put(value, RECORDS_KEY)) };
+      result = { value: write(previous, value => store.put(value, key)) };
     };
     transaction.oncomplete = () => resolve(result!.value);
     transaction.onabort = () => resolve(result ? result.value : write());
@@ -175,8 +177,17 @@ function withHandoff<T>(database: IDBDatabase, write: (previous?: string, publis
 }
 
 export class RunRecordStore {
+  private readonly key: string;
+  private readonly lock: string;
   private tail = Promise.resolve();
   private readonly pending: RunRecordIntent[] = [];
+
+  constructor(namespace = 'sofaraway') {
+    this.key = `${namespace}.records.v1`;
+    this.lock = `${this.key}.write`;
+  }
+
+  read() { return readRecordDocument(this.key); }
 
   commitRunRecord(intent: RunRecordIntent) {
     const completion = this.tail.then(() => this.commit(intent));
@@ -188,7 +199,7 @@ export class RunRecordStore {
     const { volume, difficulty, mode, last } = intent;
     const save = (previous?: string, publish?: (value: string) => void) => {
       try {
-        const current = localStorage.getItem(RECORDS_KEY);
+        const current = localStorage.getItem(this.key);
         const records = parseRecords(current);
         if (previous !== undefined && previous !== current) mergeHandoff(records, previous);
         for (const { volume, difficulty, mode, last } of this.pending) {
@@ -196,10 +207,10 @@ export class RunRecordStore {
         }
         const newBest = recordRun(records, volume, difficulty, mode, last);
         const raw = JSON.stringify(records);
-        localStorage.setItem(RECORDS_KEY, raw);
+        localStorage.setItem(this.key, raw);
         this.pending.length = 0;
         try { publish?.(raw); } catch { /* The V1 document was saved even if the handoff is unavailable. */ }
-        const localRecord = recordFor(publish ? records : readRecords(records), volume, difficulty, mode);
+        const localRecord = recordFor(publish ? records : readRecordDocument(this.key, records), volume, difficulty, mode);
         return { localRecord, newBest: newBest && localRecord.best === totalRunScore(last) };
       } catch { return null; }
     };
@@ -208,9 +219,9 @@ export class RunRecordStore {
       try {
         const locks = globalThis.navigator?.locks;
         if (locks) {
-          const handoff = await openHandoff();
+          const handoff = await openHandoff(this.lock);
           try {
-            return await locks.request(RECORDS_LOCK, { mode: 'exclusive' }, () => handoff ? withHandoff(handoff, save) : save());
+            return await locks.request(this.lock, { mode: 'exclusive' }, () => handoff ? withHandoff(handoff, this.key, save) : save());
           } finally { handoff?.close(); }
         }
       } catch { /* The lock API can be restricted by the browser. */ }

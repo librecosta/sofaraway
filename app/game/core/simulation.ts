@@ -327,7 +327,7 @@ export class Simulation {
     }
     [camera.tx, camera.ty] = steer(input, camera.tx, camera.ty, dt, width);
     const next = this.chart[this.judged] ?? (this.mainComplete ? this.outroPlan?.gates[this.encoreCursor] : undefined);
-    if (this.options.align) {
+    if (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options.align) {
       if (this.branch && !this.branch.side && this.routeGuide && (!next || next.worldStation >= this.junctionPath!.end)) {
         const side = this.options.branchSide;
         const aim = Math.min(SECTION.a - 0.34 + width, BRANCH_SIDE_THRESHOLD + 0.65);
@@ -452,7 +452,8 @@ export class Simulation {
     gate.judged = true;
     gate.crossedAt = crossingTime;
     gate.neutralized = neutralize;
-    gate.passed = !neutralize && (this.options.god === true || canPass(gate.kind, gate.open, gate.axis, x, y));
+    gate.passed = !neutralize && (
+      (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options.god === true) || canPass(gate.kind, gate.open, gate.axis, x, y));
     const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
     gate.clean = gate.passed && Math.hypot(x - lx, y - ly) < CLEAN_RADIUS;
     this.encore = recordEncore(gate, this.encore, this.scoring);
@@ -471,7 +472,7 @@ export class Simulation {
       this.gatesNeutralized++;
       return;
     }
-    if (this.options.god || canPass(gate.kind, gate.open, gate.axis, x, y)) {
+    if ((typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options.god) || canPass(gate.kind, gate.open, gate.axis, x, y)) {
       const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
       this.gatesPassed++;
       this.combo++;

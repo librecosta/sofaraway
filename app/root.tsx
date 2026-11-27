@@ -1,26 +1,13 @@
-import { useEffect, useState } from 'react';
 import { Links, Meta, Outlet, Scripts, useLocation } from 'react-router';
 import type { ReactNode } from 'react';
-import { readSetting, saveSetting } from './game/runtime/settings.client';
-import { PlayerLocaleProvider } from './i18n/PlayerLocale';
-import { isLocale } from './i18n/player-text';
-import type { Locale } from './i18n/player-text';
+import { webSettings } from './game/runtime/settings.client';
+import { PlayerLocaleProvider, useLocalePreference } from './i18n/PlayerLocale';
 import { webDefaultLocale } from './i18n/web-locale';
 
 export function Layout({ children }: { children: ReactNode }) {
   const playerRoute = useLocation().pathname === '/';
-  const [preference, setPreference] = useState<Locale | null>(null);
-  const locale = playerRoute ? preference ?? webDefaultLocale : 'en';
-
-  useEffect(() => {
-    const saved = readSetting('locale');
-    setPreference(isLocale(saved) ? saved : null);
-  }, []);
-
-  function chooseLocale(value: Locale) {
-    setPreference(value);
-    saveSetting('locale', value);
-  }
+  const preference = useLocalePreference(webSettings, webDefaultLocale);
+  const locale = playerRoute ? preference.locale : 'en';
 
   return (
     <html lang={locale}>
@@ -33,7 +20,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <Links />
       </head>
       <body>
-        <PlayerLocaleProvider locale={locale} chooseLocale={chooseLocale}>{children}</PlayerLocaleProvider>
+        <PlayerLocaleProvider locale={locale} chooseLocale={preference.chooseLocale}>{children}</PlayerLocaleProvider>
         <Scripts />
       </body>
     </html>

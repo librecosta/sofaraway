@@ -21,6 +21,7 @@ npm run typecheck && npm test
 | Input and run lifecycle | With those same builds, use `npm run test:b0 -- tests/browser/mobile-orientation.spec.ts tests/browser/immersive-mouse.spec.ts tests/browser/runtime.spec.ts`. The [record tests](../tests/browser/records.spec.ts) also exercise same-origin tab coordination. |
 | Preview ownership | `npm run test:b0 -- tests/browser/preview-surface.spec.ts tests/browser/explorer-laboratories.spec.ts` checks failed setup, repeated restoration, iframe teardown and navigation with live resources. |
 | Static output and release | `npm run test:release`. Includes strict types, production build and static-site checks. `RELEASE_CHROMIUM_CHANNEL=chrome` selects installed Chrome. |
+| Bilibili Toy | `npm run test:toy`. Checks the nested release build and offline development console. See the [Toy development and publishing workflow](toy-development.md). |
 | Browser compatibility | Run `npx playwright install chromium firefox webkit`, then `npm run test:compat`. Use `COMPAT_CHROMIUM_CHANNEL=chrome` for installed Chrome. The mobile profiles are emulations. |
 | Audio | After installing the browsers for the compatibility matrix, run `npm run test:sync`. Chromium runs the full sync suite, Firefox skips the full-song cases, and WebKit runs lifecycle cases. The Chromium full-song tests run in real time. Use `SYNC_CHROMIUM_CHANNEL=chrome` for installed Chrome. |
 | Audio Inspector | After the production and harness builds, run `npm run test:b0 -- tests/browser/audio-inspector.spec.ts tests/browser/audio-inspector-stems.spec.ts tests/browser/static.spec.ts`. The Playwright tests compare four-volume stem and master PCM, validate complete stem WAV exports and chunk seams, exercise live mixing and cleanup, and capture aligned waveforms at four viewport sizes. |
@@ -35,7 +36,7 @@ The [original A0 comparison](history.md#reproducing-the-original-a0-comparison) 
 
 ## Web diagnostics
 
-The game reads query parameters on startup. Reload a fully specified URL when reproducing a capture. See the [settings parser](../app/game/runtime/settings.client.ts), [viewport](../app/components/GameViewport.tsx) and [effective run policy](../app/game/core/run-policy.ts) for scope and record eligibility.
+The Web game reads query parameters on startup. Reload a fully specified URL when reproducing a capture. See the [Web launch parser](../app/web/launch.client.ts), [Web adapter](../app/web/WebGame.tsx) and [effective run policy](../app/game/core/run-policy.ts) for scope and record eligibility.
 
 | Example | Effect |
 | --- | --- |

@@ -22,6 +22,7 @@ test('the static artifact contains registration data only in the China build', a
     const path = join(file.parentPath, file.name);
     expect(file.name).not.toContain('china-public-security');
     const bytes = await readFile(path);
+    expect(bytes.includes('sofaraway.bilibili.sofaraway') || bytes.includes('data-toy-dev-console'), path).toBe(false);
     expect(bytes.includes(icon), path).toBe(false);
     if (!china || file.name.endsWith('.html') && path !== join('build/client', 'index.html')) {
       const content = bytes.toString('utf8');
@@ -58,6 +59,24 @@ test('the static artifact contains registration data only in the China build', a
   } finally {
     await page.close();
   }
+});
+
+test('Web keeps fixed-time diagnostics and flight recorder shortcuts', async ({ page }) => {
+  await page.goto('/?q=low&t=8&dbg=1&rec=1&vol=daybreak');
+  const readout = page.locator('#errbox');
+  await expect(readout).toContainText('"renderedVolume":"daybreak"');
+  await expect(readout).toContainText('"phase":"playing"');
+  const snapshot = await readout.textContent();
+  const recorder = page.locator('canvas#rec');
+  await expect(recorder).toBeVisible();
+  await page.keyboard.press('r');
+  await expect(recorder).toBeHidden();
+  await page.keyboard.press('r');
+  await expect(recorder).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.keyboard.press('Shift+r');
+  expect((await download).suggestedFilename()).toMatch(/\.json$/);
+  await expect(readout).toHaveText(snapshot!);
 });
 
 test('the build locale hydrates, accepts a persisted override and keeps the region and Explorer language', async ({ page }) => {

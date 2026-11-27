@@ -4,7 +4,7 @@ import { STEP } from '../../app/game/core/clock';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import type { Simulation } from '../../app/game/core/simulation';
 import { volumeById } from '../../app/game/core/volumes';
-import type { GameOptions } from '../../app/game/contracts';
+import type { WebGameOptions } from '../../app/web/launch.client';
 import type { Graphics } from '../../app/game/graphics/scene.client';
 import type { Runtime } from '../../app/game/runtime/GameRuntime.client';
 
@@ -31,7 +31,7 @@ test('an Easy Square hit keeps the viewport steady and a backlog recovers before
     const runtime = active;
     const simulation: Simulation = Reflect.get(runtime, 'simulation');
     const clock: FixedStepClock = Reflect.get(runtime, 'clock');
-    const options: GameOptions = Reflect.get(runtime, 'options');
+    const options: WebGameOptions = Reflect.get(runtime, 'options');
     // Advance the earlier gates through normal collision; drive the Square with pointer input.
     const approachTime = (gateBeat - 1) * simulation.secondsPerBeat;
     while (clock.elapsed < approachTime) {

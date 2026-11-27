@@ -473,7 +473,7 @@ export class Graphics {
   private mobile: boolean;
   private locked = false;
 
-  constructor(canvas: HTMLCanvasElement, tier: QualityTier, mobile: boolean, private readonly flags: Diagnostics) {
+  constructor(canvas: HTMLCanvasElement, tier: QualityTier, mobile: boolean, private readonly flags?: Diagnostics) {
     const gl = canvas.getContext('webgl2', {
       antialias: tier === 'high' || (tier === 'auto' && !mobile),
       // Match the context attributes Three r187 supplies in the A0 renderer.
@@ -615,7 +615,7 @@ export class Graphics {
   }
 
   private buildPost(profile: QualityProfile, skipFirst = false) {
-    if (!this.flags.post || this.gl.isContextLost()) return;
+    if ((typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.flags?.post === false) || this.gl.isContextLost()) return;
     if (!profile.halfFloat && !this.capabilities.rgba8) {
       this.postFailure = 'No complete color framebuffer is available.';
       return;
@@ -635,7 +635,7 @@ export class Graphics {
           this.postFailure = 'PostFX framebuffer incomplete.';
           continue;
         }
-        const dof = this.flags.dof;
+        const dof = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? this.flags?.dof : undefined;
         if (dof) {
           post.dofMat.uniforms.uAperture.value = dof[0];
           if (dof[1] !== undefined) post.dofMat.uniforms.uMaxBlur.value = dof[1];
@@ -758,6 +758,7 @@ export class Graphics {
   }
 
   metrics() {
+    if (typeof __PLAYER_ONLY_TOY__ !== 'undefined') throw new Error();
     const { render, memory, programs } = this.renderer.info;
     const targets = this.post ? [this.post.rtScene, this.post.rtDof, this.post.rtDepth, this.post.rtA, this.post.rtB] : [];
     return {

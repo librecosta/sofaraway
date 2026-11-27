@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Runtime } from '../../app/game/runtime/GameRuntime.client';
 import type { Simulation } from '../../app/game/core/simulation';
 import type { Graphics } from '../../app/game/graphics/scene.client';
-import type { GameOptions } from '../../app/game/contracts';
+import type { WebGameOptions } from '../../app/web/launch.client';
 
 for (const profile of [
   { width: 1920, height: 1080, quality: 'high', lights: true, difficulty: 'impossible', side: 'left', motion: 'toggle', crossings: 2 },
@@ -27,7 +27,7 @@ for (const profile of [
       const start = Engine.prototype.start;
       Engine.prototype.start = function () {
         runtime = this;
-        const options: GameOptions = Reflect.get(this, 'options');
+        const options: WebGameOptions = Reflect.get(this, 'options');
         options.runSeed = 0;
         return launched = start.call(this, true);
       };
@@ -41,7 +41,7 @@ for (const profile of [
       if (sim.phase !== 'playing') throw Error('The DAYBREAK runtime did not start');
       Reflect.get(sim, 'options').branchSide = side;
       // Advance the real simulation and render exactly once per tick with its own lighting time.
-      const { diagnostics }: GameOptions = Reflect.get(live, 'options');
+      const { diagnostics }: WebGameOptions = Reflect.get(live, 'options');
       diagnostics.fixedTime = 0;
       const graphics: Graphics = Reflect.get(live, 'graphics');
       const render: (sim: Simulation, now: number) => void = Reflect.get(live, 'draw').bind(live);

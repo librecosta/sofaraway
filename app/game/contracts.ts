@@ -111,7 +111,7 @@ export interface GameOptions {
   compactViewport?: boolean;
   saveRecords?: boolean;
   runSeed?: number;
-  diagnostics: Diagnostics;
+  diagnostics?: Diagnostics;
 }
 
 export interface Diagnostics {

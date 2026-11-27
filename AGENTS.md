@@ -11,6 +11,7 @@ SoFarAway is a static browser rhythm runner with four procedurally generated vol
 | Soundtrack, scheduling, playback recovery | [`app/game/audio/`](app/game/audio/) and [`tests/sync/`](tests/sync/) |
 | Technical Explorer and capture fixtures | [`app/components/explorer/`](app/components/explorer/), [`app/game/debug/`](app/game/debug/) and [`tests/harness/`](tests/harness/) |
 | Prerendering, regional assets and static hosting | [`react-router.config.ts`](react-router.config.ts), [`tools/build-static.mjs`](tools/build-static.mjs) and [`tests/release/`](tests/release/) |
+| Bilibili Toy entry, development and packaging | [`toy/`](toy/), [`vite.toy.config.ts`](vite.toy.config.ts) and [Toy development](docs/toy-development.md) |
 
 - Use the [collaboration playbook](.agents/playbook.md) for taking over, sharing a workspace and handing off. Read [architecture and contracts](docs/engineering.md) for the affected subsystem and [verification](docs/verification.md) for commands.
 - Treat code, tests and configuration as authoritative for concrete behavior. Use [milestone history](docs/history.md) to recover the reason for a decision or find a proposal. Call out discrepancies before changing established behavior.
