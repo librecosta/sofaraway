@@ -11,7 +11,7 @@ export type BaseDifficulty = typeof difficulties[number];
 export type Difficulty = BaseDifficulty | 'impossible';
 export const qualities = ['high', 'auto', 'low'] as const;
 export type QualityTier = typeof qualities[number];
-export type PauseReason = 'user' | 'background' | 'context';
+export type PauseReason = 'user' | 'background' | 'context' | 'pointer-lock';
 export type GamePhase = 'uninitialized' | 'initializing' | 'menu' | 'starting' | 'playing'
   | 'paused' | 'crash' | 'results' | 'unsupported' | 'error' | 'disposed';
 
@@ -65,6 +65,7 @@ export interface GameSnapshot {
   readonly volume: number;
   readonly muted: boolean;
   readonly dynamicLights: boolean;
+  readonly immersiveMouse: boolean;
   readonly error: GameError | null;
   readonly pauseReason: PauseReason | null;
   readonly result: RunResult | null;
@@ -93,6 +94,7 @@ export interface GameOptions {
   volume: number;
   muted: boolean;
   dynamicLights?: boolean;
+  immersiveMouse?: boolean;
   saveRecords?: boolean;
   runSeed?: number;
   diagnostics: Diagnostics;
@@ -115,9 +117,9 @@ export interface Diagnostics {
 
 export interface GameRuntime {
   initialize(canvas: HTMLCanvasElement, options: GameOptions): Promise<void>;
-  start(silent?: boolean): Promise<void>;
+  start(silent?: boolean, gesture?: Event): Promise<void>;
   pause(reason: PauseReason): void;
-  resume(silent?: boolean): Promise<void>;
+  resume(silent?: boolean, gesture?: Event): Promise<void>;
   enableAudio(): Promise<void>;
   returnToMenu(): void;
   selectVolume(id: VolumeId): Promise<void>;
@@ -128,6 +130,7 @@ export interface GameRuntime {
   setVolume(value: number): void;
   setMuted(value: boolean): void;
   setDynamicLights(value: boolean): void;
+  setImmersiveMouse(value: boolean): void;
   getSnapshot(): GameSnapshot;
   subscribe(listener: () => void): () => void;
   dispose(): void;
@@ -152,6 +155,7 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   volume: 0.8,
   muted: false,
   dynamicLights: false,
+  immersiveMouse: false,
   error: null,
   pauseReason: null,
   result: null,

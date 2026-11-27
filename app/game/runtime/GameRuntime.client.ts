@@ -19,6 +19,7 @@ import { Graphics, UnsupportedGraphics } from '../graphics/scene.client';
 import { Recorder } from '../debug/recorder.client';
 import { InputController } from './input.client';
 import type { PointerView } from './input.client';
+import { ImmersiveMouse } from './immersive-mouse.client';
 import { readRecords, recordFor, RunRecordStore } from './records.client';
 
 export interface RuntimeView {
@@ -47,6 +48,7 @@ export class Runtime implements GameRuntime {
   private showcasePilot?: ShowcasePilot;
   private loadedWithDiagnostics = false;
   private input?: InputController;
+  private immersiveMouse?: ImmersiveMouse;
   private recorder?: Recorder;
   private options?: GameOptions;
   private readonly recordStore = new RunRecordStore();
@@ -100,12 +102,17 @@ export class Runtime implements GameRuntime {
       mode: options.mode, showcaseRoute: options.showcaseRoute ?? 'main',
       quality: options.quality, volume: options.volume, muted: options.muted,
       dynamicLights: !!options.dynamicLights,
+      immersiveMouse: !!options.immersiveMouse,
       localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
       this.graphics = new Graphics(canvas, options.quality, this.mobile(), options.diagnostics);
       this.input = new InputController(canvas, () => this.snapshot.phase === 'playing' && this.snapshot.mode !== 'showcase', this.keydown,
         options.diagnostics.cursor);
+      this.immersiveMouse = new ImmersiveMouse(canvas, active => {
+        this.input?.setImmersive(active);
+        if (active && this.snapshot.phase === 'playing') this.alignImmersiveReticle();
+      }, () => this.pause('pointer-lock'));
       if (options.diagnostics.record) this.toggleRecorder();
       this.attach(canvas);
       this.resizeGraphics();
@@ -121,7 +128,7 @@ export class Runtime implements GameRuntime {
     }
   }
 
-  async start(silent = false) {
+  async start(silent = false, gesture?: Event) {
     const phase = this.snapshot.phase;
     let sim = this.simulation;
     if (!sim || this.unavailable() || (phase !== 'menu' && phase !== 'results')) return;
@@ -131,6 +138,7 @@ export class Runtime implements GameRuntime {
     const { volumeId, mode, difficulty, showcaseRoute } = policy;
     this.publish({ phase: 'starting', error: null });
     if (generation !== this.generation) return;
+    this.requestImmersiveMouse(gesture);
     const reference = referenceFor(sim.volume, policy.referenceDifficulty);
     if (sim.volume.id !== volumeId || (sim.modeSpecificPath && sim.mode !== mode) || sim.reference !== reference ||
       this.loadedWithDiagnostics !== policy.allowSimulationDiagnostics) {
@@ -139,6 +147,7 @@ export class Runtime implements GameRuntime {
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
       if (generation !== this.generation) return;
       if (this.unavailable()) {
+        this.immersiveMouse?.release();
         this.publish({ phase });
         return;
       }
@@ -151,11 +160,15 @@ export class Runtime implements GameRuntime {
       }
     }
     if (!silent && !await this.startAudio(sim, 0, generation)) {
-      if (generation === this.generation) this.publish({ phase, error: audioError });
+      if (generation === this.generation) {
+        this.immersiveMouse?.release();
+        this.publish({ phase, error: audioError });
+      }
       return;
     }
     if (generation !== this.generation) return;
     if (this.unavailable()) {
+      this.immersiveMouse?.release();
       this.audio.stop();
       this.publish({ phase });
       return;
@@ -172,18 +185,19 @@ export class Runtime implements GameRuntime {
       this.audio.resetDiagnostics();
       if (silentFallback) this.audio.diagnostics.silentFallbacks++;
     }
-    const seed = policy.seed ?? createRunSeed();
-    this.pendingPickupDraw = policy.seed === undefined && !!sim.gameplay.pickup;
-    sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, policy.scoring);
-    this.activeRun = { policy: { ...policy, seed }, submitted: false };
-    this.showcasePilot = showcaseRoute ? new ShowcasePilot(sim, showcaseRoute) : undefined;
     try {
+      const seed = policy.seed ?? createRunSeed();
+      this.pendingPickupDraw = policy.seed === undefined && !!sim.gameplay.pickup;
+      sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, policy.scoring);
+      this.activeRun = { policy: { ...policy, seed }, submitted: false };
+      this.showcasePilot = showcaseRoute ? new ShowcasePilot(sim, showcaseRoute) : undefined;
       if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
     } catch (error) {
       this.fail(error);
       return;
     }
     this.anchorRun(0);
+    this.alignImmersiveReticle();
     this.publishRun({ phase: 'playing', pauseReason: null, error: null, soundUnavailable: false, newBest: false });
   }
 
@@ -201,27 +215,31 @@ export class Runtime implements GameRuntime {
       if (this.pausedAt - this.clock.elapsed >= RECOVERY_GAP) this.recoveryUntil = this.pausedAt;
     }
     this.audio.stop(true);
+    this.immersiveMouse?.release();
     this.input?.clear();
     this.lastInput = idleInput;
     this.view.flash(0, '#fff');
     this.publishRun({ phase: 'paused', pauseReason: reason, error: null, boosting: false });
   }
 
-  async resume(silent = this.silent) {
+  async resume(silent = this.silent, gesture?: Event) {
     const sim = this.simulation;
     if (!sim || this.snapshot.phase !== 'paused' || this.resumePending || this.unavailable()) return;
     this.resumePending = true;
     const generation = ++this.generation;
+    this.requestImmersiveMouse(gesture);
     const restored = !silent && await this.startAudio(sim, this.pausedAt, generation, true);
     if (generation !== this.generation) return;
     this.resumePending = false;
     if (this.unavailable()) {
+      this.immersiveMouse?.release();
       this.audio.stop(true);
       return;
     }
     this.silent = !restored;
     if (!silent && !restored) this.audio.diagnostics.silentFallbacks++;
     this.anchorRun(this.pausedAt);
+    this.alignImmersiveReticle();
     this.publish({ phase: 'playing', pauseReason: null, error: null,
       soundUnavailable: silent ? this.snapshot.soundUnavailable : !restored });
     this.schedule();
@@ -251,6 +269,7 @@ export class Runtime implements GameRuntime {
     this.resumePending = false;
     this.audioPending = false;
     this.audio.stop();
+    this.immersiveMouse?.release();
     this.input?.clear();
     this.pendingPickupDraw = false;
     this.showcasePilot = undefined;
@@ -343,6 +362,29 @@ export class Runtime implements GameRuntime {
     if (this.snapshot.phase !== 'disposed') this.publish({ dynamicLights: value });
   }
 
+  setImmersiveMouse(value: boolean) {
+    if (this.snapshot.phase === 'disposed') return;
+    if (!value && this.immersiveMouse?.engaged) {
+      this.immersiveMouse.release();
+      this.input?.clear();
+      this.lastInput = idleInput;
+      this.publish({ boosting: false });
+    }
+    this.publish({ immersiveMouse: value });
+  }
+
+  private requestImmersiveMouse(gesture?: Event) {
+    const flags = this.options?.diagnostics;
+    if (this.snapshot.immersiveMouse && this.snapshot.mode !== 'showcase' && flags?.fixedTime === null && !flags.autoplay) {
+      this.immersiveMouse?.request(gesture);
+    }
+  }
+
+  private alignImmersiveReticle() {
+    const sim = this.simulation;
+    if (sim) this.input?.alignImmersiveReticle(sim.camera.tx, sim.camera.ty, sim.steeringWidth);
+  }
+
   private lighting(sim: Simulation, renderTime?: number) {
     this.lightInput.beat = sim.beat;
     const menu = sim.phase === 'menu';
@@ -378,6 +420,7 @@ export class Runtime implements GameRuntime {
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.events.abort();
+    this.immersiveMouse?.dispose();
     this.input?.dispose();
     this.audio.stop();
     this.simulation = undefined;
@@ -511,6 +554,7 @@ export class Runtime implements GameRuntime {
             this.audioPending = false;
             if (sim.result?.title === 'ESCAPED') this.audio.finish();
             else this.audio.stop();
+            this.immersiveMouse?.release();
             this.input?.clear();
             this.publishRun({ phase: 'crash' });
           }
@@ -687,6 +731,11 @@ export class Runtime implements GameRuntime {
   private attach(canvas: HTMLCanvasElement) {
     const { signal } = this.events;
     window.addEventListener('resize', this.resize, { signal });
+    window.addEventListener('blur', () => {
+      if (!this.immersiveMouse?.engaged) return;
+      if (this.snapshot.phase === 'starting') this.immersiveMouse.release();
+      else this.pause('pointer-lock');
+    }, { signal });
     this.watchDpr();
     document.addEventListener('visibilitychange', this.surfaceChanged, { signal });
     canvas.addEventListener('webglcontextlost', event => {
@@ -742,14 +791,15 @@ export class Runtime implements GameRuntime {
       if (this.canConfigure()) {
         event.preventDefault();
         if (event.isTrusted) this.playUiCue('press');
-        void this.start();
+        void this.start(false, event);
         return true;
       }
     } else if (key === 'escape') {
-      this.returnToMenu();
+      if (this.immersiveMouse?.active) this.pause('pointer-lock');
+      else if (this.snapshot.pauseReason !== 'pointer-lock') this.returnToMenu();
       return true;
     } else if (key === 'p') {
-      if (this.snapshot.phase === 'paused') void this.resume();
+      if (this.snapshot.phase === 'paused') void this.resume(undefined, event);
       else this.pause('user');
       return true;
     } else if (key === 'm') {

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { MouseEvent } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { initialSnapshot } from '../game/contracts';
 import type { Difficulty, ExperienceMode, GameRuntime, GameSnapshot, QualityTier, VolumeId } from '../game/contracts';
 import { volumeById } from '../game/core/volumes';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
+import { immersiveMouseSupported, subscribeImmersiveMouseSupport } from '../game/runtime/immersive-mouse.client';
 import { readOptions, saveSetting } from '../game/runtime/settings.client';
 import { classes as c } from '../styles/classes';
 import { CreditsPanel } from './CreditsPanel';
@@ -18,7 +20,9 @@ const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
 const cueControls = 'button:not(:disabled), a[href], input[type="checkbox"]:not(:disabled)';
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
-  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute'] as const;
+  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse'] as const;
+const mouseSupported = () => immersiveMouseSupported();
+const unsupportedOnServer = () => false;
 
 function useMenuSnapshot(runtime: GameRuntime | null) {
   const previous = useRef<GameSnapshot>(initialSnapshot);
@@ -39,6 +43,9 @@ export function GameViewport() {
   const [mount, setMount] = useState(0);
   const [panel, setPanel] = useState<'settings' | 'credits' | null>(null);
   const [hideUi, setHideUi] = useState(false);
+  const [fullscreenState, setFullscreenState] = useState({ available: false, active: false });
+  const [fullscreenMessage, setFullscreenMessage] = useState('');
+  const immersiveMouseAvailable = useSyncExternalStore(subscribeImmersiveMouseSupport, mouseSupported, unsupportedOnServer);
   const { notice, showNotice } = useShareToast();
   const shareRequest = useRef(0);
   const snapshot = useMenuSnapshot(runtime);
@@ -92,7 +99,7 @@ export function GameViewport() {
         !event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
         if (event.isTrusted) runtime?.playUiCue('press');
-        startSelected();
+        startSelected(event);
         return true;
       }
       return false;
@@ -100,6 +107,20 @@ export function GameViewport() {
   });
 
   useEffect(() => () => { shareRequest.current++; }, []);
+
+  useEffect(() => {
+    const sync = () => {
+      setFullscreenState({
+        available: document.fullscreenEnabled && typeof viewport.current?.requestFullscreen === 'function' &&
+          typeof document.exitFullscreen === 'function',
+        active: document.fullscreenElement === viewport.current,
+      });
+      setFullscreenMessage('');
+    };
+    sync();
+    document.addEventListener('fullscreenchange', sync);
+    return () => document.removeEventListener('fullscreenchange', sync);
+  }, []);
 
   useEffect(() => {
     const element = host.current!;
@@ -119,7 +140,8 @@ export function GameViewport() {
         pointer(state) {
           if (!cursor.current) return;
           cursor.current.style.transform = `translate3d(${state.x}px,${state.y}px,0)`;
-          cursor.current.className = c(!state.visible && 'hidden', state.hover && 'hover', state.down && 'down', state.locked && 'lock');
+          cursor.current.className = c(!state.visible && 'hidden', state.hover && 'hover', state.down && 'down',
+            state.locked && 'lock', state.immersive && 'immersive');
         },
         flash(opacity, color, daylight = 0) {
           if (!flash.current) return;
@@ -154,14 +176,14 @@ export function GameViewport() {
     void runtime.selectVolume(requested);
   }, [runtime, requested, snapshot.volumeId, snapshot.phase, snapshot.error]);
 
-  function startSelected() {
+  function startSelected(gesture: Event) {
     if (!runtime || snapshot.phase !== 'menu' || snapshot.error) return;
     const id = volumeTarget.current;
     if (id && id !== snapshot.volumeId) {
       chooseVolume(id);
       void runtime.selectVolume(id);
     }
-    void runtime.start();
+    void runtime.start(false, gesture);
   }
 
   const [importError, setImportError] = useState<string | null>(null);
@@ -199,6 +221,11 @@ export function GameViewport() {
     if (runtime?.getSnapshot().dynamicLights === value) saveSetting('dynamicLights', value);
   }
 
+  function setImmersiveMouse(value: boolean) {
+    runtime?.setImmersiveMouse(value);
+    if (runtime?.getSnapshot().immersiveMouse === value) saveSetting('immersiveMouse', value);
+  }
+
   async function setQuality(value: QualityTier) {
     await runtime?.setQuality(value);
     if (runtime?.getSnapshot().quality !== value) return;
@@ -210,14 +237,14 @@ export function GameViewport() {
     }
   }
 
-  function tryAgain() {
+  function tryAgain(event?: MouseEvent<HTMLButtonElement>) {
     if (viewSnapshot.phase === 'unsupported' || viewSnapshot.phase === 'error' ||
       (viewSnapshot.phase === 'menu' && viewSnapshot.error?.kind === 'graphics')) {
       setImportError(null);
       setRuntime(null);
       setMount(value => value + 1);
-    } else if (viewSnapshot.phase === 'paused') void runtime?.resume();
-    else void runtime?.start();
+    } else if (viewSnapshot.phase === 'paused') void runtime?.resume(undefined, event?.nativeEvent);
+    else void runtime?.start(false, event?.nativeEvent);
   }
 
   async function share() {
@@ -232,10 +259,13 @@ export function GameViewport() {
   }
 
   async function fullscreen() {
+    const element = viewport.current;
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
+      if (!element || !fullscreenState.available) throw new Error('Fullscreen unavailable');
+      if (document.fullscreenElement === element) await document.exitFullscreen();
+      else await element.requestFullscreen();
     } catch {
+      setFullscreenMessage('Fullscreen unavailable.');
       runtime?.showMessage('FULL SCREEN UNAVAILABLE');
     }
   }
@@ -276,15 +306,18 @@ export function GameViewport() {
               runtime?.setMuted(value);
               if (!value) runtime?.playUiCue('press');
             }} onVolumeTarget={id => { volumeTarget.current = id; }}
-            start={startSelected} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
-            share={() => void share()} fullscreen={fullscreen} />
+            start={event => startSelected(event.nativeEvent)} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
+            share={() => void share()} fullscreen={fullscreen} fullscreenActive={fullscreenState.active} />
           {!showcase && <GameHUD runtime={runtime} />}
-          <ResultsScreen snapshot={snapshot} restart={() => void runtime?.start()} menu={returnToMenu} />
+          <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu} />
         </div>
         <div id="flash" ref={flash} />
         <div id="shade" />
         {!panel && <GameFallback snapshot={viewSnapshot} retry={tryAgain} menu={returnToMenu} settings={() => openPanel('settings')}
-          startSilent={() => { if (snapshot.phase === 'paused') void runtime?.resume(true); else void runtime?.start(true); }} />}
+          startSilent={event => {
+            if (snapshot.phase === 'paused') void runtime?.resume(true, event.nativeEvent);
+            else void runtime?.start(true, event.nativeEvent);
+          }} />}
         {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} />}
         <ShareToast notice={notice} />
       </div>
@@ -292,7 +325,9 @@ export function GameViewport() {
       {panel === 'settings' && <SettingsPanel snapshot={snapshot} close={() => setPanel(null)}
         chooseQuality={value => void setQuality(value)}
         setVolume={value => { runtime?.setVolume(value); saveSetting('volume', Math.round(value * 100)); }}
-        setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights} />}
+        setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
+        immersiveMouseAvailable={immersiveMouseAvailable} setImmersiveMouse={setImmersiveMouse}
+        fullscreen={{ ...fullscreenState, toggle: () => void fullscreen(), message: fullscreenMessage }} />}
     </main>
   );
 }

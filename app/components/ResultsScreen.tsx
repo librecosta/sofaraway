@@ -1,10 +1,11 @@
+import type { MouseEventHandler } from 'react';
 import type { GameSnapshot } from '../game/contracts';
 import { ROUTE_LABELS } from '../game/core/branches';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 
 export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
-  snapshot: GameSnapshot; restart(): void; menu(): void; preview?: boolean;
+  snapshot: GameSnapshot; restart: MouseEventHandler<HTMLButtonElement>; menu(): void; preview?: boolean;
 }) {
   const id = (name: string) => preview ? `preview-${name}` : name;
   const visible = snapshot.phase === 'results';

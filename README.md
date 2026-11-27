@@ -83,6 +83,13 @@ browser matrix, audio, benchmarks and original A0 baseline.
 | `Esc` | Back to menu |
 | `R` | Flight recorder overlay · `Shift+R` downloads the log |
 
+**Immersive Mouse** is off by default. Enable it in Settings on a mouse-capable
+device to capture the mouse when you start, retry or resume a flight. Press
+`Esc` to release the mouse and pause. Settings also offers Enter and Exit
+Fullscreen. Immersive Mouse works independently of that control and with
+browser fullscreen (`F11`). Browser-native fullscreen prompts can still
+appear outside active pointer lock, and their behavior varies across browsers.
+
 ## How it is built
 
 React and TypeScript implement the interface, and React Router prerenders the

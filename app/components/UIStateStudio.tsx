@@ -156,6 +156,7 @@ function Backdrop({ real, volume, onBackdrop }: {
 
 function StudioControls({ selected, setBackdropVolume }: { selected: UIState; setBackdropVolume(volume: VolumeId): void }) {
   const [snapshot, setSnapshot] = useState(selected.snapshot);
+  const [fullscreen, setFullscreen] = useState(false);
   const [panel, setPanel] = useState<'settings' | 'credits' | null>(
     selected.overlay === 'settings' || selected.overlay === 'credits' ? selected.overlay : null);
   const host = useRef<HTMLDivElement>(null);
@@ -166,6 +167,7 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
   const menu = () => patch({ phase: 'menu', error: null, pauseReason: null });
   const play = () => patch({ phase: 'playing', error: null, pauseReason: null, soundUnavailable: false });
   const share = () => showNotice(selected.overlay !== 'share-failure');
+  const toggleFullscreen = () => setFullscreen(current => !current);
 
   useEffect(() => {
     setBackdropVolume(selected.snapshot.volumeId);
@@ -192,7 +194,7 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
         chooseShowcaseRoute={showcaseRoute => patch({ showcaseRoute })}
         setMuted={muted => patch({ muted })}
         start={play} settings={() => setPanel('settings')} credits={() => setPanel('credits')}
-        share={share} fullscreen={() => patch({ message: 'FULL SCREEN UNAVAILABLE' })} />
+        share={share} fullscreen={toggleFullscreen} fullscreenActive={fullscreen} />
       {snapshot.mode !== 'showcase' && <HUDView snapshot={snapshot}
         pause={() => patch({ phase: 'paused', pauseReason: 'user' })}
         enableAudio={() => patch({ soundUnavailable: false })} />}
@@ -205,7 +207,9 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
     {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} preview />}
     {panel === 'settings' && <SettingsPanel snapshot={snapshot} close={() => setPanel(null)}
       chooseQuality={quality => patch({ quality })} setVolume={volume => patch({ volume })}
-      setMuted={muted => patch({ muted })} setDynamicLights={dynamicLights => patch({ dynamicLights })} preview />}
+      setMuted={muted => patch({ muted })} setDynamicLights={dynamicLights => patch({ dynamicLights })}
+      immersiveMouseAvailable setImmersiveMouse={immersiveMouse => patch({ immersiveMouse })}
+      fullscreen={{ active: fullscreen, available: true, toggle: toggleFullscreen }} preview />}
     <ShareToast notice={notice} />
   </div>;
 }

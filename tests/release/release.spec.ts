@@ -197,9 +197,12 @@ test('hydration loads the game on demand and keeps volume history working', asyn
 
   const fullscreen = page.getByRole('button', { name: 'FULL SCREEN' });
   await fullscreen.click();
-  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
-  await fullscreen.click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.querySelector('main'))).toBe(true);
+  await page.getByRole('button', { name: 'SETTINGS', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: 'EXIT FULLSCREEN' }).click();
   await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+  await expect(page.getByRole('button', { name: 'ENTER FULLSCREEN' })).toBeVisible();
+  await page.getByRole('button', { name: 'CLOSE', exact: true }).click();
 
   await page.locator(start).click();
   await expect(page.locator('#hud')).toBeVisible();
@@ -262,4 +265,20 @@ test('unsupported Fullscreen reports a visible status', async ({ page }) => {
   await expect(page.locator(start)).toBeEnabled();
   await page.getByRole('button', { name: 'FULL SCREEN' }).click();
   await expect(page.locator('#menu').getByRole('status')).toHaveText('FULL SCREEN UNAVAILABLE');
+  await page.getByRole('button', { name: 'SETTINGS', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'ENTER FULLSCREEN' })).toBeDisabled();
+});
+
+test('a denied Settings fullscreen request leaves the windowed action available', async ({ page }) => {
+  await page.addInitScript(() => {
+    Element.prototype.requestFullscreen = () => Promise.reject(new DOMException('Denied', 'NotAllowedError'));
+  });
+  await page.goto('/?q=low');
+  await page.getByRole('button', { name: 'SETTINGS', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  const enter = settings.getByRole('button', { name: 'ENTER FULLSCREEN' });
+  await enter.click();
+  await expect(settings.getByRole('status')).toHaveText('Fullscreen unavailable.');
+  await expect(enter).toBeEnabled();
+  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull();
 });

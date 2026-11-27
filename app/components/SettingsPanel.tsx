@@ -21,6 +21,9 @@ interface Props {
   setVolume(value: number): void;
   setMuted(value: boolean): void;
   setDynamicLights(value: boolean): void;
+  immersiveMouseAvailable: boolean;
+  setImmersiveMouse(value: boolean): void;
+  fullscreen: { available: boolean; active: boolean; toggle(): void; message?: string };
   preview?: boolean;
 }
 
@@ -36,7 +39,8 @@ function Toggle({ id, label, checked, change, description }: {
   </label>;
 }
 
-export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights, preview }: Props) {
+export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights,
+  immersiveMouseAvailable, setImmersiveMouse, fullscreen, preview }: Props) {
   const quality = qualities.indexOf(snapshot.quality);
   const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
   return (
@@ -71,6 +75,15 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
         <Toggle id="set-dynamic-lights" label="DYNAMIC LIGHTS" checked={snapshot.dynamicLights} change={setDynamicLights}
           description={reduced ? 'Beat effects paused by your system’s Reduced Motion setting.'
             : 'Corridor lights dim between beats and peak on drums.'} />
+        {immersiveMouseAvailable && <Toggle id="set-immersive-mouse" label="IMMERSIVE MOUSE"
+          checked={snapshot.immersiveMouse} change={setImmersiveMouse}
+          description="Capture the mouse during flight. Press Esc to release the mouse and pause." />}
+        <div className={c('panel-row')}>
+          <span>FULLSCREEN</span>
+          <DecodeButton className={c('panel-close')} disabled={!fullscreen.available}
+            onClick={fullscreen.toggle} label={fullscreen.active ? 'EXIT FULLSCREEN' : 'ENTER FULLSCREEN'} />
+        </div>
+        {fullscreen.message && <small className={c('switch-description')} role="status">{fullscreen.message}</small>}
         <DecodeButton className={c('panel-close')} data-act="closesettings" onClick={close} label="CLOSE" />
       </div>
     </GameDialog>

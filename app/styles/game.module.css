@@ -441,7 +441,7 @@ html:has(.viewport), body:has(.viewport){
   outline:0; color:var(--accent); box-shadow:inset 0 -2px 0 -1px currentColor;
 }
 .viewport button:active:not(:disabled) { opacity:.7; transition-duration:var(--motion-press); }
-@media (pointer:coarse) { :global(#cursor) { display:none; } }
+@media (pointer:coarse) { :global(#cursor):not(.immersive) { display:none; } }
 :global(#menu).menu-screen {
   color:var(--ui); gap:clamp(5px,2vh,22px); overflow:auto; pointer-events:none;
   scrollbar-width:thin; scrollbar-color:#485a62 transparent;

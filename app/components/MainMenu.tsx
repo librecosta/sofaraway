@@ -1,3 +1,4 @@
+import type { MouseEventHandler } from 'react';
 import { experienceModes } from '../game/contracts';
 import type { Difficulty, ExperienceMode, GameSnapshot, VolumeId } from '../game/contracts';
 import { ROUTE_LABELS } from '../game/core/branches';
@@ -22,11 +23,12 @@ interface Props {
   chooseVolume(id: VolumeId): void;
   onVolumeTarget?(id: VolumeId): void;
   setMuted(value: boolean): void;
-  start(): void;
+  start: MouseEventHandler<HTMLButtonElement>;
   settings(): void;
   credits(): void;
   share(): void;
   fullscreen(): void;
+  fullscreenActive: boolean;
   musicInitiallyOpen?: boolean;
   preview?: boolean;
 }
@@ -87,7 +89,8 @@ export function MainMenu(props: Props) {
         <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label="SETTINGS" />
         <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}
           aria-keyshortcuts="X" label={ready ? (showcase ? 'START SHOWCASE' : 'START · PRESS X') : status} />
-        <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen} label="FULL SCREEN" />
+        <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen}
+          label={props.fullscreenActive ? 'EXIT FULL SCREEN' : 'FULL SCREEN'} />
       </div>
       <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
     </section>

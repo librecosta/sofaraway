@@ -1,3 +1,4 @@
+import type { MouseEvent } from 'react';
 import type { GameSnapshot } from '../game/contracts';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
@@ -5,8 +6,8 @@ import { GameDialog } from './GameDialog';
 
 interface Props {
   snapshot: GameSnapshot;
-  retry(): void;
-  startSilent(): void;
+  retry(event?: MouseEvent<HTMLButtonElement>): void;
+  startSilent(event: MouseEvent<HTMLButtonElement>): void;
   menu(): void;
   settings(): void;
   preview?: boolean;
@@ -31,8 +32,9 @@ export function GameFallback({ snapshot, retry, startSilent, menu, settings, pre
     : error?.stage === 'recovery' ? 'GRAPHICS RECOVERY FAILED'
     : error?.kind === 'graphics' ? 'GRAPHICS UNAVAILABLE' : 'PAUSED';
   const message = error?.message ?? (pauseReason === 'background' ? 'The run paused when the page left the foreground.'
-    : pauseReason === 'context' ? 'Graphics were interrupted. Resume when you are ready.' : 'Your run is paused.');
-  const dismiss = phase === 'paused' && !error ? (snapshot.mode === 'showcase' ? menu : retry)
+    : pauseReason === 'context' ? 'Graphics were interrupted. Resume when you are ready.'
+    : pauseReason === 'pointer-lock' ? 'Mouse released. Resume when you are ready.' : 'Your run is paused.');
+  const dismiss = phase === 'paused' && !error && pauseReason !== 'pointer-lock' ? (snapshot.mode === 'showcase' ? menu : retry)
     : error?.kind === 'audio' ? menu : undefined;
   return (
     <GameDialog title={title} dismiss={dismiss} preview={preview}>
