@@ -17,11 +17,11 @@ const mutable = [
   '/favicon.svg', '/robots.txt', '/sitemap.xml', '/llms.txt', '/.well-known/security.txt', '/THIRD-PARTY-NOTICES.txt',
 ];
 
-// An exact list keeps missing Cloudflare Pages chunks out of the immutable rules.
+// Apply immutable caching only to fingerprinted files in the artifact.
 const assets = (await readdir(new URL('assets/', output)))
   .filter(file => /^[\w.-]+-[\w-]{8,}\.(?:js|css|woff2)$/.test(file))
   .map(file => `/assets/${file}`).sort();
-if (assets.length + mutable.length > 100) throw new Error('Cloudflare Pages supports up to 100 header rules.');
+if (assets.length + mutable.length > 100) throw new Error('Cloudflare Workers Static Assets supports up to 100 header rules.');
 const cloudflare = [
   ...mutable.map(path => `${path}\n  Cache-Control: ${revalidate}\n`),
   ...assets.map(path => `${path}\n  Cache-Control: ${immutable}\n`),
