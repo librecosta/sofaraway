@@ -439,15 +439,16 @@ for (const { id } of VOLUMES) {
   });
 
   test(`@f4-p0 cold and warm production startup · ${id}`, async ({ browser }) => {
-    for (let trial = 0; trial < 3; trial++) {
-      const startup = await productionStartup(browser, candidate.client + `/?vol=${id}&q=high&dbg=1`);
-      log('f4-p0-startup', { volume: id, browser: browser.version(), trial, startup });
+    const variants = haveReference && id === 'orbit' ? builds : [candidate, candidate, candidate];
+    for (const [trial, build] of variants.entries()) {
+      const startup = await productionStartup(browser, build.client + `/?vol=${id}&q=high&dbg=1`);
+      log('f4-p0-startup', { volume: id, browser: browser.version(), trial, build: build.label, startup });
       expect(startup[0].jsTransferBytes).toBeGreaterThan(0);
       expect(startup[1].jsTransferBytes).toBeLessThan(startup[0].jsTransferBytes);
     }
   });
 
-  const compareFlight = haveReference && (id === 'elsewhere' || id === 'descent');
+  const compareFlight = haveReference && id !== 'daybreak';
   for (const [sample, build] of (compareFlight ? builds : [candidate]).entries()) test(
     `@f4-p0 audio-led complete Showcase · ${id}${compareFlight ? ` · ${build.label} ${sample}` : ''}`, async ({ browser }) => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });

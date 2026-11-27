@@ -1,5 +1,5 @@
 import type { DataTexture, Material, Object3D, WebGLRenderer } from 'three';
-import { AdditiveBlending, FrontSide, Mesh, PMREMGenerator, RedFormat, UnsignedByteType } from 'three';
+import { AdditiveBlending, FrontSide, InstancedMesh, Mesh, PMREMGenerator, RedFormat, ShaderMaterial, UnsignedByteType } from 'three';
 import type { AudioTransport } from '../../app/game/audio/transport.client';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { Difficulty, GameOptions, VolumeId, QualityTier, PlayMode } from '../../app/game/contracts';
@@ -23,6 +23,8 @@ import { DaybreakExterior } from '../../app/game/graphics/daybreak-exterior.clie
 import { makeDaybreakCloudField } from '../../app/game/graphics/daybreak-cloud-field';
 import { makeDaybreakCirrusField } from '../../app/game/graphics/daybreak-cirrus';
 import { OrbitWorld } from '../../app/game/graphics/orbit-world.client';
+import { OrbitSetpieces } from '../../app/game/graphics/orbit-setpieces.client';
+import { asteroidSurfaceVolume, stoneVolume } from '../../app/game/graphics/orbit-surface-field';
 import { Path } from '../../app/game/graphics/path';
 import { PostFX } from '../../app/game/graphics/post.client';
 import { Graphics } from '../../app/game/graphics/scene.client';
@@ -34,7 +36,8 @@ type Pass = 'scene' | 'depth' | 'dof' | 'bloom' | 'composite' | 'bright' | 'blur
 type GpuScope = Pass | 'frame' | 'exterior';
 type GpuProbe = 'baseline' | 'colour-only-resolve' | 'single-sample' | 'rgba8-colour'
   | 'without-glass' | 'without-fixtures' | 'without-transparent' | 'without-opaque' | 'front-side-opaque'
-  | 'single-clear' | 'red-depth' | 'without-facility-structure' | 'without-facility-lenses' | 'without-laser-panes';
+  | 'single-clear' | 'red-depth' | 'without-facility-structure' | 'without-facility-lenses' | 'without-laser-panes'
+  | 'without-orbit-debris' | 'without-orbit-landmarks' | 'without-orbit-nebula' | 'without-orbit-celestials';
 type ExteriorProbe = 'full' | 'without-exterior' | 'flat-sky' | 'sky-only' | 'without-cirrus' | 'without-clouds'
   | 'without-relief' | 'without-swells' | 'without-canopy' | 'without-gate-glass';
 type Values = Record<string, number[]>;
@@ -58,6 +61,7 @@ let measuring = false;
 let rendererCpu = 0;
 let disjoint = 0;
 let gpuProbe: GpuProbe | undefined;
+let orbitLodHeight: number | undefined;
 let exteriorProbe: ExteriorProbe | undefined;
 let exteriorFields: DataTexture[] = [];
 let depthResolves = 0;
@@ -139,7 +143,7 @@ function gpuTime<T>(scope: GpuScope, call: () => T): T {
   }
 }
 
-function probeSceneColour(scene: Object3D, call: () => unknown) {
+function probeSceneColour(scene: Object3D, call: () => unknown, orbit?: OrbitWorld) {
   const probe = gpuProbe;
   if (probe === 'front-side-opaque') {
     const sides = new Map<Material, Material['side']>();
@@ -154,9 +158,19 @@ function probeSceneColour(scene: Object3D, call: () => unknown) {
   }
   if (!probe?.startsWith('without-')) return call();
   const hidden: Mesh[] = [];
+  const pieces = orbit && (Reflect.get(orbit, 'setpieces') as OrbitSetpieces).group;
   scene.traverseVisible(object => {
     if (!(object instanceof Mesh)) return;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
+    if (probe.startsWith('without-orbit-')) {
+      const setpiece = pieces !== undefined && object.parent?.parent === pieces;
+      const nebula = setpiece && materials.some(mat => mat instanceof ShaderMaterial && mat.uniforms.structuralField);
+      const hide = probe === 'without-orbit-debris' ? orbit && object.parent === orbit.group && object instanceof InstancedMesh
+        : probe === 'without-orbit-landmarks' ? setpiece && object instanceof InstancedMesh
+        : probe === 'without-orbit-nebula' ? nebula : setpiece && !(object instanceof InstancedMesh) && !nebula;
+      if (hide) hidden.push(object);
+      return;
+    }
     const hide = probe === 'without-glass' ? object.renderOrder === 6 && materials.some(mat => mat.blending === AdditiveBlending)
       : probe === 'without-fixtures' ? object.name.startsWith('elsewhere-') && materials.some(mat => mat.blending === AdditiveBlending)
       : probe === 'without-facility-structure' ? ['facility-structure', 'descent-transfer-chamber'].includes(object.name)
@@ -222,7 +236,15 @@ function instrumentRenderer(value: Graphics) {
       && fieldHandles.get(gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture);
     return field ? elapsed(`mipmap.${field}`, call) : call();
   });
-  for (const method of ['texImage3D', 'texStorage3D', 'texSubImage3D']) time(gl, method, 'glTexture3D');
+  for (const method of ['texImage3D', 'texStorage3D', 'texSubImage3D']) wrap(gl, method, (_self, args, call) => {
+    const target = args[0];
+    if (target === gl.TEXTURE_3D || target === gl.TEXTURE_2D_ARRAY) {
+      const field = target === gl.TEXTURE_3D ? 'orbitVolume' : 'arrayLayer';
+      const label = method === 'texStorage3D' ? 'allocate' : 'submit';
+      return elapsed('glTexture3D', () => elapsed(`${label}.${field}`, call));
+    }
+    return elapsed('glTexture3D', call);
+  });
   for (const method of ['bufferData', 'bufferSubData']) wrap(gl, method, (_self, args, call) => {
     if (measuring && traceTunnel) {
       const data = args[method === 'bufferData' ? 1 : 2];
@@ -255,7 +277,9 @@ function instrumentRenderer(value: Graphics) {
   });
   wrap(renderer, 'render', (_self, [scene], call) => {
     const scope = pass ?? ((scene as Object3D & { overrideMaterial?: unknown }).overrideMaterial ? 'depth' : 'scene');
-    const render = () => scope === 'scene' && gpuProbe ? probeSceneColour(scene as Object3D, call) : call();
+    const render = () => scope === 'scene' && gpuProbe
+      ? probeSceneColour(scene as Object3D, call, gpuProbe.startsWith('without-orbit-') ? Reflect.get(value, 'volume')?.orbit : undefined)
+      : call();
     if (!measuring) return render();
     const at = performance.now();
     try { return pass ? render() : gpuTime(scope, render); }
@@ -285,9 +309,21 @@ time(IndustrialGeometry.prototype, 'build', 'industrialBuffers');
 time(FacilityInstallations.prototype, 'build', 'installationBuffers');
 time(DescentFacility.prototype, 'light', 'facilityLight');
 time(DaybreakExterior.prototype, 'update', 'daybreakExterior');
-time(OrbitWorld.prototype, 'update', 'orbitUpdate');
+wrap(OrbitWorld.prototype, 'update', (self, args, call) => {
+  if (orbitLodHeight === undefined) return elapsed('orbitUpdate', call);
+  const display = args as Parameters<OrbitWorld['update']>;
+  const actualHeight = display[1];
+  display[1] = orbitLodHeight;
+  const result = elapsed('orbitUpdate', call);
+  // Hold projected geometry LOD constant while materials see the true pixel footprint.
+  (Reflect.get(self as OrbitWorld, 'rocks') as { surface: import('../../app/game/graphics/orbit-rock-surface').OrbitRockSurface })
+    .surface.update(display[0], actualHeight, display[3]);
+  return result;
+});
 time(OrbitWorld.prototype, 'stream', 'orbitStream');
 time(OrbitWorld.prototype, 'warmAstral', 'orbitWarmup');
+time(OrbitSetpieces.prototype, 'warmAurora', 'auroraWarmup');
+time(OrbitSetpieces.prototype, 'warmAphelion', 'aphelionWarmup');
 time(Graphics.prototype, 'warmSurface', 'warmSurface');
 wrap(Tunnel.prototype, '_buildChunk', (_self, [s0, s1], call) => {
   if (!measuring || !traceTunnel) return elapsed('chunk', call);
@@ -535,8 +571,9 @@ const stability = {
     side: RouteSide = 'left', iterations = 480, animateLights = false,
     sample?: { station?: number; fly?: boolean; inspection?: boolean; preset?: OutroPreset; difficulty?: Difficulty;
       dynamic?: boolean; volumeId?: VolumeId; useViewport?: boolean; post?: boolean; image?: boolean; view?: ExteriorView;
-      tunnelTrace?: boolean; gpuProbe?: GpuProbe; exteriorProbe?: ExteriorProbe }) {
+      tunnelTrace?: boolean; gpuProbe?: GpuProbe; exteriorProbe?: ExteriorProbe; orbitLodHeight?: number }) {
     traceTunnel = sample?.tunnelTrace ?? false;
+    orbitLodHeight = sample?.orbitLodHeight;
     const definition = volumeById(sample?.volumeId ?? 'elsewhere');
     const diagnostics: GameOptions['diagnostics'] = { fixedTime: null, autoplay: false, align: true, god: false,
       boost, mobileQuality: false, post: sample?.post ?? true, record: false, debug: false, branchSide: side };
@@ -657,6 +694,7 @@ const stability = {
       graphics = undefined;
       timing = null;
       gpuProbe = undefined;
+      orbitLodHeight = undefined;
       exteriorProbe = undefined;
       exteriorFields = [];
       output.remove();
@@ -672,6 +710,22 @@ const stability = {
         const bytes = bake();
         samples.push(performance.now() - at);
         const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>));
+        hashes.push(Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''));
+      }
+      results.push({ field, samples, hashes });
+    }
+    return results;
+  },
+  async orbitFieldBake() {
+    const results = [];
+    for (const [field, bake] of [['celestial', stoneVolume], ['asteroid', asteroidSurfaceVolume]] as const) {
+      const samples: number[] = [];
+      const hashes = [];
+      for (let i = 0; i < 6; i++) {
+        const at = performance.now();
+        const bytes = bake(64);
+        samples.push(performance.now() - at);
+        const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
         hashes.push(Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join(''));
       }
       results.push({ field, samples, hashes });

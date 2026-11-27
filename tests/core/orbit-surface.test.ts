@@ -1,9 +1,26 @@
 import { expect,test } from 'vitest';
+import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { stoneNoise,stoneVolume,OrbitRockSurface } from '../../app/game/graphics/orbit-rock-surface';
 import { asteroidSurfaceVolume } from '../../app/game/graphics/orbit-surface-field';
 import { asteroidLithologies } from '../../app/game/graphics/orbit-lithology';
 import { orbitRockGeometry } from '../../app/game/graphics/orbit-rocks.client';
+
+// Complete RGBA texels captured from d02d57f, including non-power-of-two grids.
+test.each([
+  [1, 'b74de93f34b3e5321133e6cab702391ebeb3b0bc4d2ab0486638fb27d2fa2243', '28e1c2ed156054568d1b043364ec8a7f6a49029d24d064027f141120c494db1b'],
+  [9, '5df223c3e80e16576943edab56b734bb2230559f126c311144da40069bb42ec0', '5e4bad03ed0f3bbc459da55fe0d4c4ca7664294718f616bba288e8d99fee9d23'],
+  [32, '3fb454e0f1d190016138eff3321f7ff6fa4d83cca10e8bec34e5f92881a4932f', '28979c473f2825ede041d46a9e7b7d8a66af72790713e92f320857e90b17bfe4'],
+  [63, '237552aea12874b126295ec95fc7742e7ca3bcaa30f88acf0661b43fdb5b2c48', '6f877aaaf8bbcd158c96047d67b87e0384c7e8238723db089c8aa253f20572c9'],
+  [64, '43a31b8b3a8d4630801c1c04126f4748f9cdd8e6e12ea4e4602a8b1f7198a93d', 'b647a4a0404c7116730d3c6a09ddb65484e345e75a6d4165ca72b5f5a7e1cd0f'],
+  [65, '581222b882185c81d95e423dbd9cf4f95df69a34ae3ca5effdf47da5fc23fc2b', 'a8a025f2da6a2458baf2828d13a688872bb5017831072e1e7825493cbb8ad683'],
+] as const)('retains exact celestial and asteroid fields at size %i', (size, stone, asteroid) => {
+  for (const [bake, expected] of [[stoneVolume, stone], [asteroidSurfaceVolume, asteroid]] as const) {
+    const bytes = bake(size);
+    expect(bytes).toHaveLength(size ** 3 * 4);
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(expected);
+  }
+});
 
 test('baked gradient fields repeat continuously, have bounded values and are deterministic',()=>{
   expect(stoneVolume(8)).toEqual(stoneVolume(8));
