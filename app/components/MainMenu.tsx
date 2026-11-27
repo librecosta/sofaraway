@@ -13,6 +13,7 @@ import { DecodeButton } from './DecodeButton';
 import { HorizontalSelector } from './HorizontalSelector';
 import { VolumeWheel } from './VolumeWheel';
 import { MusicInfo, SocialLinks } from './MenuUtilities';
+import publicSecurityBadge from './china-public-security.png?inline';
 
 interface Props {
   snapshot: GameSnapshot;
@@ -91,6 +92,13 @@ export function MainMenu(props: Props) {
           aria-keyshortcuts="X" label={ready ? (showcase ? 'START SHOWCASE' : 'START · PRESS X') : status} />
         <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen}
           label={props.fullscreenActive ? 'EXIT FULL SCREEN' : 'FULL SCREEN'} />
+        {import.meta.env.VITE_REGION === 'cn' && props.visible && !props.preview &&
+          <footer className={c('menu-compliance')} lang="zh-CN" aria-label="China registration">
+            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">蜀ICP备2025158691号-3</a>
+            <a href="https://beian.mps.gov.cn/#/query/webSearch?code=51010702045043" target="_blank" rel="noreferrer">
+              <img src={publicSecurityBadge} width={13} height={14} alt="" />川公网安备51010702045043号
+            </a>
+          </footer>}
       </div>
       <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{snapshot.message}</div>
     </section>

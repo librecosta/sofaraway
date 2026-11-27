@@ -32,14 +32,32 @@ The original A0 suite is a historical comparison against the old static game. Us
 
 ## Hosting the production build
 
-Build the same artifact for both providers from the selected source revision with Node 24 LTS:
+Build both regions from the same `main` revision with Node 24 LTS. Vite reads
+`VITE_REGION` at build time. Unset and `intl` select the international build.
+`cn` adds the ICP and public security registrations to the prerendered game
+menu. The badge is inlined as a PNG in the China build. The international
+prerender and bundles omit the registration data and badge. Both builds retain
+the same international canonical URL and game behavior. [Vite environment variables](https://vite.dev/guide/env-and-mode.html) · [Vite asset inlining](https://vite.dev/guide/assets.html)
 
 ```sh
 npm ci
-npm run build
+VITE_REGION=intl npm run build  # Cloudflare Workers Static Assets
+VITE_REGION=cn npm run build    # EdgeOne Pages
 ```
 
-Run `npm start` to preview at `http://127.0.0.1:8080`. Both hosts serve `build/client` at the HTTPS origin root. Preserve `.well-known/`, the prerendered route directories, `index.html` and `404.html`. Missing pages and missing assets should return the custom 404 with HTTP status 404.
+On PowerShell, set `$env:VITE_REGION = 'intl'` or `$env:VITE_REGION = 'cn'`
+before running `npm run build`. Each build replaces `build/client`. Keep any
+artifacts you need to retain in separate directories. Run `npm start` to preview
+the latest build at `http://127.0.0.1:8080`. Both hosts serve `build/client` at
+the HTTPS origin root. Preserve `.well-known/`, the prerendered route directories,
+`index.html` and `404.html`. Missing pages and missing assets should return the
+custom 404 with HTTP status 404.
+
+After each regional build, keep the same `VITE_REGION` value for
+`npx playwright test region.spec.ts --config playwright.release.config.ts`.
+The checks inspect the deployed file set and prerendered links. The China run
+also checks touch layouts and verifies that the footer leaves with the menu
+when Standard or Showcase starts.
 
 ### International / Cloudflare Workers Static Assets
 
@@ -51,10 +69,18 @@ Validate the artifact without uploading it:
 npx --yes wrangler@4.168.0 deploy --dry-run --config wrangler.jsonc
 ```
 
-For the authorized production rollout through Workers Builds, use the repository root and `main` as the production branch. Set `NODE_VERSION=24.22.1` and `SKIP_DEPENDENCY_INSTALL=1`, use `npm ci && npm run build` as the build command and `npx --yes wrangler@4.168.0 deploy --config wrangler.jsonc` as the deploy command. Bind `sofaraway.librecosta.com` as a Worker Custom Domain in the LibreCosta Cloudflare zone. A merge into `main` triggers a deployment once Workers Builds is connected with those settings. [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) · [Build image](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/) · [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
+For Workers Builds, use the repository root and `main` as the production branch. Set `NODE_VERSION=24.22.1` and `SKIP_DEPENDENCY_INSTALL=1`. Use `npm ci && VITE_REGION=intl npm run build` as the build command and `npx --yes wrangler@4.168.0 deploy --config wrangler.jsonc` as the deploy command. Bind `sofaraway.librecosta.com` as a Worker Custom Domain in the LibreCosta Cloudflare zone. A merge into `main` triggers a deployment once Workers Builds is connected with those settings. [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) · [Build image](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/) · [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
 
 ### China / EdgeOne Pages
 
-Use prebuilt Direct Upload with the contents of `build/client` in the China project. The generated `edgeone.json` configures revalidation for HTML and mutable public files. EdgeOne's hashed-file policy supplies the one-year browser TTL. Use the static/SSG output with the root `404.html`. The host domain and compliance settings remain F6 decisions. [Direct Upload](https://pages.edgeone.ai/document/direct-upload) · [Cache rules](https://pages.edgeone.ai/document/configuring-cache) · [Static 404 behavior](https://edgeone.ai/document/192123212580007936)
+For prebuilt Direct Upload, check out the production `main` revision, run
+`VITE_REGION=cn npm run build` after installing dependencies, and upload the
+contents of `build/client` to the China project. If using a Git-connected
+project, set production to `main`, use Node 24, install with `npm ci`, set
+`VITE_REGION=cn` in the build command or build environment, and set the output
+directory to `build/client`. The generated `edgeone.json` configures revalidation
+for HTML and mutable public files. EdgeOne's hashed-file policy supplies the
+one-year browser TTL. Use the static output with the root `404.html`.
+[Direct Upload](https://pages.edgeone.ai/document/direct-upload) · [Project settings](https://pages.edgeone.ai/document/project-management) · [Cache rules](https://pages.edgeone.ai/document/configuring-cache) · [Static 404 behavior](https://edgeone.ai/document/192123212580007936)
 
 Before public release, verify the exact artifact on both target hosts. Check direct routes with and without trailing slashes, query preservation, custom 404 status, assets and their MIME types, cache behavior across updates and the public discovery files. Check input and audible playback on the target devices. The local release tests verify the static artifact. See the [F5 checklist](audits/F5-release-readiness.md) for the remaining host and release decisions.

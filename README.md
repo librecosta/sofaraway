@@ -56,8 +56,9 @@ npm run dev
 For a production preview, run `npm run build` and `npm start`, then open
 <http://127.0.0.1:8080>. Any ordinary HTTP static server can serve `build/client`.
 Configure the host to return `404.html` with status 404 for unknown paths.
-See the [verification and hosting guide](docs/verification.md) for the static
-artifact and hosting requirements.
+The default build targets Cloudflare Workers Static Assets. The EdgeOne Pages
+build uses `VITE_REGION=cn` to include the China registration footer.
+See the [verification and hosting guide](docs/verification.md) for both builds.
 
 ### Tests
 
