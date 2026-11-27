@@ -19,6 +19,7 @@ test('@perf comparable frame, resource and restart samples', async ({ browser })
     try {
       const page = await context.newPage();
       await page.addInitScript(() => localStorage.setItem('sofaraway.immersiveMouse', 'false'));
+      if (mobile) await page.addInitScript(() => localStorage.setItem('sofaraway.orientation', 'portrait'));
       const errors: string[] = [];
       page.on('pageerror', error => errors.push(error.message));
       page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });

@@ -435,6 +435,14 @@ html:has(.viewport), body:has(.viewport){
   --motion-out: cubic-bezier(.22,.74,.18,1);
   --acrylic: #10191e;
 }
+.compact-touch {
+  position:fixed; inset:0 0 auto; height:100%; height:100dvh; overflow:hidden;
+}
+.compact-touch :is(:global(#gl), :global(#ui)) { position:absolute; }
+.compact-touch :global(#over) {
+  padding:max(3.6vh,env(safe-area-inset-top)) max(3.6vw,env(safe-area-inset-right))
+    max(3.6vh,env(safe-area-inset-bottom)) max(3.6vw,env(safe-area-inset-left));
+}
 .viewport button { cursor:pointer; }
 .viewport button:disabled { cursor:default; opacity:.46; }
 .viewport :is(button,a,input,[tabindex]):focus-visible {
@@ -569,12 +577,12 @@ html:has(.viewport), body:has(.viewport){
 .panel-row { display:flex; align-items:center; justify-content:space-between; gap:8px 12px; min-height:44px; }
 .panel-row > :first-child { font-weight:700; font-size:.9375rem; }
 .seg {
-  position:relative; display:grid; grid-template-columns:repeat(3,1fr);
+  position:relative; display:grid; grid-template-columns:repeat(var(--segments,3),1fr);
   background:#e4f7ff09; border-radius:8px; isolation:isolate;
 }
 .seg::before {
-  content:""; position:absolute; inset:2px auto 2px 0; width:33.333%; border-radius:7px;
-  background:#83fae323; z-index:-1; transform:translateX(calc(var(--quality-index)*100%));
+  content:""; position:absolute; inset:2px auto 2px 0; width:calc(100% / var(--segments,3)); border-radius:7px;
+  background:#83fae323; z-index:-1; transform:translateX(calc(var(--segment-index)*100%));
   transition:transform var(--motion-switch) var(--motion-out);
 }
 .seg button, .panel-close {
@@ -582,6 +590,8 @@ html:has(.viewport), body:has(.viewport){
   letter-spacing:.12em; min-height:44px; min-width:44px; padding:0 7px;
 }
 .seg button[aria-pressed=true], .panel-close:hover { color:var(--accent); }
+.orientation-row { flex-wrap:wrap; }
+.orientation-options { --segments:2; }
 .panel-close { align-self:center; padding-inline:20px; }
 :global(#set-volume) {
   appearance:none; width:min(50%,14rem); height:44px; padding:0; background:none; margin:0;
@@ -686,6 +696,17 @@ html:has(.viewport), body:has(.viewport){
   .menu-brand { grid-column:1/-1; }
   .menu-options { align-self:center; }
 }
+@media (orientation:landscape) and (max-height:450px) and (min-width:570px) {
+  .compact-touch :global(#menu).menu-screen { gap:4px; }
+  .compact-touch .menu-brand { gap:4px; }
+  .compact-touch .record-grid { margin-top:4px; }
+  .compact-touch :global(#settings) .panel {
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+    width:min(100%,40rem); gap:4px 18px; padding:12px 16px;
+  }
+  .compact-touch :global(#settings) .panel > :is(.panel-head,.panel-close,[role="status"]) { grid-column:1/-1; }
+  .compact-touch :global(#settings) .panel > .panel-close { justify-self:center; }
+}
 @media (max-width:560px) and (max-height:590px) {
   :global(#menu).menu-screen { gap:5px; padding-block:10px; }
   .menu-center { gap:5px; }
@@ -693,6 +714,10 @@ html:has(.viewport), body:has(.viewport){
 }
 @media (max-width:560px) and (max-height:650px) {
   :global(#menu).menu-screen:not(.hidden) { pointer-events:auto; }
+}
+.compact-touch :global(#menu).menu-screen {
+  padding-top:max(clamp(10px,3vh,40px),env(safe-area-inset-top));
+  padding-bottom:max(clamp(10px,3vh,40px),env(safe-area-inset-bottom));
 }
 @media (prefers-reduced-motion:reduce) {
   .viewport {

@@ -11,7 +11,8 @@ export type BaseDifficulty = typeof difficulties[number];
 export type Difficulty = BaseDifficulty | 'impossible';
 export const qualities = ['high', 'auto', 'low'] as const;
 export type QualityTier = typeof qualities[number];
-export type PauseReason = 'user' | 'background' | 'context' | 'pointer-lock';
+export type PauseReason = 'user' | 'background' | 'context' | 'pointer-lock' | 'orientation';
+export type OrientationPreference = 'landscape' | 'portrait';
 export type GamePhase = 'uninitialized' | 'initializing' | 'menu' | 'starting' | 'playing'
   | 'paused' | 'crash' | 'results' | 'unsupported' | 'error' | 'disposed';
 
@@ -95,6 +96,7 @@ export interface GameOptions {
   muted: boolean;
   dynamicLights?: boolean;
   immersiveMouse?: boolean;
+  compactViewport?: boolean;
   saveRecords?: boolean;
   runSeed?: number;
   diagnostics: Diagnostics;

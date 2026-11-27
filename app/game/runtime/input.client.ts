@@ -30,6 +30,7 @@ export class InputController {
     playing: () => boolean,
     command: (key: string, event: KeyboardEvent) => boolean,
     startCursor?: Point,
+    private readonly compactViewport = false,
   ) {
     const { signal } = this.events;
     this.pointer = {
@@ -41,8 +42,8 @@ export class InputController {
     window.addEventListener('pointermove', e => {
       if (e.pointerType === 'touch') {
         if (!this.touch || this.touch.id !== e.pointerId) return;
-        this.dragX += (e.clientX - this.touch.x) / window.innerWidth;
-        this.dragY += (e.clientY - this.touch.y) / window.innerHeight;
+        this.dragX += (e.clientX - this.touch.x) / this.width;
+        this.dragY += (e.clientY - this.touch.y) / this.height;
         this.touch.x = e.clientX;
         this.touch.y = e.clientY;
         return;
@@ -54,7 +55,7 @@ export class InputController {
     // their mouse pointer counterparts, while touch and pen keep their own paths.
     window.addEventListener('mousemove', e => {
       if (!this.pointer.immersive || document.pointerLockElement !== canvas || !playing() || e.target !== canvas) return;
-      this.resizePointer();
+      if (!compactViewport) this.resizeViewport(window.innerWidth, window.innerHeight);
       this.aim(clamp(this.pointer.x + e.movementX, 0, this.pointerWidth),
         clamp(this.pointer.y + e.movementY, 0, this.pointerHeight));
     }, { passive: true, signal });
@@ -68,7 +69,7 @@ export class InputController {
       this.mouseBoost = false;
       this.pointer.down = this.boostPointer !== null || this.touch !== null;
     }, { signal });
-    window.addEventListener('resize', () => this.resizePointer(), { signal });
+    if (!compactViewport) window.addEventListener('resize', () => this.resizeViewport(window.innerWidth, window.innerHeight), { signal });
     window.addEventListener('pointerover', e => {
       if (e.pointerType === 'mouse' && document.pointerLockElement === canvas) return;
       this.pointer.hover = e.pointerType !== 'touch' && e.target instanceof Element &&
@@ -130,11 +131,11 @@ export class InputController {
     if (this.pointer.immersive) {
       if (input.axisX || input.axisY || input.dragX || input.dragY) this.alignImmersiveReticle(x, y, extraWidth);
     } else if (input.dragX || input.dragY) {
-      this.pointer.x = (0.5 + x / rangeX * 0.31) * window.innerWidth;
-      this.pointer.y = (0.5 - y / RANGE_Y * 0.31) * window.innerHeight - 64;
+      this.pointer.x = (0.5 + x / rangeX * 0.31) * this.width;
+      this.pointer.y = (0.5 - y / RANGE_Y * 0.31) * this.height - 64;
     } else if (input.axisX || input.axisY) {
-      this.pointer.x = (x / rangeX + 1) * window.innerWidth / 2;
-      this.pointer.y = (1 - y / RANGE_Y) * window.innerHeight / 2;
+      this.pointer.x = (x / rangeX + 1) * this.width / 2;
+      this.pointer.y = (1 - y / RANGE_Y) * this.height / 2;
     }
   }
 
@@ -143,8 +144,10 @@ export class InputController {
     this.pointer.immersive = active;
     this.pointer.hover = false;
     this.pointer.visible = true;
-    this.pointerWidth = window.innerWidth;
-    this.pointerHeight = window.innerHeight;
+    if (!this.compactViewport) {
+      this.pointerWidth = window.innerWidth;
+      this.pointerHeight = window.innerHeight;
+    }
   }
 
   alignImmersiveReticle(x: number, y: number, extraWidth: number) {
@@ -153,19 +156,23 @@ export class InputController {
     this.pointer.y = clamp((1 - y / RANGE_Y) * .5, 0, 1) * this.pointerHeight;
   }
 
-  private resizePointer() {
-    if (!this.pointer.immersive) return;
-    this.pointer.x *= window.innerWidth / this.pointerWidth;
-    this.pointer.y *= window.innerHeight / this.pointerHeight;
-    this.pointerWidth = window.innerWidth;
-    this.pointerHeight = window.innerHeight;
+  resizeViewport(width: number, height: number) {
+    if (!this.pointer.immersive && !this.compactViewport) return;
+    this.pointer.x *= width / this.pointerWidth;
+    this.pointer.y *= height / this.pointerHeight;
+    this.pointerWidth = width;
+    this.pointerHeight = height;
   }
+
+  private get width() { return this.compactViewport ? this.pointerWidth : window.innerWidth; }
+
+  private get height() { return this.compactViewport ? this.pointerHeight : window.innerHeight; }
 
   private aim(x: number, y: number) {
     this.pointer.x = x;
     this.pointer.y = y;
     this.pointer.visible = true;
-    this.target = clampSection((x / window.innerWidth * 2 - 1) * RANGE_X, (1 - y / window.innerHeight * 2) * RANGE_Y, 0.34);
+    this.target = clampSection((x / this.width * 2 - 1) * RANGE_X, (1 - y / this.height * 2) * RANGE_Y, 0.34);
   }
 
   clear() {
