@@ -69,6 +69,7 @@ test('the volume wheel settles after rapid input, cycles, drags, and keeps one r
 test('touch drag changes tracks without scrolling the menu or starting a run', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
+  await page.addInitScript(() => localStorage.setItem('sofaraway.orientation', 'portrait'));
   await page.goto('http://127.0.0.1:8089/?q=low');
   await expect(start(page)).toBeEnabled();
   const wheel = (await page.locator('#vols').boundingBox())!;

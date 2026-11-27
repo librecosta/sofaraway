@@ -1,6 +1,6 @@
 import { devices, expect, test } from '@playwright/test';
 import { readMetrics } from '../diagnostics';
-import { ready, record, resumeRun, startButton, startRun } from './support';
+import { ready, record, resumeRun, startButton, startRun, useViewportOrientation } from './support';
 
 test('DPR 3 presents a reachable menu and keeps the run moving', async ({ browser, browserName, baseURL }, info) => {
   const device = devices[browserName === 'webkit' ? 'iPhone 13' : 'Pixel 7'];
@@ -40,6 +40,7 @@ test('mobile portrait and landscape keep settings, pause and results operable', 
   await bounds();
   await page.setViewportSize({ width: portrait.height, height: portrait.width });
   await expect.poll(async () => (await readMetrics(page)).canvas).toEqual([portrait.height, portrait.width]);
+  await useViewportOrientation(page);
   await bounds();
   await startRun(page, info, 'tap');
   const pause = page.getByRole('button', { name: 'Pause', exact: true });

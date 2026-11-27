@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import { qualities } from '../game/contracts';
-import type { GameSnapshot, QualityTier } from '../game/contracts';
+import type { GameSnapshot, OrientationPreference, QualityTier } from '../game/contracts';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 import { GameDialog } from './GameDialog';
@@ -23,6 +23,7 @@ interface Props {
   setDynamicLights(value: boolean): void;
   immersiveMouseAvailable: boolean;
   setImmersiveMouse(value: boolean): void;
+  orientation?: { value: OrientationPreference; choose(value: OrientationPreference): void };
   fullscreen: { available: boolean; active: boolean; toggle(): void; message?: string };
   preview?: boolean;
 }
@@ -40,7 +41,7 @@ function Toggle({ id, label, checked, change, description }: {
 }
 
 export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights,
-  immersiveMouseAvailable, setImmersiveMouse, fullscreen, preview }: Props) {
+  immersiveMouseAvailable, setImmersiveMouse, orientation, fullscreen, preview }: Props) {
   const quality = qualities.indexOf(snapshot.quality);
   const reduced = useSyncExternalStore(subscribeMotion, reducedMotion, () => false);
   return (
@@ -50,7 +51,7 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
         <div className={c('panel-row')}>
           <span>QUALITY</span>
           <div className={c('seg')} id="seg-quality" role="group" aria-label="Quality"
-            style={{ '--quality-index': quality } as CSSProperties} onKeyDown={event => {
+            style={{ '--segment-index': quality } as CSSProperties} onKeyDown={event => {
               const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
               if (!direction || snapshot.phase === 'paused') return;
               event.preventDefault();
@@ -78,6 +79,14 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
         {immersiveMouseAvailable && <Toggle id="set-immersive-mouse" label="IMMERSIVE MOUSE"
           checked={snapshot.immersiveMouse} change={setImmersiveMouse}
           description="Capture the mouse during flight. Press Esc to release the mouse and pause." />}
+        {orientation && <div className={c('panel-row', 'orientation-row')}>
+          <span>ORIENTATION</span>
+          <div className={c('seg', 'orientation-options')} role="group" aria-label="Orientation"
+            style={{ '--segment-index': Number(orientation.value === 'portrait') } as CSSProperties}>
+            {(['landscape', 'portrait'] as const).map(value => <button type="button" key={value}
+              aria-pressed={orientation.value === value} onClick={() => orientation.choose(value)}>{value.toUpperCase()}</button>)}
+          </div>
+        </div>}
         <div className={c('panel-row')}>
           <span>FULLSCREEN</span>
           <DecodeButton className={c('panel-close')} disabled={!fullscreen.available}

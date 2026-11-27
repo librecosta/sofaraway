@@ -21,6 +21,7 @@ import { InputController } from './input.client';
 import type { PointerView } from './input.client';
 import { ImmersiveMouse } from './immersive-mouse.client';
 import { readRecords, recordFor, RunRecordStore } from './records.client';
+import { observeScreenOrientation } from './screen-orientation.client';
 
 export interface RuntimeView {
   pointer(view: PointerView): void;
@@ -108,7 +109,7 @@ export class Runtime implements GameRuntime {
     try {
       this.graphics = new Graphics(canvas, options.quality, this.mobile(), options.diagnostics);
       this.input = new InputController(canvas, () => this.snapshot.phase === 'playing' && this.snapshot.mode !== 'showcase', this.keydown,
-        options.diagnostics.cursor);
+        options.diagnostics.cursor, options.compactViewport);
       this.immersiveMouse = new ImmersiveMouse(canvas, active => {
         this.input?.setImmersive(active);
         if (active && this.snapshot.phase === 'playing') this.alignImmersiveReticle();
@@ -688,8 +689,15 @@ export class Runtime implements GameRuntime {
   }
 
   private resizeGraphics() {
+    const canvas = this.options?.compactViewport ? this.graphics?.renderer.domElement : undefined;
+    const width = canvas?.clientWidth || window.innerWidth;
+    const height = canvas?.clientHeight || window.innerHeight;
+    if (canvas && this.input) {
+      this.input.resizeViewport(width, height);
+      this.view.pointer(this.input.pointer);
+    }
     if (this.contextLost) return;
-    this.graphics?.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
+    this.graphics?.resize(width, height, window.devicePixelRatio || 1);
     if (this.simulation && this.options?.diagnostics.fixedTime != null) this.draw(this.simulation, performance.now());
   }
 
@@ -730,7 +738,12 @@ export class Runtime implements GameRuntime {
 
   private attach(canvas: HTMLCanvasElement) {
     const { signal } = this.events;
-    window.addEventListener('resize', this.resize, { signal });
+    if (this.options?.compactViewport) {
+      const observer = new ResizeObserver(this.resize);
+      signal.addEventListener('abort', () => observer.disconnect(), { once: true });
+      observer.observe(canvas);
+      observeScreenOrientation(this.reorient, signal);
+    } else window.addEventListener('resize', this.resize, { signal });
     window.addEventListener('blur', () => {
       if (!this.immersiveMouse?.engaged) return;
       if (this.snapshot.phase === 'starting') this.immersiveMouse.release();
@@ -778,6 +791,17 @@ export class Runtime implements GameRuntime {
     }, { signal });
   }
 
+  private reorient = () => {
+    this.input?.clear();
+    this.lastInput = idleInput;
+    if (this.snapshot.phase === 'playing' || this.resumePending) this.pause('orientation');
+    else if (this.snapshot.phase === 'paused' &&
+      (this.snapshot.pauseReason === 'background' || this.snapshot.pauseReason === 'context')) {
+      this.publish({ pauseReason: 'orientation' });
+    }
+    this.resize();
+  };
+
   private toggleRecorder() {
     if (!this.graphics) return;
     this.recorder ??= new Recorder(this.graphics.renderer.domElement.parentElement ?? document.body);
@@ -796,7 +820,7 @@ export class Runtime implements GameRuntime {
       }
     } else if (key === 'escape') {
       if (this.immersiveMouse?.active) this.pause('pointer-lock');
-      else if (this.snapshot.pauseReason !== 'pointer-lock') this.returnToMenu();
+      else if (this.snapshot.pauseReason !== 'pointer-lock' && this.snapshot.pauseReason !== 'orientation') this.returnToMenu();
       return true;
     } else if (key === 'p') {
       if (this.snapshot.phase === 'paused') void this.resume(undefined, event);

@@ -1,10 +1,10 @@
 import { experienceModes, initialSnapshot, qualities } from '../contracts';
-import type { ExperienceMode, GameOptions, QualityTier } from '../contracts';
+import type { ExperienceMode, GameOptions, OrientationPreference, QualityTier } from '../contracts';
 import { clamp } from '../core/collision';
 import { resolveDifficulty } from '../core/difficulty';
 import { volumeById } from '../core/volumes';
 
-type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted' | 'dynamicLights' | 'immersiveMouse';
+type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted' | 'dynamicLights' | 'immersiveMouse' | 'orientation';
 
 function read(key: Setting) {
   try { return localStorage.getItem('sofaraway.' + key); } catch { return null; }
@@ -12,6 +12,10 @@ function read(key: Setting) {
 
 export function saveSetting(key: Setting, value: string | number | boolean) {
   try { localStorage.setItem('sofaraway.' + key, String(value)); } catch { /* storage is optional */ }
+}
+
+export function readOrientationPreference(): OrientationPreference {
+  return read('orientation') === 'portrait' ? 'portrait' : 'landscape';
 }
 
 export function readOptions(params: URLSearchParams): GameOptions {

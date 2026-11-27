@@ -9,6 +9,11 @@ export function record(info: TestInfo, status: 'PASS' | 'DEGRADED' | 'UNSUPPORTE
 export const startButton = (page: Page) => page.locator('[data-act=start]');
 export const fallback = (page: Page) => page.getByRole('dialog', { name: /GRAPHICS (UNAVAILABLE|UNSUPPORTED)/ });
 
+export async function useViewportOrientation(page: Page) {
+  const prompt = page.getByRole('dialog', { name: 'ROTATE YOUR DEVICE' });
+  if (await prompt.isVisible()) await prompt.getByRole('button', { name: /SWITCH TO/ }).click();
+}
+
 export async function resumeRun(page: Page, info: TestInfo, action: 'click' | 'tap' = 'click') {
   const pause = page.getByRole('dialog', { name: 'PAUSED' });
   if (!await pause.isVisible()) return;
@@ -20,7 +25,10 @@ export async function ready(page: Page, info: TestInfo, path = '/?q=low&dbg=1') 
   await page.goto(path);
   const start = startButton(page);
   await expect.poll(async () => await start.isEnabled() || await fallback(page).isVisible()).toBe(true);
-  if (await start.isEnabled()) return true;
+  if (await start.isEnabled()) {
+    await useViewportOrientation(page);
+    return true;
+  }
   const available = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
   expect(available, 'fallback with WebGL2 available requires investigation').toBe(false);
   await expect(fallback(page)).toContainText('WebGL2');
