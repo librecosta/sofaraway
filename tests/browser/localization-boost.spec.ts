@@ -247,7 +247,7 @@ for (const profile of [
       }
       await capture('hud');
       await page.goto('/?vol=daybreak&diff=hard&q=low&t=146.5&god=0&align=1');
-      await expect(page.locator('#over-title')).toHaveText(locale === 'en' ? 'ESCAPED' : '已脱离');
+      await expect(page.locator('#over-title')).toHaveText(locale === 'en' ? 'ESCAPED' : '已撤离');
       await expect(page.locator('#over [data-act=menu]')).toBeInViewport({ ratio: 0.99 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
       await capture('results');

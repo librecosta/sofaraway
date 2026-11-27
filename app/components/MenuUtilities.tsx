@@ -21,6 +21,13 @@ export function SocialLinks({ preview }: { preview?: boolean }) {
   </>;
 }
 
+const soundtrackTitles = {
+  elsewhere: 'ELSEWHERE',
+  daybreak: 'GLASSHOUSE',
+  descent: 'CONTROL',
+  orbit: 'STARWAKE',
+} as const satisfies Record<VolumeDefinition['id'], string>;
+
 export function MusicInfo({ volume, muted, setMuted, initiallyOpen = false }: {
   volume: VolumeDefinition; muted: boolean; setMuted(value: boolean): void; initiallyOpen?: boolean;
 }) {
@@ -75,8 +82,7 @@ export function MusicInfo({ volume, muted, setMuted, initiallyOpen = false }: {
     <div id={id} role="tooltip" data-open={open} className={c('music-sheet')}>
       <p className={c('music-state')}>{t(muted ? 'soundOff' : 'soundOn')}</p>
       <strong lang="en">{volume.name}</strong>
-      <p>{volume.music === 'techno' ? t('musicTechno') : volume.music === 'breakbeat' ? t('musicBreakbeat')
-        : volume.music.toUpperCase()} · {number(volume.bpm)} BPM · {number(Math.floor(seconds / 60))}:{number(seconds % 60).padStart(2, '0')}</p>
+      <p><span lang="en">{soundtrackTitles[volume.id]}</span> · {number(volume.bpm)} BPM · {number(Math.floor(seconds / 60))}:{number(seconds % 60).padStart(2, '0')}</p>
       <small>{t('synthesized')}</small>
     </div>
   </div>;

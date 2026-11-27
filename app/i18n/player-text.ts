@@ -82,7 +82,7 @@ const en = {
   inspiration: 'INSPIRATION', inspiredBy: 'Inspired by',
   onX: 'LibreCosta on X', onGitHub: 'SoFarAway on GitHub', sound: 'Sound',
   soundOn: 'SOUND ON', soundOff: 'SOUND OFF', mutedNotice: 'MUTED', synthesized: 'SYNTHESIZED',
-  musicTechno: 'TECHNO', musicBreakbeat: 'BREAKBEAT', linkCopied: 'LINK COPIED', copyFailed: 'COULD NOT COPY LINK',
+  linkCopied: 'LINK COPIED', copyFailed: 'COULD NOT COPY LINK',
 } as const;
 
 type MessageKey = keyof typeof en;
@@ -96,7 +96,7 @@ type MatchingVariables<Translation extends Dictionary> = {
 const zh = {
   credits: '制作名单', share: '分享', settings: '设置', close: '关闭',
   creditsDialog: '制作名单', settingsDialog: '设置', orientationLabel: '屏幕方向', pauseAction: '暂停',
-  proceduralRunner: '程序生成跑酷', tagline: '随音乐飞行',
+  proceduralRunner: '程序化音乐跑酷', tagline: '随节奏飞行',
   noScript: '请启用 JavaScript，并使用支持 WebGL2 的浏览器游玩。',
   canvasLabel: 'SoFarAway 游戏画面', volumeSelector: '分卷选择',
   previousVolume: '上一卷', nextVolume: '下一卷',
@@ -127,14 +127,14 @@ const zh = {
   steerHelp: '移动鼠标、在屏幕上拖动，或使用方向键、WASD 转向。',
   boostHelp: '按住 Shift 或鼠标左键加速。使用触屏时，可在设置中开启全程加速。',
   shortcutsHelp: 'X 开始或重试。P 暂停或继续。M 切换静音。Esc 返回。',
-  score: '得分', sector: '区段', gates: '通关门数', velocity: '速度', link: '连击',
+  score: '得分', sector: '阶段', gates: '穿越障碍', velocity: '速度', link: '连击',
   shieldStatus: '护盾 ×{count}', resonance: '共鸣 ×{count}', clean: '完美穿越 ×{count}',
   enteringRoute: '正在进入{route}路线。',
   routeHint: '向左进入{left}路线，直行进入{main}路线，向右进入{right}路线。',
   holdBoost: '按住 Shift 加速', moveSteer: '移动以转向', touchSteer: '拖动以转向', boost: '加速',
   restoreSound: '声音已关闭 · 恢复音频', pause: '暂停', resume: '继续', tryAgain: '重试',
   playSilent: '静音游玩', menu: '返回主菜单', replay: '重新播放', runAgain: '再飞一次 · 按 X',
-  escaped: '已脱离', terminated: '飞行终止', showcaseComplete: '展示完成',
+  escaped: '已撤离', terminated: '飞行终止', showcaseComplete: '展示完成',
   showcaseInterrupted: '展示中断', mainScore: '主赛道得分', newBest: '刷新纪录',
   maxLink: '最高连击', accuracy: '通过率', encore: '返场', encoreBonus: '返场奖励',
   encoreGates: '返场门数', totalScore: '总分',
@@ -163,7 +163,7 @@ const zh = {
   inspiration: '灵感来源', inspiredBy: '灵感来自',
   onX: 'LibreCosta 的 X 主页', onGitHub: 'SoFarAway 的 GitHub 仓库', sound: '声音',
   soundOn: '声音已开启', soundOff: '声音已关闭', mutedNotice: '已静音', synthesized: '实时合成',
-  musicTechno: '科技舞曲', musicBreakbeat: '碎拍', linkCopied: '链接已复制', copyFailed: '无法复制链接',
+  linkCopied: '链接已复制', copyFailed: '无法复制链接',
 } as const satisfies Dictionary;
 
 const dictionaries = { en, 'zh-CN': zh satisfies MatchingVariables<typeof zh> };
