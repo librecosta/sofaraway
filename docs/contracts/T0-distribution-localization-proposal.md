@@ -1,0 +1,62 @@
+# T0 distribution and localization proposal
+
+Status as of 2026-11-28 · Proposed for implementation after the [compatibility audit](../audits/T0-toy-platform-compatibility.md).
+
+## Build contracts
+
+| Distribution | Region | Target | Default locale | Entry and output |
+| --- | --- | --- | --- | --- |
+| Cloudflare Workers Static Assets | `intl` | `web` | `en` | Existing React Router prerender · `build/client` |
+| EdgeOne Pages | `cn` | `web` | `zh-CN` | Existing React Router prerender · `build/client` |
+| Bilibili Toy | `cn` | `bilibili` | `zh-CN` | Dedicated Vite React entry · `build/toy` |
+
+Keep `VITE_REGION` and its existing Web default. Fix the Web target in the existing build entry and fix the Toy target and region in the dedicated Toy config. Each entry supplies a default locale at build time. The active locale comes from that default and the player's normalized preference. Reject unsupported target and region combinations at build time. Locale, region and target are independent and have distinct effects.
+
+- Region and target jointly decide compliance. Only `cn + web` includes the ICP and public security registrations, their links and the badge. Move the existing guarded fragment into a Web-owned import supplied by the Web entry. Assert its absence in Toy and INTL production artifacts, including HTML, JS and assets. Switching language never changes the fragment. [Current menu and regional artifact contract](../../app/components/MainMenu.tsx) · [Regional release tests](../../tests/release/region.spec.ts)
+- Preserve `npm run build`, `build/client`, `VITE_REGION=intl/cn`, both providers' deployment configuration, international Canonical, and the existing Explorer route tree. CN currently prerenders English. Change its game document language and labels with the localization milestone. Scope localized Web metadata to the home route if introduced with that milestone, and retain Explorer's English document language and existing indexing policy. Keep English social or technical assets deliberately scoped. [Prerender config](../../react-router.config.ts) · [Root document](../../app/root.tsx) · [Home metadata](../../app/routes/home.tsx) · [Verification and hosting](../verification.md)
+- Add `npm run build:toy` and `npm run package:toy` only when implementing the Toy target. A dedicated Vite root uses `base: './'`, a small `index.html` with `lang=zh-CN` and `viewport-fit=cover`, `publicDir: false` and an explicit allowlist of imported visuals, fonts and license files. Archive the contents of `build/toy` with `index.html` at the ZIP root. Package outside the served directory. Preserve BSD-3-Clause, generated third-party notices and each bundled font's required notices. Verify supported artifact file types with the platform. Keep release ZIPs and the optional poster and icon distinct.
+- Toy is one static entry. Select volumes with application state. Use a hash or a real packaged relative page only if a later feature needs a deep link. Avoid any root-relative asset, absolute internal path or server rewrite. Omit production hosting config, registrational assets, Web metadata, technical screenshots, test code, debug routes and source maps. Toy SDK and product features stay on the Toy entry's import graph.
+
+## Minimal application boundary
+
+Keep one shared viewport, canvas session, input system, render/audio runtime, simulation and player component tree. Split the route wiring from `GameViewport`. The Web adapter owns React Router, `vol` and legacy `drift` routing, Web options, share URL, Credits links and the compliance fragment. The Toy adapter owns selected volume, launch defaults and a local capability profile. Pass normalized player options and explicit actions to the shared view. Compose a small optional surface for platform-dependent menu actions and Credits attribution. Keep orchestration alongside the entry that owns it. A Vite entry can omit React Router once the shared view and navigation controls no longer require a router context.
+
+Separate persisted player preferences from diagnostic URL parsing in `settings.client.ts`. Toy constructs options from a typed player-only shape and normalized settings. Its runtime composition supplies fixed production defaults for the required `GameOptions.diagnostics` fields and provides no diagnostic entry points. Keep genuine quality, light, mute, orientation, immersive mouse where supported, and Showcase route controls. Retain Showcase's existing production seed policy and Impossible pilot. Omit URL-forced seeds and modes. [GameViewport](../../app/components/GameViewport.tsx) · [Settings adapter](../../app/game/runtime/settings.client.ts) · [Effective run policy](../../app/game/core/run-policy.ts)
+
+### Debug exclusion
+
+| Current entry | Web contract | Toy boundary |
+| --- | --- | --- |
+| `/debug/*`, legacy fragments, audio redirect, Interface preview | Continue prerendered and publicly reachable as today | Route modules and preview-only dependencies are absent from the graph. No fallback route. |
+| Web URL and browser history | Preserve `vol` and `drift`, `q`, `ui`, `panel`, `mode`, `route`, `seed` and existing capture URLs | Ignore launch queries. Ordinary menu actions and persisted preferences still work. |
+| Capture and altered runs | Preserve `t`, `auto`, `align`, `god`, `boost`, `cur`, `dof`, `lights`, `post`, `diff` and diagnostic `q=mobile` where supported. Preserve `fixedTime`, `capture()`, forced `runSeed` and capture-only physical branch selection. | Move capture orchestration into a Web-only diagnostic adapter or remove its complete import and call graph via a compile-time boundary. Toy never enables simulation diagnostic overrides. Keep the ordinary postprocessing and route choice. |
+| Debug view and recorder | Preserve `dbg`, `rec`, `#errbox` metrics sink, `R` and `Shift+R` | Exclude recorder implementation, keyboard dispatch and diagnostic DOM/metrics bridge. Keep ordinary keyboard controls and lightweight internal error handling. |
+| Credits, Social, Share | Preserve GitHub, X, LibreCosta, HelloRun, contact and Explorer links | Use local attribution and licenses. Offer platform actions only when supported. |
+| Stable harnesses, writable test APIs | Separate builds as today | Exclude public harness files, test namespaces and forced options from ZIP. |
+
+`GameRuntime.client.ts` currently imports the recorder and implements capture and keyboard branching itself. An empty query and a hidden Debug link leave those paths in a bundle. Keep shared gameplay and renderer internals that diagnostics also use, including Showcase autopilot and core telemetry needed for recovery. Isolate developer command handling, diagnostics initialization, recorder and emitted diagnostics at build time. Confirm eliminated modules with bundler module lists and emitted bundles together. Exercise adversarial URL flags, shortcuts, navigation and persisted state in the actual Toy artifact, then exercise the existing diagnostic interfaces on the Web artifact. [Runtime initialization, draw and key handler](../../app/game/runtime/GameRuntime.client.ts) · [Routes](../../app/routes.ts) · [Credits](../../app/components/CreditsPanel.tsx) · [Menu actions](../../app/components/MenuUtilities.tsx)
+
+## Shared bilingual player UI
+
+Use an English reference dictionary, a Simplified Chinese dictionary checked against the same key set, and typed formatting functions for interpolated messages. Select dictionaries by `Locale = 'en' | 'zh-CN'` and label domain enums in the view. Preserve `SoFarAway`, Volume names, soundtrack names, artistic chapter names and gameplay identifiers. Keep keyboard bindings and rank letters stable. Localize narrative text and control labels around those names. Keep Technical Explorer in English during the first rollout, including its UI State Studio fixtures unless a specific locale is supplied for testing.
+
+| Surface | Copy to inventory |
+| --- | --- |
+| Main menu and navigation | Title surroundings, mode and difficulty names, eligibility descriptions, route labels, readiness, loading, Start, settings, Share, Credits, Best and Last, sound and fullscreen actions, carousel and navigation ARIA labels. |
+| Settings and input | Language, volume, mute, quality, dynamic lights and reduced-motion help, Immersive Mouse, fullscreen, orientation preference, keyboard/pointer/touch hints, accessible group names, button state and custom canvas label. |
+| HUD and flight | Score, lives, gates, combo, velocity, branch hints, Boost, pickup and transient messages, Encore and Afterglow UI. World logos and soundtrack/section names retain their artistic spelling. |
+| Pause and recovery | Background, orientation, context and pointer-lock pause reasons; resume/retry/silent play; unsupported graphics, lost audio, failure and recovery feedback, toast and live-region copy. Keep technical errors out of translated player messages. |
+| Results and Credits | Escaped/terminated, Showcase complete/interrupted, grade descriptions, accuracy, route, repeats, Encore scoring and Best ineligibility, art/inspiration/license attribution and contextual controls. |
+| Later Toy surfaces | Capability hints, login/permission, board windows, cloud status, share/card feedback, empty/error/rate-limit states. Keep their dictionaries Toy-side. |
+
+Translate at the application boundary. Map `RunResult.title`, `PauseReason` and `RouteKind` using existing enums. Where the HUD currently receives composed runtime messages such as `CLEAN ×n` or audio notices, use stable message keys and typed values with a Web diagnostics rendering path where necessary. Keep record strings, scoring rules, runtime dependencies and snapshot identities stable. A locale switch updates React copy, focus labels and document language. It preserves the same canvas, runtime instance, audio transport, volume, selected route and current run progress. [Gameplay contracts](../../app/game/contracts.ts) · [Settings](../../app/components/SettingsPanel.tsx) · [Fallback](../../app/components/GameFallback.tsx) · [Results](../../app/components/ResultsScreen.tsx)
+
+Persist an explicit language choice as a normalized preference within the existing settings mechanism. Absence or invalid data resolves to the build default. Prerender and first hydrate use the same default without reading storage during server render. Read the saved choice once mounted and update `<html lang>` or the route-specific language scope. Local storage is origin-specific. A player can choose either language on all three builds even when the saved setting cannot follow them between sites.
+
+Keep Rajdhani and Chakra Petch for Latin display and the established look. For Chinese text, use local system CJK fallbacks first and verify weight/line height on Windows, Android and iOS. Bundle a licensed subset only if coverage or rendering requires it. Inspect Chinese with Han glyph widths, fallback metrics, safe-area padding and long strings at 640×360, 740×360, 844×390, 360×640 and 390×844. `DecodeButton` already iterates code points and exposes a stable accessible label. Keep grapheme units and their final widths stable, respect reduced motion and use a short reveal for CJK if scramble glyphs do not fit. Preserve menu focus and touch targets in both languages. [Styles](../../app/styles/game.module.css) · [DecodeButton](../../app/components/DecodeButton.tsx)
+
+## Acceptance before packaging
+
+1. Build Web INTL, Web CN and Toy from one revision. Compare asset sets and import graphs. Inspect each dist independently for region/target leaks and verify prerender title, language, Canonical and route behavior.
+2. Exercise local selection, all Volumes and modes, ordinary pause and recovery, local records, Settings language changes during a paused run and fresh/reloaded defaults. Confirm unchanged chart and run-policy coverage with focused checks. Add direct Toy URL/shortcut negative tests and retain Web positives. [Run policy tests](../../tests/core/run-policy.test.ts) · [Orientation tests](../../tests/browser/mobile-orientation.spec.ts) · [Records tests](../../tests/browser/records.spec.ts)
+3. Serve a release-candidate Toy ZIP from a nested static path with genuine 404s. Check JS chunks, CSS, fonts, notices and relative links. Run official local preflight again on the final artifact. Use the separate [Toy feature and testing proposal](T0-toy-player-features-proposal.md) for hosted preview and platform acceptance.
