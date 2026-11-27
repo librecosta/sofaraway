@@ -59,7 +59,6 @@ test('the China footer fits compact touch layouts and leaves the menu with each 
   for (const [width, height] of [[640, 360], [844, 390], [360, 640], [390, 844]]) {
     const page = await browser.newPage({ baseURL, viewport: { width, height }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
     try {
-      await page.addInitScript(preference => localStorage.setItem('sofaraway.orientation', preference), width > height ? 'landscape' : 'portrait');
       await page.goto('/?q=low');
       await expect(page.locator(start)).toBeEnabled();
       const registrationFooter = page.locator(footer);

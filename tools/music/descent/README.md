@@ -16,7 +16,7 @@ The `controlTrack` export in [descent-score.ts](../../../app/game/core/descent-s
 | LOCKDOWN | 288–352 | 2:07.06 | Quarter kicks, extra doubles and alternating syncopated stabs. |
 | BREACH | 352–384 | 2:35.29 | Drums pare back as the signal turns downward over a final F♯ minor add-nine chord. |
 
-The score, [voices](../../../app/game/audio/descent-voices.client.ts) and [synthesizer](../../../app/game/audio/descent.client.ts) generate CONTROL in Web Audio. Gameplay and the [Audio Inspector](/debug/audio/?vol=descent) use this synthesizer through the shared production interface. The dynamic lights read the same kick, snare and ghost onsets. The frozen F1 Signal uses a softer attack, shallower harmonic FM and a darker stereo send from FLIGHT through LOCKDOWN. HOLD keeps its pitches, timing and stereo decay.
+The score, [voices](../../../app/game/audio/descent-voices.client.ts) and [synthesizer](../../../app/game/audio/descent.client.ts) generate CONTROL in Web Audio. Gameplay and the [Audio Inspector](https://sofaraway.librecosta.com/debug/audio/?vol=descent) use this synthesizer through the shared production interface. The dynamic lights read the same kick, snare and ghost onsets. The frozen F1 Signal uses a softer attack, shallower harmonic FM and a darker stereo send from FLIGHT through LOCKDOWN. HOLD keeps its pitches, timing and stereo decay.
 
 ## Export and verification
 

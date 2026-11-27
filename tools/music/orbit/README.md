@@ -2,20 +2,14 @@
 
 ## Final production soundtrack
 
-The approved M1-F1 from `984175b` is the sole production STARWAKE. Gameplay,
-Inspector, score events and `renderStarwake()` share `orbit-score.ts`. Bass and
-Pluck are absent; all original Lead, Pad and rhythm events plus the five approved
-quiet quotations are unchanged. Voices, effects and master gain (0.65) are frozen.
-Original event IDs remain in the score’s frozen identity table to preserve noise seeds. The
-unmodified pre-M1 composition is archived in `history/original-score.ts` for
-historical research only; nothing in production imports it. The rejected rewrite
-remains in Git history. There is no arrangement selector or candidate export API.
-
-Run `PLAYWRIGHT_CHANNEL=chrome node tools/music/orbit/export.mjs --verify` to
-render `scratch/orbit-m0/exports/ORBIT-STARWAKE-FULL.wav` (184 seconds, 44.1 kHz,
-16-bit stereo PCM). The historical A/B auditions still use `--prototypes`.
-Tests freeze the approved final event checksum, all difficulty/route charts and
-`orbitCueBeats`. Branch, Encore, world timing and records remain unchanged.
+The approved M1-F1 from `984175b` is the production STARWAKE. Its 128 BPM score
+runs 384 beats over 180 seconds, followed by a four-second release.
+Gameplay, the Inspector and `renderStarwake()` share [the production score](../../../app/game/core/orbit-score.ts).
+The arrangement retains the original Lead, Pad and rhythm events, with five
+quiet Lead quotations added for M1-F1. Original event IDs remain in the
+identity table to preserve noise seeds. The [score tests](../../../tests/core/orbit-score.test.ts)
+and [gameplay tests](../../../tests/core/orbit-playable.test.ts) freeze the
+final event checksum, charts and `orbitCueBeats`.
 
 ## Full arrangement
 
@@ -29,29 +23,27 @@ Tests freeze the approved final event checksum, all difficulty/route charts and
 | AURORA | 64–80 | 120–150 | Recognizable theme with longer articulations, rising answer, melodic summit and descending release; the Lead remains exposed. |
 | APHELION | 80–96 | 150–180 | Eight driving bars, theme recollection, thinning drums and a final Fadd9 coda; room decays after the body. |
 
-The 24 authored four-bar phrases develop harmony, groove, bass, arpeggiation
-and motif. They are not two copies of the 48-bar audition. The approved
-triangle/sine lead, restrained FM pluck, warm bass, drum voices, three dark
-stereo delay taps and 2.9-second procedural room retain B's sound identity.
-The full score uses a fixed 0.65 master trim and the original gentle compressor;
-there is no per-section loudness normalization.
+The 24 authored four-bar phrases develop harmony, groove and motif. Listen
+for the triangle/sine Lead, sustained Pad, drum voices, three dark stereo
+delay taps and 2.9-second procedural room. The master uses a fixed 0.65 trim
+and the original gentle compressor across all sections.
 
 ## Sources and event contract
 
-- `app/game/core/orbit-score.ts`: `starwakeTrack`, `starwakePhrases`,
-  `starwakeEvents` and `starwakeSteps`; the only full score.
-- `app/game/audio/orbit-voices.client.ts`: shared instruments, mix and effects.
-- `app/game/audio/orbit.client.ts`: `OrbitSynthesizer`, compatible with shared
+- [Score](../../../app/game/core/orbit-score.ts) exports `starwakeTrack`,
+  `starwakePhrases`, `starwakeEvents` and `starwakeSteps`.
+- [Voices](../../../app/game/audio/orbit-voices.client.ts) implements the shared instruments, mix and effects.
+- [`OrbitSynthesizer`](../../../app/game/audio/orbit.client.ts) uses shared
   transport step scheduling, fractional attacks, elapsed-event filtering and disposal.
-- `app/game/audio/orbit-export.client.ts`: `renderStarwake()` and
+- [WAV export](../../../app/game/audio/orbit-export.client.ts) uses `renderStarwake()` and
   `encodeStarwakeWav()`, using that same production synthesizer.
 
 Events expose stable numeric ID and string identity, bar, beat, seconds,
 voice, velocity, section, accent, fill and transition flags. Pitched events
-also carry pitches and durations. Voices are kick, snare, hat, percussion,
-bass, pad/chord, pluck/arpeggio, lead/motif and sweep. Fractional positions are
-retained rather than snapped to the scheduling grid. These are the future
-gate and lighting cue source; no second audio clock is introduced.
+also carry pitches and durations. Production events use kick, snare, hat,
+percussion, Pad, Lead and sweep. Fractional positions survive transport
+scheduling. [Gate cue selection](../../../app/game/core/orbit-chart.ts) and
+the [lighting score](../../../app/game/core/orbit-lighting.ts) read these same events.
 
 All notes, noise and convolution impulses are generated at runtime. Common
 gain/filter/frequency/random primitives come from the existing audio layer.
@@ -65,8 +57,7 @@ Use Node 24 and installed Playwright Chromium; set
 ```sh
 node tools/music/orbit/export.mjs --verify
 node tools/music/orbit/verify.mjs
-npm run typecheck && npm test
-node --test tools/music/orbit/score.test.mjs
+npm run test:unit -- tests/core/orbit-score.test.ts tests/core/orbit-playable.test.ts
 ```
 
 The full exporter writes only `scratch/orbit-m0/exports/ORBIT-STARWAKE-FULL.wav`
@@ -84,14 +75,17 @@ step scheduling, checks stereo WAV decoding, source disposal and abort behavior,
 and rejects clipped/non-finite buffers. Core tests cover section boundaries,
 identity, fractional resume, theme preservation, phrase development and ending.
 
-The final Chrome 157 export is **184 seconds**, with **-20.85 LUFS**, **-23.11
+The production promotion recorded a Chrome 157 export of **184 seconds**, with **-20.85 LUFS**, **-23.11
 dBFS RMS**, **-4.09 dBFS sample peak** and approximately **-4.02 dBTP** (4x
 estimate). No clipped or non-finite samples occur; the tail reaches zero.
-Independent full renders differ by 0.261 PCM codes RMS / 2 codes peak. The full
-export is compared against the approved F1 WAV within Web Audio rounding error.
+Independent full renders differed by 0.261 PCM codes RMS / 2 codes peak. The
+promotion compared the full export against the approved F1 WAV within Web Audio rounding error.
 Exact PCM and section measurements remain beside the ignored WAV.
 
 ## Historical auditions
+
+The archived [pre-M1 arrangement](history/original-score.ts) included Bass and
+Pluck. The rejected rewrite and earlier comparisons are available in Git history.
 
 The original 48-bar scores remain in `score.mjs`, unchanged. Their historical
 `voices.mjs` adapter uses the promoted instrument implementation with the
@@ -101,6 +95,7 @@ static audition loudness trim. Export them explicitly with:
 ```sh
 node tools/music/orbit/export.mjs --prototypes --verify
 node tools/music/orbit/verify.mjs --prototypes
+node --test tools/music/orbit/score.test.mjs
 ```
 
 These write `ORBIT-M0-A-GRAVITY.wav`, `ORBIT-M0-B-STARWAKE.wav` and

@@ -16,19 +16,40 @@ npm run typecheck && npm test
 
 | Area | Command and setup |
 | --- | --- |
-| Pure rules | `npm run test:unit`. Run a specific file with `npm run test:unit -- tests/core/spatial.test.ts`. |
+| Pure rules | `npm run test:unit`. Run a specific file with `npm run test:unit -- tests/core/spatial.test.ts`. The [engine characterization tests](../tests/core/engine-characterization.test.ts) freeze authored charts, projected routes and fixed-step run outcomes. |
 | Main browser suite | After `npm run build` and `npm run build:harness`, use `npm run test:b0 -- tests/browser/fidelity.spec.ts` for a focused run. Set `A0_BROWSER_CHANNEL=chrome` to use installed Chrome. |
+| Input and run lifecycle | With those same builds, use `npm run test:b0 -- tests/browser/mobile-orientation.spec.ts tests/browser/immersive-mouse.spec.ts tests/browser/runtime.spec.ts`. The [record tests](../tests/browser/records.spec.ts) also exercise same-origin tab coordination. |
 | Preview ownership | `npm run test:b0 -- tests/browser/preview-surface.spec.ts tests/browser/explorer-laboratories.spec.ts` checks failed setup, repeated restoration, iframe teardown and navigation with live resources. |
 | Static output and release | `npm run test:release`. Includes strict types, production build and static-site checks. `RELEASE_CHROMIUM_CHANNEL=chrome` selects installed Chrome. |
 | Browser compatibility | Run `npx playwright install chromium firefox webkit`, then `npm run test:compat`. Use `COMPAT_CHROMIUM_CHANNEL=chrome` for installed Chrome. The mobile profiles are emulations. |
-| Audio | `npm run test:sync` uses Chromium, Firefox and WebKit for transport, lifecycle and signal tests. The Chromium full-song tests run in real time. Use `SYNC_CHROMIUM_CHANNEL=chrome` for installed Chrome. |
+| Audio | After installing the browsers for the compatibility matrix, run `npm run test:sync`. Chromium runs the full sync suite, Firefox skips the full-song cases, and WebKit runs lifecycle cases. The Chromium full-song tests run in real time. Use `SYNC_CHROMIUM_CHANNEL=chrome` for installed Chrome. |
 | Audio Inspector | After the production and harness builds, run `npm run test:b0 -- tests/browser/audio-inspector.spec.ts tests/browser/audio-inspector-stems.spec.ts tests/browser/static.spec.ts`. The Playwright tests compare four-volume stem and master PCM, validate complete stem WAV exports and chunk seams, exercise live mixing and cleanup, and capture aligned waveforms at four viewport sizes. |
 | CONTROL export failures | `npm run test:b0 -- tests/browser/descent-export.spec.ts` injects failures into the real offline exporter and checks cancellation, cleanup and retry. |
 | Rendering and resources | `npm run test:perf` runs the main browser performance cases. `npm run test:stability` runs the extended benchmarks, resource lifecycle and full-song soak. `STABILITY_CHROMIUM_CHANNEL=chrome` selects installed Chrome. |
 
-For baseline comparisons, check out the reference commit in a separate worktree and run `npm ci`, `npm run build`, and `npm run build:harness` there. Set `STABILITY_REFERENCE_DIR` to its absolute `build` directory, which must contain `client` and `harness`. Run `npm run test:stability` in the candidate worktree. For a narrow scenic comparison, use `npm run test:stability -- --grep @scenic-perf`, with optional `STABILITY_SCENES` and `STABILITY_SCENIC_FRAMES` overrides. Record the browser, renderer, resolution, DPR, quality, and repeated CPU/GPU samples. Report unavailable GPU timers separately from frame intervals. Use the [Technical Explorer laboratories](../app/routes.ts) and fixed-time captures to review visuals with the same inputs and quality.
+## Performance comparisons
 
-The original A0 suite is a historical comparison against the old static game. Use `git worktree add --detach ../sofaraway-a0 88a4adb533e2c5ec6f8e77a166ca11e75794be58`, set `A0_APP_ROOT` to that worktree's absolute path, then run `npm run test:a0` or `npm run test:a0:perf`. Historical reports and their original baselines are indexed in [milestone history](history.md).
+Check out the reference commit in a separate worktree and run `npm ci`, `npm run build`, and `npm run build:harness` there. Set `STABILITY_REFERENCE_DIR` to its absolute `build` directory, which must contain `client` and `harness`. Run `npm run test:stability` in the candidate worktree. For a narrow scenic comparison, use `npm run test:stability -- --grep @scenic-perf`, with optional `STABILITY_SCENES` and `STABILITY_SCENIC_FRAMES` overrides. Record the browser, renderer, resolution, DPR, quality, and repeated CPU/GPU samples. Report unavailable GPU timers separately from frame intervals. Use the [Technical Explorer laboratories](../app/routes.ts) and fixed-time captures to review visuals with the same inputs and quality.
+
+The [original A0 comparison](history.md#reproducing-the-original-a0-comparison) uses a historical prototype. Use it when comparing against that baseline.
+
+## Web diagnostics
+
+The game reads query parameters on startup. Reload a fully specified URL when reproducing a capture. See the [settings parser](../app/game/runtime/settings.client.ts), [viewport](../app/components/GameViewport.tsx) and [effective run policy](../app/game/core/run-policy.ts) for scope and record eligibility.
+
+| Example | Effect |
+| --- | --- |
+| `?vol=daybreak` | Select `elsewhere`, `daybreak`, `descent` or `orbit`. Legacy `drift` selects DAYBREAK. |
+| `?t=24.4` | Simulate to a fixed time in seconds and render the resulting scene. Use `diff` and `mode` to choose capture rules. `route=left`, `center` or `right` selects a physical branch side. |
+| `?t=24.4&god=0` | Enable collision judgment in a fixed capture. Captures default to god mode. |
+| `?mode=showcase&route=bonus&seed=1` | Reproduce a Showcase run with a chosen route and seed. Route values are `main`, `challenge` and `bonus`. A player gesture starts playback. |
+| `?q=low` | Use the Low profile. `q=auto` and `q=high` select the other presets. `q=mobile` forces the mobile quality profile selector. |
+| `?t=24.4&lights=true` | Enable Dynamic Lights for the capture without changing the saved preference. |
+| `?rec=1` | Open the flight recorder. `R` toggles the overlay and `Shift+R` downloads the log. |
+| `?dbg=1` | Expose read-only timing, target and resource metrics in `#errbox`. |
+| `?ui=0` or `?panel=1` | Hide the UI or open Settings at startup. |
+
+The parser also accepts `auto`, `align`, `god`, `boost`, `cur`, `post` and `dof`. Use a separate browser context for captures that need clean settings and record storage.
 
 ## Hosting the production build
 
@@ -53,11 +74,10 @@ the HTTPS origin root. Preserve `.well-known/`, the prerendered route directorie
 `index.html` and `404.html`. Missing pages and missing assets should return the
 custom 404 with HTTP status 404.
 
-After each regional build, keep the same `VITE_REGION` value for
-`npx playwright test region.spec.ts --config playwright.release.config.ts`.
-The checks inspect the deployed file set and prerendered links. The China run
-also checks touch layouts and verifies that the footer leaves with the menu
-when Standard or Showcase starts.
+After each regional build, keep the same `VITE_REGION` value when running
+`npx playwright test --config playwright.release.config.ts tests/release/region.spec.ts`.
+The checks inspect the local artifact and prerendered links. The CN run also
+checks touch layouts and the footer's removal when Standard or Showcase starts.
 
 ### International / Cloudflare Workers Static Assets
 
@@ -83,4 +103,4 @@ for HTML and mutable public files. EdgeOne's hashed-file policy supplies the
 one-year browser TTL. Use the static output with the root `404.html`.
 [Direct Upload](https://pages.edgeone.ai/document/direct-upload) · [Project settings](https://pages.edgeone.ai/document/project-management) · [Cache rules](https://pages.edgeone.ai/document/configuring-cache) · [Static 404 behavior](https://edgeone.ai/document/192123212580007936)
 
-Before public release, verify the exact artifact on both target hosts. Check direct routes with and without trailing slashes, query preservation, custom 404 status, assets and their MIME types, cache behavior across updates and the public discovery files. Check input and audible playback on the target devices. The local release tests verify the static artifact. See the [F5 checklist](audits/F5-release-readiness.md) for the remaining host and release decisions.
+When publishing an approved Web revision, smoke-test the exact artifact on each target host. Check direct routes with and without trailing slashes, query preservation, 404 status for unknown pages and chunks, MIME types, cache behavior, public discovery files and input and audible playback on target devices. Local release checks cover the artifact before deployment. The [F5 release record](audits/F5-release-readiness.md) preserves the initial preparation and release notes draft.

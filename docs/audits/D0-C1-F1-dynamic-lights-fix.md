@@ -33,7 +33,7 @@ In live Chromium DESCENT, the uncorrected RAF peaks preceded the estimated audio
 
 ## Real frames
 
-Open [Beat Inspection](/debug/#beat-inspection), then choose **Open beat inspection**. Start with ELSEWHERE DROP at station 7244.32. Compare **Dynamic Off** and **On** at **Kick Peak**, then try **Beat Valley**, **Snare Peak** or **Play continuously**. The preview holds the station while the music phase advances and runs silently. **Go to beat’s station** moves the camera explicitly. The controls use the game scene, post stack and seeded geometry.
+The original test used `/debug/#beat-inspection`. To repeat it, open [Beat Inspection](https://sofaraway.librecosta.com/debug/lighting/?vol=elsewhere#beat-inspection) and choose **Open live scene**. Start with ELSEWHERE DROP at station 7244.32. Compare **Dynamic Off** and **On** at **Kick Peak**, then try **Beat Valley**, **Snare Peak** or **Play continuously**. The preview holds the station while the music phase advances and runs silently. **Go to beat’s station** moves the camera explicitly. The controls use the game scene, post stack and seeded geometry.
 
 ![Same-station Off, Kick Peak and Beat Valley screenshots for DROP and BREAK](assets/D0-C1-F1-beat-inspection.jpg)
 

@@ -1,5 +1,7 @@
 # F5 release readiness
 
+This report preserves the initial artifact measurements and release candidate checklist. Use the [current hosting guide](../verification.md#hosting-the-production-build) for distribution commands and regional checks after F6-B1.
+
 ## Production identity and discovery
 
 - **Name and title** — SoFarAway. The homepage title is **SoFarAway — A Procedural Rhythm Runner**.

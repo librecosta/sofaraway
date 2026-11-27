@@ -6,12 +6,10 @@ import type { Difficulty, ExperienceMode, GameRuntime, GameSnapshot, Orientation
 import { volumeById } from '../game/core/volumes';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import { immersiveMouseSupported, subscribeImmersiveMouseSupport } from '../game/runtime/immersive-mouse.client';
-import { FullscreenOrientation, isCompactTouchDevice, observeScreenOrientation } from '../game/runtime/screen-orientation.client';
+import { FullscreenOrientation, isCompactTouchDevice } from '../game/runtime/screen-orientation.client';
 import { readOptions, readOrientationPreference, saveSetting } from '../game/runtime/settings.client';
 import { classes as c } from '../styles/classes';
 import { CreditsPanel } from './CreditsPanel';
-import { DecodeButton } from './DecodeButton';
-import { GameDialog } from './GameDialog';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { GameHUD } from './GameHUD';
 import { MainMenu } from './MainMenu';
@@ -48,8 +46,7 @@ export function GameViewport() {
   const [hideUi, setHideUi] = useState(false);
   const [fullscreenState, setFullscreenState] = useState({ available: false, active: false });
   const [fullscreenMessage, setFullscreenMessage] = useState('');
-  const [orientation, setOrientation] = useState<OrientationPreference>('landscape');
-  const [physicalOrientation, setPhysicalOrientation] = useState<OrientationPreference | null>(null);
+  const [orientation, setOrientation] = useState<OrientationPreference | null>(null);
   const orientationLock = useRef<FullscreenOrientation | null>(null);
   const immersiveMouseAvailable = useSyncExternalStore(subscribeImmersiveMouseSupport, mouseSupported, unsupportedOnServer);
   const { notice, showNotice } = useShareToast();
@@ -100,7 +97,6 @@ export function GameViewport() {
         if (key === 'escape') setPanel(null);
         return true;
       }
-      if (orientationPrompt) return true;
       if (event.defaultPrevented) return true;
       if (snapshot.phase === 'menu' && !snapshot.error && !event.repeat && key === 'x' &&
         !event.ctrlKey && !event.altKey && !event.metaKey) {
@@ -123,7 +119,6 @@ export function GameViewport() {
     const lock = new FullscreenOrientation(root, preference);
     orientationLock.current = lock;
     setOrientation(preference);
-    setPhysicalOrientation(observeScreenOrientation(setPhysicalOrientation, events.signal));
     window.addEventListener('pagehide', () => lock.release(), { signal: events.signal });
     return () => {
       events.abort();
@@ -217,9 +212,7 @@ export function GameViewport() {
     ...snapshot, phase: 'error', error: { kind: 'runtime', message: importError },
   } : snapshot;
   const menuVisible = ['uninitialized', 'initializing', 'menu', 'starting', 'unsupported', 'error'].includes(viewSnapshot.phase);
-  const orientationPrompt = physicalOrientation !== null && physicalOrientation !== orientation && !panel && !hideUi &&
-    !search.has('t') && !viewSnapshot.error && ['menu', 'paused', 'results'].includes(viewSnapshot.phase);
-  const modalOpen = !!panel || orientationPrompt || isBlockingFallback(viewSnapshot);
+  const modalOpen = !!panel || isBlockingFallback(viewSnapshot);
   const uiCursor = viewSnapshot.phase === 'menu' || viewSnapshot.phase === 'results';
   const showcase = viewSnapshot.mode === 'showcase';
   const showcaseFlight = showcase && ['playing', 'crash'].includes(viewSnapshot.phase);
@@ -227,12 +220,12 @@ export function GameViewport() {
   const returnToMenu = () => runtime?.returnToMenu();
 
   useEffect(() => {
-    if (viewSnapshot.phase === 'starting' || viewSnapshot.phase === 'playing' || orientationPrompt) runReturnFocus.current = true;
+    if (viewSnapshot.phase === 'starting' || viewSnapshot.phase === 'playing') runReturnFocus.current = true;
     if (viewSnapshot.phase === 'menu' && !modalOpen && runReturnFocus.current) {
       runReturnFocus.current = false;
       viewport.current?.querySelector<HTMLElement>('[data-act=start]:not(:disabled)')?.focus();
     }
-  }, [viewSnapshot.phase, modalOpen, orientationPrompt]);
+  }, [viewSnapshot.phase, modalOpen]);
 
   function setDifficulty(value: Difficulty) {
     runtime?.setDifficulty(value);
@@ -308,7 +301,7 @@ export function GameViewport() {
   }
 
   return (
-    <main ref={viewport} className={c('viewport', physicalOrientation !== null && 'compact-touch',
+    <main ref={viewport} className={c('viewport', orientation !== null && 'compact-touch',
       customCursor && 'custom-cursor', showcaseFlight && 'showcase-flight')}
       onPointerOver={event => {
         if (!uiCursor || !event.isTrusted || event.pointerType === 'touch') return;
@@ -351,24 +344,11 @@ export function GameViewport() {
         </div>
         <div id="flash" ref={flash} />
         <div id="shade" />
-        {!panel && !orientationPrompt && <GameFallback snapshot={viewSnapshot} retry={tryAgain} menu={returnToMenu} settings={() => openPanel('settings')}
+        {!panel && <GameFallback snapshot={viewSnapshot} retry={tryAgain} menu={returnToMenu} settings={() => openPanel('settings')}
           startSilent={event => {
             if (snapshot.phase === 'paused') void runtime?.resume(true, event.nativeEvent);
             else void runtime?.start(true, event.nativeEvent);
           }} />}
-        {orientationPrompt && <GameDialog title="ROTATE YOUR DEVICE">
-          <div className={c('panel', 'fallback-panel')}>
-            <h2 className={c('panel-head')}>ROTATE YOUR DEVICE</h2>
-            <p>{orientation === 'landscape' ? 'SoFarAway is best experienced in landscape.' : 'Portrait is your selected orientation.'}</p>
-            {fullscreenMessage && <p role="status">{fullscreenMessage}</p>}
-            <div className={c('fallback-actions')}>
-              <DecodeButton className={c('btn', 'tiny')} label={`SWITCH TO ${physicalOrientation.toUpperCase()}`}
-                onClick={() => chooseOrientation(physicalOrientation)} />
-              {fullscreenState.available && !fullscreenState.active && orientationLock.current?.supported &&
-                <DecodeButton className={c('btn', 'tiny')} label="ENTER FULLSCREEN" onClick={fullscreen} />}
-            </div>
-          </div>
-        </GameDialog>}
         {panel === 'credits' && <CreditsPanel volume={snapshot.volumeId} close={() => setPanel(null)} />}
         <ShareToast notice={notice} />
       </div>
@@ -378,7 +358,7 @@ export function GameViewport() {
         setVolume={value => { runtime?.setVolume(value); saveSetting('volume', Math.round(value * 100)); }}
         setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
         immersiveMouseAvailable={immersiveMouseAvailable} setImmersiveMouse={setImmersiveMouse}
-        orientation={physicalOrientation !== null ? { value: orientation, choose: chooseOrientation } : undefined}
+        orientation={orientation !== null ? { value: orientation, choose: chooseOrientation } : undefined}
         fullscreen={{ ...fullscreenState, toggle: () => void fullscreen(), message: fullscreenMessage }} />}
     </main>
   );
