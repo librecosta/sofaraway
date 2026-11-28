@@ -189,7 +189,8 @@ test('hosted desktop release uses the same SDK script without native container s
     return route.fulfill({ contentType: 'text/javascript', body: `
       window.rankCalls = [];
       window.toy = {
-        isSupport: async ability => { rankCalls.push(ability); return ['getRankList', 'getMyRank', 'submitScore'].includes(ability); },
+        isSupport: async ability => { rankCalls.push(ability); return ['getRankList', 'getMyRank', 'submitScore',
+          'getUserProfile', 'getCloudStorage', 'setCloudStorage'].includes(ability); },
         getRankList: async request => {
           rankCalls.push(request);
           return Array.from({ length: request.limit }, (_, index) => ({
@@ -198,6 +199,9 @@ test('hosted desktop release uses the same SDK script without native container s
         },
         getMyRank: async request => { rankCalls.push(request); throw { type: 'not_logged_in', code: -101 }; },
         submitScore: async request => { rankCalls.push(request); throw new Error('Unexpected write'); },
+        getUserProfile: async () => { rankCalls.push('profile'); return { toyOpenId: 'test-browser-account' }; },
+        getCloudStorage: async keys => { rankCalls.push(keys); return {}; },
+        setCloudStorage: async items => { rankCalls.push(items); throw new Error('Unexpected write'); },
       };
     ` });
   });
@@ -224,6 +228,13 @@ test('hosted desktop release uses the same SDK script without native container s
   ]));
   expect(await calls()).not.toContain('getContainerState');
   expect(await calls()).not.toContain('submitScore');
+  await board.getByRole('button', { name: '关闭' }).click();
+  await page.getByRole('button', { name: '云存档', exact: true }).click();
+  await expect.poll(calls).not.toContain('getUserProfile');
+  await page.getByRole('button', { name: '授权并同步' }).click();
+  await expect(page.getByRole('dialog', { name: '云存档' })).toContainText('个人最高分已同步。');
+  expect(await calls()).toEqual(expect.arrayContaining([['sofaraway_toy_v1'], 'profile']));
+  expect(await calls()).not.toContain('setCloudStorage');
   expect(loads).toBe(1);
   await expect(page.locator(`script[src="${sdk}"]`)).toHaveCount(1);
 });

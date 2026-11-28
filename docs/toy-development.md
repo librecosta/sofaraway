@@ -33,6 +33,23 @@ In `npm run dev:toy`, use **Mock leaderboards** to switch accounts, hide the see
 
 The inspected public SDK blocks writes under `/toy/preview`. Test submissions locally and keep simulated scores out of live boards. Verify App and PC availability, first-submit consent, account changes, weekly rollover and physical-device layout only in the appropriate publisher-authorized environment. The release schedule depends on the promotional video. [T1-D implementation report](audits/T1-D-leaderboard-competitive-records.md) · [Official request guidance](https://github.com/bilibili/toy/blob/main/skills/toy/references/content-checklist.md#7-用了云存储--排行榜调用节奏上线后才爆的那类)
 
+## Flight assist, cloud save and result cards
+
+**Center Reticle** is an optional fixed crosshair in Standard and Sightseeing. It persists with device settings and can be toggled during a pause. Its screen position follows the canvas bounds. The camera transform and collision point keep their existing offsets.
+
+Open **Cloud Save** from the menu and select **Authorize and Sync** to grant access and read your account's Best scores. The publisher must enable the profile capability that returns a stable `toyOpenId`. Flights started after authorization can contribute account-owned Standard Bests. Return to the panel and select **Sync Best Scores** to publish them. The game keeps the device scoreboard and Last independent from the account scoreboard. Anonymous device history is outside the cloud flow. An unsynced flight is still available in the ordinary device records if you close the page.
+
+Select **Share Result** after a player flight to preview a PNG composed from that run. Native buttons appear only for supported SDK abilities. Standalone preview and PC Web can use the local card without a native action.
+
+Use the **Mock leaderboards** account, response and delay controls with **Mock cloud and sharing**. The seeded conflict provides different Bests per account. Switch to **Incompatible scoring version** to check that sync preserves both stores, or use the response control to exercise failures and cooldown. **Show mock results** opens the result card fixture. The share capability control simulates all native actions, Toy link sharing only, or the local card by itself. The fixture remains offline.
+
+```sh
+npm run test:unit -- tests/core/toy-player-services.test.ts
+npm run test:toy -- tests/toy/player-services.spec.ts
+```
+
+Set `TOY_CAPTURE_SERVICES=1` to write screenshots under `.local/t1-e/`. Hosted cloud authorization, storage and native sharing are release-phase checks. See the [T1-E implementation report](audits/T1-E-cloud-save-result-sharing-flight-assist.md) and [official SDK](https://www.bilibili.com/toy/publish/sdk).
+
 ## Official preflight
 
 T0 cached the verified CLI, Agent Skill and Doctor under the ignored `.local/t0-toy/`. The checked Windows CLI is `v0.6.6` (`c760fd2`). On a clean machine, use the [official CLI installation guide](https://github.com/bilibili/toy/blob/f418536cc463ad598a775bc1ad6cfb0505905ab7/skills/toy/references/installation.md) and the [official Agent Skill](https://github.com/bilibili/toy/blob/f418536cc463ad598a775bc1ad6cfb0505905ab7/skills/toy/SKILL.md). Keep local tools in an ignored directory or on your user PATH.

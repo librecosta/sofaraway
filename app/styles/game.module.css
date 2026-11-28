@@ -75,6 +75,12 @@ html:has(.viewport), body:has(.viewport){
 
 :global(#ui){ position:fixed; inset:0; pointer-events:none; }
 
+.center-reticle {
+  position:absolute; inset:0; margin:auto;
+  width:22px; height:22px;
+  fill:none; pointer-events:none;
+}
+
 /* ================================================================== *
    CUSTOM CURSOR
  * ================================================================== */

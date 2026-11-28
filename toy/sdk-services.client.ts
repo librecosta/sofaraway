@@ -1,13 +1,21 @@
 import { isSdkScore, leaderboardLimit, RankError } from './leaderboard-contract';
 import type { Board, LeaderboardPlatform, MyRank, Period, RankEntry } from './leaderboard-contract';
+import { cloudKey } from './player-services';
+import type { CloudPlatform, ShareAction, SharePlatform } from './player-services';
 
-type Ability = 'getRankList' | 'getMyRank' | 'submitScore';
-export interface BilibiliRankSDK {
+export interface BilibiliServiceMethods {
   getRankList(request: { board: Board; period: Period; limit: number }): Promise<RankEntry[]>;
   getMyRank(request: { board: Board; period: Period }): Promise<MyRank>;
   submitScore(request: { board: Board; score: number }): Promise<{ score: number }>;
+  getUserProfile(): Promise<{ toyOpenId?: string }>;
+  getCloudStorage(keys: string[]): Promise<Record<string, string>>;
+  setCloudStorage(items: Record<string, string>): Promise<void>;
+  sharePicture(input: { base64Data: string }): Promise<void>;
+  saveImageToAlbum(input: { base64Data: string }): Promise<void>;
+  share(input: { path: string }): Promise<void>;
 }
-type RankSDK = Partial<BilibiliRankSDK> & { isSupport?(ability: Ability): Promise<boolean> };
+type Ability = keyof BilibiliServiceMethods;
+type SDK = Partial<BilibiliServiceMethods> & { isSupport?(ability: Ability): Promise<boolean> };
 
 function classify(error: unknown) {
   if (error instanceof RankError) return error;
@@ -30,12 +38,12 @@ function avatarUrl(value: string) {
   return '';
 }
 
-export class BilibiliLeaderboard implements LeaderboardPlatform {
+export class BilibiliServices implements LeaderboardPlatform, CloudPlatform, SharePlatform {
   private readonly probes = new Map<Ability, Promise<boolean>>();
   private readonly listeners = new Set<() => void>();
   private generation = 0;
 
-  constructor(private readonly load: () => Promise<RankSDK | undefined>) {}
+  constructor(private readonly load: () => Promise<SDK | undefined>) {}
 
   subscribeSession = (listener: () => void) => {
     this.listeners.add(listener);
@@ -64,7 +72,7 @@ export class BilibiliLeaderboard implements LeaderboardPlatform {
     if (!window.cookieStore) window.addEventListener('focus', invalidate, { signal });
   }
 
-  private async invoke<T>(ability: Ability, signal: AbortSignal, call: (sdk: RankSDK) => Promise<T>): Promise<T> {
+  private async invoke<T>(ability: Ability, signal: AbortSignal, call: (sdk: SDK) => Promise<T>): Promise<T> {
     const start = this.session();
     try {
       const sdk = await this.load();
@@ -112,5 +120,37 @@ export class BilibiliLeaderboard implements LeaderboardPlatform {
       if (!isSdkScore(response?.score) || response.score < score) throw new RankError('network');
       return response.score;
     });
+  }
+
+  identity(signal: AbortSignal) {
+    return this.invoke('getUserProfile', signal, async sdk => {
+      const id = (await sdk.getUserProfile!())?.toyOpenId;
+      if (typeof id !== 'string' || !id.trim() || id.length > 256) throw new RankError('permission');
+      return id;
+    });
+  }
+
+  readCloud(signal: AbortSignal) {
+    return this.invoke('getCloudStorage', signal, async sdk => {
+      const result = await sdk.getCloudStorage!([cloudKey]);
+      if (!result || typeof result !== 'object' || Array.isArray(result)) throw new RankError('invalid');
+      if (!Object.hasOwn(result, cloudKey)) return null;
+      const value = result[cloudKey];
+      if (typeof value !== 'string') throw new RankError('invalid');
+      return value;
+    });
+  }
+
+  writeCloud(value: string, signal: AbortSignal) {
+    return this.invoke('setCloudStorage', signal, sdk => sdk.setCloudStorage!({ [cloudKey]: value }));
+  }
+
+  supportsShare(action: ShareAction, signal: AbortSignal) {
+    return this.invoke(action, signal, async () => true).catch(() => false);
+  }
+
+  shareResult(action: ShareAction, base64Data: string, signal: AbortSignal) {
+    return this.invoke(action, signal, sdk => action === 'share'
+      ? sdk.share!({ path: 'index.html' }) : sdk[action]!({ base64Data }));
   }
 }

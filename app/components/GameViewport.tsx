@@ -14,6 +14,7 @@ import { classes as c } from '../styles/classes';
 import { CreditsPanel } from './CreditsPanel';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { GameHUD } from './GameHUD';
+import { CenterReticle } from './CenterReticle';
 import { MainMenu } from './MainMenu';
 import { ResultsScreen } from './ResultsScreen';
 import { SettingsPanel } from './SettingsPanel';
@@ -22,7 +23,7 @@ const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
 const cueControls = 'button:not(:disabled), a[href], input[type="checkbox"]:not(:disabled)';
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
-  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse', 'autoBoost',
+  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse', 'autoBoost', 'centerReticle',
   ...(typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ ? ['gateQualityDebug'] as const : [])] as const;
 const mouseSupported = () => immersiveMouseSupported();
 const unsupportedOnServer = () => false;
@@ -35,6 +36,9 @@ function useMenuSnapshot(runtime: GameRuntime | null) {
     return previous.current;
   }, getInitialSnapshot);
 }
+
+type ExtensionPanel = (close: () => void) => ReactNode;
+type OpenExtensionPanel = (render: ExtensionPanel) => void;
 
 interface Props {
   settings: PlayerSettings;
@@ -49,9 +53,10 @@ interface Props {
   compliance?: ReactNode;
   surface?: PlayerSurface;
   extension?: {
-    menu(open: () => void): ReactNode;
-    results(run: RunSettlement, snapshot: GameSnapshot): ReactNode;
-    panel(volume: VolumeId, close: () => void): ReactNode;
+    menu(open: OpenExtensionPanel, volume: VolumeId): ReactNode;
+    results(run: RunSettlement, snapshot: GameSnapshot, open: OpenExtensionPanel): ReactNode;
+    started?(id: number): void;
+    settled?(run: RunSettlement): void;
   };
   display?: {
     touch: boolean;
@@ -72,6 +77,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [mount, setMount] = useState(0);
   const [panel, setPanel] = useState<'settings' | 'credits' | 'extension' | null>(null);
+  const [extensionPanel, setExtensionPanel] = useState<ExtensionPanel | null>(null);
   const [settlement, setSettlement] = useState<RunSettlement>();
   const [hideUi, setHideUi] = useState(false);
   const [fullscreenState, setFullscreenState] = useState({ available: false, active: false });
@@ -97,8 +103,14 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
     setPanel(value);
   }
 
+  function openExtensionPanel(render: ExtensionPanel) {
+    setExtensionPanel(() => render);
+    openPanel('extension');
+  }
+
   useEffect(() => {
     if (!panel) {
+      setExtensionPanel(null);
       panelReturnFocus.current?.focus();
       panelReturnFocus.current = null;
     }
@@ -185,7 +197,11 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         debug: diagnostics?.write,
         key: (key, event) => keys.current(key, event),
         muted: value => settings.save('muted', value),
-        settled: extension ? setSettlement : undefined,
+        started: extension?.started,
+        settled: extension ? run => {
+          setSettlement(run);
+          extension.settled?.(run);
+        } : undefined,
       }, settings.namespace, surface);
       setRuntime(engine);
       return engine.initialize(canvas, { ...options, compactViewport: orientationLock.current !== null, saveRecords: true });
@@ -361,11 +377,12 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
             share={share} socialLinks={socialLinks} fullscreen={fullscreen} fullscreenActive={fullscreenState.active}
             displayLabel={action?.label} displayPending={action?.pending} displayStatus={display?.status}
             fullscreenHidden={hideFullscreen} touchStartLabel={display?.startLabel} compliance={compliance}
-            extra={extension?.menu(() => openPanel('extension'))} />
+            extra={extension?.menu(openExtensionPanel, snapshot.volumeId)} />
           {!showcase && <GameHUD runtime={runtime} />}
+          {!modalOpen && <CenterReticle snapshot={viewSnapshot} />}
           <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu}>
             {snapshot.phase === 'results' && settlement && snapshot.result === settlement.result &&
-              extension?.results(settlement, snapshot)}
+              extension?.results(settlement, snapshot, openExtensionPanel)}
           </ResultsScreen>
         </div>
         <div id="flash" ref={flash} />
@@ -378,7 +395,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         {panel === 'credits' && (renderCredits
           ? renderCredits(snapshot.volumeId, () => setPanel(null))
           : <CreditsPanel close={() => setPanel(null)} />)}
-        {panel === 'extension' && extension?.panel(snapshot.volumeId, () => setPanel(null))}
+        {panel === 'extension' && extensionPanel?.(() => setPanel(null))}
         {shareNotice}
       </div>
       {diagnostics?.output}
@@ -386,6 +403,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         chooseQuality={value => void setQuality(value)}
         setVolume={value => { runtime?.setVolume(value); settings.save('volume', Math.round(value * 100)); }}
         setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
+        setCenterReticle={value => { runtime?.setCenterReticle(value); settings.save('centerReticle', value); }}
         {...(typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ && runtime
           ? { setGateQualityDebug: runtime.setGateQualityDebug } : {})}
         immersiveMouseAvailable={immersiveMouseAvailable && !display?.touch} setImmersiveMouse={setImmersiveMouse} setAutoBoost={setAutoBoost}

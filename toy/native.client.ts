@@ -1,14 +1,14 @@
 import { browserSurface, safeAreaEdges } from './platform';
 import type { ContainerMode, ToyContainerState, ToyPlatform, ToyPlatformState } from './platform';
-import { BilibiliLeaderboard } from './leaderboard-sdk.client';
-import type { BilibiliRankSDK } from './leaderboard-sdk.client';
+import { BilibiliServices } from './sdk-services.client';
+import type { BilibiliServiceMethods } from './sdk-services.client';
 
 const scriptUrl = 'https://s1.hdslb.com/bfs/seed/toy/app/sdk/toy-sdk.js';
 const abilities = ['getContainerState', 'onContainerChange', 'setContainerMode', 'onPageClose'] as const;
 type Ability = typeof abilities[number];
 
-interface BilibiliToySDK extends BilibiliRankSDK {
-  isSupport(ability: Ability | keyof BilibiliRankSDK): Promise<boolean>;
+interface BilibiliToySDK extends BilibiliServiceMethods {
+  isSupport(ability: Ability | keyof BilibiliServiceMethods): Promise<boolean>;
   getContainerState(): Promise<unknown>;
   onContainerChange(listener: (state: unknown) => void): () => void;
   setContainerMode(mode: ContainerMode): Promise<void>;
@@ -94,7 +94,10 @@ export class NativeToyPlatform implements ToyPlatform {
   private readonly listeners = new Set<() => void>();
   private sdk?: Partial<BilibiliToySDK>;
   private loading: Promise<Partial<BilibiliToySDK> | undefined> = Promise.resolve(undefined);
-  readonly leaderboard = new BilibiliLeaderboard(() => this.loading);
+  private readonly services = new BilibiliServices(() => this.loading);
+  readonly leaderboard = this.services;
+  readonly cloud = this.services;
+  readonly sharing = this.services;
 
   getSnapshot = () => this.state;
 
@@ -131,7 +134,7 @@ export class NativeToyPlatform implements ToyPlatform {
       else signal.addEventListener('abort', release, { once: true });
     };
     window.addEventListener('pagehide', event => { if (!event.persisted) close(); }, { signal });
-    this.leaderboard.connect(signal);
+    this.services.connect(signal);
     this.loading = sdkScript(signal);
     if (!/BiliApp/i.test(navigator.userAgent)) return stop;
     void (async () => {

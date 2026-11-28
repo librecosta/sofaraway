@@ -1,5 +1,6 @@
 import type { PlayerSurface, PlayerSurfaceState } from '../app/game/runtime/player-surface';
 import type { LeaderboardPlatform } from './leaderboard-contract';
+import type { CloudPlatform, SharePlatform } from './player-services';
 
 export const safeAreaEdges = ['top', 'right', 'bottom', 'left'] as const;
 
@@ -24,6 +25,8 @@ export const browserSurface: ToyPlatformState = { container: null, lifecycle: 'a
 
 export interface ToyPlatform extends PlayerSurface {
   readonly leaderboard?: LeaderboardPlatform;
+  readonly cloud?: CloudPlatform;
+  readonly sharing?: SharePlatform;
   getSnapshot(): ToyPlatformState;
   /** The platform acknowledges the call. A matching snapshot confirms the result. */
   requestMode(mode: ContainerMode): Promise<void>;

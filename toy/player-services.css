@@ -1,0 +1,30 @@
+.toy-service-panel {
+  width: min(100%, 35rem);
+  gap: clamp(.45rem, 1.5vh, 1rem);
+  padding: clamp(.75rem, 3vmin, 1.4rem);
+  letter-spacing: normal;
+}
+.toy-service-panel p, .toy-service-notice {
+  margin: 0;
+  color: #bad0d9;
+  font: 600 1rem/1.45 var(--text);
+}
+.toy-service-notice:empty { display: none; }
+.toy-cloud-bests {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: .6rem;
+}
+.toy-cloud-bests section { padding: .55rem .7rem; background: #74ffdc0a; }
+.toy-cloud-bests h3 { margin: 0 0 .25rem; color: var(--accent); font: 700 1rem var(--display); }
+.toy-cloud-bests dl, .toy-cloud-bests dd { margin: 0; }
+.toy-cloud-bests dl > div { display: flex; justify-content: space-between; gap: .4rem; }
+.toy-share-panel canvas {
+  display: block;
+  width: min(100%, 70vh);
+  height: auto;
+  align-self: center;
+  border-radius: 8px;
+}
+.toy-share-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.toy-result-share-action { margin-block: .25rem; }

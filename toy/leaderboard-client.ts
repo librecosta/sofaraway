@@ -1,6 +1,7 @@
 import { competition, RankError, rankFailure } from './leaderboard-contract';
 import type { Board, LeaderboardPlatform, MyRank, Period, RankEntry, RankFailure } from './leaderboard-contract';
 import type { RunSettlement } from '../app/game/runtime/run-settlement';
+import { requestTimeout, retryBackoff, ToyRequestBudget } from './request-budget';
 
 type Failure = { readonly kind: RankFailure; readonly retryAt: number };
 type Read<T> = { status: 'loading' } | { status: 'ready'; value: T; expires: number } | { status: 'failed'; error: Failure };
@@ -17,12 +18,9 @@ interface Attempt {
 }
 
 const boardTtl = 120_000;
-const requestTimeout = 6000;
 const unavailable = Infinity;
 const loading = { status: 'loading' } as const;
 export const leaderboardNow = () => Date.now();
-
-function backoff(count: number) { return Math.min(30_000, 1200 * 2 ** (count - 1)) + Math.random() * 400; }
 
 export class LeaderboardClient {
   private readonly listeners = new Set<() => void>();
@@ -32,12 +30,10 @@ export class LeaderboardClient {
   private session = 0;
   private version = 0;
   private operations = new AbortController();
-  private limitedUntil = 0;
-  private limits = 0;
   private wake?: ReturnType<typeof setTimeout>;
   private readonly deadlines = new Set<number>();
 
-  constructor(private readonly platform?: LeaderboardPlatform) {}
+  constructor(private readonly platform?: LeaderboardPlatform, private readonly budget = new ToyRequestBudget()) {}
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -54,9 +50,11 @@ export class LeaderboardClient {
     if (this.operations.signal.aborted) this.operations = new AbortController();
     const sync = () => this.syncSession();
     const off = this.platform?.subscribeSession(sync);
+    const offBudget = this.budget.subscribe(() => this.changed());
     sync();
     return () => {
       off?.();
+      offBudget();
       this.operations.abort();
       clearTimeout(this.wake);
       this.deadlines.clear();
@@ -97,17 +95,13 @@ export class LeaderboardClient {
 
   private fail(error: unknown, count: number): Failure {
     const kind = rankFailure(error);
-    if (kind === 'limited') {
-      this.limitedUntil = Math.max(this.limitedUntil, leaderboardNow() + backoff(++this.limits));
-      this.notifyAt(this.limitedUntil);
-      return { kind, retryAt: this.limitedUntil };
-    }
-    const retryAt = kind === 'unsupported' || kind === 'invalid' || kind === 'session' ? unavailable : leaderboardNow() + backoff(count);
+    if (kind === 'limited') return { kind, retryAt: this.budget.limit() };
+    const retryAt = kind === 'unsupported' || kind === 'invalid' || kind === 'session' ? unavailable : leaderboardNow() + retryBackoff(count);
     this.notifyAt(retryAt);
     return { kind, retryAt };
   }
 
-  get limited() { return leaderboardNow() < this.limitedUntil; }
+  get limited() { return this.budget.limited; }
 
   board(board: Board, period: Period): Readonly<BoardView> {
     return this.cache.get(`${board}/${period}`) ?? {};

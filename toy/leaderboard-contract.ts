@@ -54,9 +54,12 @@ export function rankFailure(error: unknown): RankFailure {
   return failures.find(value => value === kind) ?? 'network';
 }
 
-export interface LeaderboardPlatform {
+export interface ServiceSession {
   session(): number;
   subscribeSession(listener: () => void): () => void;
+}
+
+export interface LeaderboardPlatform extends ServiceSession {
   list(board: Board, period: Period, signal: AbortSignal): Promise<readonly RankEntry[]>;
   mine(board: Board, period: Period, signal: AbortSignal): Promise<MyRank>;
   submit(board: Board, score: number, signal: AbortSignal): Promise<number>;

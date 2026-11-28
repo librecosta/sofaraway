@@ -1,19 +1,26 @@
 import { leaderboardLimit, RankError } from '../leaderboard-contract';
 import type { Board, LeaderboardPlatform, Period, RankEntry } from '../leaderboard-contract';
+import { bestCourse } from '../../app/game/runtime/records.client';
+import { encodeCloudBests } from '../cloud-save';
+import type { CloudPlatform, ShareAction, SharePlatform } from '../player-services';
 
 type MockAccount = 'pilot' | 'navigator' | 'guest' | 'denied';
 type MockResponse = 'normal' | 'failure' | 'timeout' | 'limited';
 const defaults = { account: 'pilot' as MockAccount, response: 'normal' as MockResponse, delay: 150,
-  empty: false, available: true, fixture: 0, log: [] as readonly string[] };
+  empty: false, available: true, fixture: 0, log: [] as readonly string[],
+  cloud: 'normal' as 'normal' | 'conflict' | 'incompatible',
+  sharing: 'all' as 'all' | 'entry' | 'unavailable' };
 const names = ['Starwake', 'Blue Hour', 'Aperture', 'Low Orbit', 'Moonwake', 'Afterglow'];
 const accountNames = { pilot: 'Mock Pilot', navigator: 'Mock Navigator' };
 type MockScore = { readonly account: string; readonly score: number; readonly order: number };
 
-export class MockLeaderboard implements LeaderboardPlatform {
+export class MockLeaderboard implements LeaderboardPlatform, CloudPlatform, SharePlatform {
   private controls = defaults;
   private readonly changes = new Set<() => void>();
   private readonly sessionChanges = new Set<() => void>();
   private readonly scores = new Map<string, Map<string, MockScore>>();
+  private readonly saves = new Map<string, string>();
+  private resetId = 0;
   private order = names.length;
   private generation = 0;
   private fixtureId = 0;
@@ -34,7 +41,7 @@ export class MockLeaderboard implements LeaderboardPlatform {
     const previous = this.controls;
     this.controls = { ...previous, ...patch };
     if (invalidate || previous.account !== this.controls.account || previous.empty !== this.controls.empty ||
-      previous.available !== this.controls.available) {
+      previous.available !== this.controls.available || previous.sharing !== this.controls.sharing) {
       this.generation++;
       for (const listener of this.sessionChanges) listener();
     }
@@ -45,6 +52,8 @@ export class MockLeaderboard implements LeaderboardPlatform {
 
   reset() {
     this.scores.clear();
+    this.saves.clear();
+    this.resetId++;
     this.order = names.length;
     this.update(defaults, true);
   }
@@ -110,6 +119,37 @@ export class MockLeaderboard implements LeaderboardPlatform {
         if (period === 'all') allBest = current.get(player)!.score;
       }
       return allBest;
+    });
+  }
+
+  identity(signal: AbortSignal) {
+    return this.request('Confirm cloud account', signal, account => `mock-${this.resetId}-${this.requireAccount(account)}`);
+  }
+
+  readCloud(signal: AbortSignal) {
+    return this.request('Read personal cloud save', signal, account => {
+      const player = this.requireAccount(account);
+      if (this.controls.cloud === 'incompatible') return JSON.stringify({ version: 1, scoringVersion: 'expired', bests: [] });
+      if (this.controls.cloud === 'conflict') return encodeCloudBests([{
+        volume: 'elsewhere', difficulty: 'normal', course: bestCourse('elsewhere', 'normal')!,
+        best: player === 'pilot' ? 142_001 : 73_002,
+      }]);
+      return this.saves.get(player) ?? null;
+    });
+  }
+
+  writeCloud(value: string, signal: AbortSignal) {
+    return this.request('Write personal cloud save', signal, account => { this.saves.set(this.requireAccount(account), value); });
+  }
+
+  async supportsShare(action: ShareAction, signal: AbortSignal) {
+    return !signal.aborted && this.controls.available && (this.controls.sharing === 'all' ||
+      this.controls.sharing === 'entry' && action === 'share');
+  }
+
+  shareResult(action: ShareAction, base64Data: string, signal: AbortSignal) {
+    return this.request(`Share action: ${action}`, signal, () => {
+      if (action !== 'share' && !base64Data.startsWith('iVBORw0KGgo')) throw new RankError('invalid');
     });
   }
 }

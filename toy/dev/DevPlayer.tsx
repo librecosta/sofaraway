@@ -10,6 +10,7 @@ import { classes as c } from '../../app/styles/classes';
 import { CompetitiveResult } from '../Leaderboard';
 import { LeaderboardClient } from '../leaderboard-client';
 import { ToyPlayer } from '../ToyPlayer';
+import { ResultShareButton, ResultSharePanel } from '../ResultShare';
 import { readDevPlatform } from './bridge';
 import type { MockLeaderboard } from './mock-leaderboard';
 
@@ -20,6 +21,7 @@ const encore = { encountered: 12, passed: 12, precision: 9, nearMiss: 2, missed:
 function ResultFixture({ platform, id }: { platform: MockLeaderboard; id: number }) {
   const preference = useLocalePreference(settings, 'zh-CN');
   const [client] = useState(() => new LeaderboardClient(platform));
+  const [sharing, setSharing] = useState(false);
   useEffect(() => client.connect(), [client]);
   const [run] = useState<RunSettlement>(() => ({
     id, scoringVersion: SCORING_RULES_VERSION,
@@ -34,9 +36,13 @@ function ResultFixture({ platform, id }: { platform: MockLeaderboard; id: number
 
   return <PlayerLocaleProvider {...preference}>
     <main className={c('viewport')} style={{ background: 'radial-gradient(ellipse at 50% 30%, #18323b, #071216 65%)' }}>
-      <ResultsScreen snapshot={snapshot} restart={() => platform.showFixture()} menu={() => platform.update({ fixture: 0 })}>
-        <CompetitiveResult client={client} run={run} snapshot={snapshot} />
-      </ResultsScreen>
+      <div inert={sharing}>
+        <ResultsScreen snapshot={snapshot} restart={() => platform.showFixture()} menu={() => platform.update({ fixture: 0 })}>
+          <CompetitiveResult client={client} run={run} snapshot={snapshot} />
+          <ResultShareButton run={run} open={() => setSharing(true)} />
+        </ResultsScreen>
+      </div>
+      {sharing && <ResultSharePanel run={run} platform={platform} close={() => setSharing(false)} />}
     </main>
   </PlayerLocaleProvider>;
 }

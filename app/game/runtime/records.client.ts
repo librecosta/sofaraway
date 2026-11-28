@@ -31,6 +31,25 @@ function recordId(volume: VolumeId, difficulty?: Difficulty): RecordId {
   return volume === 'daybreak' ? 'daybreak-choreography' : volume === 'descent' ? approachRecordId : volume;
 }
 
+export interface PersonalBest {
+  readonly volume: VolumeId;
+  readonly difficulty: Difficulty;
+  readonly course: string;
+  readonly best: number;
+}
+
+export function bestCourse(volume: VolumeId, difficulty: Difficulty) {
+  return difficultiesFor(volume).includes(difficulty) ? recordId(volume, difficulty) : undefined;
+}
+
+function personalBests(records: RecordsV1): PersonalBest[] {
+  return VOLUMES.flatMap(({ id: volume }) => difficultiesFor(volume).flatMap(difficulty => {
+    const course = recordId(volume, difficulty);
+    const best = records.standard[course]?.[difficulty]?.best;
+    return score(best) ? [{ volume, difficulty, course, best }] : [];
+  }));
+}
+
 interface RecordsV1 {
   version: 1;
   standard: Partial<Record<RecordId, Partial<Record<Difficulty, LocalRecord>>>>;
@@ -191,47 +210,83 @@ export class RunRecordStore {
 
   read() { return readRecordDocument(this.key); }
 
+  readBests() { return personalBests(this.read()); }
+
+  mergeBests(entries: readonly PersonalBest[], signal: AbortSignal) {
+    return this.enqueue(() => this.persist((previous, publish) => {
+      if (signal.aborted) return null;
+      try {
+        const records = this.readForWrite(previous);
+        let changed = false;
+        for (const { volume, difficulty, course, best } of entries) {
+          const id = bestCourse(volume, difficulty);
+          if (!id || course !== id || !score(best)) continue;
+          const byDifficulty = records.standard[id] ??= {};
+          const current = byDifficulty[difficulty];
+          if (current?.best != null && current.best >= best) continue;
+          byDifficulty[difficulty] = { best, last: current?.last ?? null };
+          changed = true;
+        }
+        if (changed) this.saveDocument(records, publish);
+        return personalBests(changed && !publish ? readRecordDocument(this.key, records) : records);
+      } catch { return null; }
+    }));
+  }
+
   commitRunRecord(intent: RunRecordIntent) {
-    const completion = this.tail.then(() => this.commit(intent));
-    this.tail = completion.then(() => {});
+    return this.enqueue(() => this.commit(intent));
+  }
+
+  private enqueue<T>(write: () => Promise<T>) {
+    const completion = this.tail.then(write);
+    this.tail = completion.then(() => {}, () => {});
     return completion;
+  }
+
+  private readForWrite(previous?: string) {
+    const current = localStorage.getItem(this.key);
+    const records = parseRecords(current);
+    if (previous !== undefined && previous !== current) mergeHandoff(records, previous);
+    return records;
+  }
+
+  private saveDocument(records: RecordsV1, publish?: (value: string) => void) {
+    const raw = JSON.stringify(records);
+    localStorage.setItem(this.key, raw);
+    try { publish?.(raw); } catch { /* The V1 document was saved even if the handoff is unavailable. */ }
   }
 
   private async commit(intent: RunRecordIntent) {
     const { volume, difficulty, mode, last } = intent;
     const save = (previous?: string, publish?: (value: string) => void) => {
       try {
-        const current = localStorage.getItem(this.key);
-        const records = parseRecords(current);
-        if (previous !== undefined && previous !== current) mergeHandoff(records, previous);
+        const records = this.readForWrite(previous);
         for (const { volume, difficulty, mode, last } of this.pending) {
           recordRun(records, volume, difficulty, mode, last);
         }
         const newBest = recordRun(records, volume, difficulty, mode, last);
-        const raw = JSON.stringify(records);
-        localStorage.setItem(this.key, raw);
+        this.saveDocument(records, publish);
         this.pending.length = 0;
-        try { publish?.(raw); } catch { /* The V1 document was saved even if the handoff is unavailable. */ }
         const localRecord = recordFor(publish ? records : readRecordDocument(this.key, records), volume, difficulty, mode);
         return { localRecord, newBest: newBest && localRecord.best === totalRunScore(last) };
       } catch { return null; }
     };
 
-    const persist = async () => {
-      try {
-        const locks = globalThis.navigator?.locks;
-        if (locks) {
-          const handoff = await openHandoff(this.lock);
-          try {
-            return await locks.request(this.lock, { mode: 'exclusive' }, () => handoff ? withHandoff(handoff, this.key, save) : save());
-          } finally { handoff?.close(); }
-        }
-      } catch { /* The lock API can be restricted by the browser. */ }
-      // A fresh read and verification give best-effort persistence without a lock.
-      return save();
-    };
-    const saved = await persist();
+    const saved = await this.persist(save);
     if (!saved) this.pending.push(intent);
     return saved;
+  }
+
+  private async persist<T>(save: (previous?: string, publish?: (value: string) => void) => T): Promise<T> {
+    try {
+      const locks = globalThis.navigator?.locks;
+      if (locks) {
+        const handoff = await openHandoff(this.lock);
+        try {
+          return await locks.request(this.lock, { mode: 'exclusive' }, () => handoff ? withHandoff(handoff, this.key, save) : save());
+        } finally { handoff?.close(); }
+      }
+    } catch { /* The lock API can be restricted by the browser. */ }
+    return save();
   }
 }

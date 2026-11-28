@@ -25,6 +25,7 @@ interface Props {
   setDynamicLights(value: boolean): void;
   setGateQualityDebug?(value: boolean): void;
   setAutoBoost(value: boolean): void;
+  setCenterReticle(value: boolean): void;
   immersiveMouseAvailable: boolean;
   setImmersiveMouse(value: boolean): void;
   orientation?: { value: OrientationPreference; choose(value: OrientationPreference): void; pending?: boolean };
@@ -47,7 +48,7 @@ function Toggle({ id, label, checked, change, description, disabled }: {
 
 export function SettingsPanel(props: Props) {
   const { snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights,
-    immersiveMouseAvailable, setImmersiveMouse, setAutoBoost, orientation, fullscreen, preview } = props;
+    immersiveMouseAvailable, setImmersiveMouse, setAutoBoost, setCenterReticle, orientation, fullscreen, preview } = props;
   const { text, chooseLocale } = usePlayerText();
   const { t } = text;
   const quality = qualities.indexOf(snapshot.quality);
@@ -95,6 +96,8 @@ export function SettingsPanel(props: Props) {
           <Toggle id="set-muted" label={t('mute')} checked={snapshot.muted} change={setMuted} />
           <Toggle id="set-auto-boost" label={t('autoBoost')} checked={snapshot.autoBoost} change={setAutoBoost}
             disabled={boostLocked} description={boostLocked ? t('autoBoostLocked') : t('autoBoostHelp')} />
+          <Toggle id="set-center-reticle" label={t('centerReticle')} checked={snapshot.centerReticle}
+            change={setCenterReticle} description={t('centerReticleHelp')} />
           <Toggle id="set-dynamic-lights" label={t('dynamicLights')} checked={snapshot.dynamicLights} change={setDynamicLights}
             description={t(reduced ? 'reducedLights' : 'lightsHelp')} />
           {immersiveMouseAvailable && <Toggle id="set-immersive-mouse" label={t('immersiveMouse')}

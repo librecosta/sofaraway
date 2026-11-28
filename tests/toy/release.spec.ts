@@ -14,7 +14,7 @@ test('the release contains only the player, relative assets and required license
   const root = files.filter(file => file.isFile() && file.name.match(/\.(?:html|txt)$/)).map(file => file.name);
   expect(root.sort()).toEqual(['LICENSE.txt', 'OFL-Chakra-Petch.txt', 'OFL-Rajdhani.txt', 'THIRD-PARTY-NOTICES.txt', 'index.html']);
   const icon = await readFile('app/components/china-public-security.png');
-  const forbidden = /2025158691|51010702045043|beian\.(?:miit|mps)\.gov\.cn|#errbox|sofaraway-camlog|fixedTime|mobileQuality|branchSide|b0Harness|toy-dev-console|MockToyPlatform|Offline container simulator|Show mock results|Mock Navigator|sofaraway\.bilibili\.sofaraway\.dev|Sampled legal crossing region/;
+  const forbidden = /2025158691|51010702045043|beian\.(?:miit|mps)\.gov\.cn|#errbox|sofaraway-camlog|fixedTime|mobileQuality|branchSide|b0Harness|toy-dev-console|MockToyPlatform|Offline container simulator|Show mock results|Mock Navigator|Mock cloud and sharing|Seed a different cloud Best|sofaraway\.bilibili\.sofaraway\.dev|Sampled legal crossing region/;
   for (const file of files) {
     if (file.isDirectory()) {
       expect(file.name).toBe('assets');
@@ -201,6 +201,13 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
   }, { key: recordsKey, previousRecordsKey });
   expect(observed.requestedLock).toBe(recordsKey + '.write');
   expect(observed.handoff).toBe(observed.value);
+  await expect(page.locator('#center-reticle')).toHaveCount(0);
+  await page.getByRole('button', { name: '分享成绩', exact: true }).click();
+  const card = page.getByRole('dialog', { name: '分享成绩' });
+  await expect(card.getByRole('img', { name: /SoFarAway.*LibreCosta.*ELSEWHERE/ })).toBeVisible();
+  await expect(card.getByRole('button')).toHaveCount(1);
+  await card.getByRole('button', { name: '关闭' }).click();
+  await expect(card).toHaveCount(0);
   expect(JSON.parse(observed.value!).standard.elsewhere.impossible).toMatchObject({
     best: expect.any(Number), last: { outcome: 'TERMINATED', score: expect.any(Number) },
   });

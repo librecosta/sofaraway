@@ -16,7 +16,7 @@ import type { RunSettlement } from '../../app/game/runtime/run-settlement';
 import { LeaderboardClient } from '../../toy/leaderboard-client';
 import { boards, competition, isSdkScore, RankError } from '../../toy/leaderboard-contract';
 import type { LeaderboardPlatform } from '../../toy/leaderboard-contract';
-import { BilibiliLeaderboard } from '../../toy/leaderboard-sdk.client';
+import { BilibiliServices } from '../../toy/sdk-services.client';
 
 const escaped: RunResult = { title: 'ESCAPED', route: 'main', accuracy: 1, rank: 'S', planned: 10,
   encountered: 10, passed: 10, precision: 3, nearMiss: 4, unreached: 0, neutralized: 0 };
@@ -203,7 +203,7 @@ test('adapts the official SDK call shape, permissions and errors', async () => {
     getMyRank: vi.fn().mockResolvedValue({ ranked: true, rank: 1, score: 0 }),
     submitScore: vi.fn().mockResolvedValue({ score: 110 }),
   };
-  const rank = new BilibiliLeaderboard(async () => sdk);
+  const rank = new BilibiliServices(async () => sdk);
   const { signal } = new AbortController();
   expect(await rank.list(4, 'week', signal)).toEqual([{ rank: 1, score: -4, nickname: 'Pilot', avatar: 'https://p0.hdslb.com/avatar.png' }]);
   await rank.list(1, 'all', signal);
@@ -217,5 +217,5 @@ test('adapts the official SDK call shape, permissions and errors', async () => {
     sdk.submitScore.mockRejectedValueOnce(error);
     await expect(rank.submit(1, 50, signal)).rejects.toMatchObject({ kind });
   }
-  await expect(new BilibiliLeaderboard(async () => undefined).list(1, 'all', signal)).rejects.toMatchObject({ kind: 'unsupported' });
+  await expect(new BilibiliServices(async () => undefined).list(1, 'all', signal)).rejects.toMatchObject({ kind: 'unsupported' });
 });

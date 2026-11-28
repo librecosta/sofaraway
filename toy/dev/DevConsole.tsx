@@ -108,6 +108,20 @@ export function DevConsole() {
         <button type="button" onClick={() => platform.leaderboard.reset()}>Reset mock ranks</button>
         <ol aria-label="Rank request log">{ranks.log.map((entry, index) => <li key={index}>{entry}</li>)}</ol>
       </fieldset>
+      <fieldset>
+        <legend>Mock cloud and sharing</legend>
+        <label>Cloud document <select value={ranks.cloud} onChange={event =>
+          platform.leaderboard.update({ cloud: event.target.value as typeof ranks.cloud })}>
+          <option value="normal">Stored per account</option><option value="conflict">Seed a different cloud Best</option>
+          <option value="incompatible">Incompatible scoring version</option>
+        </select></label>
+        <label>Share capability <select value={ranks.sharing} onChange={event =>
+          platform.leaderboard.update({ sharing: event.target.value as typeof ranks.sharing })}>
+          <option value="all">Card, album and Toy</option><option value="entry">Toy only</option>
+          <option value="unavailable">Preview only</option>
+        </select></label>
+        <p>Uses the account, delay and response above.</p>
+      </fieldset>
       <button type="button" onClick={() => platform.reset()}>Reset simulation</button>
       <p role="status">{state ? `${state.width} × ${state.height} CSS px` : 'SDK unavailable. Browser viewport and safe-area defaults.'}</p>
     </aside>

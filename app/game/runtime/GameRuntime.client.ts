@@ -32,6 +32,7 @@ export interface RuntimeView {
   debug?(text: string): void;
   key?(key: string, event: KeyboardEvent): boolean;
   muted?(value: boolean): void;
+  started?(id: number): void;
   settled?(run: RunSettlement): void;
 }
 
@@ -142,6 +143,7 @@ export class Runtime implements GameRuntime {
       dynamicLights: !!options.dynamicLights,
       immersiveMouse: options.immersiveMouse ?? initialSnapshot.immersiveMouse,
       autoBoost: options.autoBoost === true,
+      centerReticle: options.centerReticle === true,
       localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
@@ -240,6 +242,7 @@ export class Runtime implements GameRuntime {
     }
     this.anchorRun(0);
     this.alignImmersiveReticle();
+    this.view.started?.(this.activeRun.id);
     this.publishRun({ phase: 'playing', pauseReason: null, error: null, soundUnavailable: false, newBest: false });
   }
 
@@ -419,6 +422,10 @@ export class Runtime implements GameRuntime {
 
   setAutoBoost(value: boolean) {
     if (this.snapshot.phase === 'menu' || this.snapshot.phase === 'results') this.publish({ autoBoost: value });
+  }
+
+  setCenterReticle(value: boolean) {
+    if (this.snapshot.phase !== 'disposed') this.publish({ centerReticle: value });
   }
 
   private requestImmersiveMouse(gesture?: Event) {

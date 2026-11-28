@@ -23,6 +23,8 @@ const initial = {
 
 export class MockToyPlatform implements ToyPlatform {
   readonly leaderboard = new MockLeaderboard();
+  readonly cloud = this.leaderboard;
+  readonly sharing = this.leaderboard;
   private controls = initial;
   private snapshot = browserSurface;
   private readonly listeners = new Set<() => void>();
