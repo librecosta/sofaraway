@@ -27,9 +27,20 @@ The SDK reports viewport dimensions and edge insets in CSS pixels. The canvas us
 
 ## Leaderboards and competitive records
 
-Open **Leaderboards** from the player menu to view all-time and weekly standings for the current Volume. Both periods request the public SDK maximum of 100 entries per board. The first release maps ELSEWHERE, DAYBREAK, DESCENT and ORBIT to board slots 1 through 4. Slot 5 is reserved. A new Standard Normal run qualifies by escaping via the Main route with no main or Encore gates neutralized by recovery. Boost, pause and muted play follow the ordinary rules. Results offers an explicit submission, using the existing local total of integer main points plus earned Encore points.
+Open **Leaderboards** from the player menu to view all-time and weekly standings for the current Volume. Both periods request the public SDK maximum of 100 entries per board. The board slots are ELSEWHERE 1, DAYBREAK 2, DESCENT 3 and ORBIT 4. Slot 5 is reserved.
 
-In `npm run dev:toy`, use **Mock leaderboards** to switch accounts, hide the seeded rows, vary response delays and trigger network failures, timeouts or rate limits. **Show mock results** opens a development-only, eligible result fixture. A successful mock submission updates that account's high-water score in both mock periods. Change account and refresh to verify personal ranks. **Reset mock ranks** clears the in-memory service and fixture. The console works without a Bilibili session or network connection to the platform. For local images, set `TOY_CAPTURE_RANKS=1` and run `npm run test:toy`. Images are saved under `.local/t1-d/`.
+A live interactive Standard Normal run can qualify on Main, Challenge or Bonus. It must escape with a valid recorded route, use the current scoring rules and ordinary random seed policy, and have zero recovery-neutralized gates in the main course and Encore. Boost, pause and muted play follow the ordinary rules. Results submits the existing integer main score plus earned Encore points on request. Each route keeps its scoring multiplier, and all three routes share the same Volume board.
+
+| Volume | Main | Challenge | Bonus |
+| --- | ---: | ---: | ---: |
+| ELSEWHERE | 228,524 | 252,524 | 239,924 |
+| DAYBREAK | 195,535 | 221,035 | 198,385 |
+| DESCENT | 258,174 | 270,174 | 251,049 |
+| ORBIT | 155,556 | 169,056 | 148,956 |
+
+The table shows conservative ceilings for the current rules. The test weights only branch gates by their route multiplier and budgets maximum Boost travel, capped Combo, maximum crossing bonuses, Resonance, a Lumen pickup and Encore at the shortest allowed spacing. Each ceiling fits within the SDK's positive limit of 16,777,215. The submission boundary validates the settled total against the SDK range. [Competition contract](../toy/leaderboard-contract.ts) · [Ceiling test](../tests/core/toy-competition.test.ts)
+
+In `npm run dev:toy`, use **Mock leaderboards** to switch accounts, hide the seeded rows, vary response delays and trigger network failures, timeouts or rate limits. Choose **Mock result route** and open **Show mock results** to preview an eligible development-only settlement. A successful mock submission updates that account's high-water score in both mock periods. Change account and refresh to verify personal ranks. **Reset mock ranks** clears the in-memory service and fixture. The console works without a Bilibili session or network connection to the platform. For local images, set `TOY_CAPTURE_RANKS=1` and run `npm run test:toy`. Images are saved under `.local/t1-d/`.
 
 The inspected public SDK blocks writes under `/toy/preview`. Test submissions locally and keep simulated scores out of live boards. Verify App and PC availability, first-submit consent, account changes, weekly rollover and physical-device layout only in the appropriate publisher-authorized environment. The release schedule depends on the promotional video. [T1-D implementation report](audits/T1-D-leaderboard-competitive-records.md) · [Official request guidance](https://github.com/bilibili/toy/blob/main/skills/toy/references/content-checklist.md#7-用了云存储--排行榜调用节奏上线后才爆的那类)
 

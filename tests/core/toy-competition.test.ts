@@ -1,12 +1,15 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import type { GameOptions, RunResult, VolumeId } from '../../app/game/contracts';
 import { branchLayout, ROUTE_GATE_MULTIPLIERS, routeSides } from '../../app/game/core/branches';
+import type { RouteKind } from '../../app/game/core/branches';
 import { difficultySettings } from '../../app/game/core/chart';
 import { STEP } from '../../app/game/core/clock';
 import { lanePoint } from '../../app/game/core/collision';
+import { ENCORE_FIRST_OFFSET, ENCORE_GATE_COUNT, ENCORE_MIN_SPACING } from '../../app/game/core/encore';
 import { idleInput } from '../../app/game/core/input';
 import { LUMEN_POINTS, RESONANCE_BONUS } from '../../app/game/core/pickups';
 import { BOOST_MULTIPLIER, cruiseTarget } from '../../app/game/core/reference-track';
+import { gatesForRoute } from '../../app/game/core/run-chart';
 import { resolveRunPolicy } from '../../app/game/core/run-policy';
 import { BOOST_GATE_MULTIPLIER, COMBO_SCORE_CAP, COMBO_SCORE_STEP, ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS,
   MAIN_GATE_POINTS, MAIN_QUALITY_BONUS, SCORING_RULES_VERSION, TRAVEL_POINTS_PER_UNIT } from '../../app/game/core/scoring';
@@ -21,21 +24,24 @@ import { BilibiliServices } from '../../toy/sdk-services.client';
 const escaped: RunResult = { title: 'ESCAPED', route: 'main', accuracy: 1, rank: 'S', planned: 10,
   encountered: 10, passed: 10, precision: 3, nearMiss: 4, unreached: 0, neutralized: 0 };
 const selection = { volumeId: 'elsewhere', mode: 'standard', difficulty: 'normal' } as const;
+const routes = Object.keys(ROUTE_GATE_MULTIPLIERS) as RouteKind[];
 
 function settled(select: Partial<typeof selection> & { autoBoost?: boolean } = {}): RunSettlement {
   return { id: 1, scoringVersion: SCORING_RULES_VERSION, policy: resolveRunPolicy({ ...selection, ...select }, {}, 'run'), result: escaped,
     record: { outcome: 'ESCAPED', score: 12_345 } };
 }
 
-test('allocates four boards and passes the unchanged total for either Boost preference', () => {
+test('allocates four boards and passes the unchanged total for every route and Boost preference', () => {
   expect(boards).toEqual({ elsewhere: 1, daybreak: 2, descent: 3, orbit: 4 });
+  const encore = { encountered: 4, passed: 3, missed: 1, precision: 1, nearMiss: 1, neutralized: 0, combo: 1, maxCombo: 2,
+    bonusScore: 3 * ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.precision + ENCORE_QUALITY_BONUS.nearMiss };
   for (const volumeId of Object.keys(boards) as VolumeId[]) {
     for (const autoBoost of [false, true]) {
       const run = settled({ autoBoost });
-      const encore = { encountered: 4, passed: 3, missed: 1, precision: 1, nearMiss: 1, neutralized: 0, combo: 1, maxCombo: 2,
-        bonusScore: 3 * ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.precision + ENCORE_QUALITY_BONUS.nearMiss };
-      expect(competition({ ...run, policy: { ...run.policy, volumeId }, result: { ...escaped, encore },
-        record: { ...run.record, encoreBonus: encore.bonusScore } })).toEqual({ board: boards[volumeId], score: 13_195 });
+      for (const route of routes) {
+        expect(competition({ ...run, policy: { ...run.policy, volumeId }, result: { ...escaped, route, encore },
+          record: { ...run.record, encoreBonus: encore.bonusScore } })).toEqual({ board: boards[volumeId], score: 13_195 });
+      }
     }
   }
 });
@@ -49,7 +55,8 @@ test('checks the actual route, outcome, both recovery counts and run policy', ()
   expect(competition({ ...run, scoringVersion: 'precision-v4' })).toEqual({ reason: 'version' });
   const ineligible = (result: Partial<RunResult>) => competition({ ...run, result: { ...escaped, ...result } });
   expect(ineligible({ title: 'TERMINATED' })).toEqual({ reason: 'finish' });
-  for (const route of [undefined, 'challenge', 'score'] as const) expect(ineligible({ route })).toEqual({ reason: 'route' });
+  expect(ineligible({ route: undefined })).toEqual({ reason: 'route' });
+  expect(ineligible({ route: 'constructor' as RouteKind })).toEqual({ reason: 'route' });
   expect(ineligible({ neutralized: 1 })).toEqual({ reason: 'recovery' });
   expect(ineligible({ encore: { encountered: 1, passed: 0, missed: 0, precision: 0, nearMiss: 0, neutralized: 1,
     combo: 0, maxCombo: 0, bonusScore: 0 } })).toEqual({ reason: 'recovery' });
@@ -78,7 +85,7 @@ test('uses the SDK integer boundaries and rejects inconsistent totals without al
     .toEqual({ reason: 'score' });
 });
 
-test('actual charts fit the SDK range, including a conservative boosted maximum', () => {
+test('actual charts and every route fit the SDK range at conservative score ceilings', () => {
   const layouts = new Map<string, number>();
   for (let seed = 0; layouts.size < 2 && seed < 1000; seed++) {
     const layout = branchLayout(seed);
@@ -88,15 +95,34 @@ test('actual charts fit the SDK range, including a conservative boosted maximum'
   const limits = Object.fromEntries(VOLUMES.map(volume => {
     const { mult, speedFactor } = difficultySettings(volume, 'normal');
     const gateLimit = mult * (MAIN_GATE_POINTS * BOOST_GATE_MULTIPLIER * (1 + COMBO_SCORE_CAP * COMBO_SCORE_STEP) +
-      MAIN_QUALITY_BONUS.nearMiss) * ROUTE_GATE_MULTIPLIERS.main * (1 + RESONANCE_BONUS);
-    const travelLimit = volume.beats * (60 / volume.bpm) * cruiseTarget(Infinity) * BOOST_MULTIPLIER * speedFactor * TRAVEL_POINTS_PER_UNIT;
+      Math.max(...Object.values(MAIN_QUALITY_BONUS))) * (1 + RESONANCE_BONUS);
+    const duration = volume.beats * (60 / volume.bpm);
+    const travelLimit = duration * cruiseTarget(Infinity) * BOOST_MULTIPLIER * speedFactor * TRAVEL_POINTS_PER_UNIT;
+    const encoreGatePoints = ENCORE_BASE_POINTS + Math.max(...Object.values(ENCORE_QUALITY_BONUS));
     const sim = new Simulation(volume);
-    const max = Math.ceil(Math.max(...[...layouts.values()].map(seed => {
+    const ceilings = { main: 0, challenge: 0, score: 0 };
+    for (const seed of layouts.values()) {
       sim.start('normal', seed, 'lumen');
-      return sim.gatesTotal * gateLimit + travelLimit + LUMEN_POINTS.normal +
-        (sim.outroPlan?.gates.length ?? 0) * (ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.nearMiss);
-    })));
-    expect(isSdkScore(max)).toBe(true);
+      const encore = sim.gameplay.encore;
+      let encoreGateLimit = 0;
+      if (encore === 'legacy') encoreGateLimit = ENCORE_GATE_COUNT;
+      else if (encore && sim.outroPlan) {
+        // The planner takes the minimum over the sides, so center bounds the cutoff from above.
+        const cutoff = sim.reference.boostAt(duration - encore.reserve, 'standard', speedFactor);
+        const first = Math.max(sim.outroPlan.mainLastStation + (encore.first ?? ENCORE_FIRST_OFFSET),
+          sim.reference.station(volume.beats, 'standard'));
+        // Give every gap the minimum spacing and budget the ending buffer as reachable.
+        encoreGateLimit = Math.max(0, 1 + Math.floor((cutoff - first) / (encore.minSpacing ?? ENCORE_MIN_SPACING)));
+      }
+      expect(sim.outroPlan?.gates.length ?? 0).toBeLessThanOrEqual(encoreGateLimit);
+      for (const route of routes) {
+        const weightedGates = gatesForRoute(sim.mainGates, sim.branchGates, route)
+          .reduce((sum, gate) => sum + ROUTE_GATE_MULTIPLIERS[gate.route ?? 'main'], 0);
+        const ceiling = Math.ceil(weightedGates * gateLimit + travelLimit + LUMEN_POINTS.normal + encoreGateLimit * encoreGatePoints);
+        expect(isSdkScore(ceiling)).toBe(true);
+        ceilings[route] = Math.max(ceilings[route], ceiling);
+      }
+    }
     sim.start('normal', 0, 'lumen');
     const gate = sim.mainGates[0];
     const [x, y] = lanePoint(gate.kind, gate.open, gate.axis);
@@ -106,15 +132,31 @@ test('actual charts fit the SDK range, including a conservative boosted maximum'
     sim.step(STEP, { ...idleInput, target: [x, y], boosting: true });
     expect(sim.gatesPassed).toBe(1);
     expect(sim.score).toBeGreaterThan(250);
-    expect(sim.score).toBeLessThan(max);
-    return [volume.id, max];
+    expect(sim.score).toBeLessThan(ceilings.main);
+    return [volume.id, ceilings];
   }));
   expect(limits).toMatchInlineSnapshot(`
     {
-      "daybreak": 194835,
-      "descent": 257124,
-      "elsewhere": 228524,
-      "orbit": 154506,
+      "daybreak": {
+        "challenge": 221035,
+        "main": 195535,
+        "score": 198385,
+      },
+      "descent": {
+        "challenge": 270174,
+        "main": 258174,
+        "score": 251049,
+      },
+      "elsewhere": {
+        "challenge": 252524,
+        "main": 228524,
+        "score": 239924,
+      },
+      "orbit": {
+        "challenge": 169056,
+        "main": 155556,
+        "score": 148956,
+      },
     }
   `);
 });

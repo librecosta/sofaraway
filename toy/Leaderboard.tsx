@@ -19,13 +19,14 @@ const english = {
   loading: 'Loading standings…', empty: 'No scores yet.', unranked: 'You have no score on this board.',
   refresh: 'Refresh', refreshSession: 'Refresh to load standings for this session.', anonymous: 'Bilibili player',
   submit: 'Submit score', retry: 'Retry submission', current: 'Run total', local: 'Local best',
+  eligibility: 'Standard · Normal · Escape on any route',
   unsupported: 'Leaderboards are unavailable in this environment.',
   login: 'Sign in to Bilibili to use your personal leaderboard.',
   permission: 'Bilibili did not grant access to this action.', network: 'Could not reach the leaderboard. Try again shortly.',
   limited: 'The leaderboard is busy. Try again shortly.', timeout: 'The leaderboard request timed out.',
   invalid: 'Bilibili did not accept this score.', session: 'The Bilibili session changed. Start a new flight to submit again.',
   mode: 'Only interactive Standard flights qualify.', difficulty: 'Only Normal flights qualify.',
-  finish: 'Escape to qualify for this board.', route: 'Choose the Main route to qualify.',
+  finish: 'Escape to qualify for this board.', route: 'No valid route was recorded for this flight.',
   recovery: 'This flight had a gate neutralized by recovery.', policy: 'Only ordinary flights with a random seed qualify.',
   invalidScore: 'This score is outside the accepted range.',
   version: 'This flight used an older scoring ruleset.',
@@ -36,13 +37,14 @@ const chinese = {
   loading: '正在加载排行榜…', empty: '暂无上榜成绩。', unranked: '你还未在此榜上榜。',
   refresh: '刷新', refreshSession: '请刷新，加载当前会话的排行榜。', anonymous: '哔哩哔哩玩家',
   submit: '提交成绩', retry: '重试提交', current: '本场总分', local: '本地最高分',
+  eligibility: '标准模式 · 普通难度 · 任意路线成功撤离',
   unsupported: '当前环境无法使用排行榜。',
   login: '登录哔哩哔哩后可使用个人排行榜功能。',
   permission: '哔哩哔哩未授权此操作。', network: '暂时无法连接排行榜，请稍后重试。',
   limited: '排行榜请求过多，请稍后重试。', timeout: '排行榜请求超时。',
   invalid: '哔哩哔哩未接受此成绩。', session: '哔哩哔哩会话已切换，请开始新一场飞行后提交。',
   mode: '只有实际操作的标准模式场次可上榜。', difficulty: '只有普通难度的场次可上榜。',
-  finish: '成功撤离后才可上榜。', route: '请选择主路线以取得上榜资格。',
+  finish: '成功撤离后才可上榜。', route: '本场未记录有效路线。',
   recovery: '本场有障碍因恢复机制被中和。', policy: '只有使用正常随机种子的飞行可上榜。',
   invalidScore: '此成绩超出可提交范围。',
   version: '此场飞行使用了旧版计分规则。',
@@ -105,7 +107,10 @@ export function LeaderboardPanel({ client, initialVolume, close }: {
   return <GameDialog id="toy-rank-dialog" title={copy.title} dismiss={close}>
     <div className={c('panel') + ' toy-rank-panel'}>
       <header className="toy-rank-header">
-        <h2>{copy.title}</h2>
+        <div>
+          <h2>{copy.title}</h2>
+          <p className="toy-rank-eligibility">{copy.eligibility}</p>
+        </div>
         <button type="button" className="toy-rank-control toy-rank-icon-action" onClick={close}
           aria-label={text.t('close')} title={text.t('close')}><RankIcon name="close" /></button>
       </header>

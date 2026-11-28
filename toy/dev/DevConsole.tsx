@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { ROUTE_LABELS } from '../../app/game/core/branches';
 import { VOLUMES } from '../../app/game/core/volumes';
 import { safeAreaEdges } from '../platform';
 import type { ToyContainerState } from '../platform';
@@ -106,6 +107,10 @@ export function DevConsole() {
           <label>Mock result volume <select value={ranks.fixtureVolume} onChange={event =>
             platform.leaderboard.update({ fixtureVolume: event.target.value as typeof ranks.fixtureVolume })}>
             {VOLUMES.map(volume => <option key={volume.id} value={volume.id}>{volume.name}</option>)}
+          </select></label>
+          <label>Mock result route <select value={ranks.fixtureRoute} onChange={event =>
+            platform.leaderboard.update({ fixtureRoute: event.target.value as typeof ranks.fixtureRoute })}>
+            {Object.entries(ROUTE_LABELS).map(([route, label]) => <option key={route} value={route}>{label}</option>)}
           </select></label>
           <button type="button" onClick={() => platform.leaderboard.showFixture()}>Show mock results</button>
           <button type="button" disabled={!ranks.fixture} onClick={() => platform.leaderboard.update({ fixture: 0 })}>Back to player</button>

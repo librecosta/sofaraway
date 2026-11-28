@@ -34,6 +34,7 @@ test('offline standings keep separate boards and periods with readable portrait 
   }
   await open.click();
   const dialog = frame.getByRole('dialog', { name: '排行榜' });
+  await expect(dialog.getByText('标准模式 · 普通难度 · 任意路线成功撤离')).toBeVisible();
   await expect(dialog.getByRole('row')).toHaveCount(7);
   await expect(dialog).toContainText('134,200');
   await expect(dialog.getByText('我的最高分', { exact: true })).toBeVisible();
@@ -82,6 +83,7 @@ test('offline standings keep separate boards and periods with readable portrait 
   await frame.locator('[data-act=closesettings]').click();
   await frame.getByRole('button', { name: 'Leaderboards' }).click();
   await expect(frame.getByRole('dialog', { name: 'Leaderboards' })).toContainText('All time');
+  await expect(frame.getByText('Standard · Normal · Escape on any route')).toBeVisible();
   await expect(frame.getByRole('row')).toHaveCount(7);
   await capture(page, 'leaderboard-en-desktop');
   expect(outbound).toEqual([]);
@@ -146,6 +148,29 @@ test('mock result submission is opt-in and handles failures and high-water ranks
   await page.getByRole('button', { name: 'Close container' }).click();
   await expect(frame.getByText('玩具容器已关闭。')).toBeVisible();
 });
+
+for (const { route, locale, volume, routeLabel, submitLabel, sentLabel, write } of [
+  { route: 'challenge', locale: 'zh-CN', volume: 'daybreak', routeLabel: '挑战路线', submitLabel: '提交成绩',
+    sentLabel: '成绩已提交', write: 'Submit 107050 to board 2' },
+  { route: 'score', locale: 'en', volume: 'descent', routeLabel: 'BONUS ROUTE', submitLabel: 'Submit score',
+    sentLabel: 'Score submitted', write: 'Submit 90810 to board 3' },
+] as const) {
+  test(`mock ${route} route result submits its settled score`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1040 });
+    await page.addInitScript(language => localStorage.setItem('sofaraway.bilibili.sofaraway.dev.locale', language), locale);
+    await page.goto(dev);
+    await page.getByLabel('Mock result volume').selectOption(volume);
+    await page.getByLabel('Mock result route').selectOption(route);
+    await page.getByRole('button', { name: 'Show mock results' }).click();
+    const result = page.frameLocator('iframe').locator('#over');
+    const log = page.getByRole('list', { name: 'Rank request log' });
+    await expect(result.locator('#over-route')).toHaveText(routeLabel);
+    await expect(log.locator('li')).toHaveCount(0);
+    await result.getByRole('button', { name: submitLabel, exact: true }).click();
+    await expect(result.getByRole('status')).toHaveText(sentLabel);
+    await expect(log.getByText(write, { exact: true })).toHaveCount(1);
+  });
+}
 
 test('mock board discards account and closed-panel replies and offers an empty-state refresh', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });

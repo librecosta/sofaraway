@@ -1,4 +1,5 @@
 import type { VolumeId } from '../app/game/contracts';
+import { ROUTE_GATE_MULTIPLIERS } from '../app/game/core/branches';
 import { SCORING_RULES_VERSION } from '../app/game/core/scoring';
 import { totalRunScore } from '../app/game/runtime/records.client';
 import type { RunSettlement } from '../app/game/runtime/run-settlement';
@@ -19,7 +20,7 @@ export function competition(run: RunSettlement) {
   if (policy.mode !== 'standard' || !policy.scoring || policy.showcaseRoute !== null) return { reason: 'mode' } as const;
   if (policy.difficulty !== 'normal') return { reason: 'difficulty' } as const;
   if (result.title !== 'ESCAPED') return { reason: 'finish' } as const;
-  if (result.route !== 'main') return { reason: 'route' } as const;
+  if (!result.route || !Object.hasOwn(ROUTE_GATE_MULTIPLIERS, result.route)) return { reason: 'route' } as const;
   if (result.neutralized !== 0 || (result.encore?.neutralized ?? 0) !== 0) return { reason: 'recovery' } as const;
   if (!policy.interactiveRandomRun || policy.allowSimulationDiagnostics) return { reason: 'policy' } as const;
   const score = totalRunScore(record);

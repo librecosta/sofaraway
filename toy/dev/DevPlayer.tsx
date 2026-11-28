@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ResultsScreen } from '../../app/components/ResultsScreen';
 import { initialSnapshot } from '../../app/game/contracts';
 import type { RunResult, VolumeId } from '../../app/game/contracts';
+import type { RouteKind } from '../../app/game/core/branches';
 import { resolveRunPolicy } from '../../app/game/core/run-policy';
 import { ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS, SCORING_RULES_VERSION } from '../../app/game/core/scoring';
 import type { RunSettlement } from '../../app/game/runtime/run-settlement';
@@ -26,7 +27,7 @@ const archiveFixtures = {
   orbit: { score: 62_880, rank: 'C', passed: 130, precision: 47, nearMiss: 26 },
 } as const satisfies Record<VolumeId, Pick<RunResult, 'rank' | 'passed' | 'precision' | 'nearMiss'> & { score: number }>;
 
-function ResultFixture({ platform, id, volumeId }: { platform: MockLeaderboard; id: number; volumeId: VolumeId }) {
+function ResultFixture({ platform, id, volumeId, route }: { platform: MockLeaderboard; id: number; volumeId: VolumeId; route: RouteKind }) {
   const preference = useLocalePreference(settings, 'zh-CN');
   const [client] = useState(() => new LeaderboardClient(platform));
   const [sharing, setSharing] = useState(false);
@@ -36,7 +37,7 @@ function ResultFixture({ platform, id, volumeId }: { platform: MockLeaderboard; 
     return {
       id, scoringVersion: SCORING_RULES_VERSION,
       policy: resolveRunPolicy({ volumeId, mode: 'standard', difficulty: 'normal', autoBoost: true }, {}, 'run'),
-      result: { ...stats, title: 'ESCAPED', route: 'main', accuracy: stats.passed / 180, planned: 180, encountered: 180,
+      result: { ...stats, title: 'ESCAPED', route, accuracy: stats.passed / 180, planned: 180, encountered: 180,
         unreached: 0, neutralized: 0, encore },
       record: { score, outcome: 'ESCAPED', encoreBonus: encore.bonusScore },
     };
@@ -65,9 +66,9 @@ export function DevPlayer() {
 }
 
 function DevSession({ platform }: { platform: NonNullable<ReturnType<typeof readDevPlatform>> }) {
-  const { fixture, fixtureVolume } = useSyncExternalStore(platform.leaderboard.subscribe, platform.leaderboard.getControls);
+  const { fixture, fixtureVolume, fixtureRoute } = useSyncExternalStore(platform.leaderboard.subscribe, platform.leaderboard.getControls);
   const { lifecycle } = useSyncExternalStore(platform.subscribe, platform.getSnapshot);
-  if (fixture && lifecycle !== 'closed') return <ResultFixture key={`${fixture}/${fixtureVolume}`}
-    platform={platform.leaderboard} id={fixture} volumeId={fixtureVolume} />;
+  if (fixture && lifecycle !== 'closed') return <ResultFixture key={`${fixture}/${fixtureVolume}/${fixtureRoute}`}
+    platform={platform.leaderboard} id={fixture} volumeId={fixtureVolume} route={fixtureRoute} />;
   return <ToyPlayer platform={platform} />;
 }

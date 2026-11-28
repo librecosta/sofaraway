@@ -48,7 +48,7 @@ Encore uses the same quality judge and awards 200, 300 or 350 points independent
 
 `precision-v2` versions the rules independently of the V1 record document. LocalStorage uses `<namespace>.records.v1.precision-v2`. Its Web Lock and IndexedDB database both append `.write`, and the handoff row uses the same versioned document key. Previous V1 documents and handoffs remain at their original names. The four current chart record identities and all player settings retain their existing semantics.
 
-Toy rejects settlements from a different ruleset before testing eligibility. The submission still uses integer main score plus earned Encore. The SDK's four board slots and the T1-D rules for Standard Normal Main escapes are unchanged. The bound budgets boosted travel across the complete song, a capped Combo and maximum Near Miss award with Resonance on every main gate, a Normal Lumen pickup, and 350 points for every planned Encore gate.
+Toy rejects settlements from a different ruleset before testing eligibility. The submission uses integer main score plus earned Encore. T1-D1 kept the four board slots and the original T1-D eligibility. The historical Main-route ceilings below budgeted boosted travel across the complete song, a capped Combo and maximum Near Miss award with Resonance on every main gate, a Normal Lumen pickup, and 350 points for every planned Encore gate. T1-E-F2 added Challenge and Bonus eligibility. [Current eligibility and score ceilings](../toy-development.md#leaderboards-and-competitive-records)
 
 | Board | Volume | Conservative score ceiling |
 | ---: | --- | ---: |
