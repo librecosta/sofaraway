@@ -1,5 +1,6 @@
 import { leaderboardLimit, RankError } from '../leaderboard-contract';
 import type { Board, LeaderboardPlatform, Period, RankEntry } from '../leaderboard-contract';
+import type { VolumeId } from '../../app/game/contracts';
 import { bestCourse } from '../../app/game/runtime/records.client';
 import { encodeCloudBests } from '../cloud-save';
 import type { CloudPlatform, ShareAction, SharePlatform } from '../player-services';
@@ -7,7 +8,7 @@ import type { CloudPlatform, ShareAction, SharePlatform } from '../player-servic
 type MockAccount = 'pilot' | 'navigator' | 'guest' | 'denied';
 type MockResponse = 'normal' | 'failure' | 'timeout' | 'limited';
 const defaults = { account: 'pilot' as MockAccount, response: 'normal' as MockResponse, delay: 150,
-  empty: false, available: true, fixture: 0, log: [] as readonly string[],
+  empty: false, available: true, fixture: 0, fixtureVolume: 'elsewhere' as VolumeId, log: [] as readonly string[],
   cloud: 'normal' as 'normal' | 'conflict' | 'incompatible',
   sharing: 'all' as 'all' | 'entry' | 'unavailable' };
 const names = ['Starwake', 'Blue Hour', 'Aperture', 'Low Orbit', 'Moonwake', 'Afterglow'];

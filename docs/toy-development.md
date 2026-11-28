@@ -37,16 +37,16 @@ The inspected public SDK blocks writes under `/toy/preview`. Test submissions lo
 
 Open **Cloud Save** from the menu and select **Authorize and Sync** to grant access and read your account's Best scores. The publisher must enable the profile capability that returns a stable `toyOpenId`. Flights started after authorization can contribute account-owned Standard Bests. Return to the panel and select **Sync Best Scores** to publish them. The game keeps the device scoreboard and Last independent from the account scoreboard. Anonymous device history is outside the cloud flow. An unsynced flight is still available in the ordinary device records if you close the page.
 
-Select **Share Result** after a player flight to preview a PNG with the LibreCosta mark and the player's Bilibili nickname. The nickname is requested through the SDK when the card opens, with the localized Bilibili player label available if the request fails. Native buttons appear for supported SDK abilities. Standalone preview and PC Web can display the local card.
+Select **Share Result** after a player flight to preview a 1440 × 1080 Flight Archive PNG. Each Volume has its own Canvas 2D optical motif. The nickname is requested through the SDK when the card opens, with the localized Bilibili player label available if the request fails. Native buttons appear for supported SDK abilities. Standalone preview and PC Web can display the local card.
 
-Use the **Mock leaderboards** account, response and delay controls with **Mock cloud and sharing**. The seeded conflict provides different Bests per account. Switch to **Incompatible scoring version** to check that sync preserves both stores, or use the response control to exercise failures and cooldown. **Show mock results** opens the result card fixture. The share capability control simulates all native actions, Toy link sharing only, or the local card by itself. The fixture remains offline.
+Use the **Mock leaderboards** account, response and delay controls with **Mock cloud and sharing**. The seeded conflict provides different Bests per account. Switch to **Incompatible scoring version** to check that sync preserves both stores, or use the response control to exercise failures and cooldown. Choose **Mock result volume**, then select **Show mock results** and open the sharing preview. The share capability control simulates all native actions, Toy link sharing only, or the local card by itself. The fixture remains offline.
 
 ```sh
 npm run test:unit -- tests/core/toy-player-services.test.ts
 npm run test:toy -- tests/toy/player-services.spec.ts
 ```
 
-Set `TOY_CAPTURE_SERVICES=1` to write screenshots under `.local/t1-e/`. Hosted cloud authorization, storage and native sharing are release-phase checks. See the [T1-E implementation report](audits/T1-E-cloud-save-result-sharing-flight-assist.md) and [official SDK](https://www.bilibili.com/toy/publish/sdk).
+Set `TOY_CAPTURE_ARCHIVE=1` to export both locales and all four Volume cards directly from the preview canvas into `.local/t1-e-f1/`. Set `TOY_CAPTURE_SERVICES=1` for the cloud panel capture under `.local/t1-e/`. Hosted cloud authorization, storage and native sharing are release-phase checks. See the [T1-E implementation report](audits/T1-E-cloud-save-result-sharing-flight-assist.md) and [official SDK](https://www.bilibili.com/toy/publish/sdk).
 
 ## Official preflight
 

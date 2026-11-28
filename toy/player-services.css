@@ -21,10 +21,9 @@
 .toy-cloud-bests dl > div { display: flex; justify-content: space-between; gap: .4rem; }
 .toy-share-panel canvas {
   display: block;
-  width: min(100%, 70vh);
+  width: min(100%, 75vh);
   height: auto;
   align-self: center;
-  border-radius: 8px;
 }
 .toy-share-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .toy-result-share-action { margin-block: .25rem; }

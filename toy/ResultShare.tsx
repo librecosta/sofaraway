@@ -127,7 +127,8 @@ export function ResultSharePanel({ run, platform, close }: { run: RunSettlement;
   }
 
   const details = resultCardDetails(run, text);
-  const description = ['SoFarAway', nickname, 'LibreCosta', details.volume, details.flight, details.outcome, details.score, details.rank,
+  const description = ['SoFarAway', 'FLIGHT ARCHIVE', nickname, 'LibreCosta', details.archive, details.volume, details.flight,
+    details.outcome, text.t('totalScore'), details.score, details.gradeLabel, details.rank,
     ...details.metrics.flat()].join(' · ');
   return <GameDialog id="toy-result-share" title={copy.title} dismiss={close}>
     <div className={c('panel') + ' toy-service-panel toy-share-panel'}>

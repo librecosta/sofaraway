@@ -54,7 +54,17 @@ test('only eligible settled Standard runs can earn cloud Bests and cards use the
   expect(canShareResult({ ...run, policy: { ...run.policy, allowSimulationDiagnostics: true } })).toBe(false);
   expect(canShareResult({ ...run, policy: { ...run.policy, mode: 'sightseeing' } })).toBe(true);
   expect(resultCardDetails(run, createPlayerText('zh-CN'))).toMatchObject({
-    volume: 'DAYBREAK', score: '12,995', rank: 'A', metrics: [['通过率', '90%'], ['精准穿越', '3'], ['惊险穿越', '4']],
+    archive: 'VOL. II', volume: 'DAYBREAK', score: '12,995', rank: 'A', gradeLabel: '等级',
+    metrics: [['通过率', '90%'], ['精准穿越', '3'], ['惊险穿越', '4']],
+  });
+  const failedSightseeing: RunSettlement = {
+    ...run,
+    policy: { ...run.policy, mode: 'sightseeing' },
+    record: { score: 850, outcome: 'TERMINATED' },
+    result: { ...run.result, title: 'TERMINATED', rank: 'C', route: undefined, encore: undefined, accuracy: .2 },
+  };
+  expect(resultCardDetails(failedSightseeing, createPlayerText('en'))).toMatchObject({
+    outcome: 'TERMINATED', flight: expect.stringMatching(/SIGHTSEEING.*—/i), score: '850', rank: 'C', gradeLabel: 'GRADE',
   });
 });
 

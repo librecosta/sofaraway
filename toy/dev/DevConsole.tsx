@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { VOLUMES } from '../../app/game/core/volumes';
 import { safeAreaEdges } from '../platform';
 import type { ToyContainerState } from '../platform';
 import { installDevPlatform } from './bridge';
@@ -102,6 +103,10 @@ export function DevConsole() {
         <label><input type="checkbox" checked={ranks.empty} onChange={event =>
           platform.leaderboard.update({ empty: event.target.checked })} /> Hide seeded scores</label>
         <div role="group" aria-label="Result fixture">
+          <label>Mock result volume <select value={ranks.fixtureVolume} onChange={event =>
+            platform.leaderboard.update({ fixtureVolume: event.target.value as typeof ranks.fixtureVolume })}>
+            {VOLUMES.map(volume => <option key={volume.id} value={volume.id}>{volume.name}</option>)}
+          </select></label>
           <button type="button" onClick={() => platform.leaderboard.showFixture()}>Show mock results</button>
           <button type="button" disabled={!ranks.fixture} onClick={() => platform.leaderboard.update({ fixture: 0 })}>Back to player</button>
         </div>

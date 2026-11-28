@@ -67,7 +67,7 @@ test('result preview draws a localized card and only shows supported native acti
   await expect(canvas).toHaveAccessibleName(/SoFarAway.*Mock Pilot.*LibreCosta.*ELSEWHERE.*精准穿越.*惊险穿越/);
   const logo = await canvas.evaluate((node: HTMLCanvasElement) => {
     const context = node.getContext('2d')!;
-    const pixels = context.getImageData(521, 35, 48, 51).data;
+    const pixels = context.getImageData(1040, 76, 80, 84).data;
     let darkest = 255, lightest = 0;
     for (let index = 0; index < pixels.length; index += 4) {
       const lightness = (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3;
@@ -76,15 +76,10 @@ test('result preview draws a localized card and only shows supported native acti
     }
     return { darkest, lightest, width: node.width, height: node.height };
   });
-  expect(logo).toMatchObject({ width: 720, height: 520 });
-  expect(logo.lightest - logo.darkest).toBeGreaterThan(25);
-  expect(logo.lightest).toBeLessThan(130);
+  expect(logo).toMatchObject({ width: 1440, height: 1080 });
+  expect(logo.lightest - logo.darkest).toBeGreaterThan(110);
+  expect(logo.lightest).toBeGreaterThan(170);
   await expect(dialog.getByRole('button', { name: '分享成绩卡' })).toBeEnabled();
-  if (process.env.TOY_CAPTURE_SERVICES) {
-    const png = await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL('image/png').split(',')[1]);
-    await capture(page, 'result-share-engraved');
-    await writeFile('.local/t1-e/result-card-engraved.png', Buffer.from(png, 'base64'));
-  }
   await dialog.getByRole('button', { name: '保存到相册' }).click();
   await expect(dialog.getByRole('status')).toHaveText('成绩卡已保存。');
   await dialog.getByRole('button', { name: '分享成绩卡' }).click();
@@ -101,4 +96,61 @@ test('result preview draws a localized card and only shows supported native acti
   await page.getByLabel('Share capability').selectOption('unavailable');
   await expect(dialog.getByRole('button', { name: '分享玩具' })).toHaveCount(0);
   await expect(canvas).toBeVisible();
+});
+
+test('flight archive exports all four optical motifs and both locales', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(dev);
+  const frame = page.frameLocator('iframe');
+  const fixture = page.getByLabel('Mock result volume');
+  await page.getByRole('button', { name: 'Show mock results' }).click();
+  const captureDir = '.local/t1-e-f1';
+  if (process.env.TOY_CAPTURE_ARCHIVE) await mkdir(captureDir, { recursive: true });
+
+  async function archive(file: string, title: string, description: RegExp) {
+    await frame.getByRole('button', { name: title, exact: true }).click();
+    const dialog = frame.getByRole('dialog', { name: title });
+    const canvas = dialog.getByRole('img');
+    await expect(canvas).toBeVisible();
+    await expect(canvas).toHaveAccessibleName(description);
+    const base64 = await canvas.evaluate(async (node: HTMLCanvasElement) => {
+      await document.fonts.ready;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return node.toDataURL('image/png').split(',')[1];
+    });
+    const png = Buffer.from(base64, 'base64');
+    expect(png.readUInt32BE(16)).toBe(1440);
+    expect(png.readUInt32BE(20)).toBe(1080);
+    expect(base64.length).toBeLessThan(5_000_000);
+    if (process.env.TOY_CAPTURE_ARCHIVE) await writeFile(captureDir + '/' + file + '.png', png);
+    return canvas;
+  }
+
+  const volumes = [
+    ['elsewhere', 'I', '132,320', 'S'],
+    ['daybreak', 'II', '107,050', 'A'],
+    ['descent', 'III', '90,810', 'B'],
+    ['orbit', 'IV', '66,480', 'C'],
+  ] as const;
+  for (const [volume, number, score, grade] of volumes) {
+    await fixture.selectOption(volume);
+    await archive(volume, '分享成绩', new RegExp(
+      'Mock Pilot.*VOL\\. ' + number + ' · ' + volume.toUpperCase() + '.*' + score + '.*等级 · ' + grade + '.*精准穿越.*惊险穿越'
+    ));
+    await frame.getByRole('dialog', { name: '分享成绩' }).getByRole('button', { name: '关闭' }).click();
+  }
+
+  await page.evaluate(() => localStorage.setItem('sofaraway.bilibili.sofaraway.dev.locale', 'en'));
+  await page.reload();
+  await page.getByLabel('Device').selectOption('android');
+  await page.getByLabel('Orientation').selectOption('portrait');
+  await page.getByRole('button', { name: 'Show mock results' }).click();
+  const portrait = await archive('elsewhere-en', 'SHARE RESULT', /Mock Pilot.*ELSEWHERE.*132,320.*GRADE · S.*ACCURACY.*PRECISION.*NEAR MISS/i);
+  const displayed = await portrait.boundingBox();
+  const screen = await page.locator('iframe').boundingBox();
+  expect(displayed!.width).toBeLessThan(screen!.width);
+  expect(displayed!.width / displayed!.height).toBeCloseTo(4 / 3, 2);
+  if (process.env.TOY_CAPTURE_ARCHIVE) {
+    await page.locator('iframe').screenshot({ path: captureDir + '/preview-en-portrait.png', animations: 'disabled' });
+  }
 });
