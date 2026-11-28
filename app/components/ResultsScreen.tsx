@@ -1,11 +1,12 @@
-import type { MouseEventHandler } from 'react';
+import type { MouseEventHandler, ReactNode } from 'react';
 import type { GameSnapshot } from '../game/contracts';
 import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 import { DecodeButton } from './DecodeButton';
 
-export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
+export function ResultsScreen({ snapshot, restart, menu, preview = false, children }: {
   snapshot: GameSnapshot; restart: MouseEventHandler<HTMLButtonElement>; menu(): void; preview?: boolean;
+  children?: ReactNode;
 }) {
   const { text } = usePlayerText();
   const { t, number } = text;
@@ -18,6 +19,7 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
           <h2 className={c('results-title')} id={id('over-title')}>
             {t(snapshot.result?.title === 'ESCAPED' ? 'showcaseComplete' : 'showcaseInterrupted')}
           </h2>
+          {children}
           <DecodeButton className={c('btn', 'start')} data-act="restart" disabled={preview} onClick={restart}
             aria-keyshortcuts="X" label={t('replay')} />
           <DecodeButton className={c('btn', 'tiny')} data-act="menu" disabled={preview} onClick={menu} label={t('menu')} />
@@ -56,6 +58,7 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false }: {
           {snapshot.result.neutralized > 0 && ` · ${t('recoveredGates', { count: snapshot.result.neutralized })}`}
           {snapshot.result.neutralized > 0 && snapshot.mode === 'standard' && ` · ${t('bestIneligible')}`}
         </div>}
+        {children}
         <DecodeButton className={c('btn', 'start')} data-act="restart" disabled={preview} onClick={restart}
           aria-keyshortcuts="X" label={t('runAgain')} />
         <DecodeButton className={c('btn', 'tiny')} data-act="menu" disabled={preview} onClick={menu} label={t('menu')} />

@@ -6,8 +6,7 @@ if (__TOY_DEVELOPMENT__) {
     document.documentElement.lang = 'en';
     void import('./dev/DevConsole').then(({ DevConsole }) => root.render(<DevConsole />));
   } else {
-    void Promise.all([import('./ToyPlayer'), import('./dev/bridge')])
-      .then(([{ ToyPlayer }, { readDevPlatform }]) => root.render(<ToyPlayer platform={readDevPlatform()} />));
+    void import('./dev/DevPlayer').then(({ DevPlayer }) => root.render(<DevPlayer />));
   }
 } else {
   void import('./NativePlayer').then(({ NativePlayer }) => root.render(<NativePlayer />));

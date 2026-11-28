@@ -13,7 +13,7 @@ test('the release contains only the player, relative assets and required license
   const root = files.filter(file => file.isFile() && file.name.match(/\.(?:html|txt)$/)).map(file => file.name);
   expect(root.sort()).toEqual(['LICENSE.txt', 'OFL-Chakra-Petch.txt', 'OFL-Rajdhani.txt', 'THIRD-PARTY-NOTICES.txt', 'index.html']);
   const icon = await readFile('app/components/china-public-security.png');
-  const forbidden = /2025158691|51010702045043|beian\.(?:miit|mps)\.gov\.cn|#errbox|sofaraway-camlog|fixedTime|mobileQuality|branchSide|b0Harness|toy-dev-console|MockToyPlatform|Offline container simulator|sofaraway\.bilibili\.sofaraway\.dev/;
+  const forbidden = /2025158691|51010702045043|beian\.(?:miit|mps)\.gov\.cn|#errbox|sofaraway-camlog|fixedTime|mobileQuality|branchSide|b0Harness|toy-dev-console|MockToyPlatform|Offline container simulator|Show mock results|Mock Navigator|sofaraway\.bilibili\.sofaraway\.dev/;
   for (const file of files) {
     if (file.isDirectory()) {
       expect(file.name).toBe('assets');
@@ -174,6 +174,8 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
   await page.mouse.move(4, 4);
   await expect(page.locator('#over')).toBeVisible({ timeout: 24_000 });
   await expect(page.locator('#over-title')).toHaveText('飞行终止');
+  await expect(page.locator('#over')).toContainText('只有普通难度的场次可上榜。');
+  await expect(page.getByRole('button', { name: '提交成绩' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(key => localStorage.getItem(key), recordsKey)).not.toBeNull();
   const observed = await page.evaluate(async key => {
     const requestedLock = document.documentElement.dataset.requestedLock;

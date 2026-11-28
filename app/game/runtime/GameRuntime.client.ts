@@ -21,6 +21,7 @@ import { InputController } from './input.client';
 import type { PointerView } from './input.client';
 import { ImmersiveMouse } from './immersive-mouse.client';
 import { recordFor, RunRecordStore } from './records.client';
+import type { RunSettlement } from './run-settlement';
 import { observeScreenOrientation } from './screen-orientation.client';
 import type { PlayerSurface, PlayerSurfaceState } from './player-surface';
 
@@ -30,7 +31,10 @@ export interface RuntimeView {
   debug?(text: string): void;
   key?(key: string, event: KeyboardEvent): boolean;
   muted?(value: boolean): void;
+  settled?(run: RunSettlement): void;
 }
+
+let nextRunId = 0;
 
 const audioError: GameError = Object.freeze({
   kind: 'audio', message: 'audioStartFailed',
@@ -55,7 +59,7 @@ export class Runtime implements GameRuntime {
   #recorder?: Recorder;
   private options?: GameOptions;
   private readonly recordStore: RunRecordStore;
-  private activeRun?: { readonly policy: RunPolicy; submitted: boolean };
+  private activeRun?: { readonly id: number; readonly policy: RunPolicy; settled: boolean };
   private raf = 0;
   private generation = 0;
   private resumePending = false;
@@ -204,7 +208,7 @@ export class Runtime implements GameRuntime {
       const seed = policy.seed ?? createRunSeed();
       this.pendingPickupDraw = policy.seed === undefined && !!sim.gameplay.pickup;
       sim.start(difficulty, seed, this.pendingPickupDraw ? this.pickupDeck.peek(seed) : undefined, mode, policy.scoring);
-      this.activeRun = { policy: { ...policy, seed }, submitted: false };
+      this.activeRun = { id: ++nextRunId, policy: Object.freeze({ ...policy, seed }), settled: false };
       this.showcasePilot = showcaseRoute ? new ShowcasePilot(sim, showcaseRoute) : undefined;
       if (silent) this.graphics?.warmSurface(sim, false, this.lighting(sim));
     } catch (error) {
@@ -618,14 +622,16 @@ export class Runtime implements GameRuntime {
   private finishRecord(sim: Simulation) {
     const result = sim.result;
     const run = this.activeRun;
-    if (!result || !run?.policy.recordsEligible || run.submitted) return;
-    run.submitted = true;
+    if (sim.phase !== 'results' || !result || !run || run.settled) return;
+    run.settled = true;
     const { volumeId: volume, difficulty, mode } = run.policy;
-    const last = {
+    const last = Object.freeze({
       score: Math.floor(sim.score), outcome: result.title,
       ...(result.encore ? { encoreBonus: result.encore.bonusScore } : {}),
       ...(result.neutralized || result.encore?.neutralized ? { recovery: true } : {}),
-    };
+    });
+    this.view.settled?.(Object.freeze({ id: run.id, policy: run.policy, result, record: last }));
+    if (!run.policy.recordsEligible) return;
     void this.recordStore.commitRunRecord({ volume, difficulty, mode, last }).then(saved => {
       if (!saved) return;
       const snapshot = this.snapshot;

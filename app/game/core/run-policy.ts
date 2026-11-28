@@ -25,11 +25,13 @@ export function resolveRunPolicy(selection: RunSelection, settings: RunSettings,
   const ordinary = diagnostics?.fixedTime == null && !diagnostics?.autoplay;
   const runSeed = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? settings.runSeed : undefined;
   const showcaseSeed = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? settings.showcaseSeed : undefined;
+  const seed = validSeed(runSeed) ?? (showcase ? validSeed(showcaseSeed) ?? CAPTURE_RUN_SEED
+    : purpose === 'capture' ? CAPTURE_RUN_SEED : undefined);
   return {
     volumeId, mode, difficulty,
     referenceDifficulty: purpose === 'menu' && !showcase ? 'normal' : difficulty,
-    seed: validSeed(runSeed) ?? (showcase ? validSeed(showcaseSeed) ?? CAPTURE_RUN_SEED
-      : purpose === 'capture' ? CAPTURE_RUN_SEED : undefined),
+    seed,
+    interactiveRandomRun: purpose === 'run' && !showcase && seed === undefined && runSeed === undefined && !diagnostics,
     scoring: !showcase,
     showcaseRoute: showcase ? route === 'challenge' || route === 'score' ? route : 'main' : null,
     allowSimulationDiagnostics: !!diagnostics && !showcase,

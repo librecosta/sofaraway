@@ -38,6 +38,7 @@ interface Props {
   musicInitiallyOpen?: boolean;
   preview?: boolean;
   compliance?: ReactNode;
+  extra?: ReactNode;
 }
 
 const showcaseRoutes = ['main', 'challenge', 'score'] as const;
@@ -59,6 +60,7 @@ export function MainMenu(props: Props) {
       <div className={c('top')} data-menu-top>
         <div className={c('menu-tools')}>
           <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label={t('credits')} />
+          {props.extra}
           {props.share && <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label={t('share')} />}
         </div>
         <div className={c('menu-tools')}>

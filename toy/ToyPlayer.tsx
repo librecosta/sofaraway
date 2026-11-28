@@ -6,6 +6,8 @@ import { PlayerLocaleProvider, useLocalePreference } from '../app/i18n/PlayerLoc
 import { defaultLocaleFor } from '../app/i18n/player-text';
 import { browserSurface, confirmContainerMode, safeAreaEdges } from './platform';
 import type { ContainerMode, ToyPlatform } from './platform';
+import { CompetitiveResult, LeaderboardButton, LeaderboardPanel } from './Leaderboard';
+import { LeaderboardClient } from './leaderboard-client';
 import './player.css';
 
 const defaultLocale = defaultLocaleFor('cn', 'bilibili');
@@ -87,9 +89,23 @@ export function ToyPlayer({ platform }: { platform?: ToyPlatform }) {
   if (lifecycle === 'closed') return <p className="toy-closed" role="status">{text.closed}</p>;
 
   return <PlayerLocaleProvider {...preference}>
-    <GameViewport settings={settings} volume={volume} chooseVolume={chooseVolume} surface={platform}
+    <PlayerWithLeaderboard platform={platform} volume={volume} chooseVolume={chooseVolume}
       display={{ touch, startLabel: touch ? text.start : undefined, orientation: direction, action,
-        status: pending ? text.pending : failed ? text.failed : undefined }}
-      launch={() => ({ options: readPlayerOptions(settings, volume) })} />
+        status: pending ? text.pending : failed ? text.failed : undefined }} />
   </PlayerLocaleProvider>;
+}
+
+function PlayerWithLeaderboard({ platform, volume, chooseVolume, display }: {
+  platform?: ToyPlatform; volume: VolumeId; chooseVolume(volume: VolumeId): void;
+  display: React.ComponentProps<typeof GameViewport>['display'];
+}) {
+  const [client] = useState(() => new LeaderboardClient(platform?.leaderboard));
+  useEffect(() => client.connect(), [client]);
+
+  return <GameViewport settings={settings} volume={volume} chooseVolume={chooseVolume} surface={platform} display={display}
+    launch={() => ({ options: readPlayerOptions(settings, volume) })} extension={{
+      menu: open => <LeaderboardButton open={open} />,
+      results: (run, snapshot, open) => <CompetitiveResult key={run.id} client={client} run={run} snapshot={snapshot} open={open} />,
+      panel: (initialVolume, close) => <LeaderboardPanel client={client} initialVolume={initialVolume} close={close} />,
+    }} />;
 }

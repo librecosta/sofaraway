@@ -26,6 +26,7 @@ function NumberField({ label, value, min, max, change }: {
 export function DevConsole() {
   const [platform] = useState(() => new MockToyPlatform());
   const controls = useSyncExternalStore(platform.subscribe, platform.getControls);
+  const ranks = useSyncExternalStore(platform.leaderboard.subscribe, platform.leaderboard.getControls);
   const state = controls.available ? controls.container : null;
   const [ready, setReady] = useState(false);
 
@@ -84,6 +85,29 @@ export function DevConsole() {
         <button type="button" disabled={controls.lifecycle === 'closed'} onClick={() => platform.setLifecycle('closed')}>Close container</button>
       </div>
       <ol aria-label="Container log">{controls.log.map((entry, index) => <li key={index}>{entry}</li>)}</ol>
+      <fieldset>
+        <legend>Mock leaderboards</legend>
+        <label>Account <select value={ranks.account} onChange={event =>
+          platform.leaderboard.update({ account: event.target.value as typeof ranks.account })}>
+          <option value="pilot">Mock Pilot</option><option value="navigator">Mock Navigator</option>
+          <option value="guest">Signed out</option><option value="denied">Permission denied</option>
+        </select></label>
+        <label>Rank response <select value={ranks.response} onChange={event =>
+          platform.leaderboard.update({ response: event.target.value as typeof ranks.response })}>
+          <option value="normal">Normal</option><option value="failure">Network failure</option>
+          <option value="timeout">Timeout</option><option value="limited">Rate limited</option>
+        </select></label>
+        <NumberField label="Rank delay (ms)" min={0} max={8000} value={ranks.delay}
+          change={delay => platform.leaderboard.update({ delay })} />
+        <label><input type="checkbox" checked={ranks.empty} onChange={event =>
+          platform.leaderboard.update({ empty: event.target.checked })} /> Hide seeded scores</label>
+        <div role="group" aria-label="Result fixture">
+          <button type="button" onClick={() => platform.leaderboard.showFixture()}>Show mock results</button>
+          <button type="button" disabled={!ranks.fixture} onClick={() => platform.leaderboard.update({ fixture: 0 })}>Back to player</button>
+        </div>
+        <button type="button" onClick={() => platform.leaderboard.reset()}>Reset mock ranks</button>
+        <ol aria-label="Rank request log">{ranks.log.map((entry, index) => <li key={index}>{entry}</li>)}</ol>
+      </fieldset>
       <button type="button" onClick={() => platform.reset()}>Reset simulation</button>
       <p role="status">{state ? `${state.width} × ${state.height} CSS px` : 'SDK unavailable. Browser viewport and safe-area defaults.'}</p>
     </aside>

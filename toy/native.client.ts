@@ -1,12 +1,14 @@
 import { browserSurface, safeAreaEdges } from './platform';
 import type { ContainerMode, ToyContainerState, ToyPlatform, ToyPlatformState } from './platform';
+import { BilibiliLeaderboard } from './leaderboard-sdk.client';
+import type { BilibiliRankSDK } from './leaderboard-sdk.client';
 
 const scriptUrl = 'https://s1.hdslb.com/bfs/seed/toy/app/sdk/toy-sdk.js';
 const abilities = ['getContainerState', 'onContainerChange', 'setContainerMode', 'onPageClose'] as const;
 type Ability = typeof abilities[number];
 
-interface BilibiliToySDK {
-  isSupport(ability: Ability): Promise<boolean>;
+interface BilibiliToySDK extends BilibiliRankSDK {
+  isSupport(ability: Ability | keyof BilibiliRankSDK): Promise<boolean>;
   getContainerState(): Promise<unknown>;
   onContainerChange(listener: (state: unknown) => void): () => void;
   setContainerMode(mode: ContainerMode): Promise<void>;
@@ -19,24 +21,30 @@ function sdkGlobal() {
 }
 
 function sdkScript(signal: AbortSignal) {
-  if (sdkGlobal()) return Promise.resolve(sdkGlobal());
+  const current = sdkGlobal();
+  if (current || signal.aborted) return Promise.resolve(current);
   return new Promise<ReturnType<typeof sdkGlobal>>(resolve => {
-    const script = document.createElement('script');
+    const installed = Array.from(document.scripts).find(script => script.src === scriptUrl);
+    const script = installed ?? document.createElement('script');
     function finish(loaded: boolean) {
       clearTimeout(timer);
       signal.removeEventListener('abort', cancel);
-      script.onload = script.onerror = null;
-      if (!loaded) script.remove();
+      script.removeEventListener('load', ready);
+      script.removeEventListener('error', cancel);
+      if (!loaded && !installed) script.remove();
       resolve(loaded ? sdkGlobal() : undefined);
     }
     const cancel = () => finish(false);
+    const ready = () => finish(true);
     const timer = setTimeout(cancel, 2500);
-    script.async = true;
-    script.src = scriptUrl;
-    script.onload = () => finish(true);
-    script.onerror = cancel;
+    script.addEventListener('load', ready, { once: true });
+    script.addEventListener('error', cancel, { once: true });
     signal.addEventListener('abort', cancel, { once: true });
-    document.head.append(script);
+    if (!installed) {
+      script.async = true;
+      script.src = scriptUrl;
+      document.head.append(script);
+    }
   });
 }
 
@@ -85,6 +93,8 @@ export class NativeToyPlatform implements ToyPlatform {
   private state = browserSurface;
   private readonly listeners = new Set<() => void>();
   private sdk?: Partial<BilibiliToySDK>;
+  private loading: Promise<Partial<BilibiliToySDK> | undefined> = Promise.resolve(undefined);
+  readonly leaderboard = new BilibiliLeaderboard(() => this.loading);
 
   getSnapshot = () => this.state;
 
@@ -104,12 +114,12 @@ export class NativeToyPlatform implements ToyPlatform {
   }
 
   connect() {
-    // Match the public SDK's App channel. Standalone browsers stay offline.
+    // Hosted Web and App both support services. Container controls remain App-only.
     if (window.location.protocol !== 'https:' || !/(^|\.)bilibili\.com$/i.test(location.hostname) ||
-        !location.pathname.startsWith('/toy/') || !/BiliApp/i.test(navigator.userAgent)) return;
+        !location.pathname.startsWith('/toy/')) return;
     const events = new AbortController();
     const { signal } = events;
-    const stop = () => { events.abort(); this.sdk = undefined; };
+    const stop = () => { events.abort(); this.sdk = undefined; this.loading = Promise.resolve(undefined); };
     const close = () => {
       if (signal.aborted) return;
       stop();
@@ -121,8 +131,11 @@ export class NativeToyPlatform implements ToyPlatform {
       else signal.addEventListener('abort', release, { once: true });
     };
     window.addEventListener('pagehide', event => { if (!event.persisted) close(); }, { signal });
+    this.leaderboard.connect(signal);
+    this.loading = sdkScript(signal);
+    if (!/BiliApp/i.test(navigator.userAgent)) return stop;
     void (async () => {
-      const sdk = await sdkScript(signal);
+      const sdk = await this.loading;
       if (!sdk || signal.aborted) return;
       const probe = (ability: Ability) => bounded(() => sdk.isSupport!(ability), signal);
       // Close support is independent of the container mode capabilities.

@@ -1,8 +1,8 @@
-import type { ToyPlatform } from '../platform';
+import type { MockToyPlatform } from './mock-platform';
 
-type DevWindow = Window & { sofarawayDevContainer?: ToyPlatform };
+type DevWindow = Window & { sofarawayDevContainer?: MockToyPlatform };
 
-export function installDevPlatform(platform: ToyPlatform) {
+export function installDevPlatform(platform: MockToyPlatform) {
   const host: DevWindow = window;
   host.sofarawayDevContainer = platform;
   return () => { delete host.sofarawayDevContainer; };

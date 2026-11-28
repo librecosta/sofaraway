@@ -1,5 +1,6 @@
 import { browserSurface } from '../platform';
 import type { ContainerMode, ToyContainerState, ToyPlatform, ToyPlatformState } from '../platform';
+import { MockLeaderboard } from './mock-leaderboard';
 
 const presets = {
   desktop: { width: 960, height: 540, device: 'desktop', safeArea: { top: 0, right: 0, bottom: 0, left: 0 } },
@@ -21,6 +22,7 @@ const initial = {
 };
 
 export class MockToyPlatform implements ToyPlatform {
+  readonly leaderboard = new MockLeaderboard();
   private controls = initial;
   private snapshot = browserSurface;
   private readonly listeners = new Set<() => void>();
@@ -88,14 +90,18 @@ export class MockToyPlatform implements ToyPlatform {
 
   setAvailable(available: boolean) {
     if (!available) clearTimeout(this.pending);
+    this.leaderboard.update({ available });
     this.update({ available });
   }
 
   setLifecycle(lifecycle: ToyPlatformState['lifecycle']) {
-    if (lifecycle === 'closed') clearTimeout(this.pending);
+    if (lifecycle === 'closed') {
+      clearTimeout(this.pending);
+      this.leaderboard.update({}, true);
+    }
     this.update({ lifecycle });
     this.log(`Lifecycle: ${lifecycle}`);
   }
 
-  reset() { clearTimeout(this.pending); this.update(initial); }
+  reset() { clearTimeout(this.pending); this.leaderboard.reset(); this.update(initial); }
 }

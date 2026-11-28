@@ -4,6 +4,7 @@ import { initialSnapshot } from '../game/contracts';
 import type { Difficulty, ExperienceMode, GameOptions, GameRuntime, GameSnapshot, OrientationPreference, QualityTier, VolumeId } from '../game/contracts';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
 import type { PlayerSurface } from '../game/runtime/player-surface';
+import type { RunSettlement } from '../game/runtime/run-settlement';
 import { immersiveMouseSupported, subscribeImmersiveMouseSupport } from '../game/runtime/immersive-mouse.client';
 import { FullscreenOrientation, isCompactTouchDevice } from '../game/runtime/screen-orientation.client';
 import { readOrientationPreference } from '../game/runtime/settings.client';
@@ -46,6 +47,11 @@ interface Props {
   socialLinks?: ReactNode;
   compliance?: ReactNode;
   surface?: PlayerSurface;
+  extension?: {
+    menu(open: () => void): ReactNode;
+    results(run: RunSettlement, snapshot: GameSnapshot, open: () => void): ReactNode;
+    panel(volume: VolumeId, close: () => void): ReactNode;
+  };
   display?: {
     touch: boolean;
     startLabel?: string;
@@ -57,14 +63,15 @@ interface Props {
 }
 
 export function GameViewport({ settings, volume: requested, chooseVolume, launch, onQualityChanged, renderCredits,
-  share, shareNotice, socialLinks, compliance, diagnostics, surface, display }: Props) {
+  share, shareNotice, socialLinks, compliance, diagnostics, surface, display, extension }: Props) {
   const { text } = usePlayerText();
   const canvasLabel = text.t('canvasLabel');
   const currentCanvasLabel = useRef(canvasLabel);
   currentCanvasLabel.current = canvasLabel;
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [mount, setMount] = useState(0);
-  const [panel, setPanel] = useState<'settings' | 'credits' | null>(null);
+  const [panel, setPanel] = useState<'settings' | 'credits' | 'extension' | null>(null);
+  const [settlement, setSettlement] = useState<RunSettlement>();
   const [hideUi, setHideUi] = useState(false);
   const [fullscreenState, setFullscreenState] = useState({ available: false, active: false });
   const [fullscreenFailed, setFullscreenFailed] = useState(false);
@@ -82,7 +89,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
   const previousRequest = useRef<VolumeId | null>(null);
   const keys = useRef<(key: string, event: KeyboardEvent) => boolean>(() => false);
 
-  function openPanel(value: 'settings' | 'credits') {
+  function openPanel(value: NonNullable<typeof panel>) {
     const focused = document.activeElement;
     panelReturnFocus.current = focused instanceof HTMLElement && focused !== document.body
       ? focused : viewport.current?.querySelector<HTMLElement>(`[data-act=${value}]`) ?? null;
@@ -177,6 +184,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         debug: diagnostics?.write,
         key: (key, event) => keys.current(key, event),
         muted: value => settings.save('muted', value),
+        settled: extension ? setSettlement : undefined,
       }, settings.namespace, surface);
       setRuntime(engine);
       return engine.initialize(canvas, { ...options, compactViewport: orientationLock.current !== null, saveRecords: true });
@@ -351,9 +359,13 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
             start={event => startSelected(event.nativeEvent)} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
             share={share} socialLinks={socialLinks} fullscreen={fullscreen} fullscreenActive={fullscreenState.active}
             displayLabel={action?.label} displayPending={action?.pending} displayStatus={display?.status}
-            fullscreenHidden={hideFullscreen} touchStartLabel={display?.startLabel} compliance={compliance} />
+            fullscreenHidden={hideFullscreen} touchStartLabel={display?.startLabel} compliance={compliance}
+            extra={extension?.menu(() => openPanel('extension'))} />
           {!showcase && <GameHUD runtime={runtime} />}
-          <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu} />
+          <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu}>
+            {snapshot.phase === 'results' && settlement && snapshot.result === settlement.result &&
+              extension?.results(settlement, snapshot, () => openPanel('extension'))}
+          </ResultsScreen>
         </div>
         <div id="flash" ref={flash} />
         <div id="shade" />
@@ -365,6 +377,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         {panel === 'credits' && (renderCredits
           ? renderCredits(snapshot.volumeId, () => setPanel(null))
           : <CreditsPanel close={() => setPanel(null)} />)}
+        {panel === 'extension' && extension?.panel(snapshot.volumeId, () => setPanel(null))}
         {shareNotice}
       </div>
       {diagnostics?.output}
