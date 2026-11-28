@@ -191,22 +191,12 @@ function drawBrand(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null)
   ctx.restore();
   if (!logo || logo.naturalHeight === 0) return;
 
-  const mark = ctx.canvas.ownerDocument.createElement('canvas');
-  mark.height = 32 * scale;
-  mark.width = Math.round(mark.height * logo.naturalWidth / logo.naturalHeight);
-  const ink = mark.getContext('2d');
-  if (!ink) return;
-  ink.drawImage(logo, 0, 0, mark.width, mark.height);
-  const pixels = ink.getImageData(0, 0, mark.width, mark.height);
-  for (let i = 0; i < pixels.data.length; i += 4) {
-    const detail = pixels.data[i] / 255;
-    pixels.data[i] = 121 + detail * 47;
-    pixels.data[i + 1] = 134 + detail * 45;
-    pixels.data[i + 2] = 145 + detail * 44;
-  }
-  ink.putImageData(pixels, 0, 0);
-  const markWidth = mark.width / scale;
-  ctx.drawImage(mark, right - markWidth, 59, markWidth, mark.height / scale);
+  const markHeight = 32;
+  const markWidth = markHeight * logo.naturalWidth / logo.naturalHeight;
+  ctx.save();
+  ctx.globalAlpha = .84;
+  ctx.drawImage(logo, right - markWidth, 59, markWidth, markHeight);
+  ctx.restore();
 }
 
 function drawGrade(ctx: CanvasRenderingContext2D, rank: string, caption: string, palette: CardPalette) {

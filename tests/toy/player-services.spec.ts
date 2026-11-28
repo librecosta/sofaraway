@@ -68,22 +68,27 @@ test('result preview draws a localized card and only shows supported native acti
   const brand = await canvas.evaluate((node: HTMLCanvasElement) => {
     const context = node.getContext('2d')!;
     const left = 1170, width = 184;
-    function readBand(top: number, height: number) {
+    function readBand(top: number, height: number, includeDark = false) {
       const pixels = context.getImageData(left, top, width, height).data;
-      let right = 0, peak = 0;
+      let right = 0, darkest = 255, peak = 0;
       for (let index = 0; index < pixels.length; index += 4) {
         const lightness = (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3;
+        darkest = Math.min(darkest, lightness);
         peak = Math.max(peak, lightness);
-        if (lightness > 106) right = Math.max(right, left + (index / 4) % width);
+        if (lightness > 106 || (includeDark && lightness < 16)) right = Math.max(right, left + (index / 4) % width);
       }
-      return { right, peak };
+      return { right, darkest, peak };
     }
-    return { wordmark: readBand(68, 35), icon: readBand(116, 72), width: node.width, height: node.height };
+    return { wordmark: readBand(68, 35), icon: readBand(116, 72, true), width: node.width, height: node.height };
   });
   expect(brand).toMatchObject({ width: 1440, height: 1080 });
   expect(brand.wordmark.right).toBeGreaterThan(1330);
   expect(Math.abs(brand.wordmark.right - brand.icon.right)).toBeLessThan(6);
-  expect(Math.max(brand.wordmark.peak, brand.icon.peak)).toBeLessThan(200);
+  expect(brand.wordmark.peak).toBeLessThan(200);
+  expect(brand.icon.darkest).toBeGreaterThan(0);
+  expect(brand.icon.darkest).toBeLessThan(20);
+  expect(brand.icon.peak).toBeGreaterThan(200);
+  expect(brand.icon.peak).toBeLessThan(240);
   await expect(dialog.getByRole('button', { name: '分享成绩卡' })).toBeEnabled();
   await dialog.getByRole('button', { name: '保存到相册' }).click();
   await expect(dialog.getByRole('status')).toHaveText('成绩卡已保存。');
