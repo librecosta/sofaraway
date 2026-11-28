@@ -546,7 +546,7 @@ html:has(.viewport), body:has(.viewport){
   z-index:9; pointer-events:none; position:fixed; top:max(14px,var(--safe-area-top));
   left:50%; transform:translateX(-50%); max-width:calc(100% - 24px);
 }
-.share-toast {
+.status-toast {
   display:block; width:max-content; max-width:100%; padding:.72rem 1.15rem; border-radius:10px;
   background:var(--acrylic); box-shadow:0 8px 30px #0007; font:700 .82rem var(--display);
   letter-spacing:.12em; text-align:center; animation:toast-in var(--motion-toast) var(--motion-out) both;
@@ -567,7 +567,7 @@ html:has(.viewport), body:has(.viewport){
   animation:panel-in var(--motion-panel) var(--motion-out) both;
 }
 @supports (backdrop-filter:blur(12px)) {
-  .panel,.music-sheet,.share-toast { background:#0e181eea; backdrop-filter:blur(14px); }
+  .panel,.music-sheet,.status-toast { background:#0e181eea; backdrop-filter:blur(14px); }
 }
 @keyframes panel-in { from { opacity:0; transform:translateY(8px) scale(.99); } }
 .panel-head { margin:0; font:700 1.04rem var(--display); letter-spacing:.26em; color:var(--accent); }
@@ -661,7 +661,7 @@ html:has(.viewport), body:has(.viewport){
 }
 :global(#over) { overflow:auto; pointer-events:auto; scrollbar-width:thin; }
 :global(#over).hidden { pointer-events:none; }
-:global(#over):not(.hidden) .center > :not(button) { animation:result-in var(--motion-reveal) var(--motion-out) both; }
+:global(#over):not(.hidden) .center > :not(button, [data-status-toast]) { animation:result-in var(--motion-reveal) var(--motion-out) both; }
 :global(#over):not(.hidden) .stats { animation-delay:60ms; }
 @keyframes result-in { from { opacity:0; transform:translateY(5px); } }
 .over-score { font-size:clamp(36px,min(12vw,15vh),150px); font-variant-numeric:tabular-nums; }
@@ -746,7 +746,7 @@ html:has(.viewport), body:has(.viewport){
 [data-container-touch] .hint .touch-steer { display:block; }
 .viewport :is(.eyebrow,.tagline,.btn,.selector-track span,.label,.mode-details,.route-status,.pickup-status,
   .results-title,.stats span,.panel,.panel-head,.panel-close,.seg button,.hint b,.hint span,.boost,.center-msg,
-  .record-grid span,.record-grid small,.share-toast):lang(zh-CN) { letter-spacing:.035em; }
+  .record-grid span,.record-grid small,.status-toast):lang(zh-CN) { letter-spacing:.035em; }
 .viewport :is(.panel,.results-title,.route-status,.center-msg):lang(zh-CN) { line-height:1.4; }
 .viewport :is(.label,.stats span):lang(zh-CN) { font-size:clamp(10px,.72vw,12px); }
 

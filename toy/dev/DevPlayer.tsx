@@ -6,7 +6,7 @@ import type { RunSettlement } from '../../app/game/runtime/run-settlement';
 import { PlayerLocaleProvider, useLocalePreference } from '../../app/i18n/PlayerLocale';
 import { createPlayerSettings } from '../../app/game/runtime/settings.client';
 import { classes as c } from '../../app/styles/classes';
-import { CompetitiveResult, LeaderboardPanel } from '../Leaderboard';
+import { CompetitiveResult } from '../Leaderboard';
 import { LeaderboardClient } from '../leaderboard-client';
 import { ToyPlayer } from '../ToyPlayer';
 import { readDevPlatform } from './bridge';
@@ -17,7 +17,6 @@ const settings = createPlayerSettings('sofaraway.bilibili.sofaraway.dev');
 function ResultFixture({ platform, id }: { platform: MockLeaderboard; id: number }) {
   const preference = useLocalePreference(settings, 'zh-CN');
   const [client] = useState(() => new LeaderboardClient(platform));
-  const [board, setBoard] = useState(false);
   useEffect(() => client.connect(), [client]);
   const [run] = useState<RunSettlement>(() => ({
     id, policy: resolveRunPolicy({ volumeId: 'elsewhere', mode: 'standard', difficulty: 'normal', autoBoost: true }, {}, 'run'),
@@ -32,12 +31,9 @@ function ResultFixture({ platform, id }: { platform: MockLeaderboard; id: number
 
   return <PlayerLocaleProvider {...preference}>
     <main className={c('viewport')} style={{ background: 'radial-gradient(ellipse at 50% 30%, #18323b, #071216 65%)' }}>
-      <div inert={board}>
-        <ResultsScreen snapshot={snapshot} restart={() => platform.showFixture()} menu={() => platform.update({ fixture: 0 })}>
-          <CompetitiveResult client={client} run={run} snapshot={snapshot} open={() => setBoard(true)} />
-        </ResultsScreen>
-      </div>
-      {board && <LeaderboardPanel client={client} initialVolume="elsewhere" close={() => setBoard(false)} />}
+      <ResultsScreen snapshot={snapshot} restart={() => platform.showFixture()} menu={() => platform.update({ fixture: 0 })}>
+        <CompetitiveResult client={client} run={run} snapshot={snapshot} />
+      </ResultsScreen>
     </main>
   </PlayerLocaleProvider>;
 }

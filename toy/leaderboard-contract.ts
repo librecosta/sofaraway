@@ -6,7 +6,8 @@ export const leaderboardVolumes = ['elsewhere', 'daybreak', 'descent', 'orbit'] 
 export const boards = { elsewhere: 1, daybreak: 2, descent: 3, orbit: 4 } as const satisfies Record<VolumeId, number>;
 export type Board = typeof boards[VolumeId];
 export type Period = 'all' | 'week';
-export const leaderboardLimit = 20;
+// The public SDK caps each board at 100 entries and does not expose pagination.
+export const leaderboardLimit = 100;
 export function isSdkScore(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= -(2 ** 24) && value < 2 ** 24;
 }

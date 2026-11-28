@@ -49,7 +49,7 @@ interface Props {
   surface?: PlayerSurface;
   extension?: {
     menu(open: () => void): ReactNode;
-    results(run: RunSettlement, snapshot: GameSnapshot, open: () => void): ReactNode;
+    results(run: RunSettlement, snapshot: GameSnapshot): ReactNode;
     panel(volume: VolumeId, close: () => void): ReactNode;
   };
   display?: {
@@ -364,7 +364,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
           {!showcase && <GameHUD runtime={runtime} />}
           <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu}>
             {snapshot.phase === 'results' && settlement && snapshot.result === settlement.result &&
-              extension?.results(settlement, snapshot, () => openPanel('extension'))}
+              extension?.results(settlement, snapshot)}
           </ResultsScreen>
         </div>
         <div id="flash" ref={flash} />

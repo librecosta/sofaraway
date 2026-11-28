@@ -11,10 +11,35 @@
   gap: .6rem;
 }
 .toy-rank-header h2 { margin: 0; font: 700 clamp(1.25rem, 4.5vmin, 2.1rem) var(--display); }
-.toy-rank-header p { margin: .1rem 0 0; color: var(--accent); font: 700 .85rem var(--display); letter-spacing: .14em; }
-.toy-rank-selector { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; }
+.toy-rank-selector, .toy-rank-period { display: flex; align-items: center; gap: clamp(.45rem, 2vw, 1.25rem); }
+.toy-rank-selector { justify-content: space-between; }
+.toy-rank-tab {
+  position: relative;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  cursor: pointer;
+  color: #bad0d9;
+  font: 700 clamp(.8rem, 3.5vw, 1rem) var(--text);
+  white-space: nowrap;
+}
+.toy-rank-tab input { position: absolute; width: 1px; height: 1px; margin: 0; clip-path: inset(50%); }
+.toy-rank-tab span { position: relative; display: flex; align-items: center; gap: .35em; }
+.toy-rank-tab span::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 -.36em;
+  height: 3px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform var(--motion-switch) var(--motion-out);
+}
+.toy-rank-tab input:checked + span { color: var(--accent); }
+.toy-rank-tab input:checked + span::after { transform: scaleX(1); }
+.toy-rank-tab input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 5px; }
 .toy-rank-control {
-  border: 1px solid #dceef835;
+  border: 0;
   border-radius: 6px;
   min-height: 44px;
   padding: .3em .65em;
@@ -22,10 +47,12 @@
   color: var(--ui);
   background: #dceef80b;
 }
-.toy-rank-control[aria-pressed=true] { color: var(--accent); border-color: #74ffdc7a; background: #74ffdc15; }
+.toy-rank-icon-action { display: grid; width: 44px; place-items: center; padding: 0; background: transparent; }
+.toy-rank-icon { display: block; flex: none; width: 1.15em; height: 1.15em; }
+.toy-rank-icon-action .toy-rank-icon { width: 1.25rem; height: 1.25rem; }
+.toy-rank-control:hover:not(:disabled) { color: var(--accent); background: #74ffdc12; }
 .toy-rank-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .toy-rank-control:disabled { opacity: .55; }
-.toy-rank-period { display: flex; gap: .3rem; }
 .toy-rank-summary {
   display: grid;
   grid-auto-flow: column;
@@ -33,23 +60,23 @@
   margin: 0;
   text-align: center;
   background: #74ffdc0a;
-  border-block: 1px solid #74ffdc2e;
+  border-block: 2px solid #74ffdc2e;
 }
 .toy-rank-summary > div { padding: .36rem .24rem; min-width: 0; }
-.toy-rank-summary > div + div { border-inline-start: 1px solid #74ffdc2e; }
+.toy-rank-summary > div + div { border-inline-start: 2px solid #74ffdc2e; }
 .toy-rank-summary dt { color: #bad0d9; font: 600 .86rem/1.25 var(--text); }
 .toy-rank-summary dd { margin: 0; font: 700 1.1rem/1.25 var(--display); font-variant-numeric: tabular-nums; }
 .toy-rank-list {
   min-height: 2.5rem;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #50636e transparent;
-  scrollbar-gutter: stable;
 }
+.toy-rank-panel, .toy-rank-list { scrollbar-width: none; }
+.toy-rank-panel::-webkit-scrollbar, .toy-rank-list::-webkit-scrollbar { display: none; }
 .toy-rank-list table { width: 100%; table-layout: fixed; border-collapse: collapse; color: var(--ui); }
-.toy-rank-list th { text-align: start; color: #bad0d9; font-weight: 600; }
-.toy-rank-list :is(td, th) { padding: .27rem .5rem; border-block-end: 1px solid #dceef820; }
+.toy-rank-list th { text-align: start; color: #bad0d9; font-weight: 600; border-block-end: 2px solid #dceef833; }
+.toy-rank-list :is(td, th) { padding: .32rem .5rem; }
+.toy-rank-list tbody tr:nth-child(even) { background: #dceef80c; }
 .toy-rank-list th:first-child { width: 3.3rem; }
 .toy-rank-list :is(td, th):last-child { width: 6.3rem; text-align: end; font-variant-numeric: tabular-nums; }
 .toy-rank-list td:first-child { font-family: var(--display); }
@@ -68,42 +95,44 @@
   color: var(--accent);
 }
 .toy-rank-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.toy-rank-notices p, .toy-rank-rules, .toy-result-note {
+.toy-rank-notices p, .toy-result-note {
   margin: .32rem 0;
   color: #bad0d9;
   font: 600 .92rem/1.35 var(--text);
   letter-spacing: normal;
 }
-.toy-rank-rules { border-block-start: 1px solid #dceef82b; padding-block-start: .48rem; }
 .toy-rank-panel > :not(.toy-rank-list) { flex: none; }
 .toy-result-competition { width: min(100%, 25rem); margin: .35rem auto; }
 .toy-result-competition .toy-rank-control { margin-top: .35rem; }
+#over [data-status-toast] {
+  inset-inline: auto max(14px, var(--safe-area-right));
+  max-width: min(18rem, calc(38% - max(14px, var(--safe-area-right))));
+  transform: none;
+}
+#over [data-status-toast] > span { overflow-wrap: anywhere; }
 #over:has(.toy-result-competition) > div { justify-content: safe center; }
 #over:has(.toy-result-competition) #over-score { font-size: clamp(36px, 11vh, 108px); }
 #over:has(.toy-result-competition) [data-act=restart] { margin-top: .4rem; }
 #over:has(.toy-result-competition) [data-act=menu] { margin-top: 0; }
 
 @media (max-width: 420px) {
-  .toy-rank-selector { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .toy-rank-list :is(td, th) { padding-inline: .24rem; }
 }
 @media (max-height: 410px) {
   .toy-rank-panel { gap: .35rem; }
-  .toy-rank-header p, .toy-rank-rules { margin-block: 0; }
 }
 @media (max-height: 440px) and (min-width: 570px) {
   .toy-rank-panel {
     width: min(100%, 45rem);
     display: grid;
-    grid-template: "header header" auto "volume volume" auto "list actions" auto "list summary" auto
-      "list rules" minmax(min-content, 1fr) / minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template: "header header" auto "volume volume" auto "list actions" auto "list summary" minmax(0, 1fr)
+      / minmax(0, 1.35fr) minmax(0, 1fr);
     gap: .35rem .75rem;
   }
   .toy-rank-panel > .toy-rank-header { grid-area: header; }
   .toy-rank-panel > .toy-rank-selector { grid-area: volume; }
   .toy-rank-panel > .toy-rank-actions { grid-area: actions; }
-  .toy-rank-panel > .toy-rank-summary { grid-area: summary; }
+  .toy-rank-panel > .toy-rank-summary { grid-area: summary; align-self: start; }
   .toy-rank-panel > .toy-rank-list { grid-area: list; min-height: 0; }
-  .toy-rank-panel > .toy-rank-rules { grid-area: rules; }
   .toy-rank-list :is(td, th):last-child { width: 5.5rem; }
 }

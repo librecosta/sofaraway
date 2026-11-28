@@ -23,7 +23,7 @@ export function GameDialog({ id, title, focusKey, children, dismiss, preview }: 
       }
       if (event.key !== 'Tab') return;
       const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), a[href], summary, [tabindex="0"]'));
+        'button:not(:disabled), input:not([type="radio"]):not(:disabled), input[type="radio"]:checked:not(:disabled), a[href], summary, [tabindex="0"]'));
       if (!items.length) return;
       const target = event.currentTarget.ownerDocument.activeElement;
       if (event.shiftKey ? target === items[0] : target === items.at(-1)) {

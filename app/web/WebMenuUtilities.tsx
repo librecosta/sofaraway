@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
 import { NavigationButton } from '../components/NavigationButton';
+import { StatusToast, useStatusToast } from '../components/StatusToast';
+import type { StatusNotice } from '../components/StatusToast';
 import { usePlayerText } from '../i18n/PlayerLocale';
 import { classes as c } from '../styles/classes';
 
@@ -20,22 +21,10 @@ export function SocialLinks({ preview }: { preview?: boolean }) {
   </>;
 }
 
-export type ShareNotice = { id: number; success: boolean };
 export function useShareToast() {
-  const [notice, setNotice] = useState<ShareNotice | null>(null);
-  const serial = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  const showNotice = (success: boolean) => {
-    clearTimeout(timer.current);
-    setNotice({ id: ++serial.current, success });
-    timer.current = setTimeout(() => setNotice(null), 2200);
-  };
-  return { notice, showNotice };
+  return useStatusToast<boolean>();
 }
-export function ShareToast({ notice }: { notice: ShareNotice | null }) {
+export function ShareToast({ notice }: { notice: StatusNotice<boolean> | null }) {
   const { text: { t } } = usePlayerText();
-  return <div className={c('toast-region')} role="status" aria-atomic="true">
-    {notice && <span key={notice.id} className={c('share-toast')}>{t(notice.success ? 'linkCopied' : 'copyFailed')}</span>}
-  </div>;
+  return <StatusToast notice={notice} describe={success => t(success ? 'linkCopied' : 'copyFailed')} />;
 }

@@ -196,9 +196,10 @@ test('adapts the official SDK call shape, permissions and errors', async () => {
   const rank = new BilibiliLeaderboard(async () => sdk);
   const { signal } = new AbortController();
   expect(await rank.list(4, 'week', signal)).toEqual([{ rank: 1, score: -4, nickname: 'Pilot', avatar: 'https://p0.hdslb.com/avatar.png' }]);
+  await rank.list(1, 'all', signal);
   expect(await rank.mine(2, 'all', signal)).toEqual({ ranked: true, rank: 1, score: 0 });
   expect(await rank.submit(3, 90, signal)).toBe(110);
-  expect(sdk.getRankList).toHaveBeenCalledExactlyOnceWith({ board: 4, period: 'week', limit: 20 });
+  expect(sdk.getRankList.mock.calls).toEqual([[{ board: 4, period: 'week', limit: 100 }], [{ board: 1, period: 'all', limit: 100 }]]);
   expect(sdk.getMyRank).toHaveBeenCalledExactlyOnceWith({ board: 2, period: 'all' });
   expect(sdk.submitScore).toHaveBeenCalledExactlyOnceWith({ board: 3, score: 90 });
   for (const [error, kind] of [[{ type: 'http_error', code: 307044 }, 'limited'], [{ type: 'not_logged_in' }, 'login'],

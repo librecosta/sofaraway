@@ -105,7 +105,7 @@ function PlayerWithLeaderboard({ platform, volume, chooseVolume, display }: {
   return <GameViewport settings={settings} volume={volume} chooseVolume={chooseVolume} surface={platform} display={display}
     launch={() => ({ options: readPlayerOptions(settings, volume) })} extension={{
       menu: open => <LeaderboardButton open={open} />,
-      results: (run, snapshot, open) => <CompetitiveResult key={run.id} client={client} run={run} snapshot={snapshot} open={open} />,
+      results: (run, snapshot) => <CompetitiveResult key={run.id} client={client} run={run} snapshot={snapshot} />,
       panel: (initialVolume, close) => <LeaderboardPanel client={client} initialVolume={initialVolume} close={close} />,
     }} />;
 }

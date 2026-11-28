@@ -36,15 +36,20 @@ test('offline standings keep separate boards and periods with readable portrait 
   const dialog = frame.getByRole('dialog', { name: '排行榜' });
   await expect(dialog.getByRole('row')).toHaveCount(7);
   await expect(dialog).toContainText('134,200');
+  await expect(dialog.getByText('我的最高分', { exact: true })).toBeVisible();
+  await expect(dialog.locator('.toy-rank-summary')).toHaveCSS('border-top-width', '2px');
+  await expect(dialog.getByRole('columnheader').first()).toHaveCSS('border-bottom-width', '2px');
+  await expect(dialog.locator('tbody tr:nth-child(2)')).toHaveCSS('background-color', 'rgba(220, 238, 248, 0.047)');
   expect(await dialog.locator('.toy-rank-panel').evaluate(element => {
     const bounds = element.getBoundingClientRect();
     return bounds.top >= 34 && bounds.bottom <= innerHeight - 52 && bounds.width <= innerWidth && element.scrollWidth <= element.clientWidth;
   })).toBe(true);
   await capture(page, 'leaderboard-zh-portrait');
-  await dialog.getByRole('button', { name: '本周' }).click();
+  await dialog.getByRole('radio', { name: '总榜', exact: true }).press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: '本周', exact: true })).toBeChecked();
   await expect(dialog).toContainText('128,894');
   for (const [name, high] of [['DAYBREAK', '131,594'], ['DESCENT', '134,294'], ['ORBIT', '136,994']]) {
-    await dialog.getByRole('button', { name }).click();
+    await dialog.getByText(name, { exact: true }).click();
     await expect(dialog).toContainText(high);
   }
   await expect(close).toBeVisible();
@@ -110,7 +115,15 @@ test('mock result submission is opt-in and handles failures and high-water ranks
   await expect(result).toContainText('请求超时', { timeout: 9000 });
   await page.getByLabel('Rank response').selectOption('normal');
   await retry.click();
-  await expect(result).toContainText('成绩已提交。');
+  const toast = result.getByRole('status');
+  await expect(toast).toHaveText('成绩已提交');
+  await expect(toast.getByText('成绩已提交')).toBeInViewport();
+  expect(await toast.evaluate(element => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.top < 80 && bounds.left >= document.getElementById('over-title')!.getBoundingClientRect().right;
+  })).toBe(true);
+  await expect(result.getByRole('button', { name: '查看排行榜' })).toHaveCount(0);
+  await expect(submit).toHaveCount(0);
   await expect(log.getByText('Submit 132320 to board 1')).toHaveCount(5);
   await expect(result).toContainText('134,200');
   await expect(log.getByText('List board 1, all')).toHaveCount(1);
@@ -118,12 +131,13 @@ test('mock result submission is opt-in and handles failures and high-water ranks
   await result.evaluate(element => { element.scrollTop = 0; });
   await expect(result.getByRole('heading', { name: '已撤离' })).toBeInViewport({ ratio: .98 });
   await capture(page, 'leaderboard-result-zh');
-  await result.getByRole('button', { name: '查看排行榜' }).click();
+  await expect(toast).toBeEmpty();
+  await result.getByRole('button', { name: '返回主菜单' }).click();
+  await frame.getByRole('button', { name: '排行榜', exact: true }).click();
   const board = frame.getByRole('dialog', { name: '排行榜' });
   await expect(board.getByRole('row', { name: /Mock Pilot/ })).toContainText('132,320');
   await expect(board.locator('dd').first()).toHaveText('#2');
-  await expect(log.getByText('List board 1, all')).toHaveCount(1);
-  await board.getByRole('button', { name: '本周' }).click();
+  await board.getByText('本周', { exact: true }).click();
   await expect(board.locator('dd').first()).toHaveText('#1');
   await page.getByRole('combobox', { name: 'Account', exact: true }).selectOption('navigator');
   await expect(board.locator('dd').first()).toHaveText('—');
@@ -176,7 +190,12 @@ test('hosted desktop release uses the same SDK script without native container s
       window.rankCalls = [];
       window.toy = {
         isSupport: async ability => { rankCalls.push(ability); return ['getRankList', 'getMyRank', 'submitScore'].includes(ability); },
-        getRankList: async request => { rankCalls.push(request); return [{ rank: 1, score: 0, nickname: 'SDK fixture', avatar: '' }]; },
+        getRankList: async request => {
+          rankCalls.push(request);
+          return Array.from({ length: request.limit }, (_, index) => ({
+            rank: index + 1, score: 1000 - index, nickname: 'Pilot ' + (index + 1), avatar: '',
+          }));
+        },
         getMyRank: async request => { rankCalls.push(request); throw { type: 'not_logged_in', code: -101 }; },
         submitScore: async request => { rankCalls.push(request); throw new Error('Unexpected write'); },
       };
@@ -188,12 +207,21 @@ test('hosted desktop release uses the same SDK script without native container s
   expect(await calls()).toEqual([]);
   await page.getByRole('button', { name: '排行榜' }).click();
   const board = page.getByRole('dialog', { name: '排行榜' });
-  await expect(board).toContainText('SDK fixture');
+  const list = board.getByRole('region', { name: '排行榜' });
+  const last = list.getByRole('cell', { name: 'Pilot 100', exact: false });
+  await expect(list.locator('tbody tr')).toHaveCount(100);
+  await expect(list).toHaveCSS('scrollbar-width', 'none');
+  await expect(last).not.toBeInViewport();
+  await list.press('End');
+  await expect(last).toBeInViewport();
   await expect(board).toContainText('登录哔哩哔哩');
-  await board.getByRole('button', { name: 'ORBIT' }).click();
-  await board.getByRole('button', { name: '本周' }).click();
-  await expect(board).toContainText('SDK fixture');
-  expect(await calls()).toEqual(expect.arrayContaining(['getRankList', 'getMyRank', { board: 4, period: 'week', limit: 20 }]));
+  await board.getByText('ORBIT', { exact: true }).click();
+  await board.getByText('本周', { exact: true }).click();
+  await expect(list.locator('tbody tr')).toHaveCount(100);
+  await expect(last).not.toBeInViewport();
+  expect(await calls()).toEqual(expect.arrayContaining([
+    'getRankList', 'getMyRank', { board: 1, period: 'all', limit: 100 }, { board: 4, period: 'week', limit: 100 },
+  ]));
   expect(await calls()).not.toContain('getContainerState');
   expect(await calls()).not.toContain('submitScore');
   expect(loads).toBe(1);
