@@ -26,8 +26,9 @@ interface Props {
   setAutoBoost(value: boolean): void;
   immersiveMouseAvailable: boolean;
   setImmersiveMouse(value: boolean): void;
-  orientation?: { value: OrientationPreference; choose(value: OrientationPreference): void };
-  fullscreen: { available: boolean; active: boolean; toggle(): void; failed?: boolean };
+  orientation?: { value: OrientationPreference; choose(value: OrientationPreference): void; pending?: boolean };
+  fullscreen: { available: boolean; active: boolean; toggle(): void; failed?: boolean;
+    hidden?: boolean; label?: string; pending?: boolean; status?: string };
   preview?: boolean;
 }
 
@@ -102,14 +103,18 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
             <div className={c('seg', 'orientation-options')} role="group" aria-label={t('orientation')}
               style={{ '--segment-index': Number(orientation.value === 'portrait') } as CSSProperties}>
               {(['landscape', 'portrait'] as const).map(value => <button type="button" key={value}
-                aria-pressed={orientation.value === value} onClick={() => orientation.choose(value)}>{text.orientation(value)}</button>)}
+                aria-pressed={orientation.value === value} disabled={orientation.pending}
+                data-display-action={orientation.pending !== undefined ? '' : undefined}
+                onClick={() => orientation.choose(value)}>{text.orientation(value)}</button>)}
             </div>
           </div>}
-          <div className={c('panel-row')}>
+          {!fullscreen.hidden && <div className={c('panel-row')}>
             <span>{t('fullscreen')}</span>
-            <DecodeButton className={c('panel-close')} disabled={!fullscreen.available}
-              onClick={fullscreen.toggle} label={t(fullscreen.active ? 'exitFullscreen' : 'enterFullscreen')} />
-          </div>
+            <DecodeButton className={c('panel-close')} disabled={!fullscreen.available || fullscreen.pending}
+              data-display-action={fullscreen.label ? '' : undefined}
+              onClick={fullscreen.toggle} label={fullscreen.label ?? t(fullscreen.active ? 'exitFullscreen' : 'enterFullscreen')} />
+          </div>}
+          {fullscreen.status && <small className={c('switch-description')} role="status">{fullscreen.status}</small>}
           {fullscreen.failed && <small className={c('switch-description')} role="status">{t('fullscreenUnavailable')}</small>}
           <details className={c('controls-help')}>
             <summary>{t('controls')}</summary>

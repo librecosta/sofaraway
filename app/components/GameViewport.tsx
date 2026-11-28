@@ -3,6 +3,7 @@ import type { MouseEvent, ReactNode } from 'react';
 import { initialSnapshot } from '../game/contracts';
 import type { Difficulty, ExperienceMode, GameOptions, GameRuntime, GameSnapshot, OrientationPreference, QualityTier, VolumeId } from '../game/contracts';
 import type { Runtime } from '../game/runtime/GameRuntime.client';
+import type { PlayerSurface } from '../game/runtime/player-surface';
 import { immersiveMouseSupported, subscribeImmersiveMouseSupport } from '../game/runtime/immersive-mouse.client';
 import { FullscreenOrientation, isCompactTouchDevice } from '../game/runtime/screen-orientation.client';
 import { readOrientationPreference } from '../game/runtime/settings.client';
@@ -44,11 +45,19 @@ interface Props {
   shareNotice?: ReactNode;
   socialLinks?: ReactNode;
   compliance?: ReactNode;
+  surface?: PlayerSurface;
+  display?: {
+    touch: boolean;
+    startLabel?: string;
+    status?: string;
+    orientation?: { value: OrientationPreference; choose(value: OrientationPreference): void; pending: boolean };
+    action?: { active: boolean; label: string; toggle(): void; pending: boolean };
+  };
   diagnostics?: { output: ReactNode; write(text: string): void; launchFailed(error: unknown): void };
 }
 
 export function GameViewport({ settings, volume: requested, chooseVolume, launch, onQualityChanged, renderCredits,
-  share, shareNotice, socialLinks, compliance, diagnostics }: Props) {
+  share, shareNotice, socialLinks, compliance, diagnostics, surface, display }: Props) {
   const { text } = usePlayerText();
   const canvasLabel = text.t('canvasLabel');
   const currentCanvasLabel = useRef(canvasLabel);
@@ -97,6 +106,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
       if (snapshot.phase === 'menu' && !snapshot.error && !event.repeat && key === 'x' &&
         !event.ctrlKey && !event.altKey && !event.metaKey) {
         event.preventDefault();
+        if (action?.pending) return true;
         if (event.isTrusted) runtime?.playUiCue('press');
         startSelected(event);
         return true;
@@ -149,7 +159,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
     let stale = false;
     let engine: Runtime | undefined;
     void import('../game/runtime/GameRuntime.client').then(({ Runtime }) => {
-      if (stale) return;
+      if (stale || surface?.getSnapshot().lifecycle === 'closed') return;
       engine = new Runtime({
         pointer(state) {
           if (!cursor.current) return;
@@ -167,7 +177,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         debug: diagnostics?.write,
         key: (key, event) => keys.current(key, event),
         muted: value => settings.save('muted', value),
-      }, settings.namespace);
+      }, settings.namespace, surface);
       setRuntime(engine);
       return engine.initialize(canvas, { ...options, compactViewport: orientationLock.current !== null, saveRecords: true });
     }).catch(error => {
@@ -198,7 +208,7 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
   }, [runtime, requested, snapshot.volumeId, snapshot.phase, snapshot.error]);
 
   function startSelected(gesture: Event) {
-    if (!runtime || snapshot.phase !== 'menu' || snapshot.error) return;
+    if (!runtime || snapshot.phase !== 'menu' || snapshot.error || action?.pending) return;
     const id = volumeTarget.current;
     if (id && id !== snapshot.volumeId) {
       chooseVolume(id);
@@ -277,13 +287,17 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
   }
 
   async function fullscreen() {
+    if (action) {
+      action.toggle();
+      return;
+    }
     const element = viewport.current;
     try {
       if (!element || !fullscreenState.available) throw new Error('Fullscreen unavailable');
       if (document.fullscreenElement === element) await document.exitFullscreen();
       else {
         await element.requestFullscreen();
-        if (viewport.current === element) void orientationLock.current?.apply();
+        if (viewport.current === element) orientationLock.current?.choose(readOrientationPreference(settings));
       }
     } catch {
       setFullscreenFailed(true);
@@ -291,25 +305,29 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
     }
   }
 
+  const action = fullscreenState.active ? undefined : display?.action;
+  const hideFullscreen = !!surface && !action && !fullscreenState.available;
   return (
-    <main ref={viewport} className={c('viewport', orientation !== null && 'compact-touch',
+    <main ref={viewport} data-container-touch={display?.touch || undefined}
+      className={c('viewport', (orientation !== null || display?.touch === true) && 'compact-touch',
       customCursor && 'custom-cursor', showcaseFlight && 'showcase-flight')}
       onPointerOver={event => {
         if (!uiCursor || !event.isTrusted || event.pointerType === 'touch') return;
         const control = (event.target as Element).closest(cueControls);
-        if (control && !control.hasAttribute('data-language') && !(event.relatedTarget instanceof Node && control.contains(event.relatedTarget))) {
+        if (control && !control.matches('[data-language], [data-display-action]') &&
+          !(event.relatedTarget instanceof Node && control.contains(event.relatedTarget))) {
           runtime?.playUiCue('hover');
         }
       }}
       onClickCapture={event => {
         if (!uiCursor || !event.isTrusted) return;
-        if ((event.target as Element).closest('[data-language]')) return;
+        if ((event.target as Element).closest('[data-language], [data-display-action]')) return;
         if ((event.target as Element).closest(cueControls)) runtime?.playUiCue('press');
         else runtime?.primeAudio();
       }}
       onKeyDownCapture={event => {
         if (uiCursor && event.isTrusted && !event.repeat && navigator.userActivation?.isActive &&
-          !(event.target as Element).closest('[data-language]')) runtime?.primeAudio();
+          !(event.target as Element).closest('[data-language], [data-display-action]')) runtime?.primeAudio();
       }}>
       <div ref={host} />
       <div id="cursor" ref={cursor} aria-hidden="true" hidden={!customCursor}>
@@ -331,7 +349,9 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
               if (!value) runtime?.playUiCue('press');
             }} onVolumeTarget={id => { volumeTarget.current = id; }}
             start={event => startSelected(event.nativeEvent)} settings={() => openPanel('settings')} credits={() => openPanel('credits')}
-            share={share} socialLinks={socialLinks} fullscreen={fullscreen} fullscreenActive={fullscreenState.active} compliance={compliance} />
+            share={share} socialLinks={socialLinks} fullscreen={fullscreen} fullscreenActive={fullscreenState.active}
+            displayLabel={action?.label} displayPending={action?.pending} displayStatus={display?.status}
+            fullscreenHidden={hideFullscreen} touchStartLabel={display?.startLabel} compliance={compliance} />
           {!showcase && <GameHUD runtime={runtime} />}
           <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu} />
         </div>
@@ -352,9 +372,11 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         chooseQuality={value => void setQuality(value)}
         setVolume={value => { runtime?.setVolume(value); settings.save('volume', Math.round(value * 100)); }}
         setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
-        immersiveMouseAvailable={immersiveMouseAvailable} setImmersiveMouse={setImmersiveMouse} setAutoBoost={setAutoBoost}
-        orientation={orientation !== null ? { value: orientation, choose: chooseOrientation } : undefined}
-        fullscreen={{ ...fullscreenState, toggle: () => void fullscreen(), failed: fullscreenFailed }} />}
+        immersiveMouseAvailable={immersiveMouseAvailable && !display?.touch} setImmersiveMouse={setImmersiveMouse} setAutoBoost={setAutoBoost}
+        orientation={(action ? display?.orientation : undefined) ??
+          (orientation !== null && (!surface || fullscreenState.available) ? { value: orientation, choose: chooseOrientation } : undefined)}
+        fullscreen={action ? { ...action, available: true, status: display?.status } :
+          { ...fullscreenState, toggle: () => void fullscreen(), failed: fullscreenFailed, hidden: hideFullscreen }} />}
     </main>
   );
 }

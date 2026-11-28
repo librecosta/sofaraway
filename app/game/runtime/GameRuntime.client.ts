@@ -22,6 +22,7 @@ import type { PointerView } from './input.client';
 import { ImmersiveMouse } from './immersive-mouse.client';
 import { recordFor, RunRecordStore } from './records.client';
 import { observeScreenOrientation } from './screen-orientation.client';
+import type { PlayerSurface, PlayerSurfaceState } from './player-surface';
 
 export interface RuntimeView {
   pointer(view: PointerView): void;
@@ -82,7 +83,9 @@ export class Runtime implements GameRuntime {
   private readonly lightInput = { beat: 0, rhythmBeat: 0, orbitAmount: 0, reducedMotion: false, dynamics: { ...steadyLights } };
   private lightTime = 0;
 
-  constructor(private readonly view: RuntimeView, namespace?: string) {
+  private surfaceState?: PlayerSurfaceState;
+
+  constructor(private readonly view: RuntimeView, namespace?: string, private readonly surface?: PlayerSurface) {
     this.recordStore = new RunRecordStore(namespace);
   }
 
@@ -118,7 +121,7 @@ export class Runtime implements GameRuntime {
       const diagnostics = typeof __PLAYER_ONLY_TOY__ === 'undefined' ? options.diagnostics : undefined;
       this.graphics = new Graphics(canvas, options.quality, this.mobile(), diagnostics);
       this.input = new InputController(canvas, () => this.snapshot.phase === 'playing' && this.snapshot.mode !== 'showcase', this.keydown,
-        diagnostics?.cursor, options.compactViewport);
+        diagnostics?.cursor, options.compactViewport || !!this.surface);
       this.immersiveMouse = new ImmersiveMouse(canvas, active => {
         this.input?.setImmersive(active);
         if (active && this.snapshot.phase === 'playing') this.alignImmersiveReticle();
@@ -512,7 +515,10 @@ export class Runtime implements GameRuntime {
     return this.snapshot.phase === 'menu' || this.snapshot.phase === 'results';
   }
 
-  private unavailable() { return document.hidden || this.contextLost || this.cached; }
+  private unavailable() {
+    return document.hidden || this.contextLost || this.cached ||
+      (this.surfaceState !== undefined && this.surfaceState.lifecycle !== 'active');
+  }
 
   private mobile() {
     return (typeof __PLAYER_ONLY_TOY__ === 'undefined' && !!this.options?.diagnostics?.mobileQuality) ||
@@ -716,7 +722,7 @@ export class Runtime implements GameRuntime {
   }
 
   private resizeGraphics() {
-    const canvas = this.options?.compactViewport ? this.graphics?.renderer.domElement : undefined;
+    const canvas = this.options?.compactViewport || this.surface ? this.graphics?.renderer.domElement : undefined;
     const width = canvas?.clientWidth || window.innerWidth;
     const height = canvas?.clientHeight || window.innerHeight;
     if (canvas && this.input) {
@@ -765,12 +771,36 @@ export class Runtime implements GameRuntime {
 
   private attach(canvas: HTMLCanvasElement) {
     const { signal } = this.events;
-    if (this.options?.compactViewport) {
+    if (this.options?.compactViewport || this.surface) {
       const observer = new ResizeObserver(this.resize);
       signal.addEventListener('abort', () => observer.disconnect(), { once: true });
       observer.observe(canvas);
-      observeScreenOrientation(this.reorient, signal);
     } else window.addEventListener('resize', this.resize, { signal });
+    if (this.options?.compactViewport) {
+      observeScreenOrientation(() => { if (!this.surfaceState?.container) this.reorient(); }, signal);
+    }
+    if (this.surface) {
+      const surface = this.surface;
+      this.surfaceState = surface.getSnapshot();
+      const unsubscribe = surface.subscribe(() => {
+        const previous = this.surfaceState!;
+        const next = this.surfaceState = surface.getSnapshot();
+        if (next.lifecycle === 'closed') {
+          this.dispose();
+          return;
+        }
+        const before = previous.container;
+        const after = next.container;
+        if (before && after && before.orientation !== after.orientation) this.reorient();
+        else if (before?.width !== after?.width || before?.height !== after?.height) this.resize();
+        if (previous.lifecycle !== next.lifecycle) {
+          this.input?.clear();
+          this.lastInput = idleInput;
+          this.surfaceChanged();
+        }
+      });
+      signal.addEventListener('abort', unsubscribe, { once: true });
+    }
     window.addEventListener('blur', () => {
       if (!this.immersiveMouse?.engaged) return;
       if (this.snapshot.phase === 'starting') this.immersiveMouse.release();
@@ -821,7 +851,8 @@ export class Runtime implements GameRuntime {
   private reorient = () => {
     this.input?.clear();
     this.lastInput = idleInput;
-    if (this.snapshot.phase === 'playing' || this.resumePending) this.pause('orientation');
+    if ((this.surfaceState?.container && this.snapshot.phase === 'starting') ||
+        this.snapshot.phase === 'playing' || this.resumePending) this.pause('orientation');
     else if (this.snapshot.phase === 'paused' &&
       (this.snapshot.pauseReason === 'background' || this.snapshot.pauseReason === 'context')) {
       this.publish({ pauseReason: 'orientation' });

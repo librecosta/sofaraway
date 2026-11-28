@@ -23,6 +23,7 @@ test('the static artifact contains registration data only in the China build', a
     expect(file.name).not.toContain('china-public-security');
     const bytes = await readFile(path);
     expect(bytes.includes('sofaraway.bilibili.sofaraway') || bytes.includes('data-toy-dev-console'), path).toBe(false);
+    expect(bytes.includes('/bfs/seed/toy/app/sdk/toy-sdk.js') || bytes.includes('getContainerState'), path).toBe(false);
     expect(bytes.includes(icon), path).toBe(false);
     if (!china || file.name.endsWith('.html') && path !== join('build/client', 'index.html')) {
       const content = bytes.toString('utf8');

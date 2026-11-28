@@ -30,6 +30,11 @@ interface Props {
   socialLinks?: ReactNode;
   fullscreen(): void;
   fullscreenActive: boolean;
+  fullscreenHidden?: boolean;
+  displayLabel?: string;
+  displayPending?: boolean;
+  displayStatus?: string;
+  touchStartLabel?: string;
   musicInitiallyOpen?: boolean;
   preview?: boolean;
   compliance?: ReactNode;
@@ -51,7 +56,7 @@ export function MainMenu(props: Props) {
   const status = t(snapshot.phase === 'starting' ? 'starting' : 'initializing');
   return (
     <section id="menu" className={c('screen', 'menu-screen', !props.visible && 'hidden')}>
-      <div className={c('top')}>
+      <div className={c('top')} data-menu-top>
         <div className={c('menu-tools')}>
           <DecodeButton className={c('btn', 'tiny')} data-act="credits" onClick={props.credits} label={t('credits')} />
           {props.share && <DecodeButton className={c('btn', 'tiny')} data-act="share" onClick={props.share} label={t('share')} />}
@@ -92,13 +97,15 @@ export function MainMenu(props: Props) {
       </div>
       <div className={c('bottom')}>
         <DecodeButton className={c('btn', 'tiny')} data-act="settings" disabled={!ready} onClick={props.settings} label={t('settings')} />
-        <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error} onClick={props.start}
-          aria-keyshortcuts="X" label={ready ? t(showcase ? 'startShowcase' : 'start') : status} />
-        <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen" disabled={!ready} onClick={props.fullscreen}
-          label={t(props.fullscreenActive ? 'exitFullScreen' : 'fullScreen')} />
+        <DecodeButton className={c('btn', 'start')} data-act="start" disabled={!ready || !!snapshot.error || props.displayPending} onClick={props.start}
+          aria-keyshortcuts={props.touchStartLabel ? undefined : 'X'}
+          label={ready ? (showcase ? t('startShowcase') : props.touchStartLabel ?? t('start')) : status} />
+        {!props.fullscreenHidden && <DecodeButton className={c('btn', 'tiny')} data-act="fullscreen"
+          data-display-action={props.displayLabel ? '' : undefined} disabled={!ready || props.displayPending} onClick={props.fullscreen}
+          label={props.displayLabel ?? t(props.fullscreenActive ? 'exitFullScreen' : 'fullScreen')} />}
         {props.visible && !props.preview && props.compliance}
       </div>
-      <div className={c('center-msg', 'menu-message', !!snapshot.message && 'show')} role="status">{text.message(snapshot.message)}</div>
+      <div className={c('center-msg', 'menu-message', (!!snapshot.message || !!props.displayStatus) && 'show')} role="status">{props.displayStatus ?? text.message(snapshot.message)}</div>
     </section>
   );
 }

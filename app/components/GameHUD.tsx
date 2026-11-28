@@ -67,7 +67,7 @@ export function HUDView({ snapshot, enableAudio, pause }: { snapshot: GameSnapsh
       <div className={c('center-msg', !!snapshot.message && 'show')} id="center-msg">{text.message(snapshot.message)}</div>
       {snapshot.phase === 'playing' && snapshot.soundUnavailable && <button type="button" className={c('btn', 'tiny', 'restore-audio')}
         onClick={enableAudio}>{t('restoreSound')}</button>}
-      {snapshot.phase === 'playing' && <button type="button" className={c('btn', 'tiny', 'touch-pause')}
+      {snapshot.phase === 'playing' && <button type="button" data-hud-pause className={c('btn', 'tiny', 'touch-pause')}
         aria-label={t('pauseAction')} onClick={pause}>{t('pause')}</button>}
     </section>
   );

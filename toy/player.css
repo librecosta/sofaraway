@@ -1,0 +1,31 @@
+[data-container-touch] {
+  width: min(100%, var(--container-width, 100%));
+  height: min(100%, var(--container-height, 100%));
+  height: min(100dvh, var(--container-height, 100dvh));
+}
+/* The SDK's edge insets do not describe the upper-right controls. */
+[data-container-touch] #menu > [data-menu-top] { justify-content: flex-start; gap: 1rem; }
+[data-container-touch] #menu [role="tooltip"] { left: 0; right: auto; transform-origin: top left; }
+[data-container-touch] #menu [data-act="fullscreen"] { white-space: normal; }
+[data-container-touch] #cursor { display: none; }
+
+[data-container-touch] #hud > div:has(> #hud-score) {
+  top: max(4vmin, var(--safe-area-top)); left: max(4vmin, var(--safe-area-left));
+}
+[data-container-touch] #hud > div:has(> #hud-section) { top: max(4vmin, var(--safe-area-top)); }
+[data-container-touch] #hud > div:has(> #hud-gates) {
+  top: auto; right: auto; text-align: left;
+  bottom: max(4vmin, var(--safe-area-bottom)); left: max(4vmin, var(--safe-area-left));
+}
+[data-container-touch] #hud > div:has(#hud-speed) {
+  bottom: calc(max(4vmin, var(--safe-area-bottom)) + 4rem); left: max(4vmin, var(--safe-area-left));
+}
+[data-container-touch] #hud > div:has(> #hud-combo) {
+  bottom: max(4vmin, var(--safe-area-bottom)); right: max(4vmin, var(--safe-area-right));
+}
+[data-container-touch] #hud [data-hud-pause] {
+  display: block; position: absolute; top: auto;
+  bottom: calc(max(4vmin, var(--safe-area-bottom)) + clamp(2.75rem, 8vmin, 4.75rem));
+  right: max(4vmin, var(--safe-area-right)); min-width: 44px;
+}
+.toy-closed { font: 1rem system-ui, sans-serif; margin: 1rem; }

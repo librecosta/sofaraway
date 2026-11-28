@@ -742,6 +742,8 @@ html:has(.viewport), body:has(.viewport){
   .hint .pointer-steer { display:none; }
   .hint .touch-steer { display:block; }
 }
+[data-container-touch] .hint .pointer-steer { display:none; }
+[data-container-touch] .hint .touch-steer { display:block; }
 .viewport :is(.eyebrow,.tagline,.btn,.selector-track span,.label,.mode-details,.route-status,.pickup-status,
   .results-title,.stats span,.panel,.panel-head,.panel-close,.seg button,.hint b,.hint span,.boost,.center-msg,
   .record-grid span,.record-grid small,.share-toast):lang(zh-CN) { letter-spacing:.035em; }
