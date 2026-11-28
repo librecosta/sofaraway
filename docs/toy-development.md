@@ -33,13 +33,11 @@ In `npm run dev:toy`, use **Mock leaderboards** to switch accounts, hide the see
 
 The inspected public SDK blocks writes under `/toy/preview`. Test submissions locally and keep simulated scores out of live boards. Verify App and PC availability, first-submit consent, account changes, weekly rollover and physical-device layout only in the appropriate publisher-authorized environment. The release schedule depends on the promotional video. [T1-D implementation report](audits/T1-D-leaderboard-competitive-records.md) · [Official request guidance](https://github.com/bilibili/toy/blob/main/skills/toy/references/content-checklist.md#7-用了云存储--排行榜调用节奏上线后才爆的那类)
 
-## Flight assist, cloud save and result cards
-
-**Center Reticle** is an optional fixed crosshair in Standard and Sightseeing. It persists with device settings and can be toggled during a pause. Its screen position follows the canvas bounds. The camera transform and collision point keep their existing offsets.
+## Cloud save and result cards
 
 Open **Cloud Save** from the menu and select **Authorize and Sync** to grant access and read your account's Best scores. The publisher must enable the profile capability that returns a stable `toyOpenId`. Flights started after authorization can contribute account-owned Standard Bests. Return to the panel and select **Sync Best Scores** to publish them. The game keeps the device scoreboard and Last independent from the account scoreboard. Anonymous device history is outside the cloud flow. An unsynced flight is still available in the ordinary device records if you close the page.
 
-Select **Share Result** after a player flight to preview a PNG composed from that run. Native buttons appear only for supported SDK abilities. Standalone preview and PC Web can use the local card without a native action.
+Select **Share Result** after a player flight to preview a PNG with the LibreCosta mark and the player's Bilibili nickname. The nickname is requested through the SDK when the card opens, with the localized Bilibili player label available if the request fails. Native buttons appear for supported SDK abilities. Standalone preview and PC Web can display the local card.
 
 Use the **Mock leaderboards** account, response and delay controls with **Mock cloud and sharing**. The seeded conflict provides different Bests per account. Switch to **Incompatible scoring version** to check that sync preserves both stores, or use the response control to exercise failures and cooldown. **Show mock results** opens the result card fixture. The share capability control simulates all native actions, Toy link sharing only, or the local card by itself. The fixture remains offline.
 

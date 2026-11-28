@@ -34,7 +34,8 @@ const palettes = {
   orbit: ['#080d24', '#292c64', '#9ebeff'],
 } satisfies Record<VolumeId, string[]>;
 
-export function drawResultCard(canvas: HTMLCanvasElement, run: RunSettlement, text: PlayerText) {
+export function drawResultCard(canvas: HTMLCanvasElement, run: RunSettlement, text: PlayerText,
+  nickname: string, brandLogo: HTMLImageElement | null) {
   canvas.width = 720;
   canvas.height = 520;
   const ctx = canvas.getContext('2d');
@@ -47,7 +48,6 @@ export function drawResultCard(canvas: HTMLCanvasElement, run: RunSettlement, te
   background.addColorStop(1, ink);
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, 720, 520);
-  drawVolume(ctx, volume, accent);
 
   const label = (value: string, x: number, y: number, size: number, color: string, display = false, maxWidth = 620) => {
     ctx.fillStyle = color;
@@ -55,7 +55,20 @@ export function drawResultCard(canvas: HTMLCanvasElement, run: RunSettlement, te
     ctx.fillText(value, x, y, maxWidth);
   };
   label('SoFarAway', 46, 70, 43, '#ebf8ff', true);
-  label('LibreCosta', 48, 102, 21, '#c0d5e3');
+  label(nickname, 48, 102, 23, '#c0d5e3', false, 410);
+  if (brandLogo) {
+    const height = 42;
+    const width = height * brandLogo.naturalWidth / brandLogo.naturalHeight;
+    const centerX = 538, centerY = 60;
+    ctx.fillStyle = '#eaf5fa';
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 26, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.drawImage(brandLogo, centerX - width / 2, centerY - height / 2, width, height);
+  }
+  ctx.textAlign = 'right';
+  label('LibreCosta', 671, 68, 22, '#ebf8ff', true, 99);
+  ctx.textAlign = 'left';
   label(details.volume, 48, 172, 27, accent, true);
   label(details.flight, 48, 211, 22, '#d8e9f2');
   label(details.outcome, 48, 261, 22, accent);
@@ -70,29 +83,4 @@ export function drawResultCard(canvas: HTMLCanvasElement, run: RunSettlement, te
     label(value, 48 + 210 * i, 475, 37, i === 2 ? '#ffcb85' : accent, true, 196);
   }
   return true;
-}
-
-function drawVolume(ctx: CanvasRenderingContext2D, volume: VolumeId, accent: string) {
-  ctx.save();
-  ctx.translate(605, 145);
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 2;
-  for (let ring = 0; ring < 7; ring++) {
-    const radius = 45 + 16 * ring;
-    ctx.globalAlpha = .28 - .025 * ring;
-    ctx.beginPath();
-    if (volume === 'orbit') ctx.ellipse(0, 0, radius, radius * .54, -.5 + .07 * ring, 0, 2 * Math.PI);
-    else {
-      const sides = volume === 'elsewhere' ? 8 : volume === 'daybreak' ? 6 : 4;
-      for (let side = 0; side < sides; side++) {
-        const theta = Math.PI * (2 * side / sides + .125);
-        const x = radius * Math.cos(theta), y = radius * Math.sin(theta);
-        if (side === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
 }

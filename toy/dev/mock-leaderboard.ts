@@ -147,6 +147,10 @@ export class MockLeaderboard implements LeaderboardPlatform, CloudPlatform, Shar
       this.controls.sharing === 'entry' && action === 'share');
   }
 
+  resultNickname(signal: AbortSignal) {
+    return this.request('Read result nickname', signal, account => accountNames[this.requireAccount(account)]);
+  }
+
   shareResult(action: ShareAction, base64Data: string, signal: AbortSignal) {
     return this.request(`Share action: ${action}`, signal, () => {
       if (action !== 'share' && !base64Data.startsWith('iVBORw0KGgo')) throw new RankError('invalid');

@@ -25,7 +25,8 @@ test('the static artifact contains registration data only in the China build', a
     expect(bytes.includes('sofaraway.bilibili.sofaraway') || bytes.includes('data-toy-dev-console'), path).toBe(false);
     expect(bytes.includes('/bfs/seed/toy/app/sdk/toy-sdk.js') || bytes.includes('getContainerState'), path).toBe(false);
     expect(bytes.includes('toy-rank-dialog') || bytes.includes('submitScore') || bytes.includes('getRankList'), path).toBe(false);
-    expect(bytes.toString(), path).not.toMatch(/sofaraway_toy_v1|getCloudStorage|setCloudStorage|sharePicture|saveImageToAlbum|toy-result-share/);
+    expect(bytes.toString(), path).not.toMatch(/sofaraway_toy_v1|getCloudStorage|setCloudStorage|sharePicture|saveImageToAlbum|toy-result-share|librecosta-black-white/);
+    expect(bytes.toString(), path).not.toMatch(/centerReticle|center-reticle/);
     expect(bytes.toString(), path).not.toMatch(/live-gate-quality|GATE SCORING ZONES \(DEV\)|gateQualityDebug|setGateQualityDebug|gateQualityOverlay/);
     expect(bytes.includes(icon), path).toBe(false);
     if (!china || file.name.endsWith('.html') && path !== join('build/client', 'index.html')) {
@@ -81,45 +82,6 @@ test('Web keeps fixed-time diagnostics and flight recorder shortcuts', async ({ 
   await page.keyboard.press('Shift+r');
   expect((await download).suggestedFilename()).toMatch(/\.json$/);
   await expect(readout).toHaveText(snapshot!);
-});
-
-test('the Web reticle persists and stays at canvas center, including changes during pause', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem('sofaraway.muted', 'true');
-    localStorage.setItem('sofaraway.immersiveMouse', 'false');
-  });
-  await page.goto('/?q=low&mode=sightseeing');
-  await page.locator('[data-act=settings]').click();
-  const toggle = page.locator('#set-center-reticle');
-  await expect(toggle).not.toBeChecked();
-  await toggle.check();
-  await page.locator('[data-act=closesettings]').click();
-  const reticle = page.locator('#center-reticle');
-  await expect(reticle).toHaveCount(0);
-  await page.locator(start).click();
-  await expect(reticle).toBeVisible();
-  const canvas = await page.locator('#gl').elementHandle();
-  expect(await reticle.evaluate(element => {
-    const a = element.getBoundingClientRect(), b = document.querySelector('#gl')!.getBoundingClientRect();
-    return [a.left + a.right, a.top + a.bottom, b.left + b.right, b.top + b.bottom];
-  })).toEqual([960, 540, 960, 540]);
-  await page.keyboard.press('p');
-  await expect(reticle).toHaveCount(0);
-  const pause = page.getByRole('dialog', { name: china ? '已暂停' : 'PAUSED' });
-  await pause.getByRole('button', { name: china ? '设置' : 'SETTINGS' }).click();
-  await toggle.uncheck();
-  await toggle.check();
-  await page.locator('[data-act=closesettings]').click();
-  await pause.getByRole('button', { name: china ? '继续' : 'RESUME' }).click();
-  await expect(reticle).toBeVisible();
-  expect(await canvas!.evaluate(node => node === document.querySelector('#gl'))).toBe(true);
-  await page.goto('/?q=low&mode=showcase');
-  await page.locator('[data-act=settings]').click();
-  await expect(toggle).toBeChecked();
-  await page.locator('[data-act=closesettings]').click();
-  await page.locator(start).click();
-  await expect(page.locator('#menu')).toBeHidden();
-  await expect(reticle).toHaveCount(0);
 });
 
 test('the build locale hydrates, accepts a persisted override and keeps the region and Explorer language', async ({ page }) => {

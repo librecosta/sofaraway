@@ -7,7 +7,7 @@ export interface BilibiliServiceMethods {
   getRankList(request: { board: Board; period: Period; limit: number }): Promise<RankEntry[]>;
   getMyRank(request: { board: Board; period: Period }): Promise<MyRank>;
   submitScore(request: { board: Board; score: number }): Promise<{ score: number }>;
-  getUserProfile(): Promise<{ toyOpenId?: string }>;
+  getUserProfile(): Promise<{ nickname?: string; toyOpenId?: string }>;
   getCloudStorage(keys: string[]): Promise<Record<string, string>>;
   setCloudStorage(items: Record<string, string>): Promise<void>;
   sharePicture(input: { base64Data: string }): Promise<void>;
@@ -147,6 +147,14 @@ export class BilibiliServices implements LeaderboardPlatform, CloudPlatform, Sha
 
   supportsShare(action: ShareAction, signal: AbortSignal) {
     return this.invoke(action, signal, async () => true).catch(() => false);
+  }
+
+  resultNickname(signal: AbortSignal) {
+    return this.invoke('getUserProfile', signal, async sdk => {
+      const nickname = (await sdk.getUserProfile!())?.nickname;
+      if (typeof nickname !== 'string' || nickname.length > 256) return null;
+      return nickname.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim() || null;
+    });
   }
 
   shareResult(action: ShareAction, base64Data: string, signal: AbortSignal) {

@@ -14,7 +14,6 @@ import { classes as c } from '../styles/classes';
 import { CreditsPanel } from './CreditsPanel';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { GameHUD } from './GameHUD';
-import { CenterReticle } from './CenterReticle';
 import { MainMenu } from './MainMenu';
 import { ResultsScreen } from './ResultsScreen';
 import { SettingsPanel } from './SettingsPanel';
@@ -23,7 +22,7 @@ const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
 const cueControls = 'button:not(:disabled), a[href], input[type="checkbox"]:not(:disabled)';
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
-  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse', 'autoBoost', 'centerReticle',
+  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse', 'autoBoost',
   ...(typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ ? ['gateQualityDebug'] as const : [])] as const;
 const mouseSupported = () => immersiveMouseSupported();
 const unsupportedOnServer = () => false;
@@ -379,7 +378,6 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
             fullscreenHidden={hideFullscreen} touchStartLabel={display?.startLabel} compliance={compliance}
             extra={extension?.menu(openExtensionPanel, snapshot.volumeId)} />
           {!showcase && <GameHUD runtime={runtime} />}
-          {!modalOpen && <CenterReticle snapshot={viewSnapshot} />}
           <ResultsScreen snapshot={snapshot} restart={event => void runtime?.start(false, event.nativeEvent)} menu={returnToMenu}>
             {snapshot.phase === 'results' && settlement && snapshot.result === settlement.result &&
               extension?.results(settlement, snapshot, openExtensionPanel)}
@@ -403,7 +401,6 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         chooseQuality={value => void setQuality(value)}
         setVolume={value => { runtime?.setVolume(value); settings.save('volume', Math.round(value * 100)); }}
         setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
-        setCenterReticle={value => { runtime?.setCenterReticle(value); settings.save('centerReticle', value); }}
         {...(typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ && runtime
           ? { setGateQualityDebug: runtime.setGateQualityDebug } : {})}
         immersiveMouseAvailable={immersiveMouseAvailable && !display?.touch} setImmersiveMouse={setImmersiveMouse} setAutoBoost={setAutoBoost}

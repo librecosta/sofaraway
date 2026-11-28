@@ -2,6 +2,8 @@
 
 Baseline `23ec6cd`. The three distributions keep the current `precision-v5` rules with a 50% Precision zone and a 30% Near Miss band.
 
+The follow-up removed Center Reticle. The current result card uses the LibreCosta brand mark and the Bilibili nickname provided by the SDK, with a localized fallback when the name is unavailable. The sections below describe the original milestone.
+
 ## Flight assist
 
 **Center Reticle** is off by default and stored with each distribution's device settings. It uses the same display bounds as the canvas and renders above Standard and Sightseeing flights. Its center is independent of HUD safe areas, device pixel ratio and cursor position. Settings can change it during a pause without reconstructing the Runtime. The Studio includes an enabled Settings state.

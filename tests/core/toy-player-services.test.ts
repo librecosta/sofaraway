@@ -195,6 +195,9 @@ test('the SDK adapter uses the documented cloud and native sharing request shape
   const platform = new BilibiliServices(async () => ({ ...sdk, getUserProfile: async () => ({}) }));
   const signal = new AbortController().signal;
   await expect(platform.identity(signal)).rejects.toEqual(new RankError('permission'));
+  await expect(platform.resultNickname(signal)).resolves.toBeNull();
+  const sharingProfile = new BilibiliServices(async () => ({ ...sdk, getUserProfile: async () => ({ nickname: '  飞行员  ' }) }));
+  await expect(sharingProfile.resultNickname(signal)).resolves.toBe('飞行员');
   await expect(platform.readCloud(signal)).resolves.toBe('value');
   expect(getCloudStorage).toHaveBeenCalledWith([cloudKey]);
   await platform.writeCloud('merged', signal);

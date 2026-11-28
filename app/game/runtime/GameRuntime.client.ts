@@ -143,7 +143,6 @@ export class Runtime implements GameRuntime {
       dynamicLights: !!options.dynamicLights,
       immersiveMouse: options.immersiveMouse ?? initialSnapshot.immersiveMouse,
       autoBoost: options.autoBoost === true,
-      centerReticle: options.centerReticle === true,
       localRecord: this.menuRecord(options.volumeId, difficulty, options.mode) });
     if (generation !== this.generation) return;
     try {
@@ -422,10 +421,6 @@ export class Runtime implements GameRuntime {
 
   setAutoBoost(value: boolean) {
     if (this.snapshot.phase === 'menu' || this.snapshot.phase === 'results') this.publish({ autoBoost: value });
-  }
-
-  setCenterReticle(value: boolean) {
-    if (this.snapshot.phase !== 'disposed') this.publish({ centerReticle: value });
   }
 
   private requestImmersiveMouse(gesture?: Event) {

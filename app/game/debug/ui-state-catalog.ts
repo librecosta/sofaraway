@@ -107,7 +107,6 @@ export const uiStates: readonly UIState[] = [
   overlay('settings-muted', 'Settings Muted', 'settings', 'Mute is enabled.', { muted: true }),
   overlay('settings-lights', 'Settings Dynamic Lights On', 'settings', 'Dynamic lights are enabled.', { dynamicLights: true }),
   overlay('settings-auto-boost', 'Settings Auto Boost On', 'settings', 'Auto Boost is enabled for future Standard flights.', { autoBoost: true }),
-  overlay('settings-center-reticle', 'Settings Center Reticle On', 'settings', 'A fixed crosshair is enabled for flight.', { centerReticle: true }),
   overlay('settings-quality-disabled', 'Settings Quality Disabled', 'settings', 'Settings opens during a pause.', { phase: 'paused', pauseReason: 'user' }),
   overlay('settings-auto-boost-locked', 'Settings Auto Boost Locked', 'settings', 'Changing Auto Boost is blocked during a paused flight.',
     { phase: 'paused', pauseReason: 'user', autoBoost: true }),

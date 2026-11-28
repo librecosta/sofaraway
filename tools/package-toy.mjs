@@ -6,14 +6,15 @@ const packages = new URL('../build/packages/', import.meta.url);
 const zip = new URL('sofaraway-toy.zip', packages);
 const rootFiles = ['index.html', 'LICENSE.txt', 'OFL-Chakra-Petch.txt', 'OFL-Rajdhani.txt', 'THIRD-PARTY-NOTICES.txt'];
 const assetName = /^[a-z0-9_.-]+-[a-z0-9_-]{8}\.(?:js|css|woff2)$/i;
+const brandLogo = /^librecosta-black-white-[a-z0-9_-]{8}\.svg$/i;
 const root = await readdir(build, { withFileTypes: true });
 const assets = await readdir(new URL('assets/', build), { withFileTypes: true });
 if (root.length !== rootFiles.length + 1 || root.some(entry =>
   entry.name === 'assets' ? !entry.isDirectory() : !entry.isFile() || !rootFiles.includes(entry.name))) {
   throw new Error('Unexpected files in the root of the Toy build.');
 }
-if (!assets.length || assets.some(entry => !entry.isFile() || !assetName.test(entry.name))) {
-  throw new Error('The Toy assets directory must contain only fingerprinted JavaScript, CSS and WOFF2 files.');
+if (!assets.length || assets.some(entry => !entry.isFile() || !assetName.test(entry.name) && !brandLogo.test(entry.name))) {
+  throw new Error('The Toy assets directory must contain only fingerprinted JavaScript, CSS, WOFF2 and the LibreCosta mark.');
 }
 
 const paths = [...rootFiles, ...assets.map(entry => 'assets/' + entry.name)].sort();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { GameDialog } from '../app/components/GameDialog';
 import type { RunSettlement } from '../app/game/runtime/run-settlement';
 import { usePlayerText } from '../app/i18n/PlayerLocale';
@@ -8,17 +8,20 @@ import { shareActions } from './player-services';
 import type { ShareAction, SharePlatform } from './player-services';
 import { requestTimeout } from './request-budget';
 import { canShareResult, drawResultCard, resultCardDetails } from './result-card';
+import logoUrl from './librecosta-black-white.svg';
 import './player-services.css';
 
 const en = {
   title: 'SHARE RESULT', sharePicture: 'SHARE CARD', saveImageToAlbum: 'SAVE TO ALBUM', share: 'SHARE TOY',
   saved: 'Card saved.', shared: 'Share action completed.', failed: 'Bilibili could not complete the action.',
   permission: 'Bilibili did not grant permission.', timeout: 'The request timed out.', unavailable: 'Card preview is unavailable.',
+  player: 'Bilibili Player',
 };
 const zh: typeof en = {
   title: '分享成绩', sharePicture: '分享成绩卡', saveImageToAlbum: '保存到相册', share: '分享玩具',
   saved: '成绩卡已保存。', shared: '分享操作已完成。', failed: '哔哩哔哩未能完成此操作。',
   permission: '哔哩哔哩未授予权限。', timeout: '请求已超时。', unavailable: '无法预览成绩卡。',
+  player: 'B站玩家',
 };
 const noSubscription = () => () => {};
 const noSession = () => 0;
@@ -37,20 +40,34 @@ export function ResultSharePanel({ run, platform, close }: { run: RunSettlement;
   const copy = text.locale === 'zh-CN' ? zh : en;
   const ref = useRef<HTMLCanvasElement>(null);
   const [drawn, setDrawn] = useState(false);
+  const [logo, setLogo] = useState<HTMLImageElement | null>();
+  const [player, setPlayer] = useState<{ platform: SharePlatform; session: number; nickname: string | null }>();
   const [actions, setActions] = useState<readonly ShareAction[]>([]);
   const [notice, setNotice] = useState<Notice>();
   const [busy, setBusy] = useState(false);
   const lifetime = useRef<AbortController | null>(null);
   const active = useRef(false);
   const session = useSyncExternalStore(platform?.subscribeSession ?? noSubscription, platform?.session ?? noSession);
+  const profile = player && player.platform === platform && player.session === session ? player : undefined;
+  const nickname = profile?.nickname ?? copy.player;
+  const waitingForNickname = !!platform && !profile;
 
   useEffect(() => {
+    const image = new Image();
+    image.onload = () => setLogo(image);
+    image.onerror = () => setLogo(null);
+    image.src = logoUrl;
+    return () => { image.onload = image.onerror = null; };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (logo === undefined) return;
     let current = true;
-    const draw = () => setDrawn(!!ref.current && drawResultCard(ref.current, run, text));
+    const draw = () => setDrawn(!!ref.current && drawResultCard(ref.current, run, text, nickname, logo));
     draw();
     void document.fonts?.ready.then(() => { if (current) draw(); });
     return () => { current = false; };
-  }, [run, text]);
+  }, [run, text, nickname, logo]);
 
   useEffect(() => {
     const scope = new AbortController();
@@ -64,9 +81,24 @@ export function ResultSharePanel({ run, platform, close }: { run: RunSettlement;
     return () => scope.abort();
   }, [platform, session]);
 
+  useEffect(() => {
+    if (!platform) return;
+    const request = new AbortController();
+    const finish = (nickname: string | null) => {
+      if (request.signal.aborted) return;
+      request.abort();
+      clearTimeout(timer);
+      setPlayer({ platform, session, nickname });
+    };
+    const timer = setTimeout(() => finish(null), requestTimeout);
+    void platform.resultNickname(request.signal).then(finish, () => finish(null));
+    return () => { clearTimeout(timer); request.abort(); };
+  }, [platform, session]);
+
   function share(action: ShareAction) {
     const scope = lifetime.current;
     if (active.current || !platform || !scope || scope.signal.aborted || !ref.current || !actions.includes(action)) return;
+    if (action !== 'share' && (!drawn || waitingForNickname || platform.session() !== session)) return;
     active.current = true;
     setBusy(true);
     setNotice(undefined);
@@ -95,7 +127,7 @@ export function ResultSharePanel({ run, platform, close }: { run: RunSettlement;
   }
 
   const details = resultCardDetails(run, text);
-  const description = ['SoFarAway', 'LibreCosta', details.volume, details.flight, details.outcome, details.score, details.rank,
+  const description = ['SoFarAway', nickname, 'LibreCosta', details.volume, details.flight, details.outcome, details.score, details.rank,
     ...details.metrics.flat()].join(' · ');
   return <GameDialog id="toy-result-share" title={copy.title} dismiss={close}>
     <div className={c('panel') + ' toy-service-panel toy-share-panel'}>
@@ -105,12 +137,13 @@ export function ResultSharePanel({ run, platform, close }: { run: RunSettlement;
           <span aria-hidden="true">×</span>
         </button>
       </header>
-      <canvas ref={ref} role="img" aria-label={description} />
+      <canvas ref={ref} role="img" aria-label={description} style={{ visibility: drawn ? undefined : 'hidden' }} />
       {actions.length > 0 && <div className="toy-share-actions">
-        {actions.map(action => <button type="button" key={action} className="toy-rank-control" disabled={busy || !drawn}
+        {actions.map(action => <button type="button" key={action} className="toy-rank-control"
+          disabled={busy || (action !== 'share' && (!drawn || waitingForNickname))}
           onClick={() => share(action)}>{copy[action]}</button>)}
       </div>}
-      <div role="status" className="toy-service-notice">{!drawn ? copy.unavailable : notice ? copy[notice] : ''}</div>
+      <div role="status" className="toy-service-notice">{logo !== undefined && !drawn ? copy.unavailable : notice ? copy[notice] : ''}</div>
     </div>
   </GameDialog>;
 }

@@ -12,6 +12,7 @@ export const shareActions = ['sharePicture', 'saveImageToAlbum', 'share'] as con
 export type ShareAction = typeof shareActions[number];
 
 export interface SharePlatform extends ServiceSession {
+  resultNickname(signal: AbortSignal): Promise<string | null>;
   supportsShare(action: ShareAction, signal: AbortSignal): Promise<boolean>;
   shareResult(action: ShareAction, base64Data: string, signal: AbortSignal): Promise<void>;
 }

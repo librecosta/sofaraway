@@ -4,7 +4,7 @@ import { clamp } from '../core/collision';
 import { resolveDifficulty } from '../core/difficulty';
 
 type Setting = 'difficulty' | 'mode' | 'quality' | 'volume' | 'muted' | 'dynamicLights' |
-  'immersiveMouse' | 'orientation' | 'locale' | 'autoBoost' | 'centerReticle';
+  'immersiveMouse' | 'orientation' | 'locale' | 'autoBoost';
 
 export function createPlayerSettings(namespace: string) {
   return {
@@ -43,6 +43,5 @@ export function readPlayerOptions(settings: PlayerSettings, volumeId: VolumeId, 
     dynamicLights: (overrides?.lights ?? settings.read('dynamicLights')) === 'true',
     immersiveMouse: immersiveMouse === 'true' || (immersiveMouse !== 'false' && initialSnapshot.immersiveMouse),
     autoBoost: settings.read('autoBoost') === 'true',
-    centerReticle: settings.read('centerReticle') === 'true',
   };
 }

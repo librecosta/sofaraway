@@ -81,7 +81,6 @@ export interface GameSnapshot {
   readonly gateQualityDebug?: boolean;
   readonly immersiveMouse: boolean;
   readonly autoBoost: boolean;
-  readonly centerReticle: boolean;
   readonly error: GameError | null;
   readonly pauseReason: PauseReason | null;
   readonly result: RunResult | null;
@@ -112,7 +111,6 @@ export interface GameOptions {
   dynamicLights?: boolean;
   immersiveMouse?: boolean;
   autoBoost?: boolean;
-  centerReticle?: boolean;
   compactViewport?: boolean;
   saveRecords?: boolean;
   runSeed?: number;
@@ -151,7 +149,6 @@ export interface GameRuntime {
   setDynamicLights(value: boolean): void;
   setImmersiveMouse(value: boolean): void;
   setAutoBoost(value: boolean): void;
-  setCenterReticle(value: boolean): void;
   getSnapshot(): GameSnapshot;
   subscribe(listener: () => void): () => void;
   dispose(): void;
@@ -178,7 +175,6 @@ export const initialSnapshot: GameSnapshot = Object.freeze({
   dynamicLights: false,
   immersiveMouse: false,
   autoBoost: false,
-  centerReticle: false,
   error: null,
   pauseReason: null,
   result: null,

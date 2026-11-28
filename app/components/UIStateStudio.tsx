@@ -15,7 +15,6 @@ import { explorerVolumeIds } from './explorer/explorer-catalog';
 import { WebCreditsPanel } from '../web/WebCreditsPanel';
 import { GameFallback, isBlockingFallback } from './GameFallback';
 import { HUDView } from './GameHUD';
-import { CenterReticle } from './CenterReticle';
 import { MainMenu } from './MainMenu';
 import { ShareToast, SocialLinks, useShareToast } from '../web/WebMenuUtilities';
 import { ResultsScreen } from './ResultsScreen';
@@ -214,7 +213,6 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
       {snapshot.mode !== 'showcase' && <HUDView snapshot={snapshot}
         pause={() => patch({ phase: 'paused', pauseReason: 'user' })}
         enableAudio={() => patch({ soundUnavailable: false })} />}
-      {!panel && <CenterReticle snapshot={snapshot} />}
       <ResultsScreen snapshot={snapshot} restart={play} menu={menu} />
     </div>
     <div id="shade" />
@@ -226,7 +224,6 @@ function StudioControls({ selected, setBackdropVolume }: { selected: UIState; se
       chooseQuality={quality => patch({ quality })} setVolume={volume => patch({ volume })}
       setMuted={muted => patch({ muted })} setDynamicLights={dynamicLights => patch({ dynamicLights })}
       setAutoBoost={autoBoost => patch({ autoBoost })}
-      setCenterReticle={centerReticle => patch({ centerReticle })}
       immersiveMouseAvailable setImmersiveMouse={immersiveMouse => patch({ immersiveMouse })}
       fullscreen={{ active: fullscreen, available: true, toggle: toggleFullscreen }} preview />}
     <ShareToast notice={notice} />
