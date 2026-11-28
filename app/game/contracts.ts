@@ -78,6 +78,7 @@ export interface GameSnapshot {
   readonly volume: number;
   readonly muted: boolean;
   readonly dynamicLights: boolean;
+  readonly gateQualityDebug?: boolean;
   readonly immersiveMouse: boolean;
   readonly autoBoost: boolean;
   readonly error: GameError | null;

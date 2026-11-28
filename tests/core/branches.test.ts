@@ -25,7 +25,7 @@ const routeBeats = {
   score: Array.from({ length: 24 }, (_, i) => 326 + i),
 };
 const counts = { easy: [140, 144, 156], normal: [141, 145, 157], hard: [141, 145, 157] };
-const scores = { easy: [66201, 74201, 70001], normal: [105086, 117886, 111166], hard: [156826, 176026, 165946] };
+const scores = { easy: [66201, 74201, 70001], normal: [105446, 118246, 111526], hard: [156826, 176026, 165946] };
 const kinds = ['main', 'challenge', 'score'] as const;
 const inside = (beat: number) => beat >= SPLIT_BEAT && beat < REJOIN_BEAT;
 const axis = (delta: number) => Math.abs(delta) < 0.05 ? 0 : Math.sign(delta);

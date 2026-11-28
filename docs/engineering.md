@@ -50,7 +50,7 @@ Auto Boost is a run preference that defaults to off.
 Start and Retry freeze it for the flight. Runtime merges it with manual Boost in the same input frame before each playable Standard step.
 Ordinary record eligibility applies. Fixed-time captures use their existing diagnostic flag. [Run policy](../app/game/core/run-policy.ts)
 
-Gate quality is judged at the swept collision point for both the main course and Encore. `precision-v2` isolates Best, Last, the write lock and handoff from the previous scoring rules. [Scoring and record contract](audits/T1-D1-precision-near-miss-scoring.md)
+Gate quality is judged at the swept collision point for both the main course and Encore. `precision-v5` uses a 50% Precision region and a 30% Near Miss band. Best, Last, the write lock and handoff are scoped to that ruleset. [Original scoring and record contract](audits/T1-D1-precision-near-miss-scoring.md)
 
 | Surface | Authoritative artifact and expected behavior |
 | --- | --- |

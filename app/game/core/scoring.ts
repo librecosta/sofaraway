@@ -1,6 +1,6 @@
 import type { GateCrossingQuality } from './crossing-quality';
 
-export const SCORING_RULES_VERSION = 'precision-v2';
+export const SCORING_RULES_VERSION = 'precision-v5';
 export const TRAVEL_POINTS_PER_UNIT = .35;
 export const MAIN_GATE_POINTS = 100;
 export const BOOST_GATE_MULTIPLIER = 1.5;

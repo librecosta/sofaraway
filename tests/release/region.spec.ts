@@ -25,6 +25,7 @@ test('the static artifact contains registration data only in the China build', a
     expect(bytes.includes('sofaraway.bilibili.sofaraway') || bytes.includes('data-toy-dev-console'), path).toBe(false);
     expect(bytes.includes('/bfs/seed/toy/app/sdk/toy-sdk.js') || bytes.includes('getContainerState'), path).toBe(false);
     expect(bytes.includes('toy-rank-dialog') || bytes.includes('submitScore') || bytes.includes('getRankList'), path).toBe(false);
+    expect(bytes.toString(), path).not.toMatch(/live-gate-quality|GATE SCORING ZONES \(DEV\)|gateQualityDebug|setGateQualityDebug|gateQualityOverlay/);
     expect(bytes.includes(icon), path).toBe(false);
     if (!china || file.name.endsWith('.html') && path !== join('build/client', 'index.html')) {
       const content = bytes.toString('utf8');

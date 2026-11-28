@@ -10,6 +10,7 @@ import type { RunGate, Simulation } from '../core/simulation';
 import type { EncoreGate, OutroPlan } from '../core/encore';
 import type { VolumeDefinition } from '../core/volumes';
 import type { Diagnostics, PlayMode, QualityTier } from '../contracts';
+import type { LiveGateQualityOverlay } from '../debug/live-gate-quality.client';
 import { BranchVisual, prepareJunctionPrograms } from './branch.client';
 import { CorridorLights } from './corridor-lights.client';
 import type { LightingPreview } from './corridor-lights.client';
@@ -71,7 +72,7 @@ class VolumeScene {
   private readonly daylightFog = new THREE.Color(0xffd8a7);
   private readonly gateGeometries = new GateGeometries();
   get gateGeometryCache() { return this.gateGeometries.size; }
-  private readonly visuals = new Map<SceneGate, GateVisual>();
+  readonly visuals = new Map<SceneGate, GateVisual>();
   private outro?: OutroPlan;
   readonly exterior?: DaybreakExterior;
   private readonly facility?: DescentFacility;
@@ -472,6 +473,7 @@ export class Graphics {
   private effectiveDpr = 1;
   private mobile: boolean;
   private locked = false;
+  declare gateQualityOverlay?: LiveGateQualityOverlay;
 
   constructor(canvas: HTMLCanvasElement, tier: QualityTier, mobile: boolean, private readonly flags?: Diagnostics) {
     const gl = canvas.getContext('webgl2', {
@@ -511,6 +513,7 @@ export class Graphics {
 
   load(definition: VolumeDefinition, existingPath?: Path, mode: PlayMode = 'standard') {
     const wasOrbit = !!this.volume?.orbit;
+    if (typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__) this.gateQualityOverlay?.reset();
     this.volume?.dispose();
     this.volume = undefined;
     if (definition.id !== 'daybreak') this.releaseDaylightEnvironment();
@@ -528,6 +531,7 @@ export class Graphics {
 
   loadOrbit(path: Path, seed: number, density: OrbitDensity) {
     const enteringOrbit = !this.volume?.orbit;
+    if (typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__) this.gateQualityOverlay?.reset();
     this.volume?.dispose();
     this.volume = undefined;
     this.corridor = path;
@@ -687,6 +691,7 @@ export class Graphics {
   setCirrusLayer(layer: CirrusLayer) { this.volume?.exterior?.setCirrusLayer(layer); }
 
   releaseSurface() {
+    if (typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__) this.gateQualityOverlay?.reset();
     this.volume?.dispose();
     this.volume = undefined;
     this.environment?.dispose();
@@ -724,6 +729,9 @@ export class Graphics {
   draw(sim: SceneState, deterministic: boolean, updateScene = true, lighting?: LightingPreview) {
     if (!this.volume || this.gl.isContextLost()) return false;
     if (updateScene) this.update(sim, deterministic, lighting);
+    if (typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__) {
+      this.gateQualityOverlay?.sync(this.volume.visuals, sim.phase === 'playing');
+    }
     this.volume.updateAstralWorld(sim, this.height * this.effectiveDpr, this.effectiveDpr, this.quality, lighting);
     this.render(this.volume, sim.time, sim.phase === 'playing');
     this.volume.hologram?.render(this.renderer, sim.routeGuide, sim.routeSide, !!sim.route, sim.time);

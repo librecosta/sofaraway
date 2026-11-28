@@ -93,6 +93,6 @@ test('aligned harness runs leave records empty in both modes', async ({ page }) 
     expect(result.result?.title).toBe('ESCAPED');
     expect(result.score).toBeGreaterThan(17);
     expect(result.localRecord).toEqual({ best: null, last: null });
-    expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1.precision-v2'))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1.precision-v5'))).toBeNull();
   }
 });

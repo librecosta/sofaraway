@@ -22,7 +22,8 @@ const noSubscribe = () => () => {};
 const getInitialSnapshot = () => initialSnapshot;
 const cueControls = 'button:not(:disabled), a[href], input[type="checkbox"]:not(:disabled)';
 const menuFields = ['phase', 'volumeId', 'difficulty', 'mode', 'quality', 'volume', 'muted', 'error', 'pauseReason', 'result',
-  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse', 'autoBoost'] as const;
+  'localRecord', 'newBest', 'message', 'dynamicLights', 'showcaseRoute', 'immersiveMouse', 'autoBoost',
+  ...(typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ ? ['gateQualityDebug'] as const : [])] as const;
 const mouseSupported = () => immersiveMouseSupported();
 const unsupportedOnServer = () => false;
 
@@ -385,6 +386,8 @@ export function GameViewport({ settings, volume: requested, chooseVolume, launch
         chooseQuality={value => void setQuality(value)}
         setVolume={value => { runtime?.setVolume(value); settings.save('volume', Math.round(value * 100)); }}
         setMuted={value => runtime?.setMuted(value)} setDynamicLights={setDynamicLights}
+        {...(typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ && runtime
+          ? { setGateQualityDebug: runtime.setGateQualityDebug } : {})}
         immersiveMouseAvailable={immersiveMouseAvailable && !display?.touch} setImmersiveMouse={setImmersiveMouse} setAutoBoost={setAutoBoost}
         orientation={(action ? display?.orientation : undefined) ??
           (orientation !== null && (!surface || fullscreenState.available) ? { value: orientation, choose: chooseOrientation } : undefined)}

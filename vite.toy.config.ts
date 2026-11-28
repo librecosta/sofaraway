@@ -45,6 +45,7 @@ export default defineConfig(({ command, isPreview }) => ({
   define: {
     __PLAYER_ONLY_TOY__: 'true',
     __TOY_DEVELOPMENT__: JSON.stringify(command === 'serve' && !isPreview),
+    __LIVE_GATE_QUALITY_DEV__: JSON.stringify(command === 'serve' && !isPreview),
   },
   server: { host: '127.0.0.1', port: 5174, strictPort: true },
   build: {

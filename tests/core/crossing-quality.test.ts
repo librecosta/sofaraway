@@ -18,8 +18,8 @@ import { volumeById } from '../../app/game/core/volumes';
 
 const lerp = (start: readonly [number, number], end: readonly [number, number], t: number): Point =>
   [start[0] + (end[0] - start[0]) * t, start[1] + (end[1] - start[1]) * t];
-const around = [[0, 'precision'], [.2, 'precision'], [.2001, 'normal'], [.9499, 'normal'],
-  [.95, 'nearMiss'], [.999, 'nearMiss'], [1, null], [1.001, null]] as const;
+const around = [[0, 'precision'], [.5, 'precision'], [.5001, 'normal'], [.6999, 'normal'],
+  [.7, 'nearMiss'], [.999, 'nearMiss'], [1, null], [1.001, null]] as const;
 
 test('square and diamond normalize by their own scales and retain strict collision edges', () => {
   for (const [kind, scale] of [['square', SQUARE_HALF], ['diamond', DIAMOND_EXTENT]] as const) {
@@ -30,8 +30,8 @@ test('square and diamond normalize by their own scales and retain strict collisi
     expect(gateCrossingQuality(kind, 0, 0, Infinity, 0)).toBeNull();
     expect(gateCrossingQuality(kind, 1, 0, 0, 0)).toBeNull();
   }
-  expect(gateCrossingQuality('square', 0, 0, .19 * SQUARE_HALF, .19 * SQUARE_HALF)).toBe('precision');
-  expect(gateCrossingQuality('diamond', 0, 0, .19 * DIAMOND_EXTENT, .19 * DIAMOND_EXTENT)).toBe('normal');
+  expect(gateCrossingQuality('square', 0, 0, .49 * SQUARE_HALF, .49 * SQUARE_HALF)).toBe('precision');
+  expect(gateCrossingQuality('diamond', 0, 0, .32 * DIAMOND_EXTENT, .32 * DIAMOND_EXTENT)).toBe('normal');
 });
 
 test('all Iris sectors use the lane target, solid hub and spokes, excluding the outer wall', () => {
@@ -42,12 +42,12 @@ test('all Iris sectors use the lane target, solid hub and spokes, excluding the 
     const hub: Point = [tx * HUB_R / radius, ty * HUB_R / radius];
     const classify = (...point: Point) => gateCrossingQuality('iris', sector, 0, ...point);
     expect(classify(...target)).toBe('precision');
-    expect(classify(...lerp(target, hub, .2))).toBe('precision');
-    expect(classify(...lerp(target, hub, .21))).toBe('normal');
-    expect(classify(...lerp(target, hub, .9499))).toBe('normal');
-    expect(classify(...lerp(target, hub, .95))).toBe('nearMiss');
+    expect(classify(...lerp(target, hub, .5))).toBe('precision');
+    expect(classify(...lerp(target, hub, .5001))).toBe('normal');
+    expect(classify(...lerp(target, hub, .6999))).toBe('normal');
+    expect(classify(...lerp(target, hub, .7))).toBe('nearMiss');
     expect(classify(...lerp(target, hub, 1.001))).toBeNull();
-    for (const sign of [-1, 1]) for (const [t, quality] of [[.9499, 'normal'], [.95, 'nearMiss'], [1.001, null]] as const) {
+    for (const sign of [-1, 1]) for (const [t, quality] of [[.6999, 'normal'], [.7, 'nearMiss'], [1.001, null]] as const) {
       const offset = Math.tan(Math.PI / 8) * t * sign;
       expect(classify(tx - ty * offset, ty + tx * offset)).toBe(quality);
     }
@@ -59,7 +59,7 @@ test('all Iris sectors use the lane target, solid hub and spokes, excluding the 
 
 test('DAYBREAK scales each convex gap about its target and excludes cabin edges from near misses', () => {
   for (const kind of daybreakGateKinds) for (const open of daybreakGates[kind].openings.keys()) {
-    const { gap, target, rim } = daybreakProfile(kind, open);
+    const { target, rim } = daybreakProfile(kind, open);
     for (const [from, to] of rim) {
       const edge = lerp(from, to, .5);
       for (const [fraction, quality] of around) {
@@ -69,12 +69,13 @@ test('DAYBREAK scales each convex gap about its target and excludes cabin edges 
         expect(gateCrossingQuality(kind, open, 0, ...p), `${kind}/${open}/${fraction}`).toBe(expected);
       }
     }
-    for (const [i, from] of gap!.entries()) {
-      const to = gap![(i + 1) % gap!.length];
-      if (!rim.some(edge => edge[0] === from && edge[1] === to)) {
-        const p = lerp(target, lerp(from, to, .5), .999);
-        expect(gateCrossingQuality(kind, open, 0, ...p)).toBe('normal');
-      }
+    if (kind === 'daybreak-crystal') {
+      // The sector centerline reaches the cabin far from either solid spoke.
+      const [x, y] = target;
+      const { a, b, ch } = SECTION;
+      const scale = Math.min(a / Math.abs(x), b / Math.abs(y), (a + b - ch) / (Math.abs(x) + Math.abs(y)));
+      const p = lerp(target, [x * scale, y * scale], .999);
+      expect(gateCrossingQuality(kind, open, 0, ...p), `cabin wall at sector ${open}`).toBe('normal');
     }
   }
   expect(gateCrossingQuality('daybreak-crystal', -1, 0, 0, 0)).toBeNull();
@@ -138,18 +139,19 @@ test('each gate family has steerable, mutually exclusive precision and near-miss
       const [cx, cy] = clampSection(x, y, .34);
       if (x !== cx || y !== cy) continue;
       const quality = gateCrossingQuality(kind, 0, 0, x, y);
-      expect(quality !== null, kind).toBe(canPass(kind, 0, 0, x, y));
+      if ((quality !== null) !== canPass(kind, 0, 0, x, y)) {
+        throw new Error(`Classification disagrees with collision for ${kind} at (${x}, ${y})`);
+      }
       if (quality) totals[quality]++;
     }
-    expect(Math.min(totals.precision, totals.nearMiss), kind).toBeGreaterThan(0);
-    expect(totals.normal, kind).toBeGreaterThan(Math.max(totals.precision, totals.nearMiss));
+    expect(Math.min(totals.normal, totals.precision, totals.nearMiss), kind).toBeGreaterThan(0);
   }
 });
 
 const volume = volumeById('elsewhere');
 
 test('main awards include route, difficulty and Resonance but no extra Boost or Combo factor', () => {
-  for (const [quality, x] of [['precision', 0], ['normal', .5 * SQUARE_HALF], ['nearMiss', .98 * SQUARE_HALF]] as const) {
+  for (const [quality, x] of [['precision', 0], ['normal', .6 * SQUARE_HALF], ['nearMiss', .98 * SQUARE_HALF]] as const) {
     const sim = new Simulation(volume);
     sim.start('hard', 0);
     sim.boosting = true;
@@ -177,14 +179,15 @@ test('the swept gate uses the crossing coordinates instead of the tick-end camer
   const index = sim.mainGates.findIndex(gate => gate.kind === 'square');
   const gate = sim.mainGates[index];
   sim['judged'] = index;
-  const damping = steeringDamping(STEP);
-  const target: Point = [0, 2.5];
-  const travel = sim.speed * STEP;
+  const dt = 2 * STEP;
+  const damping = steeringDamping(dt);
+  const target: Point = [0, 2.6];
+  const travel = sim.speed * dt;
   sim.distance = gate.routeStation - travel * .5;
   sim.camera.y = -target[1] * damping / (2 - damping);
   sim.score = 10;
   const start = sim.distance;
-  sim.step(STEP, { ...idleInput, target });
+  sim.step(dt, { ...idleInput, target });
   const { mult } = difficultySettings(volume, 'normal');
   expect(gateCrossingQuality('square', 0, 0, sim.camera.x, sim.camera.y)).toBe('normal');
   expect([sim.gatesPassed, sim.precisionPasses]).toEqual([1, 1]);
@@ -217,7 +220,7 @@ test('Encore combines the same qualities, preserves the main score, and counts o
   const makeGate = () => ({ ...sim.outroPlan!.gates[0], kind: 'square' as const, open: 0 });
   for (const [x, id, points] of [[0, 'precisionBonus', ENCORE_QUALITY_BONUS.precision],
     [.98 * SQUARE_HALF, 'nearMissBonus', ENCORE_QUALITY_BONUS.nearMiss],
-    [.5 * SQUARE_HALF, 'encorePassed', ENCORE_BASE_POINTS], [SQUARE_HALF, 'encorePassed', ENCORE_BASE_POINTS]] as const) {
+    [.6 * SQUARE_HALF, 'encorePassed', ENCORE_BASE_POINTS], [SQUARE_HALF, 'encorePassed', ENCORE_BASE_POINTS]] as const) {
     sim['judgeEncore'](makeGate(), x, 0, 1, false);
     expect(sim.message).toEqual({ id, points });
   }

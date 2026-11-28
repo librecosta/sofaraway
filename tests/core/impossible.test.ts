@@ -89,10 +89,11 @@ test.each(['cruise', 'boost', 'mixed'] as const)('%s clears all Impossible route
     expect(sim.trackDistance + 430).toBeLessThan(sim.path.length);
     if (policy === 'boost') {
       const precision = plan.gates.filter(gate => gate.quality === 'precision').length;
+      const nearMiss = plan.gates.filter(gate => gate.quality === 'nearMiss').length;
       expect(precision).toBeGreaterThan(0);
       expect(precision).toBeLessThan(36);
-      expect(sim.encore).toMatchObject({ passed: 36, nearMiss: 0, precision,
-        bonusScore: 36 * ENCORE_BASE_POINTS + precision * ENCORE_QUALITY_BONUS.precision });
+      expect(sim.encore).toMatchObject({ passed: 36, nearMiss, precision,
+        bonusScore: 36 * ENCORE_BASE_POINTS + precision * ENCORE_QUALITY_BONUS.precision + nearMiss * ENCORE_QUALITY_BONUS.nearMiss });
       expect(enteredAt).toBeLessThan(194);
       expect(plan.gates.at(-1)!.routeStation).toBe(sim.junctionPath!.arcAt(plan.gates.at(-1)!.worldStation, side));
     } else expect(sim.encore?.encountered).toBeLessThan(36);

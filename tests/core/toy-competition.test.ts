@@ -44,6 +44,9 @@ test('checks the actual route, outcome, both recovery counts and run policy', ()
   const run = settled();
   expect(competition(run)).toEqual({ board: 1, score: 12345 });
   expect(competition({ ...run, scoringVersion: 'clean-v1' })).toEqual({ reason: 'version' });
+  expect(competition({ ...run, scoringVersion: 'precision-v2' })).toEqual({ reason: 'version' });
+  expect(competition({ ...run, scoringVersion: 'precision-v3' })).toEqual({ reason: 'version' });
+  expect(competition({ ...run, scoringVersion: 'precision-v4' })).toEqual({ reason: 'version' });
   const ineligible = (result: Partial<RunResult>) => competition({ ...run, result: { ...escaped, ...result } });
   expect(ineligible({ title: 'TERMINATED' })).toEqual({ reason: 'finish' });
   for (const route of [undefined, 'challenge', 'score'] as const) expect(ineligible({ route })).toEqual({ reason: 'route' });

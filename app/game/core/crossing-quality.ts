@@ -9,8 +9,8 @@ import { SECTION } from './section';
 import type { GateKind } from './volumes';
 
 export type GateCrossingQuality = 'normal' | 'precision' | 'nearMiss';
-export const PRECISION_SCALE = .20;
-export const NEAR_MISS_SCALE = .05;
+export const PRECISION_SCALE = .50;
+export const NEAR_MISS_SCALE = .30;
 const epsilon = 1e-10;
 const innerLimit = 1 - PRECISION_SCALE;
 const atMost = (value: number, limit: number) => value <= limit + epsilon;

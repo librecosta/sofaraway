@@ -52,6 +52,8 @@ The Web game reads query parameters on startup. Reload a fully specified URL whe
 
 The parser also accepts `auto`, `align`, `god`, `boost`, `cur`, `post` and `dof`. Use a separate browser context for captures that need clean settings and record storage.
 
+On the Web or Toy development server, open Settings and enable **Gate Scoring Zones (Dev)**. The game draws Precision in teal and Near Miss in amber at upcoming gate planes, including Encore. The switch is off when a new player session loads. Production bundles omit the switch and its renderer, including when served by the local preview.
+
 ## Hosting the production build
 
 Build both regions from the same `main` revision with Node 24 LTS. Vite reads

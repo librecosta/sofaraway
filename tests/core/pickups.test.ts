@@ -201,7 +201,7 @@ test('Resonance adds 25% to eight successful gate awards, including Boost and pr
     advance(sim, beat, control);
     return sim.score - score - (sim.distance - distance) * 0.35;
   }
-  expect(scoreTo(PICKUP_BEAT + 1, { ...input, target: [x * 0.53, y * 0.53] })).toBeCloseTo(0, 8);
+  expect(scoreTo(PICKUP_BEAT + 1, { ...input, target: [x * 0.64, y * 0.64] })).toBeCloseTo(0, 8);
   expect(scoreTo(nextGate, input)).toBeCloseTo(100 * mult * 1.5 * 3.5 * 1.25, 8);
   expect(sim.resonance).toBe(7);
   expect(scoreTo(314.65, { ...input, target: [2.6, 0] })).toBeCloseTo(0, 8);

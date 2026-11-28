@@ -6,7 +6,8 @@ const mount = '/toy/sofaraway/';
 const entry = mount + 'index.html';
 const start = '[data-act=start]';
 const namespace = 'sofaraway.bilibili.sofaraway';
-const recordsKey = namespace + '.records.v1.precision-v2';
+const recordsKey = namespace + '.records.v1.precision-v5';
+const previousRecordsKey = namespace + '.records.v1.precision-v4';
 
 test('the release contains only the player, relative assets and required licenses', async ({ request }) => {
   const files = await readdir('build/toy', { recursive: true, withFileTypes: true });
@@ -25,6 +26,7 @@ test('the release contains only the player, relative assets and required license
     expect(bytes.includes(icon), path).toBe(false);
     expect(bytes.toString(), path).not.toContain(icon.toString('base64'));
     expect(bytes.toString(), path).not.toMatch(forbidden);
+    expect(bytes.toString(), path).not.toMatch(/live-gate-quality|GATE SCORING ZONES \(DEV\)|gateQualityDebug|setGateQualityDebug|gateQualityOverlay/);
   }
   const html = await (await request.get(entry)).text();
   expect(html).toContain('<html lang="zh-CN">');
@@ -149,11 +151,11 @@ test('touch flight keeps Auto Boost through orientation changes and leaves other
 });
 
 test('a normal result keeps Best and Last plus handoff and locks in the Toy namespace', async ({ page }) => {
-  await page.addInitScript(({ namespace, recordsKey }) => {
+  await page.addInitScript(({ namespace, recordsKey, previousRecordsKey }) => {
     localStorage.setItem(namespace + '.difficulty', 'impossible');
     localStorage.setItem(namespace + '.quality', 'low');
     localStorage.setItem(namespace + '.autoBoost', 'true');
-    localStorage.setItem(namespace + '.records.v1', JSON.stringify({ version: 1, standard: {
+    localStorage.setItem(previousRecordsKey, JSON.stringify({ version: 1, standard: {
       elsewhere: { impossible: { best: 999999, last: null } },
     }, sightseeing: {} }));
     localStorage.setItem('sofaraway.records.v1', 'web');
@@ -167,7 +169,7 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
       });
     }
     if (localStorage.getItem(recordsKey) === 'other toy') throw new Error('Toy namespace collision');
-  }, { namespace, recordsKey });
+  }, { namespace, recordsKey, previousRecordsKey });
   await page.goto(entry);
   await expect(page.locator(start)).toBeEnabled();
   await expect(page.locator('#diff [data-choice]')).toHaveCount(4);
@@ -181,7 +183,7 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
   await expect(page.locator('#over')).toContainText('只有普通难度的场次可上榜。');
   await expect(page.getByRole('button', { name: '提交成绩' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(key => localStorage.getItem(key), recordsKey)).not.toBeNull();
-  const observed = await page.evaluate(async key => {
+  const observed = await page.evaluate(async ({ key, previousRecordsKey }) => {
     const requestedLock = document.documentElement.dataset.requestedLock;
     const value = localStorage.getItem(key);
     const database = (await indexedDB.databases()).find(database => database.name === key + '.write');
@@ -194,9 +196,9 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
       };
     });
     return { value, requestedLock, handoff, legacy: localStorage.getItem('sofaraway.records.v1'),
-      oldToy: localStorage.getItem(key.slice(0, key.lastIndexOf('.'))),
+      oldToy: localStorage.getItem(previousRecordsKey),
       other: localStorage.getItem('sofaraway.bilibili.other.records.v1') };
-  }, recordsKey);
+  }, { key: recordsKey, previousRecordsKey });
   expect(observed.requestedLock).toBe(recordsKey + '.write');
   expect(observed.handoff).toBe(observed.value);
   expect(JSON.parse(observed.value!).standard.elsewhere.impossible).toMatchObject({

@@ -599,7 +599,7 @@ test('the production DESCENT Impossible run shows its result and restarts with o
   await expect(page.locator('#over').getByText('IMPOSSIBLE', { exact: true })).toBeVisible();
   await expect(page.locator('#over-gates')).toHaveText('0/189');
   await expect.poll(() => page.evaluate(() => {
-    const records = JSON.parse(localStorage.getItem('sofaraway.records.v1.precision-v2') ?? '{}');
+    const records = JSON.parse(localStorage.getItem('sofaraway.records.v1.precision-v5') ?? '{}');
     return records.standard?.['descent-encore']?.impossible?.last?.outcome;
   })).toBe('TERMINATED');
   await page.locator('[data-act=restart]').click();

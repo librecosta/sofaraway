@@ -23,6 +23,7 @@ interface Props {
   setVolume(value: number): void;
   setMuted(value: boolean): void;
   setDynamicLights(value: boolean): void;
+  setGateQualityDebug?(value: boolean): void;
   setAutoBoost(value: boolean): void;
   immersiveMouseAvailable: boolean;
   setImmersiveMouse(value: boolean): void;
@@ -44,8 +45,9 @@ function Toggle({ id, label, checked, change, description, disabled }: {
   </label>;
 }
 
-export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights,
-  immersiveMouseAvailable, setImmersiveMouse, setAutoBoost, orientation, fullscreen, preview }: Props) {
+export function SettingsPanel(props: Props) {
+  const { snapshot, close, chooseQuality, setVolume, setMuted, setDynamicLights,
+    immersiveMouseAvailable, setImmersiveMouse, setAutoBoost, orientation, fullscreen, preview } = props;
   const { text, chooseLocale } = usePlayerText();
   const { t } = text;
   const quality = qualities.indexOf(snapshot.quality);
@@ -114,6 +116,11 @@ export function SettingsPanel({ snapshot, close, chooseQuality, setVolume, setMu
               data-display-action={fullscreen.label ? '' : undefined}
               onClick={fullscreen.toggle} label={fullscreen.label ?? t(fullscreen.active ? 'exitFullscreen' : 'enterFullscreen')} />
           </div>}
+          {typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__ && props.setGateQualityDebug &&
+            <Toggle id="set-live-gate-quality" label={text.locale === 'zh-CN' ? '门型判定区（开发）' : 'GATE SCORING ZONES (DEV)'}
+              checked={!!snapshot.gateQualityDebug} change={props.setGateQualityDebug}
+              description={text.locale === 'zh-CN' ? '在飞行中显示判定区。青绿为精准，琥珀色为惊险。'
+                : 'Show scoring zones on gates during flight. Teal marks Precision and amber marks Near Miss.'} />}
           {fullscreen.status && <small className={c('switch-description')} role="status">{fullscreen.status}</small>}
           {fullscreen.failed && <small className={c('switch-description')} role="status">{t('fullscreenUnavailable')}</small>}
           <details className={c('controls-help')}>

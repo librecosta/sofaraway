@@ -53,7 +53,7 @@ for (const difficulty of ['normal', 'impossible'] as const) test(`ELSEWHERE ${di
     const bonusScore = count * (ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.precision);
     expect(tail.encore).toMatchObject({ encountered: count, passed: count, nearMiss: 0, precision: count, bonusScore });
     await page.waitForFunction(() => window.b0Harness.snapshot().phase === 'results', undefined, { timeout: 24_000, polling: 200 });
-    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), stored: localStorage.getItem('sofaraway.records.v1.precision-v2') }));
+    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), stored: localStorage.getItem('sofaraway.records.v1.precision-v5') }));
     const data = await trace(page);
     expect(data.end).toMatchObject({ elapsed: 210, beat: 448, scheduler: false, runBus: false });
     expect(data.steps).toHaveLength(1792);

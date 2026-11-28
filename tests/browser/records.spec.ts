@@ -249,7 +249,7 @@ test('same-origin tabs serialize records and reconcile overlapping courses and d
   const second = await context.newPage();
   const legacy = await context.newPage();
   for (const tab of [page, second, legacy]) await tab.goto('http://127.0.0.1:8091/debug/');
-  const oldKey = 'sofaraway.records.v1';
+  const oldKey = 'sofaraway.records.v1.precision-v4';
   const oldRaw = JSON.stringify({ version: 1, standard: { elsewhere: { normal: { best: 999999, last: null } } }, sightseeing: {} });
   await legacy.evaluate(async ({ oldKey, oldRaw }) => {
     localStorage.setItem(oldKey, oldRaw);

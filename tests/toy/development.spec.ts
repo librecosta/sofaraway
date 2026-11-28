@@ -29,6 +29,12 @@ test('offline console updates the existing player and serves hot updates', async
   await expect(page.getByLabel('Device')).toHaveValue('desktop');
   await expect(page.getByRole('status')).toHaveText('960 × 540 CSS px');
   await frame.locator('[data-act=settings]').click();
+  const gateZones = frame.getByRole('switch', { name: '门型判定区（开发）' });
+  await expect(gateZones).not.toBeChecked();
+  const gateZonesModule = page.waitForRequest(request =>
+    new URL(request.url()).pathname.endsWith('/live-gate-quality.client.ts'));
+  await gateZones.check();
+  await gateZonesModule;
   await frame.locator('#set-auto-boost').check();
   expect(await page.evaluate(() => ({
     development: localStorage.getItem('sofaraway.bilibili.sofaraway.dev.autoBoost'),
@@ -42,6 +48,7 @@ test('offline console updates the existing player and serves hot updates', async
   await utimes(stylesheet, atime, new Date());
   await hotUpdate;
   expect(await canvas!.evaluate(element => element === document.querySelector('#gl'))).toBe(true);
+  await expect(gateZones).toBeChecked();
   await expect(frame.locator('#set-auto-boost')).toBeChecked();
   await frame.locator('[data-q=low]').click();
   await frame.locator('[data-act=closesettings]').click();

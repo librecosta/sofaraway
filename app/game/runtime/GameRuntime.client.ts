@@ -89,9 +89,31 @@ export class Runtime implements GameRuntime {
   private lightTime = 0;
 
   private surfaceState?: PlayerSurfaceState;
+  declare setGateQualityDebug?: (value: boolean) => void;
 
   constructor(private readonly view: RuntimeView, namespace?: string, private readonly surface?: PlayerSurface) {
     this.recordStore = new RunRecordStore(namespace);
+    if (typeof __LIVE_GATE_QUALITY_DEV__ !== 'undefined' && __LIVE_GATE_QUALITY_DEV__) {
+      this.setGateQualityDebug = value => {
+        const graphics = this.graphics;
+        if (!graphics || this.snapshot.phase === 'disposed') return;
+        this.publish({ gateQualityDebug: value });
+        if (!value) {
+          graphics.gateQualityOverlay?.reset();
+          graphics.gateQualityOverlay = undefined;
+          return;
+        }
+        void import('../debug/live-gate-quality.client').then(({ LiveGateQualityOverlay }) => {
+          if (this.graphics === graphics && this.snapshot.gateQualityDebug) {
+            graphics.gateQualityOverlay ??= new LiveGateQualityOverlay();
+          }
+        }).catch(error => {
+          if (this.graphics !== graphics || !this.snapshot.gateQualityDebug) return;
+          this.publish({ gateQualityDebug: false });
+          console.error('Could not load live gate scoring zones', error);
+        });
+      };
+    }
   }
 
   private get captureTime() {
