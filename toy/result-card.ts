@@ -183,39 +183,30 @@ function fitOwner(ctx: CanvasRenderingContext2D, nickname: string) {
   return fitted + '…';
 }
 
-function drawBrand(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null, palette: CardPalette) {
-  if (logo && logo.naturalHeight > 0) {
-    const mask = ctx.canvas.ownerDocument.createElement('canvas');
-    mask.height = 80;
-    mask.width = Math.round(mask.height * logo.naturalWidth / logo.naturalHeight);
-    const metal = mask.getContext('2d');
-    if (metal) {
-      metal.drawImage(logo, 0, 0, mask.width, mask.height);
-      const relief = metal.getImageData(0, 0, mask.width, mask.height);
-      metal.globalCompositeOperation = 'source-in';
-      metal.fillStyle = palette.accent + '5f';
-      metal.fillRect(0, 0, mask.width, mask.height);
-      const x = 560 - mask.width / 2;
-      ctx.drawImage(mask, x, 40, mask.width / 2, 40);
-      for (let i = 0; i < relief.data.length; i += 4) {
-        const mix = relief.data[i] / 255;
-        const x = (i / 4) % mask.width, y = Math.floor(i / 4 / mask.width);
-        const shine = .82 + .17 * Math.sin((.9 * x + 1.4 * y) / mask.height * Math.PI);
-        relief.data[i] = (75 + mix * 168) * shine;
-        relief.data[i + 1] = (94 + mix * 154) * shine;
-        relief.data[i + 2] = (115 + mix * 139) * shine;
-      }
-      metal.putImageData(relief, 0, 0);
-      ctx.drawImage(mask, x, 38.8, mask.width / 2, 40);
-    }
+function drawBrand(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | null) {
+  const right = 673;
+  ctx.save();
+  ctx.textAlign = 'right';
+  label(ctx, 'LibreCosta', right, 49, 17, '#aab6c0');
+  ctx.restore();
+  if (!logo || logo.naturalHeight === 0) return;
+
+  const mark = ctx.canvas.ownerDocument.createElement('canvas');
+  mark.height = 32 * scale;
+  mark.width = Math.round(mark.height * logo.naturalWidth / logo.naturalHeight);
+  const ink = mark.getContext('2d');
+  if (!ink) return;
+  ink.drawImage(logo, 0, 0, mark.width, mark.height);
+  const pixels = ink.getImageData(0, 0, mark.width, mark.height);
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const detail = pixels.data[i] / 255;
+    pixels.data[i] = 121 + detail * 47;
+    pixels.data[i + 1] = 134 + detail * 45;
+    pixels.data[i + 2] = 145 + detail * 44;
   }
-  const foil = ctx.createLinearGradient(569, 45, 661, 73);
-  foil.addColorStop(0, '#d7e5ee');
-  foil.addColorStop(.38, palette.accent);
-  foil.addColorStop(.5, '#f4faff');
-  foil.addColorStop(1, '#b3bfce');
-  label(ctx, 'LibreCosta', 567, 66.2, 20, '#03080f');
-  label(ctx, 'LibreCosta', 567, 65, 20, foil);
+  ink.putImageData(pixels, 0, 0);
+  const markWidth = mark.width / scale;
+  ctx.drawImage(mark, right - markWidth, 59, markWidth, mark.height / scale);
 }
 
 function drawGrade(ctx: CanvasRenderingContext2D, rank: string, caption: string, palette: CardPalette) {
@@ -328,7 +319,7 @@ export function drawResultCard(canvas: HTMLCanvasElement, run: RunSettlement, te
   drawSubstrate(ctx, palette);
   drawHologram(ctx, volume, palette);
   drawEngraving(ctx, palette);
-  drawBrand(ctx, brandLogo, palette);
+  drawBrand(ctx, brandLogo);
   drawGrade(ctx, details.rank, details.gradeLabel, palette);
   drawInformation(ctx, details, text, nickname, palette);
   ctx.restore();
