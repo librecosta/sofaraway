@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 const dev = 'http://127.0.0.1:5174/';
 
@@ -67,17 +67,24 @@ test('result preview draws a localized card and only shows supported native acti
   await expect(canvas).toHaveAccessibleName(/SoFarAway.*Mock Pilot.*LibreCosta.*ELSEWHERE.*精准穿越.*惊险穿越/);
   const logo = await canvas.evaluate((node: HTMLCanvasElement) => {
     const context = node.getContext('2d')!;
-    const pixels = context.getImageData(523, 45, 30, 30).data;
-    let dark = false, light = false;
+    const pixels = context.getImageData(521, 35, 48, 51).data;
+    let darkest = 255, lightest = 0;
     for (let index = 0; index < pixels.length; index += 4) {
-      dark ||= pixels[index] < 8 && pixels[index + 1] < 8 && pixels[index + 2] < 8;
-      light ||= pixels[index] > 210 && pixels[index + 1] > 210 && pixels[index + 2] > 210;
+      const lightness = (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3;
+      darkest = Math.min(darkest, lightness);
+      lightest = Math.max(lightest, lightness);
     }
-    return { dark, light, width: node.width, height: node.height };
+    return { darkest, lightest, width: node.width, height: node.height };
   });
-  expect(logo).toEqual({ dark: true, light: true, width: 720, height: 520 });
+  expect(logo).toMatchObject({ width: 720, height: 520 });
+  expect(logo.lightest - logo.darkest).toBeGreaterThan(25);
+  expect(logo.lightest).toBeLessThan(130);
   await expect(dialog.getByRole('button', { name: '分享成绩卡' })).toBeEnabled();
-  await capture(page, 'result-share-librecosta');
+  if (process.env.TOY_CAPTURE_SERVICES) {
+    const png = await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL('image/png').split(',')[1]);
+    await capture(page, 'result-share-engraved');
+    await writeFile('.local/t1-e/result-card-engraved.png', Buffer.from(png, 'base64'));
+  }
   await dialog.getByRole('button', { name: '保存到相册' }).click();
   await expect(dialog.getByRole('status')).toHaveText('成绩卡已保存。');
   await dialog.getByRole('button', { name: '分享成绩卡' }).click();
