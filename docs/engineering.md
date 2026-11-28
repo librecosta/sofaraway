@@ -50,6 +50,8 @@ Auto Boost is a run preference that defaults to off.
 Start and Retry freeze it for the flight. Runtime merges it with manual Boost in the same input frame before each playable Standard step.
 Ordinary record eligibility applies. Fixed-time captures use their existing diagnostic flag. [Run policy](../app/game/core/run-policy.ts)
 
+Gate quality is judged at the swept collision point for both the main course and Encore. `precision-v2` isolates Best, Last, the write lock and handoff from the previous scoring rules. [Scoring and record contract](audits/T1-D1-precision-near-miss-scoring.md)
+
 | Surface | Authoritative artifact and expected behavior |
 | --- | --- |
 | Static entry points | [`react-router.config.ts`](../react-router.config.ts) prerenders the game and the [Technical Explorer routes](../app/routes.ts). The overview creates no live resources. Worlds, Lighting and Endings open the selected production scene on request. Gates and Materials draw through one renderer per lab. Gameplay reads the chart, seeded routes and Encore plan from an isolated simulation without advancing it. Interface renders game components on isolated snapshots. Old `/debug/#section` and `/debug/legacy/#section` links replace the current history entry and carry the query and fragment to the owning lab. `/tools/render-audio.html` redirects to the Audio Inspector. Keep a real 404 and build to `build/client`. |

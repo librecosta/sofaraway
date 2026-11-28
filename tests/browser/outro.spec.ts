@@ -260,7 +260,7 @@ test('the real results component remains available without WebGL and keeps Encor
   await results.selectOption('Sightseeing Complete');
   await expect(panel.locator('#preview-over-mode')).toHaveText('SIGHTSEEING');
   await expect(panel.getByText('ENCORE BONUS')).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1.precision-v2'))).toBeNull();
 });
 
 test('the Impossible Studio exposes dense sections, route views and all 36 Encore gates in one context', async ({ page }) => {
@@ -295,7 +295,7 @@ test('the Impossible Studio exposes dense sections, route views and all 36 Encor
   const length = Number(await canvas.getAttribute('data-path-length'));
   expect(length - finish).toBeGreaterThanOrEqual(650 - 1e-6);
   await expect(studio.locator('canvas')).toHaveCount(1);
-  expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('sofaraway.records.v1.precision-v2'))).toBeNull();
 });
 
 test('live Encore survives context loss, retries, and menu return with bounded meshes', async ({ page }) => {

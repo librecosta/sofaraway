@@ -1,5 +1,6 @@
 import { initialSnapshot } from '../contracts';
 import type { GameSnapshot, RunResult } from '../contracts';
+import { ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS, MAIN_QUALITY_BONUS } from '../core/scoring';
 
 export const studioGroups = ['Menu', 'Gameplay', 'Results', 'Overlays', 'Recovery & Errors', 'Responsive'] as const;
 export const studioSizes = [[1920,1080], [1280,720], [960,540], [390,844], [320,568], [667,375]] as const;
@@ -25,10 +26,11 @@ const main = { ...initialSnapshot, phase: 'menu' } as const;
 const play = { ...main, phase: 'playing', section: 'DROP', score: 82641, gatesPassed: 49, gatesTotal: 141,
   progress: .48, combo: 12, maxCombo: 16, lives: 2, maxLives: 3, speed: 34 } as const;
 const result: RunResult = { title: 'ESCAPED', rank: 'S', accuracy: .99, planned: 141,
-  encountered: 141, passed: 139, neutralized: 0, unreached: 0, route: 'main' };
+  encountered: 141, passed: 139, precision: 72, nearMiss: 13, neutralized: 0, unreached: 0, route: 'main' };
 const resultSnapshot = { ...play, phase: 'results', score: 372231, result, gatesPassed: 139, maxCombo: 57,
   localRecord: escaped } as const;
-const encore = { encountered: 24, passed: 24, clean: 24, missed: 0, neutralized: 0, combo: 24, maxCombo: 24, bonusScore: 7200 };
+const encore = { encountered: 24, passed: 24, precision: 16, nearMiss: 4, missed: 0, neutralized: 0, combo: 24, maxCombo: 24,
+  bonusScore: 24 * ENCORE_BASE_POINTS + 16 * ENCORE_QUALITY_BONUS.precision + 4 * ENCORE_QUALITY_BONUS.nearMiss };
 
 function menu(id: string, name: string, patch: Partial<GameSnapshot> = {}, extra: Partial<UIState> = {}): UIState {
   return { id, name, group: 'Menu', component: 'MainMenu', trigger: 'The run is ready at the main menu.',
@@ -76,21 +78,26 @@ export const uiStates: readonly UIState[] = [
   gameplay('shield', 'Playing · Shield', 'The player picked up a shield.', { shield: true }),
   gameplay('resonance', 'Playing · Resonance', 'A resonance multiplier is active.', { resonance: 3 }),
   gameplay('boost', 'Playing · Boost', 'The player holds Boost.', { boosting: true, speed: 49.3 }),
+  gameplay('precision', 'Playing · Precision', 'The player crosses close to an aperture target.',
+    { message: { id: 'precisionBonus', points: MAIN_QUALITY_BONUS.precision } }),
+  gameplay('near-miss', 'Playing · Near Miss', 'The player crosses close to a solid gate edge.',
+    { message: { id: 'nearMissBonus', points: MAIN_QUALITY_BONUS.nearMiss } }),
   gameplay('encore', 'Playing · Encore', 'Standard flight reaches the reward gates.',
-    { outroPhase: 'encore', section: 'FINALE', message: { id: 'encoreClean', points: 300 } }),
+    { outroPhase: 'encore', section: 'FINALE', message: { id: 'precisionBonus', points: ENCORE_QUALITY_BONUS.precision } }),
   gameplay('playing-sound-off', 'Playing · Sound Unavailable', 'Audio output dropped during the run.', { soundUnavailable: true }),
   results('escaped-s', 'ESCAPED · S'),
   results('escaped-a', 'ESCAPED · A', { rank: 'A', accuracy: .91, passed: 128 }, { gatesPassed: 128 }),
   results('escaped-b', 'ESCAPED · B', { rank: 'B', accuracy: .78, passed: 110 }, { gatesPassed: 110 }),
   results('escaped-c', 'ESCAPED · C', { rank: 'C', accuracy: .64, passed: 90 }, { gatesPassed: 90 }),
-  results('terminated', 'TERMINATED', { title: 'TERMINATED', rank: 'C', accuracy: .58, encountered: 51, passed: 48, unreached: 90 },
+  results('terminated', 'TERMINATED', { title: 'TERMINATED', rank: 'C', accuracy: .58, encountered: 51, passed: 48,
+    precision: 28, nearMiss: 5, unreached: 90 },
     { gatesPassed: 48, score: 97450, lives: 0, localRecord: terminated }),
   results('new-best', 'New Best', {}, { newBest: true }),
   results('impossible-complete', 'Impossible Complete', { planned: 184, encountered: 184, passed: 183 },
     { difficulty: 'impossible', gatesTotal: 184, gatesPassed: 183, score: 726312 }),
   results('encore-complete', 'Main Complete · Encore Bonus', { encore }),
-  results('encore-partial', 'Partial Encore', { encore: { ...encore, encountered: 10, passed: 7, clean: 4, missed: 3,
-    combo: 3, maxCombo: 4, bonusScore: 1800 } }),
+  results('encore-partial', 'Partial Encore', { encore: { ...encore, encountered: 10, passed: 7, precision: 4, nearMiss: 1, missed: 3,
+    combo: 3, maxCombo: 4, bonusScore: 7 * ENCORE_BASE_POINTS + 4 * ENCORE_QUALITY_BONUS.precision + ENCORE_QUALITY_BONUS.nearMiss } }),
   results('sightseeing-complete', 'Sightseeing Complete', {}, { mode: 'sightseeing', maxLives: 5, score: 8421 }),
   results('showcase-complete', 'Showcase Complete', {}, { mode: 'showcase', difficulty: 'impossible', score: 0, localRecord: empty }),
   results('best-ineligible', 'Recovery · Best Ineligible', { neutralized: 4 }, { score: 428230 }),

@@ -272,7 +272,7 @@ test('DESCENT keeps last main hits, Encore pass/miss/recovery and audio-tail set
     cross(gates[1], 'recovery');
     const score = sim.score, station = sim.distance;
     cross(gates[2], 'pass');
-    expect(sim.encore).toMatchObject({ encountered: 3, passed: 1, clean: 1, missed: 1, neutralized: 1, combo: 1, bonusScore: 300 });
+    expect(sim.encore).toMatchObject({ encountered: 3, passed: 1, nearMiss: 0, precision: 1, missed: 1, neutralized: 1, combo: 1, bonusScore: 300 });
     expect(sim.score - score).toBeCloseTo((sim.distance - station) * .35, 6);
     expect(sim.gatesJudged).toBe(sim.gatesTotal);
     expect(sim.hits).toBe(1);

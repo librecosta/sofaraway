@@ -21,6 +21,7 @@ import { InputController } from './input.client';
 import type { PointerView } from './input.client';
 import { ImmersiveMouse } from './immersive-mouse.client';
 import { recordFor, RunRecordStore } from './records.client';
+import { SCORING_RULES_VERSION } from '../core/scoring';
 import type { RunSettlement } from './run-settlement';
 import { observeScreenOrientation } from './screen-orientation.client';
 import type { PlayerSurface, PlayerSurfaceState } from './player-surface';
@@ -630,7 +631,7 @@ export class Runtime implements GameRuntime {
       ...(result.encore ? { encoreBonus: result.encore.bonusScore } : {}),
       ...(result.neutralized || result.encore?.neutralized ? { recovery: true } : {}),
     });
-    this.view.settled?.(Object.freeze({ id: run.id, policy: run.policy, result, record: last }));
+    this.view.settled?.(Object.freeze({ id: run.id, scoringVersion: SCORING_RULES_VERSION, policy: run.policy, result, record: last }));
     if (!run.policy.recordsEligible) return;
     void this.recordStore.commitRunRecord({ volume, difficulty, mode, last }).then(saved => {
       if (!saved) return;

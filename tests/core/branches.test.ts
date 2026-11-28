@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { COMBO_SCORE_CAP, COMBO_SCORE_STEP, MAIN_GATE_POINTS, MAIN_QUALITY_BONUS } from '../../app/game/core/scoring';
 import { difficulties } from '../../app/game/contracts';
 import { branchLayout, BRANCH_OPEN_BEAT, BRANCH_PREVIEW_BEAT, BRANCH_SIDE_THRESHOLD, BRANCH_SPACING, MERGE_BEAT, REJOIN_BEAT,
   ROUTE_GATE_MULTIPLIERS, routeCharts, routeSides, selectSide, SPLIT_BEAT } from '../../app/game/core/branches';
@@ -24,7 +25,7 @@ const routeBeats = {
   score: Array.from({ length: 24 }, (_, i) => 326 + i),
 };
 const counts = { easy: [140, 144, 156], normal: [141, 145, 157], hard: [141, 145, 157] };
-const scores = { easy: [66201, 74201, 70001], normal: [105326, 118126, 111406], hard: [156826, 176026, 165946] };
+const scores = { easy: [66201, 74201, 70001], normal: [105086, 117886, 111166], hard: [156826, 176026, 165946] };
 const kinds = ['main', 'challenge', 'score'] as const;
 const inside = (beat: number) => beat >= SPLIT_BEAT && beat < REJOIN_BEAT;
 const axis = (delta: number) => Math.abs(delta) < 0.05 ? 0 : Math.sign(delta);
@@ -150,9 +151,12 @@ test.each(difficulties.flatMap(difficulty => layoutSeeds.flatMap(seed => kinds.m
   },
 );
 
-test('route rewards are ordered for all-CLEAN play at the combo cap', () => {
-  const rewards = kinds.map(kind => routeBeats[kind].length * ROUTE_GATE_MULTIPLIERS[kind] * (350 + 150));
+test('route rewards are ordered for precision and near misses at the combo cap', () => {
+  const base = MAIN_GATE_POINTS * (1 + COMBO_SCORE_CAP * COMBO_SCORE_STEP);
+  const reward = (bonus: number) => kinds.map(kind => routeBeats[kind].length * ROUTE_GATE_MULTIPLIERS[kind] * (base + bonus));
+  const rewards = reward(MAIN_QUALITY_BONUS.precision);
   expect(rewards.map(Math.round)).toEqual([4000, 12000, 7800]);
+  expect(reward(MAIN_QUALITY_BONUS.nearMiss).map(Math.round)).toEqual([4600, 13800, 8970]);
 });
 
 test('fixed clock gives the same selection and gate results at 20–144 Hz', () => {

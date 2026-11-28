@@ -11,6 +11,7 @@ import type { InputFrame } from '../../app/game/core/input';
 import { PICKUP_BEAT, pickupForSeed } from '../../app/game/core/pickups';
 import type { PickupKind } from '../../app/game/core/pickups';
 import { createRunSeed, runRandomWord } from '../../app/game/core/run-seed';
+import { MAIN_QUALITY_BONUS } from '../../app/game/core/scoring';
 import { Simulation } from '../../app/game/core/simulation';
 import { sectionAt, volumeById, VOLUMES } from '../../app/game/core/volumes';
 
@@ -185,7 +186,7 @@ test('Lumen adds the same fixed amount on the Score route', () => {
   expect([sim.route, sim.gatesPassed, Math.floor(sim.score)]).toEqual(['score', 157, 111406 + 5000]);
 });
 
-test('Resonance adds 25% to eight successful gate awards, including Boost and CLEAN only when earned', () => {
+test('Resonance adds 25% to eight successful gate awards, including Boost and precision only when earned', () => {
   const run = start('resonance', 'normal', true);
   const { sim, flags, input } = run;
   const chart = chartFor(volume, 'normal');
@@ -212,7 +213,7 @@ test('Resonance adds 25% to eight successful gate awards, including Boost and CL
   expect(sim.route).toBe('challenge');
   for (let passed = 1; passed <= 8; passed++) {
     const earned = scoreTo(326 + 2 * (passed - 1), input);
-    const normal = (100 * 1.5 * (1 + passed * 0.05) + 150) * mult * 2;
+    const normal = (100 * 1.5 * (1 + passed * 0.05) + MAIN_QUALITY_BONUS.precision) * mult * 2;
     expect(earned).toBeCloseTo(normal * (passed <= 7 ? 1.25 : 1), 8);
     expect(sim.resonance).toBe(Math.max(7 - passed, 0));
   }

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import type { VolumeId } from '../../game/contracts';
-import { canPass, lanePoint, opening } from '../../game/core/collision';
+import { lanePoint, opening } from '../../game/core/collision';
+import { gateCrossingQuality } from '../../game/core/crossing-quality';
+import type { GateCrossingQuality } from '../../game/core/crossing-quality';
 import { isOrbitGate, orbitPresets } from '../../game/core/orbit-gates';
 import { SECTION, SECTION_OUTLINE } from '../../game/core/section';
 import type { GateKind } from '../../game/core/volumes';
@@ -13,35 +15,40 @@ import s from '../../styles/explorer-lab.module.css';
 type Variant = ReturnType<typeof gateOpenings>[number];
 const sectionOutline = SECTION_OUTLINE.map(([x, y]) => [x, -y].join(',')).join(' ');
 const { a, b, ch } = SECTION;
+const qualityStyles = {
+  normal: { label: 'Normal', color: '#31748a' },
+  precision: { label: 'Precision', color: '#74ffdc' },
+  nearMiss: { label: 'Near miss', color: '#ffbd70' },
+} satisfies Record<GateCrossingQuality, { label: string; color: string }>;
+const qualities = Object.keys(qualityStyles) as GateCrossingQuality[];
 
 function Aperture({ kind, variant }: { kind: GateKind; variant: Variant }) {
   const { axis, open } = variant;
   const aperture = open === -1 ? open : opening(kind, open);
   const target = open === -1 ? undefined : lanePoint(kind, aperture, axis);
   const [probe, setProbe] = useState<[number, number]>(target ?? [0, 0]);
-  const within = (x: number, y: number) => Math.abs(x) <= a && Math.abs(y) <= b && Math.abs(x) + Math.abs(y) <= a + b - ch;
-  const passes = within(...probe) && open !== -1 && canPass(kind, aperture, axis, ...probe);
+  const quality = gateCrossingQuality(kind, aperture, axis, ...probe);
   const sampled = useMemo(() => {
-    const columns = 150;
-    const rows = 118;
+    const columns = 300;
+    const rows = 236;
     const dx = a * 2 / columns;
     const dy = b * 2 / rows;
-    const path = [];
+    const paths: Record<GateCrossingQuality, string[]> = { normal: [], precision: [], nearMiss: [] };
     for (let row = 0; row < rows; row++) {
       const y = -b + (row + .5) * dy;
-      let start = -1;
+      let start = 0;
+      let previous: GateCrossingQuality | null = null;
       for (let col = 0; col <= columns; col++) {
         const x = -a + (col + .5) * dx;
-        if (col < columns && within(x, y) && open !== -1 && canPass(kind, aperture, axis, x, y)) {
-          if (start === -1) start = col;
-        } else if (start !== -1) {
-          path.push(`M${(-a + start * dx).toFixed(3)} ${(-y - dy / 2).toFixed(3)}h${((col - start) * dx).toFixed(3)}v${dy.toFixed(3)}H${(-a + start * dx).toFixed(3)}z`);
-          start = -1;
-        }
+        const next = col < columns ? gateCrossingQuality(kind, aperture, axis, x, y) : null;
+        if (next === previous) continue;
+        if (previous) paths[previous].push(`M${(-a + start * dx).toFixed(3)} ${(-y - dy / 2).toFixed(3)}h${((col - start) * dx).toFixed(3)}v${dy.toFixed(3)}H${(-a + start * dx).toFixed(3)}z`);
+        start = col;
+        previous = next;
       }
     }
-    return path.join('');
-  }, [kind, aperture, open, axis]);
+    return paths;
+  }, [kind, aperture, axis]);
 
   return <section className={s.inspection} aria-labelledby="aperture-title">
     <div>
@@ -49,6 +56,8 @@ function Aperture({ kind, variant }: { kind: GateKind; variant: Variant }) {
       <p>{gateDescription(kind).label} · {variant.label}</p>
       {isOrbitGate(kind) && <p>{orbitPresets[kind][open].holes.length} physical, traversable openings. Glass thickness {GLASS_THICKNESS} world units.</p>}
       <p>The shaded region samples the same clearance test used at a gate crossing. Coordinates are local to the flight path.</p>
+      <p>{qualities.map(key => <span key={key} style={{ color: qualityStyles[key].color, marginInlineEnd: '1em' }}>
+        {qualityStyles[key].label}</span>)}</p>
       <fieldset className={s.group}>
         <legend>Test a crossing</legend>
         {(['X', 'Y'] as const).map((label, index) => <label key={label}>Sample {label}
@@ -58,17 +67,17 @@ function Aperture({ kind, variant }: { kind: GateKind; variant: Variant }) {
               setProbe(index === 0 ? [value, probe[1]] : [probe[0], value]);
             }} />
         </label>)}
-        <output aria-live="polite" data-pass={passes}>
-          {passes ? 'Pass' : 'Blocked'} · {probe.map(n => n.toFixed(2)).join(', ')}
+        <output aria-live="polite" data-pass={quality !== null}>
+          {quality ? `Pass · ${qualityStyles[quality].label}` : 'Blocked'} · {probe.map(n => n.toFixed(2)).join(', ')}
         </output>
         {target && <button type="button" onClick={() => setProbe(target)}>Sample target</button>}
       </fieldset>
     </div>
     <svg className={s.aperture} role="img" aria-label="Sampled legal crossing region" viewBox={`${-a-.25} ${-b-.25} ${2*a+.5} ${2*b+.5}`}>
       <polygon points={sectionOutline} fill="#101927" stroke="#516e8e" strokeWidth=".025" />
-      <path d={sampled} fill="#31748a" />
+      {qualities.map(key => <path key={key} d={sampled[key].join('')} fill={qualityStyles[key].color} />)}
       {target && <circle cx={target[0]} cy={-target[1]} r=".13" fill="none" stroke="#d1f1ff" strokeWidth=".035" />}
-      <circle cx={probe[0]} cy={-probe[1]} r=".075" fill={passes ? '#9df6ce' : '#ffaa9d'} />
+      <circle cx={probe[0]} cy={-probe[1]} r=".075" fill={quality ? '#f0ffff' : '#ffaa9d'} />
     </svg>
   </section>;
 }

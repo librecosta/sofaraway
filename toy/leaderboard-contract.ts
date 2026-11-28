@@ -1,4 +1,5 @@
 import type { VolumeId } from '../app/game/contracts';
+import { SCORING_RULES_VERSION } from '../app/game/core/scoring';
 import { totalRunScore } from '../app/game/runtime/records.client';
 import type { RunSettlement } from '../app/game/runtime/run-settlement';
 
@@ -14,6 +15,7 @@ export function isSdkScore(value: unknown): value is number {
 
 export function competition(run: RunSettlement) {
   const { policy, record, result } = run;
+  if (run.scoringVersion !== SCORING_RULES_VERSION) return { reason: 'version' } as const;
   if (policy.mode !== 'standard' || !policy.scoring || policy.showcaseRoute !== null) return { reason: 'mode' } as const;
   if (policy.difficulty !== 'normal') return { reason: 'difficulty' } as const;
   if (result.title !== 'ESCAPED') return { reason: 'finish' } as const;

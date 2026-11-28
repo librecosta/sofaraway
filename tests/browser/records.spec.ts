@@ -2,9 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { FixedStepClock } from '../../app/game/core/clock';
 import type { Simulation } from '../../app/game/core/simulation';
 import type { Runtime } from '../../app/game/runtime/GameRuntime.client';
-import { RECORDS_LOCK } from '../../app/game/runtime/records.client';
-
-const key = 'sofaraway.records.v1';
+import { RECORDS_KEY as key, RECORDS_LOCK } from '../../app/game/runtime/records.client';
 
 test('local records follow the selected volume, difficulty and mode at narrow sizes', async ({ page }) => {
   await page.addInitScript(key => {
@@ -238,18 +236,36 @@ test('the real Sightseeing result saves a Last Visit while a fixed capture canno
   expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(result.raw);
 });
 
-async function holdRecordLock(page: import('@playwright/test').Page) {
+async function holdRecordLock(page: import('@playwright/test').Page, name = RECORDS_LOCK) {
   await page.evaluate(name => new Promise<void>(acquired => {
     void navigator.locks.request(name, () => new Promise<void>(release => {
       Reflect.set(window, 'releaseRecordLock', release);
       acquired();
     }));
-  }), RECORDS_LOCK);
+  }), name);
 }
 
 test('same-origin tabs serialize records and reconcile overlapping courses and difficulties', async ({ context, page }) => {
   const second = await context.newPage();
-  for (const tab of [page, second]) await tab.goto('http://127.0.0.1:8091/debug/');
+  const legacy = await context.newPage();
+  for (const tab of [page, second, legacy]) await tab.goto('http://127.0.0.1:8091/debug/');
+  const oldKey = 'sofaraway.records.v1';
+  const oldRaw = JSON.stringify({ version: 1, standard: { elsewhere: { normal: { best: 999999, last: null } } }, sightseeing: {} });
+  await legacy.evaluate(async ({ oldKey, oldRaw }) => {
+    localStorage.setItem(oldKey, oldRaw);
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(oldKey + '.write', 1);
+      request.onupgradeneeded = () => { request.result.createObjectStore('commits'); };
+      request.onsuccess = () => {
+        const transaction = request.result.transaction('commits', 'readwrite');
+        transaction.objectStore('commits').put(oldRaw, oldKey);
+        transaction.oncomplete = () => { request.result.close(); resolve(); };
+        transaction.onabort = () => { request.result.close(); reject(transaction.error); };
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }, { oldKey, oldRaw });
+  await holdRecordLock(legacy, oldKey + '.write');
   await page.evaluate(key => localStorage.setItem(key, JSON.stringify({ version: 1, standard: {
     elsewhere: { normal: { best: 100, last: { score: 100, outcome: 'ESCAPED' } } },
     'daybreak-impossible-timing': { impossible: { best: 111, last: null } },
@@ -290,6 +306,11 @@ test('same-origin tabs serialize records and reconcile overlapping courses and d
   const b = await second.evaluate(() => Promise.all(Reflect.get(window, 'recordCommits')));
   expect(a[0]).toMatchObject({ localRecord: { best: 900 }, newBest: true });
   expect(b[0]).toMatchObject({ localRecord: { best: 900, last: { score: 200 } }, newBest: false });
+  expect(await second.evaluate(async oldKey => ({
+    local: localStorage.getItem(oldKey),
+    databases: (await indexedDB.databases()).map(db => db.name),
+  }), oldKey)).toEqual({ local: oldRaw, databases: expect.arrayContaining([oldKey + '.write', RECORDS_LOCK]) });
+  await legacy.evaluate(() => Reflect.get(window, 'releaseRecordLock')());
   expect(await second.evaluate(key => JSON.parse(localStorage.getItem(key)!), key)).toEqual({
     version: 1, standard: {
       elsewhere: {

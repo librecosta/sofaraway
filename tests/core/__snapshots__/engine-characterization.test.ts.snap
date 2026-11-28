@@ -1,133 +1,226 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`four volumes preserve fixed-step crossings, branch selection and endings 1`] = `
+exports[`four volumes preserve fixed-step crossings, branch selection and endings > flight motion 1`] = `
+{
+  "daybreak": [
+    {
+      "flight": "main",
+      "motion": "18b815ed569bca250d6dcaaf35c5bc6f0c6ed7b0712bb933b872c3cbd09940af",
+      "route": "main",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "challenge boost",
+      "motion": "65494147f4ca3db56f8b85bee6cbc26122480511175936b49be966616fd93a46",
+      "route": "challenge",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "sightseeing bonus",
+      "motion": "d6647245b297fab5dd9f40460b4eb495fe6bfd03a003587776143522265ea727",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "showcase bonus",
+      "motion": "bcc6eaf0fdac2e6301c41c50c8ae12a7f0fff0337027f726630fee89c27f5bde",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "collision",
+      "motion": "e1c50281cbd4c52048f9146010131475f3d7e842c516691fd8913dc2cfaf92ac",
+      "route": undefined,
+      "title": "TERMINATED",
+    },
+  ],
+  "descent": [
+    {
+      "flight": "main",
+      "motion": "c61edcd3aaf55fa49cc3ebb3ef8257b7dfb7dac7cd5429d97149d7857eb3feb8",
+      "route": "main",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "challenge boost",
+      "motion": "e0b13256aa7e2fe3294af16de8b1cbfa04d4769edbc9dcde70bea59401d2d7f7",
+      "route": "challenge",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "sightseeing bonus",
+      "motion": "da44460183c81d370965053a977e1ce5de76fdf4f0f30bd758b2376bd2a9dd7b",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "showcase bonus",
+      "motion": "6c1ca6dcf3b50c445c9ec007f52bc1288c32e522c1cd10a0622bd33dddbe833b",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "collision",
+      "motion": "efd200c0b50bf7bc3c7ada315bab25b5715436166ea04eadb73f985ce98681da",
+      "route": undefined,
+      "title": "TERMINATED",
+    },
+  ],
+  "elsewhere": [
+    {
+      "flight": "main",
+      "motion": "13def5fb2ccacef224a4b4921bdb5e1592dc823d2bea4914997d166f4ed9e021",
+      "route": "main",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "challenge boost",
+      "motion": "c75937b096e1ca86ff34e6250912fc4eee246632602bf6fe62322b86151e580c",
+      "route": "challenge",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "sightseeing bonus",
+      "motion": "56d21d81f20d129ecde2702887c0258463899e6392cd8cfebd960ea842e8b416",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "showcase bonus",
+      "motion": "11635287f0031b631686872f7ee9e3e2160159a9b16fb9e45a634fe8eb7ff4b7",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "collision",
+      "motion": "8639ea2703bdcf4218f8a1d0f4c4423a3a65b3f2ac3b8268933fb4b472905ef9",
+      "route": undefined,
+      "title": "TERMINATED",
+    },
+  ],
+  "orbit": [
+    {
+      "flight": "main",
+      "motion": "165bee1fb50a18e08088560b9b064e14953f837c12061e577c7e6b65a7af0ea5",
+      "route": "main",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "challenge boost",
+      "motion": "b37e922604d48e3e4643e5b6de9fb6580ee812052081bafea3eadccbfd07cda8",
+      "route": "challenge",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "sightseeing bonus",
+      "motion": "91c49843beb3e7c121b11be5775ad6d04eef10d20fd9ec79fe7e3f30aa27dfa2",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "showcase bonus",
+      "motion": "a58fb4807a03d8ddede88d46c76ddda7c688965b447bc9ad0c987ef388a73425",
+      "route": "score",
+      "title": "ESCAPED",
+    },
+    {
+      "flight": "collision",
+      "motion": "8e0716fb3f88ef64ff238f979070e50d35b0d25d706e44be870e875e347042bd",
+      "route": undefined,
+      "title": "TERMINATED",
+    },
+  ],
+}
+`;
+
+exports[`four volumes preserve fixed-step crossings, branch selection and endings > flight scoring 1`] = `
 {
   "daybreak": [
     [
       "main",
-      "ESCAPED",
-      "main",
-      "1ec2a432b6ced4d3210d9908eeaa4e3a991a00d408bee8a664f3884e7500b02d",
+      "83357cbda3c1f74f8270bcf96cd071f6eb99e2981242c553f3aeb530bb01074e",
     ],
     [
       "challenge boost",
-      "ESCAPED",
-      "challenge",
-      "10012d2533d8e4f4869958e5c843c82afb203159436d7e10bc2d637a8a6e1bc6",
+      "afacd353808fb7ff080320b007ab67c162c04ba3e46a69d995b479dea8ba7041",
     ],
     [
       "sightseeing bonus",
-      "ESCAPED",
-      "score",
-      "df345e116e614fd64c87eeba9c67ef1fe341ba777843402455a16fe700095ba3",
+      "a746399cc4927dcfb340f45462009376260684307a41e3a46a6384b4be9d6c54",
     ],
     [
       "showcase bonus",
-      "ESCAPED",
-      "score",
-      "4842effacf1879720cac3899ee73e7e689bfba90b92bc403ff2a14e57eff9aa3",
+      "3ba8936fe4746414f150ed6b78c9ace82c45d7a469af173df0e44871caf3b5fc",
     ],
     [
       "collision",
-      "TERMINATED",
-      undefined,
-      "b900787abdefc1f28172810bc3bf98a3fc1c43f6689461c2902249d9b7d0c948",
+      "897e7e71d4e80fac39cace67b85dfba9ae0d4f1b56e5d468594598efedc98cb3",
     ],
   ],
   "descent": [
     [
       "main",
-      "ESCAPED",
-      "main",
-      "d66447cd3a164d9b1a1775816f17e3487fd521e04b62b059f7d9629cd05d826d",
+      "4486982b6ea2ca84f1b45b069fdb735482c3d97e950ce9b615d5fba9a376f62d",
     ],
     [
       "challenge boost",
-      "ESCAPED",
-      "challenge",
-      "788d44b67ba836ffe0f48c6f54c904e932b56fde6989b7e69757b19621a39d11",
+      "dfbf5e01df877cd55c11d5512aa0d0977ec4727d6f2e247e8dbb38b2c6fcfc42",
     ],
     [
       "sightseeing bonus",
-      "ESCAPED",
-      "score",
-      "347ef01bc725ba5a8158ea16a023612ecbda4cb1dc27c90bd612040eab2db866",
+      "61ff6947ba79159d371fe1b2af5a27ec67f70050070d70a0b8118a1d28a99f99",
     ],
     [
       "showcase bonus",
-      "ESCAPED",
-      "score",
-      "918b147f30974e3f11ca98143ad5e6afbf75d5fe3975045114006e9de42310bc",
+      "38b66bcfc95d80466865342e38baa56b9f9460b5dde54c5137987157b36441e0",
     ],
     [
       "collision",
-      "TERMINATED",
-      undefined,
-      "0a28412f77a3f895a3bce048d012d7cdeb950ccfdaf3567272444ceed52b30f3",
+      "c7aac3822c8bca059ee0ad8d5c720d2bd6c52e5c69f5cb555de1ee6852d4fad9",
     ],
   ],
   "elsewhere": [
     [
       "main",
-      "ESCAPED",
-      "main",
-      "339876b39b73ad89857b3932fb5b4bfd607434e8f8180b4ee9bd1192ad835e67",
+      "f9b77519140f553fbcb28cc7a8e3a902541fa877361be64e573cfed32b2d2a39",
     ],
     [
       "challenge boost",
-      "ESCAPED",
-      "challenge",
-      "ea712c3b000e03c03211646eb772e3719c943e435c236ca59875f7691d555559",
+      "2b3edd9b5fda4164ca4186fe841f177ced05a4d79b7433f95d7416bcb792dba5",
     ],
     [
       "sightseeing bonus",
-      "ESCAPED",
-      "score",
-      "bbd60ead9dc6610694487356df6d658912868451877ec09031f9f39388de6b8b",
+      "19d05b163fedc35e54de3f7fce985bccdeb492e3248d4c9733cb062cdbd74c6c",
     ],
     [
       "showcase bonus",
-      "ESCAPED",
-      "score",
-      "fa5161487d6c3fdcf919b9f48a50e0cc03f05962905d406c7877240f7fc888d7",
+      "b0953b8f870e7ff5c2c3ed7d78ad946a88fdfcf0f515e9a481acafeeb674f0e5",
     ],
     [
       "collision",
-      "TERMINATED",
-      undefined,
-      "0ac08959f25532d0f8deb3aabe718309c0c855dbd6b438cb1f4a03e5974bc5cb",
+      "d41cb4f80b7deb747a61a7a68a8b22918f8711d09d5392d73204120b9cc3a056",
     ],
   ],
   "orbit": [
     [
       "main",
-      "ESCAPED",
-      "main",
-      "43d637dbe7ef0ac6c2eae84b224952f27172fdcd8d1f43345a889cda0789ed85",
+      "e46eb057e7351cc5977acd0ed89cc3c8e004307d88647d1e976cae3ca4e5e32c",
     ],
     [
       "challenge boost",
-      "ESCAPED",
-      "challenge",
-      "dc8ca8045051d3d42bef04ffa463bbe6d114ee8e015dc5725d6a5462b8eb3e2d",
+      "7ec15c26affaa03b75d7ffd656b6804979598322d994281f304fa1cf0a51eb9b",
     ],
     [
       "sightseeing bonus",
-      "ESCAPED",
-      "score",
-      "10383dac7a25d93e146c293285b9731097e91814766f5b17ec5565359431784e",
+      "462db34e3288ab48c5511462770e89de6b05f19494f9a95302cfc76b427aad29",
     ],
     [
       "showcase bonus",
-      "ESCAPED",
-      "score",
-      "f6de1feb796e1f3f5d3b250e7fd154b8052525addec7843f417c568d506ba399",
+      "7d3ef849cb3c703e26d5a07566f6e6a6385bda82b6d1d8aef72add78b8558964",
     ],
     [
       "collision",
-      "TERMINATED",
-      undefined,
-      "e910a560eac598656b6b04e0d8d23bcf007f2d8ef93ec535c093982dca770c23",
+      "b80ba86a5de6a45c523d2f51f6a63efa0f3c498ad75cd58f1f5665c9ff44ecf3",
     ],
   ],
 }

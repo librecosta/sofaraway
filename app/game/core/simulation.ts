@@ -4,8 +4,9 @@ import type { BranchRun, RouteKind, RouteSide } from './branches';
 import { difficultySettings } from './chart';
 import type { ChartGate } from './chart';
 import { canPass, clamp, lanePoint, SECTION } from './collision';
+import { gateCrossingQuality } from './crossing-quality';
 import { resolveDifficulty } from './difficulty';
-import { CLEAN_RADIUS, makeOutroPlan, outroPhase, recordEncore } from './encore';
+import { makeOutroPlan, outroPhase, recordEncore } from './encore';
 import type { EncoreGate, EncoreResult, OutroPlan } from './encore';
 import { daylightFade, daylightPeak, elsewhereEscapeFade, gameplayFor } from './gameplay';
 import { steer, steeringDamping } from './input';
@@ -15,6 +16,8 @@ import type { RunPickup } from './pickups';
 import { projectRunChart } from './run-chart';
 import type { RunGate } from './run-chart';
 import { CAPTURE_RUN_SEED } from './run-seed';
+import { BOOST_GATE_MULTIPLIER, COMBO_SCORE_CAP, COMBO_SCORE_STEP, ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS,
+  MAIN_GATE_POINTS, MAIN_QUALITY_BONUS, TRAVEL_POINTS_PER_UNIT } from './scoring';
 import { BOOST_MULTIPLIER, CRUISE_RESPONSE, CRUISE_SPEED, cruiseTarget, modeScale,
   referenceFor, START_DISTANCE } from './reference-track';
 import { SIGHTSEEING_LIVES, SIGHTSEEING_SPEED } from './sightseeing';
@@ -46,6 +49,8 @@ export class Simulation {
   combo = 0;
   maxCombo = 0;
   gatesPassed = 0;
+  precisionPasses = 0;
+  nearMissPasses = 0;
   gatesJudged = 0;
   gatesNeutralized = 0;
   hits = 0;
@@ -209,6 +214,7 @@ export class Simulation {
     this.time = this.beat = this.score = this.combo = this.maxCombo = 0;
     this.daylightReleasedAt = undefined;
     this.gatesPassed = this.gatesJudged = this.gatesNeutralized = this.hits = this.reveal = this.judged = 0;
+    this.precisionPasses = this.nearMissPasses = 0;
     this.invulnUntil = this.settleAt = this.recoil = this.messageUntil = 0;
     this.previewGates = [];
     this.previewEncore = [];
@@ -314,7 +320,7 @@ export class Simulation {
     this.speed += (targetSpeed - this.speed) * Math.min(1, elapsed * (boost > 1 ? 4 : CRUISE_RESPONSE));
     this.boostLens += ((this.boosting ? 1 : 0) - this.boostLens) * -Math.expm1(-elapsed / BOOST_LENS_SECONDS);
     this.distance += this.speed * elapsed;
-    if (this.scoring) this.score += this.speed * elapsed * 0.35;
+    if (this.scoring) this.score += this.speed * elapsed * TRAVEL_POINTS_PER_UNIT;
 
     const width = this.steeringWidth;
     const { x, y } = camera;
@@ -374,7 +380,7 @@ export class Simulation {
         this.messageUntil = this.time + 1.3;
       }
       if (this.lives === 0) {
-        if (this.scoring) this.score -= Math.max(0, this.distance - station) * 0.35;
+        if (this.scoring) this.score -= Math.max(0, this.distance - station) * TRAVEL_POINTS_PER_UNIT;
         this.distance = station;
         this.beat = previousBeat + (this.beat - previousBeat) * fraction;
         this.finish('TERMINATED');
@@ -452,13 +458,15 @@ export class Simulation {
     gate.judged = true;
     gate.crossedAt = crossingTime;
     gate.neutralized = neutralize;
-    gate.passed = !neutralize && (
+    const quality = neutralize ? null : gateCrossingQuality(gate.kind, gate.open, gate.axis, x, y);
+    gate.passed = !neutralize && (quality !== null ||
       (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options.god === true) || canPass(gate.kind, gate.open, gate.axis, x, y));
-    const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
-    gate.clean = gate.passed && Math.hypot(x - lx, y - ly) < CLEAN_RADIUS;
+    if (gate.passed) gate.quality = quality ?? 'normal';
     this.encore = recordEncore(gate, this.encore, this.scoring);
     if (this.scoring && gate.passed) {
-      this.message = gate.clean ? { id: 'encoreClean', points: 300 } : { id: 'encorePassed', points: 200 };
+      this.message = quality === 'precision' || quality === 'nearMiss'
+        ? { id: quality === 'precision' ? 'precisionBonus' : 'nearMissBonus', points: ENCORE_QUALITY_BONUS[quality] }
+        : { id: 'encorePassed', points: ENCORE_BASE_POINTS };
       this.messageUntil = this.time + .65;
     }
   }
@@ -472,27 +480,28 @@ export class Simulation {
       this.gatesNeutralized++;
       return;
     }
-    if ((typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options.god) || canPass(gate.kind, gate.open, gate.axis, x, y)) {
-      const [lx, ly] = lanePoint(gate.kind, gate.open, gate.axis);
+    const quality = gateCrossingQuality(gate.kind, gate.open, gate.axis, x, y);
+    if (quality !== null || (typeof __PLAYER_ONLY_TOY__ === 'undefined' && this.options.god) || canPass(gate.kind, gate.open, gate.axis, x, y)) {
       this.gatesPassed++;
+      this.precisionPasses += Number(quality === 'precision');
+      this.nearMissPasses += Number(quality === 'nearMiss');
       this.combo++;
       this.maxCombo = Math.max(this.maxCombo, this.combo);
       const routeMult = gate.route ? ROUTE_GATE_MULTIPLIERS[gate.route] : 1;
-      const gatePoints = 100 * this.mult * (this.boosting ? 1.5 : 1) * (1 + Math.min(this.combo, 50) * 0.05) * routeMult;
-      if (this.scoring) this.score += gatePoints;
-      let cleanPoints = 0;
-      if (Math.hypot(x - lx, y - ly) < CLEAN_RADIUS) {
-        cleanPoints = 150 * this.mult * routeMult;
-        if (this.scoring) {
-          this.score += cleanPoints;
-          this.message = { id: 'clean', count: this.combo };
+      const gatePoints = MAIN_GATE_POINTS * this.mult * (this.boosting ? BOOST_GATE_MULTIPLIER : 1) *
+        (1 + Math.min(this.combo, COMBO_SCORE_CAP) * COMBO_SCORE_STEP) * routeMult;
+      if (this.scoring) {
+        const multiplier = this.resonance > 0 ? 1 + RESONANCE_BONUS : 1;
+        this.score += gatePoints * multiplier;
+        if (quality === 'precision' || quality === 'nearMiss') {
+          const withoutBonus = Math.floor(this.score);
+          this.score += MAIN_QUALITY_BONUS[quality] * this.mult * routeMult * multiplier;
+          this.message = { id: quality === 'precision' ? 'precisionBonus' : 'nearMissBonus',
+            points: Math.floor(this.score) - withoutBonus };
           this.messageUntil = this.time + 0.6;
         }
       }
-      if (this.resonance > 0) {
-        if (this.scoring) this.score += (gatePoints + cleanPoints) * RESONANCE_BONUS;
-        this.resonance--;
-      }
+      if (this.resonance > 0) this.resonance--;
     } else {
       this.combo = 0;
       if (crossingTime >= this.invulnUntil) {
@@ -516,6 +525,7 @@ export class Simulation {
       ? accuracy >= 0.985 ? 'S' : accuracy >= 0.93 ? 'A' : accuracy >= 0.82 ? 'B' : 'C'
       : accuracy >= 0.93 ? 'B' : 'C';
     this.result = Object.freeze({ title, accuracy, rank, planned, encountered: this.gatesJudged, passed: this.gatesPassed,
+      precision: this.precisionPasses, nearMiss: this.nearMissPasses,
       unreached: planned - this.gatesJudged, neutralized: this.gatesNeutralized, ...(this.route ? { route: this.route } : {}),
       ...(this.encore ? { encore: this.encore } : {}) });
     this.phase = 'crash';

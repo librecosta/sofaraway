@@ -3,6 +3,7 @@ import type { RunPolicy } from '../core/run-policy';
 
 export interface RunSettlement {
   readonly id: number;
+  readonly scoringVersion: string;
   readonly policy: Readonly<RunPolicy>;
   readonly result: RunResult;
   readonly record: LastRun;

@@ -27,7 +27,8 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false, childr
       </section>
     );
   }
-  const encore = snapshot.mode === 'standard' ? snapshot.result?.encore : undefined;
+  const result = snapshot.result;
+  const encore = snapshot.mode === 'standard' ? result?.encore : undefined;
   return (
     <section id={id('over')} className={c('screen', preview && 'result-preview', !visible && 'hidden')}>
       <div className={c('center')}>
@@ -42,10 +43,19 @@ export function ResultsScreen({ snapshot, restart, menu, preview = false, childr
         {snapshot.result?.route && <div className={c('route-status')} id={id('over-route')}>
           {t('resultRoute', { route: text.route(snapshot.result.route) })}
         </div>}
-        <div className={c('stats')}>
-          <div><b id={id('over-gates')}>{number(snapshot.gatesPassed)}/{number(snapshot.gatesTotal)}</b><span>{t('gates')}</span></div>
-          <div><b id={id('over-combo')}>{number(snapshot.maxCombo)}</b><span>{t('maxLink')}</span></div>
-          <div><b id={id('over-acc')}>{text.percent(snapshot.result?.accuracy ?? 0)}</b><span>{t('accuracy')}</span></div>
+        <div className={c('result-stats')}>
+          <div className={c('stats')}>
+            <div><b id={id('over-gates')}>{number(snapshot.gatesPassed)}/{number(snapshot.gatesTotal)}</b><span>{t('gates')}</span></div>
+            <div><b id={id('over-combo')}>{number(snapshot.maxCombo)}</b><span>{t('maxLink')}</span></div>
+            <div><b id={id('over-acc')}>{text.percent(result?.accuracy ?? 0)}</b><span>{t('accuracy')}</span></div>
+          </div>
+          {result && <div className={c('crossing-stats')}>
+            <div className={c('stats')}>
+              <div><b data-crossing-count="precision">{number(result.precision + (encore?.precision ?? 0))}</b><span>{t('precisionCrossings')}</span></div>
+              <div><b data-crossing-count="near-miss" className={c('near-miss')}>{number(result.nearMiss + (encore?.nearMiss ?? 0))}</b><span>{t('nearMissCrossings')}</span></div>
+            </div>
+            {encore && <small>{t('crossingTotals')}</small>}
+          </div>}
         </div>
         {encore && <div className={c('stats', 'encore-stats')}>
           <div><b>+{number(encore.bonusScore)}</b><span>{t('encoreBonus')}</span></div>

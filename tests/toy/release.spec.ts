@@ -6,14 +6,14 @@ const mount = '/toy/sofaraway/';
 const entry = mount + 'index.html';
 const start = '[data-act=start]';
 const namespace = 'sofaraway.bilibili.sofaraway';
-const recordsKey = namespace + '.records.v1';
+const recordsKey = namespace + '.records.v1.precision-v2';
 
 test('the release contains only the player, relative assets and required licenses', async ({ request }) => {
   const files = await readdir('build/toy', { recursive: true, withFileTypes: true });
   const root = files.filter(file => file.isFile() && file.name.match(/\.(?:html|txt)$/)).map(file => file.name);
   expect(root.sort()).toEqual(['LICENSE.txt', 'OFL-Chakra-Petch.txt', 'OFL-Rajdhani.txt', 'THIRD-PARTY-NOTICES.txt', 'index.html']);
   const icon = await readFile('app/components/china-public-security.png');
-  const forbidden = /2025158691|51010702045043|beian\.(?:miit|mps)\.gov\.cn|#errbox|sofaraway-camlog|fixedTime|mobileQuality|branchSide|b0Harness|toy-dev-console|MockToyPlatform|Offline container simulator|Show mock results|Mock Navigator|sofaraway\.bilibili\.sofaraway\.dev/;
+  const forbidden = /2025158691|51010702045043|beian\.(?:miit|mps)\.gov\.cn|#errbox|sofaraway-camlog|fixedTime|mobileQuality|branchSide|b0Harness|toy-dev-console|MockToyPlatform|Offline container simulator|Show mock results|Mock Navigator|sofaraway\.bilibili\.sofaraway\.dev|Sampled legal crossing region/;
   for (const file of files) {
     if (file.isDirectory()) {
       expect(file.name).toBe('assets');
@@ -153,6 +153,9 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
     localStorage.setItem(namespace + '.difficulty', 'impossible');
     localStorage.setItem(namespace + '.quality', 'low');
     localStorage.setItem(namespace + '.autoBoost', 'true');
+    localStorage.setItem(namespace + '.records.v1', JSON.stringify({ version: 1, standard: {
+      elsewhere: { impossible: { best: 999999, last: null } },
+    }, sightseeing: {} }));
     localStorage.setItem('sofaraway.records.v1', 'web');
     localStorage.setItem('sofaraway.bilibili.other.records.v1', 'other toy');
     if (navigator.locks) {
@@ -169,6 +172,7 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
   await expect(page.locator(start)).toBeEnabled();
   await expect(page.locator('#diff [data-choice]')).toHaveCount(4);
   await expect(page.locator('#diff [data-choice=impossible]')).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByRole('group', { name: '本地成绩' })).not.toContainText('999,999');
   await page.locator(start).click();
   await expect(page.locator('#hud-boost')).toHaveCSS('opacity', '1');
   await page.mouse.move(4, 4);
@@ -190,6 +194,7 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
       };
     });
     return { value, requestedLock, handoff, legacy: localStorage.getItem('sofaraway.records.v1'),
+      oldToy: localStorage.getItem(key.slice(0, key.lastIndexOf('.'))),
       other: localStorage.getItem('sofaraway.bilibili.other.records.v1') };
   }, recordsKey);
   expect(observed.requestedLock).toBe(recordsKey + '.write');
@@ -197,6 +202,7 @@ test('a normal result keeps Best and Last plus handoff and locks in the Toy name
   expect(JSON.parse(observed.value!).standard.elsewhere.impossible).toMatchObject({
     best: expect.any(Number), last: { outcome: 'TERMINATED', score: expect.any(Number) },
   });
+  expect(JSON.parse(observed.oldToy!).standard.elsewhere.impossible.best).toBe(999999);
   expect(observed.legacy).toBe('web');
   expect(observed.other).toBe('other toy');
   await page.locator('[data-act=restart]').click();

@@ -259,7 +259,7 @@ test.each(['cruise', 'boost', 'intermittent'] as const)('Impossible %s clears ev
     if (motion === 'boost') {
       expect(sim.escapeWhite).toBe(1);
       expect(plan.gates.length).toBeGreaterThanOrEqual(24);
-      expect(sim.encore).toMatchObject({ passed: plan.gates.length, clean: plan.gates.length, bonusScore: 300 * plan.gates.length });
+      expect(sim.encore).toMatchObject({ passed: plan.gates.length, nearMiss: 0, precision: plan.gates.length, bonusScore: 300 * plan.gates.length });
       expect(144 - afterglow).toBeGreaterThanOrEqual(10 - STEP);
       expect(144 - afterglow).toBeLessThanOrEqual(12);
       expect(plan.gates.at(-1)!.crossedAt).toBeLessThan(138);

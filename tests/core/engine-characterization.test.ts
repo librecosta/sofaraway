@@ -103,6 +103,7 @@ test('four volumes preserve fixed-step crossings, branch selection and endings',
       const path = sim.junctionPath!;
       const checkpoints = [path.split, sim.reference.station(path.spec.merge[flight.mode], flight.mode), path.end];
       const events = [];
+      const scoring = [];
       let phase = '', checkpoint = 0, lastJudged = 0, lastEncore = 0;
       for (let tick = 1; sim.phase !== 'results'; tick++) {
         if (tick > (sim.secondsPerBeat * volume.beats + 10) / STEP) throw new Error(`No results for ${volume.id}/${flight.name}`);
@@ -110,7 +111,8 @@ test('four volumes preserve fixed-step crossings, branch selection and endings',
         sim.step(STEP, decision);
         const mark = `${sim.phase}/${sim.outroPhase}/${sim.route}`;
         if (mark !== phase) {
-          events.push([tick, mark, sim.branch?.side, round(sim.score), sim.lives]);
+          events.push([tick, mark, sim.branch?.side, sim.lives]);
+          scoring.push([tick, round(sim.score)]);
           if (phase && !phase.endsWith(`/${sim.route}`)) events.push(sim.mainGates.slice(sim.gatesJudged).map(gateRow));
           phase = mark;
         }
@@ -119,18 +121,27 @@ test('four volumes preserve fixed-step crossings, branch selection and endings',
         }
         if (sim.gatesJudged !== lastJudged) {
           events.push([tick, sim.mainGates.slice(lastJudged, sim.gatesJudged)
-            .map(gate => [gateRow(gate), gate.hit, round(gate.crossedAt!)]), round(sim.score), sim.lives]);
+            .map(gate => [gateRow(gate), gate.hit, round(gate.crossedAt!)]), sim.lives]);
+          scoring.push([tick, round(sim.score)]);
           lastJudged = sim.gatesJudged;
         }
-        const encore = (sim.encore?.passed ?? 0) + (sim.encore?.missed ?? 0);
-        if (encore !== lastEncore) {
-          events.push([tick, 'encore', sim.encore]);
-          lastEncore = encore;
+        const encore = sim.encore;
+        if (encore && encore.encountered !== lastEncore) {
+          events.push([tick, 'encore', encore.passed, encore.missed, encore.neutralized, encore.combo, encore.maxCombo]);
+          scoring.push([tick, encore]);
+          lastEncore = encore.encountered;
         }
         if (pilot && tick % 60 === 0) events.push([tick, decision.target?.map(round), round(sim.camera.x), round(sim.camera.y), round(sim.distance)]);
       }
-      return [flight.name, sim.result?.title, sim.result?.route, digest([events, sim.result, sim.hits, sim.lives, round(sim.score)])];
+      const { title, route, accuracy, rank, planned, encountered, passed, unreached, neutralized } = sim.result!;
+      return { flight: flight.name, title, route, motion: digest([events, accuracy, rank, planned, encountered, passed,
+        unreached, neutralized, sim.hits, sim.lives]), score: digest([scoring, sim.result, round(sim.score)]) };
     }),
   ]));
-  expect(traces).toMatchSnapshot();
+  const byVolume = Object.entries(traces);
+  // Frozen against f774c70 before the scoring changes. Keep physics distinct from score changes.
+  expect(Object.fromEntries(byVolume.map(([id, runs]) => [id, runs.map(({ score, ...motion }) => motion)])))
+    .toMatchSnapshot('flight motion');
+  expect(Object.fromEntries(byVolume.map(([id, runs]) => [id, runs.map(({ flight, score }) => [flight, score])])))
+    .toMatchSnapshot('flight scoring');
 });

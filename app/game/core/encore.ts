@@ -3,10 +3,12 @@ import { lanePoint, opening } from './collision';
 import { orbitGateKinds } from './orbit-gates';
 import { crystalOpenings } from './daybreak-gates';
 import type { Axis } from './collision';
+import type { GateCrossingQuality } from './crossing-quality';
 import { IMPOSSIBLE_SPEED_FACTOR } from './difficulty';
 import { gameplayFor } from './gameplay';
 import { referenceFor } from './reference-track';
 import { runRandomWord } from './run-seed';
+import { ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS } from './scoring';
 import type { GateKind, VolumeDefinition } from './volumes';
 
 export const ENCORE_GATE_COUNT = 24;
@@ -15,7 +17,6 @@ export const ENCORE_FIRST_OFFSET = 140;
 export const ENCORE_MIN_SPACING = 95;
 export const ENCORE_MAX_SPACING = 105;
 export const ENCORE_STREAM = 0x454e434f;
-export const CLEAN_RADIUS = .42 * 2.2;
 
 export type OutroPhase = 'main' | 'transition' | 'encore' | 'afterglow';
 export type AfterglowStage = 'release' | 'flow' | 'luminous' | 'closing';
@@ -30,7 +31,7 @@ export interface EncoreGate {
   routeStation: number;
   judged: boolean;
   passed: boolean;
-  clean: boolean;
+  quality?: GateCrossingQuality;
   neutralized: boolean;
   crossedAt?: number;
 }
@@ -38,7 +39,8 @@ export interface EncoreGate {
 export interface EncoreResult {
   readonly encountered: number;
   readonly passed: number;
-  readonly clean: number;
+  readonly precision: number;
+  readonly nearMiss: number;
   readonly missed: number;
   readonly neutralized: number;
   readonly combo: number;
@@ -119,7 +121,7 @@ export function makeOutroPlan(volume: VolumeDefinition, mode: PlayMode, seed: nu
       sector = kind === 'iris' ? word(index, 2) % 8 : kind === 'daybreak-crystal' ? word(index, 2) % crystalOpenings.length : 0;
     }
     gates.push({ index, kind, sector, open: opening(kind, sector), axis,
-      worldStation: station, routeStation: station, judged: false, passed: false, clean: false, neutralized: false });
+      worldStation: station, routeStation: station, judged: false, passed: false, neutralized: false });
   }
   const start = gates.length ? gates[gates.length - 1].worldStation + release : mainLastStation + (spec ? 14 : 45);
   const afterglow: AfterglowSection[] = [];
@@ -142,13 +144,15 @@ export function outroPhase(plan: OutroPlan | undefined, station: number, mainCom
 
 export function recordEncore(gate: EncoreGate, previous: EncoreResult | undefined, scoring = true): EncoreResult {
   const combo = gate.passed ? (previous?.combo ?? 0) + 1 : gate.neutralized ? previous?.combo ?? 0 : 0;
+  const quality = gate.passed ? gate.quality ?? 'normal' : null;
   return Object.freeze({
     encountered: (previous?.encountered ?? 0) + 1,
     passed: (previous?.passed ?? 0) + Number(gate.passed),
-    clean: (previous?.clean ?? 0) + Number(gate.clean),
+    precision: (previous?.precision ?? 0) + Number(quality === 'precision'),
+    nearMiss: (previous?.nearMiss ?? 0) + Number(quality === 'nearMiss'),
     missed: (previous?.missed ?? 0) + Number(!gate.passed && !gate.neutralized),
     neutralized: (previous?.neutralized ?? 0) + Number(gate.neutralized),
     combo, maxCombo: Math.max(previous?.maxCombo ?? 0, combo),
-    bonusScore: (previous?.bonusScore ?? 0) + (scoring && gate.passed ? 200 + Number(gate.clean) * 100 : 0),
+    bonusScore: (previous?.bonusScore ?? 0) + (scoring && quality ? ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS[quality] : 0),
   });
 }

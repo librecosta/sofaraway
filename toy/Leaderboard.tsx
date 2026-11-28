@@ -28,6 +28,7 @@ const english = {
   finish: 'Escape to qualify for this board.', route: 'Choose the Main route to qualify.',
   recovery: 'This flight had a gate neutralized by recovery.', policy: 'Only ordinary flights with a random seed qualify.',
   invalidScore: 'This score is outside the accepted range.',
+  version: 'This flight used an older scoring ruleset.',
 };
 const chinese = {
   title: '排行榜', all: '总榜', week: '本周', volume: '关卡', period: '榜单周期',
@@ -44,6 +45,7 @@ const chinese = {
   finish: '成功撤离后才可上榜。', route: '请选择主路线以取得上榜资格。',
   recovery: '本场有障碍因恢复机制被中和。', policy: '只有使用正常随机种子的飞行可上榜。',
   invalidScore: '此成绩超出可提交范围。',
+  version: '此场飞行使用了旧版计分规则。',
 } satisfies Record<keyof typeof english, string>;
 type SubmissionNotice = RankFailure | 'sending' | 'sent' | 'waiting';
 const submissionCopy = {

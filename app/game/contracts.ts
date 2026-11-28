@@ -18,8 +18,8 @@ export type GamePhase = 'uninitialized' | 'initializing' | 'menu' | 'starting' |
 
 export type FlightMessage =
   | { readonly id: 'mainComplete' | 'mainCompleteEncore' | 'prismShield' }
-  | { readonly id: 'resonance' | 'clean'; readonly count: number }
-  | { readonly id: 'lumen' | 'encorePassed' | 'encoreClean'; readonly points: number };
+  | { readonly id: 'resonance'; readonly count: number }
+  | { readonly id: 'lumen' | 'encorePassed' | 'precisionBonus' | 'nearMissBonus'; readonly points: number };
 
 export type PlayerMessage = FlightMessage |
   { readonly id: 'fullscreenUnavailableNotice' | 'recoveringFlight' | 'recoveryBestIneligible' |
@@ -32,6 +32,8 @@ export interface RunResult {
   readonly planned: number;
   readonly encountered: number;
   readonly passed: number;
+  readonly precision: number;
+  readonly nearMiss: number;
   readonly unreached: number;
   readonly neutralized: number;
   readonly route?: RouteKind;

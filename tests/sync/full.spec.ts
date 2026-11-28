@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { STEP } from '../../app/game/core/clock';
 import { onsetLead } from '../../app/game/core/daybreak-score';
+import { ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS } from '../../app/game/core/scoring';
 import { hasAuthoredAudio, VOLUMES } from '../../app/game/core/volumes';
 import { mount, openSync, phase, report, state, trace } from './support';
 
-const normalScores = { elsewhere: 105326, daybreak: 89395, descent: 120915, orbit: undefined };
+const normalScores = { elsewhere: 105326, daybreak: 89395, descent: 122515, orbit: undefined };
 const gateCounts = { elsewhere: 141, daybreak: 120, descent: 161, orbit: 81 };
 
 test('Sightseeing on DAYBREAK plays the entire song on real audio time', async ({ page }) => {
@@ -49,14 +50,15 @@ for (const difficulty of ['normal', 'impossible'] as const) test(`ELSEWHERE ${di
     const tail = await page.evaluate(() => window.b0Harness.snapshot());
     const count = difficulty === 'impossible' ? 36 : 24;
     const main = difficulty === 'impossible' ? 184 : 141;
-    expect(tail.encore).toMatchObject({ encountered: count, passed: count, clean: count, bonusScore: count * 300 });
+    const bonusScore = count * (ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.precision);
+    expect(tail.encore).toMatchObject({ encountered: count, passed: count, nearMiss: 0, precision: count, bonusScore });
     await page.waitForFunction(() => window.b0Harness.snapshot().phase === 'results', undefined, { timeout: 24_000, polling: 200 });
-    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), stored: localStorage.getItem('sofaraway.records.v1') }));
+    const run = await page.evaluate(() => ({ snapshot: window.b0Harness.snapshot(), stored: localStorage.getItem('sofaraway.records.v1.precision-v2') }));
     const data = await trace(page);
     expect(data.end).toMatchObject({ elapsed: 210, beat: 448, scheduler: false, runBus: false });
     expect(data.steps).toHaveLength(1792);
     expect(run.snapshot.result).toMatchObject({ title: 'ESCAPED', route: 'main', rank: 'S', accuracy: 1,
-      planned: main, passed: main, encore: { bonusScore: count * 300 } });
+      planned: main, passed: main, encore: { bonusScore } });
     expect(run.snapshot.localRecord).toEqual({ best: null, last: null });
     expect(run.stored).toBeNull();
     expect(errors).toEqual([]);
@@ -126,7 +128,8 @@ for (const { volume, count, score, boost } of fullRuns) {
       title: 'ESCAPED', rank: 'S', accuracy: 1, neutralized: 0, unreached: 0, ...(volume.id === 'elsewhere' ? { route: 'main' } : {}),
     });
     if (boost) {
-      expect(summary?.encore).toMatchObject({ encountered: 23, passed: 23, missed: 0, bonusScore: 6900 });
+      expect(summary?.encore).toMatchObject({ encountered: 23, passed: 23, missed: 0, precision: 23, nearMiss: 0,
+        bonusScore: 23 * (ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.precision) });
       await page.keyboard.up('Shift');
     }
     expect(errors).toEqual([]);

@@ -64,7 +64,7 @@ test('ORBIT streams stable landmarks through cruise, Boost and mixed input acros
 test('the public ORBIT run recovers WebGL, judges a Hard collision and retries on the same canvas', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('sofaraway.immersiveMouse', 'false');
-    const key = 'sofaraway.records.v1';
+    const key = 'sofaraway.records.v1.precision-v2';
     if (!localStorage.getItem(key)) localStorage.setItem(key,
       JSON.stringify({ version: 1, standard: { orbit: { normal: { best: 91, last: { score: 91, outcome: 'ESCAPED' } } } } }));
   });
@@ -104,8 +104,8 @@ test('the public ORBIT run recovers WebGL, judges a Hard collision and retries o
   await page.mouse.move(width / 2, height / 2);
   await expect(page.locator('#over')).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('#over-title')).toHaveText('TERMINATED', { timeout: 15_000 });
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard.orbit.normal.best)).toBe(91);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1')!).standard['orbit-starwake-density-v2'].hard.last.outcome)).toBe('TERMINATED');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1.precision-v2')!).standard.orbit.normal.best)).toBe(91);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('sofaraway.records.v1.precision-v2')!).standard['orbit-starwake-density-v2'].hard.last.outcome)).toBe('TERMINATED');
   await page.locator('[data-act=restart]').click();
   await expect(page.locator('#hud-lives i')).toHaveCount(1);
   await page.keyboard.press('Escape');

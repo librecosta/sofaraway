@@ -64,7 +64,8 @@ export function HUDView({ snapshot, enableAudio, pause }: { snapshot: GameSnapsh
         <span className={c('pointer-steer')}>{t('moveSteer')}</span><span className={c('touch-steer')}>{t('touchSteer')}</span>
       </div>
       <div className={c('boost', snapshot.boosting && 'on')} id="hud-boost">{t('boost')}</div>
-      <div className={c('center-msg', !!snapshot.message && 'show')} id="center-msg">{text.message(snapshot.message)}</div>
+      <div className={c('center-msg', !!snapshot.message && 'show', snapshot.message?.id === 'nearMissBonus' && 'near-miss')}
+        id="center-msg">{text.message(snapshot.message)}</div>
       {snapshot.phase === 'playing' && snapshot.soundUnavailable && <button type="button" className={c('btn', 'tiny', 'restore-audio')}
         onClick={enableAudio}>{t('restoreSound')}</button>}
       {snapshot.phase === 'playing' && <button type="button" data-hud-pause className={c('btn', 'tiny', 'touch-pause')}

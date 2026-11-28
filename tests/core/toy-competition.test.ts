@@ -8,6 +8,8 @@ import { idleInput } from '../../app/game/core/input';
 import { LUMEN_POINTS, RESONANCE_BONUS } from '../../app/game/core/pickups';
 import { BOOST_MULTIPLIER, cruiseTarget } from '../../app/game/core/reference-track';
 import { resolveRunPolicy } from '../../app/game/core/run-policy';
+import { BOOST_GATE_MULTIPLIER, COMBO_SCORE_CAP, COMBO_SCORE_STEP, ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS,
+  MAIN_GATE_POINTS, MAIN_QUALITY_BONUS, SCORING_RULES_VERSION, TRAVEL_POINTS_PER_UNIT } from '../../app/game/core/scoring';
 import { Simulation } from '../../app/game/core/simulation';
 import { VOLUMES } from '../../app/game/core/volumes';
 import type { RunSettlement } from '../../app/game/runtime/run-settlement';
@@ -17,11 +19,11 @@ import type { LeaderboardPlatform } from '../../toy/leaderboard-contract';
 import { BilibiliLeaderboard } from '../../toy/leaderboard-sdk.client';
 
 const escaped: RunResult = { title: 'ESCAPED', route: 'main', accuracy: 1, rank: 'S', planned: 10,
-  encountered: 10, passed: 10, unreached: 0, neutralized: 0 };
+  encountered: 10, passed: 10, precision: 3, nearMiss: 4, unreached: 0, neutralized: 0 };
 const selection = { volumeId: 'elsewhere', mode: 'standard', difficulty: 'normal' } as const;
 
 function settled(select: Partial<typeof selection> & { autoBoost?: boolean } = {}): RunSettlement {
-  return { id: 1, policy: resolveRunPolicy({ ...selection, ...select }, {}, 'run'), result: escaped,
+  return { id: 1, scoringVersion: SCORING_RULES_VERSION, policy: resolveRunPolicy({ ...selection, ...select }, {}, 'run'), result: escaped,
     record: { outcome: 'ESCAPED', score: 12_345 } };
 }
 
@@ -30,9 +32,10 @@ test('allocates four boards and passes the unchanged total for either Boost pref
   for (const volumeId of Object.keys(boards) as VolumeId[]) {
     for (const autoBoost of [false, true]) {
       const run = settled({ autoBoost });
-      const encore = { encountered: 4, passed: 3, missed: 1, clean: 2, neutralized: 0, combo: 1, maxCombo: 2, bonusScore: 800 };
+      const encore = { encountered: 4, passed: 3, missed: 1, precision: 1, nearMiss: 1, neutralized: 0, combo: 1, maxCombo: 2,
+        bonusScore: 3 * ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.precision + ENCORE_QUALITY_BONUS.nearMiss };
       expect(competition({ ...run, policy: { ...run.policy, volumeId }, result: { ...escaped, encore },
-        record: { ...run.record, encoreBonus: encore.bonusScore } })).toEqual({ board: boards[volumeId], score: 13_145 });
+        record: { ...run.record, encoreBonus: encore.bonusScore } })).toEqual({ board: boards[volumeId], score: 13_195 });
     }
   }
 });
@@ -40,11 +43,12 @@ test('allocates four boards and passes the unchanged total for either Boost pref
 test('checks the actual route, outcome, both recovery counts and run policy', () => {
   const run = settled();
   expect(competition(run)).toEqual({ board: 1, score: 12345 });
+  expect(competition({ ...run, scoringVersion: 'clean-v1' })).toEqual({ reason: 'version' });
   const ineligible = (result: Partial<RunResult>) => competition({ ...run, result: { ...escaped, ...result } });
   expect(ineligible({ title: 'TERMINATED' })).toEqual({ reason: 'finish' });
   for (const route of [undefined, 'challenge', 'score'] as const) expect(ineligible({ route })).toEqual({ reason: 'route' });
   expect(ineligible({ neutralized: 1 })).toEqual({ reason: 'recovery' });
-  expect(ineligible({ encore: { encountered: 1, passed: 0, missed: 0, clean: 0, neutralized: 1,
+  expect(ineligible({ encore: { encountered: 1, passed: 0, missed: 0, precision: 0, nearMiss: 0, neutralized: 1,
     combo: 0, maxCombo: 0, bonusScore: 0 } })).toEqual({ reason: 'recovery' });
   for (const difficulty of ['easy', 'hard', 'impossible']) expect(competition({ ...run,
     policy: resolveRunPolicy({ ...selection, difficulty }, {}, 'run') })).toEqual({ reason: 'difficulty' });
@@ -63,8 +67,9 @@ test('uses the SDK integer boundaries and rejects inconsistent totals without al
   for (const score of [-1, 16777216, .5, NaN, Infinity])
     expect(competition({ ...run, record: { ...run.record, score } })).toEqual({ reason: 'score' });
   expect(competition({ ...run, record: { ...run.record, score: 16777215 } })).toEqual({ board: 1, score: 16777215 });
-  const encore = { encountered: 1, passed: 1, clean: 1, missed: 0, neutralized: 0, combo: 1, maxCombo: 1, bonusScore: 300 };
-  expect(competition({ ...run, result: { ...escaped, encore }, record: { ...run.record, score: 16777215, encoreBonus: 300 } }))
+  const encore = { encountered: 1, passed: 1, precision: 0, nearMiss: 1, missed: 0, neutralized: 0, combo: 1, maxCombo: 1,
+    bonusScore: ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.nearMiss };
+  expect(competition({ ...run, result: { ...escaped, encore }, record: { ...run.record, score: 16777215, encoreBonus: encore.bonusScore } }))
     .toEqual({ reason: 'score' });
   expect(competition({ ...run, result: { ...escaped, encore }, record: { ...run.record, encoreBonus: 0 } }))
     .toEqual({ reason: 'score' });
@@ -79,12 +84,14 @@ test('actual charts fit the SDK range, including a conservative boosted maximum'
   expect(layouts.size).toBe(2);
   const limits = Object.fromEntries(VOLUMES.map(volume => {
     const { mult, speedFactor } = difficultySettings(volume, 'normal');
-    const gateLimit = (100 * mult * 1.5 * 3.5 + 150 * mult) * ROUTE_GATE_MULTIPLIERS.main * (1 + RESONANCE_BONUS);
-    const travelLimit = volume.beats * (60 / volume.bpm) * cruiseTarget(Infinity) * BOOST_MULTIPLIER * speedFactor * .35;
+    const gateLimit = mult * (MAIN_GATE_POINTS * BOOST_GATE_MULTIPLIER * (1 + COMBO_SCORE_CAP * COMBO_SCORE_STEP) +
+      MAIN_QUALITY_BONUS.nearMiss) * ROUTE_GATE_MULTIPLIERS.main * (1 + RESONANCE_BONUS);
+    const travelLimit = volume.beats * (60 / volume.bpm) * cruiseTarget(Infinity) * BOOST_MULTIPLIER * speedFactor * TRAVEL_POINTS_PER_UNIT;
     const sim = new Simulation(volume);
     const max = Math.ceil(Math.max(...[...layouts.values()].map(seed => {
       sim.start('normal', seed, 'lumen');
-      return sim.gatesTotal * gateLimit + travelLimit + LUMEN_POINTS.normal + (sim.outroPlan?.gates.length ?? 0) * 300;
+      return sim.gatesTotal * gateLimit + travelLimit + LUMEN_POINTS.normal +
+        (sim.outroPlan?.gates.length ?? 0) * (ENCORE_BASE_POINTS + ENCORE_QUALITY_BONUS.nearMiss);
     })));
     expect(isSdkScore(max)).toBe(true);
     sim.start('normal', 0, 'lumen');
@@ -101,10 +108,10 @@ test('actual charts fit the SDK range, including a conservative boosted maximum'
   }));
   expect(limits).toMatchInlineSnapshot(`
     {
-      "daybreak": 175785,
-      "descent": 231874,
-      "elsewhere": 206174,
-      "orbit": 139506,
+      "daybreak": 194835,
+      "descent": 257124,
+      "elsewhere": 228524,
+      "orbit": 154506,
     }
   `);
 });

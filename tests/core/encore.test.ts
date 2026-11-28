@@ -1,3 +1,4 @@
+import { ENCORE_BASE_POINTS, ENCORE_QUALITY_BONUS } from '../../app/game/core/scoring';
 import { expect, test } from 'vitest';
 import { difficulties } from '../../app/game/contracts';
 import { branchLayout, routeSides } from '../../app/game/core/branches';
@@ -64,9 +65,9 @@ test('full Boost awards 7200 on every route identity and maps crossing back to t
     }
     routes.add(`${sim.route}/${side}`);
     expect(plan.gates.map(g => g.worldStation)).toEqual(stations);
-    expect(plan.gates.every(g => g.judged && g.clean && g.routeStation === sim.junctionPath!.arcAt(g.worldStation, side))).toBe(true);
+    expect(plan.gates.every(g => g.judged && g.quality === 'precision' && g.routeStation === sim.junctionPath!.arcAt(g.worldStation, side))).toBe(true);
     expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, rank: 'S', passed: sim.gatesTotal,
-      encore: { encountered: 24, passed: 24, clean: 24, missed: 0, bonusScore: 7200 } });
+      encore: { encountered: 24, passed: 24, precision: 24, nearMiss: 0, missed: 0, bonusScore: 7200 } });
     expect(sim.beat).toBe(448);
     expect(entered).toBeLessThan(209);
     expect(sim.trackDistance).toBeLessThan(plan.afterglowEnd);
@@ -97,7 +98,7 @@ test('the real keyboard response clears every Iris direction at max Boost after 
         sim.step(STEP, { ...boostInput, axisX: ready ? axis(x, sim.camera.tx) : 0,
           axisY: ready ? axis(y, sim.camera.ty) : 0 });
       }
-      expect(gate.clean, `${seed}/${gate.index} ${gate.kind}/${gate.sector}`).toBe(true);
+      expect(gate.quality, `${seed}/${gate.index} ${gate.kind}/${gate.sector}`).toBe('precision');
       expect(sim.speed).toBeCloseTo(fullSpeed);
       previous = gate.crossedAt!;
     }
@@ -139,7 +140,7 @@ test('a single sweep orders the last main crossing before several Encore gates a
 });
 
 test('misses and recovery never change main scores, combo, pickup effects, or best-score eligibility', () => {
-  const play = (style: 'clean' | 'miss' | 'pass' | 'recovery') => {
+  const play = (style: 'precision' | 'miss' | 'pass' | 'recovery') => {
     const flags = { align: true };
     const sim = new Simulation(volume, flags);
     sim.start('normal', 0, 'shield');
@@ -147,7 +148,7 @@ test('misses and recovery never change main scores, combo, pickup effects, or be
     sim.shield = true;
     sim.resonance = 8;
     const before = [sim.lives, sim.combo, sim.maxCombo, sim.gatesTotal, sim.gatesPassed, sim.hitTime];
-    flags.align = style === 'clean';
+    flags.align = style === 'precision';
     while (sim.outroPhase !== 'afterglow') {
       const next = sim.outroPlan!.gates.find(g => !g.judged);
       const sector = next ? next.sector * Math.PI / 4 : 0;
@@ -160,15 +161,16 @@ test('misses and recovery never change main scores, combo, pickup effects, or be
     while (sim.phase === 'playing') sim.step(STEP, boostInput);
     return sim;
   };
-  const clean = play('clean'), miss = play('miss'), pass = play('pass'), recovery = play('recovery');
-  expect(clean.encore).toMatchObject({ passed: 24, clean: 24, combo: 24, bonusScore: 7200 });
+  const precision = play('precision'), miss = play('miss'), pass = play('pass'), recovery = play('recovery');
+  expect(precision.encore).toMatchObject({ passed: 24, precision: 24, nearMiss: 0, combo: 24, bonusScore: 7200 });
   expect(miss.encore).toMatchObject({ passed: 0, missed: 24, combo: 0, bonusScore: 0 });
   expect(pass.encore?.passed).toBe(24);
-  expect(pass.encore!.clean).toBeLessThan(24);
-  expect(pass.encore?.bonusScore).toBe(4800 + pass.encore!.clean * 100);
+  expect(pass.encore!.precision).toBeLessThan(24);
+  expect(pass.encore?.bonusScore).toBe(24 * ENCORE_BASE_POINTS + pass.encore!.precision * ENCORE_QUALITY_BONUS.precision +
+    pass.encore!.nearMiss * ENCORE_QUALITY_BONUS.nearMiss);
   expect(recovery.encore).toMatchObject({ passed: 0, missed: 0, neutralized: 24, bonusScore: 0 });
   for (const sim of [miss, pass, recovery]) {
-    expect(sim.score).toBe(clean.score);
+    expect(sim.score).toBe(precision.score);
     expect(sim.result).toMatchObject({ title: 'ESCAPED', accuracy: 1, rank: 'S', neutralized: 0 });
   }
 });

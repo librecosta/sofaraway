@@ -1,9 +1,11 @@
 import type { Difficulty, LastRun, LocalRecord, PlayMode, VolumeId } from '../contracts';
 import { difficulties } from '../contracts';
 import { difficultiesFor } from '../core/difficulty';
+import { SCORING_RULES_VERSION } from '../core/scoring';
 import { VOLUMES } from '../core/volumes';
 
-export const RECORDS_KEY = 'sofaraway.records.v1';
+export const recordStorageKey = (namespace = 'sofaraway') => `${namespace}.records.v1.${SCORING_RULES_VERSION}`;
+export const RECORDS_KEY = recordStorageKey();
 export const RECORDS_LOCK = `${RECORDS_KEY}.write`;
 const handoffStore = 'commits';
 const allDifficulties = [...difficulties, 'impossible'] as const;
@@ -183,7 +185,7 @@ export class RunRecordStore {
   private readonly pending: RunRecordIntent[] = [];
 
   constructor(namespace = 'sofaraway') {
-    this.key = `${namespace}.records.v1`;
+    this.key = recordStorageKey(namespace);
     this.lock = `${this.key}.write`;
   }
 
